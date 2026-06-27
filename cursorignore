@@ -1,0 +1,186 @@
+# .cursorignore — Fichiers exclus de l'indexation Cursor
+# Système de Gestion de Facturation d'Eau
+
+# =============================================
+# FICHIERS GÉNÉRÉS — NE PAS INDEXER
+# =============================================
+
+# Stubs gRPC générés par protoc (lecture seule)
+**/*_pb2.py
+**/*_pb2_grpc.py
+**/*_pb2.pyi
+
+# Migrations Django (trop nombreuses, peu utiles pour l'IA)
+**/migrations/*.py
+!**/migrations/__init__.py
+
+# Fichiers compilés Python
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/*.pycache
+
+# =============================================
+# DÉPENDANCES
+# =============================================
+
+# Environnements virtuels Python
+.venv/
+venv/
+env/
+.env/
+**/venv/
+**/.venv/
+
+# Node.js (frontend Angular)
+**/node_modules/
+frontend/node_modules/
+
+# =============================================
+# FICHIERS DE BUILD ET DISTRIBUTION
+# =============================================
+
+# Build Angular
+frontend/dist/
+frontend/.angular/
+frontend/build/
+
+# Build Python
+dist/
+build/
+**/*.egg-info/
+**/*.egg/
+
+# =============================================
+# KUBERNETES ET DOCKER
+# =============================================
+
+# Charts Helm générés
+**/charts/*.tgz
+
+# Layers Docker (si présents localement)
+**/.docker/
+
+# =============================================
+# OBSERVABILITÉ — DONNÉES VOLUMINEUSES
+# =============================================
+
+# Données Prometheus (time series, volumineuses)
+observability/prometheus/data/
+
+# Données Loki (logs, volumineuses)
+observability/loki/data/
+observability/loki/chunks/
+observability/loki/index/
+
+# Données Jaeger
+observability/jaeger/data/
+
+# Données Grafana
+observability/grafana/data/
+
+# =============================================
+# BASES DE DONNÉES LOCALES
+# =============================================
+
+# Fichiers SQLite éventuels (dev uniquement)
+**/*.sqlite3
+**/*.db
+
+# Dumps de bases de données
+**/*.sql.gz
+**/*.dump
+**/backups/
+
+# =============================================
+# FICHIERS SENSIBLES — NE JAMAIS INDEXER
+# =============================================
+
+# Variables d'environnement avec vraies valeurs
+.env
+**/.env
+.env.local
+.env.production
+.env.staging
+**/.env.local
+**/.env.production
+
+# Certificats et clés
+**/*.pem
+**/*.key
+**/*.crt
+**/*.p12
+**/*.pfx
+k8s/secrets/*.yaml
+!k8s/secrets/*.example.yaml
+
+# =============================================
+# FICHIERS SYSTÈMES ET IDE
+# =============================================
+
+# macOS
+.DS_Store
+**/.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# JetBrains IDEs
+.idea/
+**/.idea/
+
+# VS Code (garder .vscode/settings.json mais ignorer le reste)
+.vscode/
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# =============================================
+# LOGS ET FICHIERS TEMPORAIRES
+# =============================================
+
+# Logs applicatifs
+**/*.log
+**/logs/
+!**/logs/.gitkeep
+
+# Fichiers temporaires
+**/*.tmp
+**/*.temp
+**/tmp/
+**/temp/
+
+# Fichiers PDF générés (factures)
+**/media/factures/
+**/media/pdfs/
+
+# Coverage Python
+.coverage
+htmlcov/
+.pytest_cache/
+
+# =============================================
+# FICHIERS VOLUMINEUX PEU UTILES POUR L'IA
+# =============================================
+
+# Fichiers binaires
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.gif
+**/*.ico
+**/*.svg
+**/*.woff
+**/*.woff2
+**/*.ttf
+**/*.eot
+
+# Archives
+**/*.zip
+**/*.tar.gz
+**/*.tar
+**/*.gz
+
+# Documentation HTML générée
+docs/_build/
+site/

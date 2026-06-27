@@ -1,0 +1,315 @@
+# .cursorrules — Règles Cursor AI
+# Système de Gestion de Facturation d'Eau
+# Architecture microservices Django + gRPC + GraphQL
+
+## CONTEXTE GÉNÉRAL
+
+Tu travailles sur un système de gestion de facturation d'eau composé de 9 microservices Django indépendants orchestrés par Kubernetes sur un MacBook Pro.
+
+Lis toujours le fichier CLAUDE.md avant de commencer à coder dans ce projet.
+Si un CLAUDE.md existe dans le sous-dossier courant (ex: services/campagne/CLAUDE.md), lis-le en priorité.
+
+---
+
+## RÈGLES ABSOLUES — NE JAMAIS ENFREINDRE
+
+### Communication inter-services
+- Les services communiquent EXCLUSIVEMENT via gRPC
+- JAMAIS d'appels HTTP/REST entre microservices
+- JAMAIS d'accès direct à la base de données d'un autre service
+- JAMAIS d'import de modèles d'un autre service
+- Toujours utiliser les stubs gRPC générés depuis les fichiers .proto
+
+### Fichiers générés
+- NE JAMAIS modifier les fichiers *_pb2.py et *_pb2_grpc.py
+- Ces fichiers sont générés automatiquement par protoc
+- Pour modifier un contrat, modifier le fichier .proto source dans proto/
+
+### Sécurité
+- JAMAIS de secrets (clés API, mots de passe) dans le code
+- JAMAIS de secrets dans les fichiers de configuration versionnés
+- Toujours utiliser les variables d'environnement via os.environ.get()
+- Toujours valider les JWT dans l'API Gateway avant de router
+
+### Base de données
+- JAMAIS de jointures entre tables de services différents
+- Toujours utiliser des UUID comme clés primaires
+- Toujours ajouter created_at et updated_at sur les modèles
+- Toujours créer des index sur les champs fréquemment filtrés
+
+---
+
+## STACK TECHNOLOGIQUE
+
+```
+Framework backend    : Django 5.x
+gRPC                 : grpcio + grpcio-tools
+GraphQL (gateway)    : Strawberry
+ORM                  : Django ORM
+Base de données      : PostgreSQL 16
+PDF                  : ReportLab
+WhatsApp             : Telnyx API
+Scheduler            : APScheduler
+Observabilité        : OpenTelemetry + Prometheus + Loki + Jaeger
+Frontend             : Angular 18 (PWA, mobile-first)
+Orchestration        : Kubernetes + Minikube
+```
+
+---
+
+## CONVENTIONS DE CODE
+
+### Python / Django
+- Toujours utiliser les type hints Python — `Any` est interdit
+- Toujours écrire des docstrings sur les fonctions publiques
+- Noms de variables et fonctions en anglais (snake_case)
+- Noms de classes en anglais (PascalCase)
+- Commentaires et docstrings en français
+- Maximum 80 caractères par ligne
+- Toujours utiliser f-strings pour le formatage de chaînes
+
+```python
+# ✅ BON
+def calculer_consommation(ancien_index: float, nouveau_index: float) -> float:
+    """Calcule la consommation en m³ entre deux relevés."""
+    if nouveau_index < ancien_index:
+        raise ValueError("Le nouvel index ne peut pas être inférieur à l'ancien")
+    return nouveau_index - ancien_index
+
+# ❌ MAUVAIS
+def calc(a, b):
+    return b - a
+```
+
+### Modèles Django
+- Toujours utiliser UUID comme clé primaire
+- Toujours inclure created_at et updated_at
+- Toujours définir __str__
+- Toujours définir class Meta avec ordering et verbose_name
+
+```python
+# ✅ BON
+import uuid
+from django.db import models
+
+class Abonne(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    nom = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Abonné'
+        verbose_name_plural = 'Abonnés'
+
+    def __str__(self) -> str:
+        return f"{self.nom} ({self.numero_abonne})"
+```
+
+### Serveurs gRPC
+- Toujours implémenter la gestion des erreurs avec les codes gRPC appropriés
+- Toujours logger les appels entrants avec le trace_id
+- Toujours valider les données d'entrée avant traitement
+
+```python
+# ✅ BON
+import grpc
+import logging
+
+logger = logging.getLogger(__name__)
+
+class CampagneServicer(campagne_pb2_grpc.CampagneServiceServicer):
+
+    def SaisirIndex(self, request, context):
+        """Enregistre le nouvel index d'un abonné pour une campagne."""
+        logger.info(f"SaisirIndex appelé — abonne_id={request.abonne_id}")
+
+        if request.nouveau_index < 0:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "L'index ne peut pas être négatif")
+            return
+
+        try:
+            releve = ReleveService.saisir_index(
+                campagne_id=request.campagne_id,
+                abonne_id=request.abonne_id,
+                nouveau_index=request.nouveau_index,
+            )
+            return ReleveResponse(releve_id=str(releve.id), ...)
+        except ValueError as e:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(e))
+        except Exception as e:
+            logger.error(f"Erreur inattendue dans SaisirIndex: {e}")
+            context.abort(grpc.StatusCode.INTERNAL, "Erreur serveur")
+```
+
+### GraphQL (Gateway uniquement)
+- Toujours utiliser Strawberry avec les annotations Python
+- Toujours valider le rôle dans chaque resolver
+- Toujours retourner des types fortement typés
+
+```python
+# ✅ BON
+import strawberry
+from strawberry.types import Info
+
+@strawberry.type
+class Query:
+
+    @strawberry.field
+    def abonne(self, id: strawberry.ID, info: Info) -> Abonne:
+        """Récupère un abonné par son identifiant."""
+        user = info.context["user"]
+        if user.role not in ("ADMIN", "COMPTABLE"):
+            raise PermissionError("Accès non autorisé")
+        # appel gRPC vers Abonné Service
+        return abonne_client.get_abonne(id)
+```
+
+---
+
+## RÈGLES MÉTIER — TOUJOURS APPLIQUER
+
+```python
+# Validation du nouvel index
+assert nouveau_index >= ancien_index, \
+    "Le nouvel index ne peut pas être inférieur à l'ancien"
+
+# Calcul du montant — prix_m3 TOUJOURS copié dans la facture
+facture.prix_m3 = tarif_actif.prix_m3  # copie de valeur, jamais FK
+
+# Statut facture — calculé automatiquement
+def calculer_statut(montant_total: float, montant_paye: float) -> str:
+    if montant_paye <= 0:
+        return 'IMPAYEE'
+    elif montant_paye < montant_total:
+        return 'PARTIELLE'
+    else:
+        return 'PAYEE'
+
+# Référence transaction obligatoire pour Mobile Money / Virement
+if mode_paiement in ('MOBILE_MONEY', 'VIREMENT'):
+    assert reference_transaction, \
+        "La référence de transaction est obligatoire pour ce mode de paiement"
+```
+
+---
+
+## GESTION DES ERREURS gRPC
+
+Toujours mapper les exceptions Python aux codes gRPC appropriés :
+
+```python
+# Mapping erreurs → codes gRPC
+NOT_FOUND           → objet inexistant en base
+INVALID_ARGUMENT    → données invalides (index < 0, etc.)
+PERMISSION_DENIED   → rôle insuffisant
+UNAUTHENTICATED     → token invalide ou expiré
+ALREADY_EXISTS      → doublon (campagne même période, etc.)
+INTERNAL            → erreur serveur inattendue
+```
+
+---
+
+## LOGGING — FORMAT OBLIGATOIRE
+
+Chaque log doit être structuré en JSON avec ces champs minimum :
+
+```python
+import structlog
+
+logger = structlog.get_logger()
+
+logger.info(
+    "index_saisi",
+    service="campagne-service",
+    action="SaisirIndex",
+    abonne_id=str(request.abonne_id),
+    campagne_id=str(request.campagne_id),
+    consommation=consommation,
+    duration_ms=duration,
+)
+```
+
+---
+
+## TESTS — CONVENTIONS
+
+- Un fichier de test par fichier source
+- Nommer les tests : `test_[ce_qui_est_testé]_[condition]_[résultat_attendu]`
+- Toujours mocker les appels gRPC vers les autres services
+- Toujours tester les cas d'erreur (index invalide, rôle insuffisant, etc.)
+
+```python
+# ✅ BON
+def test_saisir_index_nouveau_inferieur_ancien_leve_erreur():
+    """Un nouvel index inférieur à l'ancien doit lever une erreur."""
+    with pytest.raises(ValueError, match="inférieur"):
+        ReleveService.saisir_index(
+            campagne_id=uuid4(),
+            abonne_id=uuid4(),
+            nouveau_index=100.0,
+            ancien_index=200.0,
+        )
+```
+
+---
+
+## VARIABLES D'ENVIRONNEMENT
+
+Toujours accéder aux variables via os.environ avec une valeur par défaut explicite :
+
+```python
+import os
+
+# ✅ BON
+DATABASE_URL = os.environ.get('DATABASE_URL')
+GRPC_PORT = int(os.environ.get('GRPC_PORT', '50051'))
+JWT_SECRET = os.environ['JWT_SECRET']  # obligatoire, pas de défaut
+
+# ❌ MAUVAIS
+DATABASE_URL = "postgresql://localhost/auth_db"
+JWT_SECRET = "mon-secret-hardcode"
+```
+
+---
+
+## KUBERNETES — CONVENTIONS YAML
+
+- Toujours utiliser le namespace `facturation-eau`
+- Toujours définir les resource requests et limits
+- Toujours utiliser des labels cohérents : `app`, `version`, `service`
+- Toujours utiliser des Secrets pour les données sensibles (jamais ConfigMap)
+
+```yaml
+# Template de base pour un Deployment
+metadata:
+  namespace: facturation-eau
+  labels:
+    app: [nom-service]
+    version: v1
+spec:
+  template:
+    spec:
+      containers:
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+```
+
+---
+
+## CE QUE CURSOR NE DOIT PAS FAIRE
+
+- Ne pas suggérer de communication REST entre microservices
+- Ne pas suggérer d'importer des modèles d'un autre service
+- Ne pas modifier les fichiers *_pb2.py et *_pb2_grpc.py
+- Ne pas suggérer de mettre des secrets dans le code
+- Ne pas suggérer SQLite (on utilise PostgreSQL)
+- Ne pas créer de jointures cross-services dans les ORM queries
+- Ne pas suggérer Django monolithique (chaque service est indépendant)
+- Ne pas utiliser `Any` dans les type hints
