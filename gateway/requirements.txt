@@ -1,0 +1,8 @@
+# Gateway — requirements autonome (pas de base de données, ASGI + GraphQL)
+
+Django==5.0.6
+strawberry-graphql[django]==0.235.2
+grpcio==1.64.1
+grpcio-tools==1.64.1
+django-environ==0.11.2
+daphne==4.1.2

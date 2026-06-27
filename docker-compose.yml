@@ -1,0 +1,50 @@
+services:
+  auth-postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: devpassword
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth_user -d auth_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - auth_postgres_data:/var/lib/postgresql/data
+
+  auth-service:
+    build: ./services/auth
+    depends_on:
+      auth-postgres:
+        condition: service_healthy
+    environment:
+      DJANGO_SECRET_KEY: dev-only-local-secret-change-me
+      DJANGO_DEBUG: "True"
+      AUTH_DB_HOST: auth-postgres
+      AUTH_DB_PORT: "5432"
+      AUTH_DB_NAME: auth_db
+      AUTH_DB_USER: auth_user
+      AUTH_DB_PASSWORD: devpassword
+      AUTH_GRPC_PORT: "50051"
+      JWT_SECRET_KEY: dev-only-local-secret-change-me
+    ports:
+      - "50051:50051"
+    command: sh -c "python manage.py migrate && python manage.py grpc_server"
+
+  gateway:
+    build: ./gateway
+    depends_on:
+      - auth-service
+    environment:
+      DJANGO_SECRET_KEY: dev-only-local-secret-change-me
+      DJANGO_DEBUG: "True"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      AUTH_GRPC_HOST: auth-service
+      AUTH_GRPC_PORT: "50051"
+      GATEWAY_HTTP_PORT: "8000"
+    ports:
+      - "8000:8000"
+
+volumes:
+  auth_postgres_data:
