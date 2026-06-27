@@ -1,0 +1,41 @@
+syntax = "proto3";
+package config;
+
+service ConfigService {
+  rpc GetInfosSociete (EmptyRequest) returns (InfosSocieteResponse);
+  rpc UpdateInfosSociete (UpdateInfosRequest) returns (InfosSocieteResponse);
+  rpc GetConfig (ConfigKeyRequest) returns (ConfigResponse);
+  rpc UpdateConfig (UpdateConfigRequest) returns (ConfigResponse);
+  rpc ListConfigs (EmptyRequest) returns (ListConfigsResponse);
+}
+
+message EmptyRequest {}
+message ConfigKeyRequest { string cle = 1; }
+
+message UpdateInfosRequest {
+  string nom = 1;
+  string adresse = 2;
+  string telephone = 3;
+  string logo_path = 4;
+}
+
+message UpdateConfigRequest {
+  string cle = 1;
+  string valeur = 2;
+}
+
+message InfosSocieteResponse {
+  string nom = 1;
+  string adresse = 2;
+  string telephone = 3;
+  string logo_path = 4;
+  string updated_at = 5;
+}
+
+message ConfigResponse {
+  string cle = 1;
+  string valeur = 2;
+  string description = 3;
+}
+
+message ListConfigsResponse { repeated ConfigResponse configs = 1; }

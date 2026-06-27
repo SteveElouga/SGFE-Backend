@@ -1,0 +1,78 @@
+syntax = "proto3";
+package auth;
+
+service AuthService {
+  rpc Login (LoginRequest) returns (TokenResponse);
+  rpc ValidateToken (TokenRequest) returns (UserPayload);
+  rpc RefreshToken (RefreshRequest) returns (TokenResponse);
+  rpc Logout (TokenRequest) returns (StatusResponse);
+  rpc CreateUser (CreateUserRequest) returns (UserResponse);
+  rpc UpdateUser (UpdateUserRequest) returns (UserResponse);
+  rpc DeactivateUser (UserIdRequest) returns (UserResponse);
+  rpc ListUsers (EmptyRequest) returns (ListUsersResponse);
+  rpc GetUser (UserIdRequest) returns (UserResponse);
+}
+
+message LoginRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message TokenResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  int64 expires_in = 3;
+}
+
+message TokenRequest {
+  string token = 1;
+}
+
+message RefreshRequest {
+  string refresh_token = 1;
+}
+
+message UserPayload {
+  string user_id = 1;
+  string username = 2;
+  string email = 3;
+  string role = 4;
+  bool is_active = 5;
+}
+
+message CreateUserRequest {
+  string username = 1;
+  string email = 2;
+  string password = 3;
+  string role = 4;
+}
+
+message UpdateUserRequest {
+  string user_id = 1;
+  string email = 2;
+  string role = 3;
+}
+
+message UserIdRequest {
+  string user_id = 1;
+}
+
+message UserResponse {
+  string user_id = 1;
+  string username = 2;
+  string email = 3;
+  string role = 4;
+  bool is_active = 5;
+  string created_at = 6;
+}
+
+message ListUsersResponse {
+  repeated UserResponse users = 1;
+}
+
+message StatusResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message EmptyRequest {}

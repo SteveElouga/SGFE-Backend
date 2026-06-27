@@ -1,0 +1,77 @@
+syntax = "proto3";
+package reporting;
+
+service ReportingService {
+  rpc GetDashboard (EmptyRequest) returns (DashboardResponse);
+  rpc GetStatsCampagne (CampagneIdRequest) returns (StatsCampagneResponse);
+  rpc GetStatsGlobales (EmptyRequest) returns (StatsGlobalesResponse);
+  rpc UpdateStatsCampagne (UpdateStatsCampagneRequest) returns (StatusResponse);
+  rpc UpdateStatsFacturation (UpdateStatsFacturationRequest) returns (StatusResponse);
+  rpc UpdateStatsPaiements (UpdateStatsPaiementsRequest) returns (StatusResponse);
+}
+
+message CampagneIdRequest { string campagne_id = 1; }
+
+message DashboardResponse {
+  StatsCampagneResponse campagne_en_cours = 1;
+  StatsFacturationResponse facturation_en_cours = 2;
+  StatsPaiementsResponse paiements_en_cours = 3;
+}
+
+message StatsCampagneResponse {
+  string campagne_id = 1;
+  string nom_campagne = 2;
+  int32 total_abonnes = 3;
+  int32 nb_releves = 4;
+  int32 nb_en_attente = 5;
+  double pourcentage_progression = 6;
+  double consommation_totale = 7;
+}
+
+message StatsFacturationResponse {
+  string campagne_id = 1;
+  int32 total_factures = 2;
+  double montant_total_facture = 3;
+  int32 nb_factures_envoyees = 4;
+  int32 nb_factures_payees = 5;
+  int32 nb_impayes = 6;
+}
+
+message StatsPaiementsResponse {
+  string campagne_id = 1;
+  double montant_encaisse = 2;
+  double montant_impaye = 3;
+  int32 nb_impayes = 4;
+  double taux_recouvrement = 5;
+}
+
+message StatsGlobalesResponse {
+  repeated StatsCampagneResponse historique_campagnes = 1;
+  double consommation_totale_globale = 2;
+  double montant_total_facture_global = 3;
+  double montant_total_encaisse_global = 4;
+}
+
+message UpdateStatsCampagneRequest {
+  string campagne_id = 1;
+  string nom_campagne = 2;
+  int32 total_abonnes = 3;
+  int32 nb_releves = 4;
+  double consommation_totale = 5;
+}
+
+message UpdateStatsFacturationRequest {
+  string campagne_id = 1;
+  int32 delta_factures = 2;
+  double delta_montant = 3;
+  string type_update = 4;  // GENEREE, ENVOYEE, PAYEE
+}
+
+message UpdateStatsPaiementsRequest {
+  string campagne_id = 1;
+  double montant_paiement = 2;
+  string type_update = 3;  // PAIEMENT, IMPAYE_RESOLU
+}
+
+message StatusResponse { bool success = 1; }
+message EmptyRequest {}

@@ -1,0 +1,67 @@
+syntax = "proto3";
+package facturation;
+
+service FacturationService {
+  rpc GenererFactures (GenererFacturesRequest) returns (GenererFacturesResponse);
+  rpc GetFacture (FactureIdRequest) returns (FactureResponse);
+  rpc ListFactures (ListFacturesRequest) returns (ListFacturesResponse);
+  rpc GetFacturePDF (FactureIdRequest) returns (PDFResponse);
+  rpc UpdateStatutFacture (UpdateStatutRequest) returns (FactureResponse);
+  rpc GetTarifActuel (EmptyRequest) returns (TarifResponse);
+  rpc UpdateTarif (UpdateTarifRequest) returns (TarifResponse);
+  rpc GetFacturesParCampagne (CampagneIdRequest) returns (ListFacturesResponse);
+}
+
+message GenererFacturesRequest { string campagne_id = 1; }
+
+message FactureIdRequest { string facture_id = 1; }
+message CampagneIdRequest { string campagne_id = 1; }
+
+message ListFacturesRequest {
+  string campagne_id = 1;
+  string abonne_id = 2;
+  string statut = 3;
+}
+
+message UpdateStatutRequest {
+  string facture_id = 1;
+  string statut = 2;
+}
+
+message UpdateTarifRequest {
+  double prix_m3 = 1;
+  string date_effet = 2;
+}
+
+message FactureResponse {
+  string facture_id = 1;
+  string numero_facture = 2;
+  string abonne_id = 3;
+  string campagne_id = 4;
+  double ancien_index = 5;
+  double nouveau_index = 6;
+  double consommation = 7;
+  double prix_m3 = 8;
+  double montant = 9;
+  string statut = 10;
+  string date_releve = 11;
+  string date_limite_paiement = 12;
+  string date_generation = 13;
+  string pdf_path = 14;
+}
+
+message TarifResponse {
+  string tarif_id = 1;
+  double prix_m3 = 2;
+  string date_effet = 3;
+  bool is_active = 4;
+}
+
+message PDFResponse {
+  bytes pdf_content = 1;
+  string filename = 2;
+}
+
+message GenererFacturesResponse { repeated FactureResponse factures = 1; }
+message ListFacturesResponse { repeated FactureResponse factures = 1; }
+message EmptyRequest {}
