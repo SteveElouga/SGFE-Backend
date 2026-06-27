@@ -1,0 +1,83 @@
+syntax = "proto3";
+package campagne;
+
+service CampagneService {
+  rpc CreateCampagne (CreateCampagneRequest) returns (CampagneResponse);
+  rpc GetCampagne (CampagneIdRequest) returns (CampagneResponse);
+  rpc ListCampagnes (EmptyRequest) returns (ListCampagnesResponse);
+  rpc SaisirIndex (SaisirIndexRequest) returns (ReleveResponse);
+  rpc MarquerNonReleve (MarquerNonReleveRequest) returns (ReleveResponse);
+  rpc GetReleve (ReleveIdRequest) returns (ReleveResponse);
+  rpc ListReleves (CampagneIdRequest) returns (ListRelevesResponse);
+  rpc GetProgression (CampagneIdRequest) returns (ProgressionResponse);
+  rpc CloturerCampagne (CampagneIdRequest) returns (CampagneResponse);
+  rpc GetDernierIndex (AbonneIdRequest) returns (DernierIndexResponse);
+}
+
+message CreateCampagneRequest {
+  string nom = 1;
+  int32 periode_mois = 2;
+  int32 periode_annee = 3;
+  string date_planifiee = 4;
+  string created_by = 5;
+}
+
+message SaisirIndexRequest {
+  string campagne_id = 1;
+  string abonne_id = 2;
+  double nouveau_index = 3;
+  string observation = 4;
+  string agent_id = 5;
+}
+
+message MarquerNonReleveRequest {
+  string campagne_id = 1;
+  string abonne_id = 2;
+  string statut = 3;  // NON_RELEVE ou ESTIME
+  string observation = 4;
+  string agent_id = 5;
+}
+
+message CampagneIdRequest { string campagne_id = 1; }
+message ReleveIdRequest { string releve_id = 1; }
+message AbonneIdRequest { string abonne_id = 1; }
+
+message CampagneResponse {
+  string campagne_id = 1;
+  string nom = 2;
+  int32 periode_mois = 3;
+  int32 periode_annee = 4;
+  string statut = 5;
+  string date_planifiee = 6;
+  string date_creation = 7;
+  string date_cloture = 8;
+}
+
+message ReleveResponse {
+  string releve_id = 1;
+  string abonne_id = 2;
+  double ancien_index = 3;
+  double nouveau_index = 4;
+  double consommation = 5;
+  string date_releve = 6;
+  string observation = 7;
+  string statut = 8;
+}
+
+message ProgressionResponse {
+  string campagne_id = 1;
+  int32 total_abonnes = 2;
+  int32 nb_releves = 3;
+  int32 nb_en_attente = 4;
+  double pourcentage = 5;
+}
+
+message DernierIndexResponse {
+  string abonne_id = 1;
+  double dernier_index = 2;
+  bool est_index_initial = 3;
+}
+
+message ListCampagnesResponse { repeated CampagneResponse campagnes = 1; }
+message ListRelevesResponse { repeated ReleveResponse releves = 1; }
+message EmptyRequest {}

@@ -1,0 +1,73 @@
+syntax = "proto3";
+package abonne;
+
+service AbonneService {
+  rpc GetAbonne (AbonneIdRequest) returns (AbonneResponse);
+  rpc ListAbonnes (ListAbonnesRequest) returns (ListAbonnesResponse);
+  rpc ListAbonnesActifs (EmptyRequest) returns (ListAbonnesResponse);
+  rpc CreateAbonne (CreateAbonneRequest) returns (AbonneResponse);
+  rpc UpdateAbonne (UpdateAbonneRequest) returns (AbonneResponse);
+  rpc SuspendreAbonne (AbonneIdRequest) returns (AbonneResponse);
+  rpc ReactiverAbonne (AbonneIdRequest) returns (AbonneResponse);
+  rpc GetCompteur (AbonneIdRequest) returns (CompteurResponse);
+  rpc RemplacerCompteur (RemplacerCompteurRequest) returns (CompteurResponse);
+}
+
+message AbonneIdRequest { string abonne_id = 1; }
+
+message ListAbonnesRequest { string statut = 1; }
+
+message CreateAbonneRequest {
+  string nom = 1;
+  string prenom = 2;
+  string telephone_whatsapp = 3;
+  string adresse = 4;
+  int32 numero_compteur = 5;
+  string quartier = 6;
+  int32 camp = 7;
+  double index_initial = 8;
+  string date_pose = 9;
+}
+
+message UpdateAbonneRequest {
+  string abonne_id = 1;
+  string nom = 2;
+  string prenom = 3;
+  string telephone_whatsapp = 4;
+  string adresse = 5;
+}
+
+message RemplacerCompteurRequest {
+  string abonne_id = 1;
+  double index_fermeture = 2;
+  int32 nouveau_numero_compteur = 3;
+  string nouveau_quartier = 4;
+  int32 nouveau_camp = 5;
+  double nouvel_index_initial = 6;
+  string date_remplacement = 7;
+}
+
+message AbonneResponse {
+  string abonne_id = 1;
+  string numero_abonne = 2;
+  string nom = 3;
+  string prenom = 4;
+  string telephone_whatsapp = 5;
+  string adresse = 6;
+  string statut = 7;
+  CompteurResponse compteur = 8;
+  string created_at = 9;
+}
+
+message CompteurResponse {
+  string compteur_id = 1;
+  int32 numero_compteur = 2;
+  string quartier = 3;
+  int32 camp = 4;
+  double index_initial = 5;
+  string date_pose = 6;
+  string statut = 7;
+}
+
+message ListAbonnesResponse { repeated AbonneResponse abonnes = 1; }
+message EmptyRequest {}

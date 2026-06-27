@@ -1,0 +1,58 @@
+syntax = "proto3";
+package paiement;
+
+service PaiementService {
+  rpc EnregistrerPaiement (EnregistrerPaiementRequest) returns (PaiementResponse);
+  rpc GetSolde (FactureIdRequest) returns (SoldeResponse);
+  rpc ListPaiements (ListPaiementsRequest) returns (ListPaiementsResponse);
+  rpc ListImpayes (EmptyRequest) returns (ListImpayesResponse);
+  rpc GetSuiviImpaye (FactureIdRequest) returns (SuiviImpayeResponse);
+}
+
+message EnregistrerPaiementRequest {
+  string facture_id = 1;
+  string abonne_id = 2;
+  double montant = 3;
+  string date_paiement = 4;
+  string mode_paiement = 5;
+  string reference_transaction = 6;
+  string enregistre_par = 7;
+}
+
+message FactureIdRequest { string facture_id = 1; }
+
+message ListPaiementsRequest {
+  string facture_id = 1;
+  string abonne_id = 2;
+}
+
+message PaiementResponse {
+  string paiement_id = 1;
+  string facture_id = 2;
+  double montant = 3;
+  string date_paiement = 4;
+  string mode_paiement = 5;
+  string reference_transaction = 6;
+  string created_at = 7;
+}
+
+message SoldeResponse {
+  string facture_id = 1;
+  double montant_total = 2;
+  double montant_paye = 3;
+  double solde_restant = 4;
+  string statut = 5;
+}
+
+message SuiviImpayeResponse {
+  string suivi_id = 1;
+  string facture_id = 2;
+  string abonne_id = 3;
+  string date_depassement = 4;
+  int32 etape_actuelle = 5;
+  string resolu_le = 6;
+}
+
+message ListPaiementsResponse { repeated PaiementResponse paiements = 1; }
+message ListImpayesResponse { repeated SoldeResponse impayes = 1; }
+message EmptyRequest {}

@@ -1,0 +1,56 @@
+syntax = "proto3";
+package notification;
+
+service NotificationService {
+  rpc EnvoyerFacture (EnvoyerFactureRequest) returns (EnvoiResponse);
+  rpc ReenvoyerFacture (FactureIdRequest) returns (EnvoiResponse);
+  rpc EnvoyerRelance (EnvoyerRelanceRequest) returns (EnvoiResponse);
+  rpc GetEnvoi (EnvoiIdRequest) returns (EnvoiResponse);
+  rpc ListEnvois (ListEnvoisRequest) returns (ListEnvoisResponse);
+  rpc ValiderToken (ValiderTokenRequest) returns (ValiderTokenResponse);
+  rpc RevoquerToken (TokenIdRequest) returns (StatusResponse);
+}
+
+message EnvoyerFactureRequest {
+  string facture_id = 1;
+  string abonne_id = 2;
+}
+
+message EnvoyerRelanceRequest {
+  string facture_id = 1;
+  string abonne_id = 2;
+  int32 etape = 3;
+}
+
+message FactureIdRequest { string facture_id = 1; }
+message EnvoiIdRequest { string envoi_id = 1; }
+message TokenIdRequest { string token_id = 1; }
+
+message ListEnvoisRequest {
+  string facture_id = 1;
+  string abonne_id = 2;
+}
+
+message ValiderTokenRequest { string token = 1; }
+
+message EnvoiResponse {
+  string envoi_id = 1;
+  string facture_id = 2;
+  string statut = 3;
+  string date_envoi = 4;
+  string telnyx_message_id = 5;
+  string erreur = 6;
+}
+
+message ValiderTokenResponse {
+  bool is_valid = 1;
+  string abonne_id = 2;
+  string date_expiration = 3;
+}
+
+message ListEnvoisResponse { repeated EnvoiResponse envois = 1; }
+
+message StatusResponse {
+  bool success = 1;
+  string message = 2;
+}
