@@ -2,17 +2,19 @@ import grpc
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError
 
+from comptes.email_client import EmailDeliveryError
 from comptes.services import AuthenticationError
 
 # Le 3e élément est le message renvoyé au client : None signifie "utiliser
 # str(exc)" (message métier déjà sûr, ex. "Identifiants invalides"). Pour
-# IntegrityError, str(exc) est le texte brut du driver SQL (nom de
-# contrainte/table) — on le remplace par un message générique pour ne pas
-# exposer un détail d'implémentation de la base de données.
+# IntegrityError/EmailDeliveryError, str(exc) contient un détail interne
+# (contrainte SQL, réponse brute du fournisseur d'e-mail) — remplacé par un
+# message générique pour ne pas exposer un détail d'implémentation.
 _STATUS_BY_EXCEPTION = (
     (AuthenticationError, grpc.StatusCode.UNAUTHENTICATED, None),
     (ObjectDoesNotExist, grpc.StatusCode.NOT_FOUND, None),
     (IntegrityError, grpc.StatusCode.ALREADY_EXISTS, "Cette ressource existe déjà"),
+    (EmailDeliveryError, grpc.StatusCode.UNAVAILABLE, "Échec de l'envoi de l'e-mail, réessayez plus tard"),
 )
 
 

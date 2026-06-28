@@ -12,7 +12,7 @@ import auth_service_pb2_grpc as pb_grpc
 
 from comptes.grpc_interceptors import ErrorHandlingInterceptor
 from comptes.serializers import user_to_payload, user_to_response
-from comptes.services import AuthenticationError, AuthService, UserAdminService
+from comptes.services import AuthenticationError, AuthService, PasswordSetupService, UserAdminService
 
 
 class AuthServiceServicer(pb_grpc.AuthServiceServicer):
@@ -24,6 +24,7 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):
     def __init__(self) -> None:
         self.auth_service = AuthService()
         self.user_admin_service = UserAdminService()
+        self.password_setup_service = PasswordSetupService()
 
     def Login(self, request, context):
         access, refresh, expires_in = self.auth_service.login(request.username, request.password)
@@ -46,7 +47,7 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):
 
     def CreateUser(self, request, context):
         user = self.user_admin_service.create_user(
-            username=request.username, email=request.email, password=request.password, role=request.role
+            username=request.username, email=request.email, role=request.role
         )
         return pb.UserResponse(**user_to_response(user))
 
@@ -67,6 +68,14 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):
     def GetUser(self, request, context):
         user = self.user_admin_service.get_user(request.user_id)
         return pb.UserResponse(**user_to_response(user))
+
+    def RequestPasswordReset(self, request, context):
+        self.password_setup_service.request_password_reset(request.email)
+        return pb.StatusResponse(success=True, message="Si ce compte existe, un e-mail a été envoyé")
+
+    def SetPasswordWithToken(self, request, context):
+        self.password_setup_service.set_password_with_token(request.token, request.new_password)
+        return pb.StatusResponse(success=True, message="Mot de passe défini")
 
 
 def serve() -> None:

@@ -3,6 +3,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError
 from django.test import SimpleTestCase
 
+from comptes.email_client import EmailDeliveryError
 from comptes.grpc_interceptors import ErrorHandlingInterceptor
 from comptes.services import AuthenticationError
 
@@ -62,6 +63,13 @@ class ErrorHandlingInterceptorTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, grpc.StatusCode.ALREADY_EXISTS)
         # Le détail brut du driver SQL ne doit pas fuiter vers le client.
         self.assertEqual(cm.exception.details, "Cette ressource existe déjà")
+
+    def test_email_delivery_error_maps_to_unavailable_with_generic_message(self):
+        behavior = self._wrapped_behavior(EmailDeliveryError("Brevo a renvoyé 500: ..."))
+        with self.assertRaises(AbortCalled) as cm:
+            behavior(request=None, context=self.context)
+        self.assertEqual(cm.exception.code, grpc.StatusCode.UNAVAILABLE)
+        self.assertEqual(cm.exception.details, "Échec de l'envoi de l'e-mail, réessayez plus tard")
 
     def test_unknown_exception_propagates_unchanged(self):
         behavior = self._wrapped_behavior(ValueError("boom"))

@@ -98,13 +98,14 @@ GraphQL          Strawberry (gateway) + Apollo Client (frontend)
 Base de données  PostgreSQL 16 (1 instance par service)
 PDF              ReportLab
 WhatsApp         Telnyx API
+E-mail           Brevo API (activation de compte, réinitialisation de mot de passe — 300/jour gratuits)
 Orchestration    Kubernetes + Minikube
 Conteneurs       Docker
 Frontend         Angular 18 + PWA
 Observabilité    OpenTelemetry + Prometheus + Loki + Jaeger + Grafana
 Déploiement      Canary Deployment
 Serveur          MacBook Pro + ngrok
-Auth             JWT (SimpleJWT) — access 24h, refresh 7j
+Auth             JWT (SimpleJWT) — access 24h (cookie HttpOnly pour le refresh, 7j)
 Scheduler        APScheduler (cron jobs)
 ```
 
@@ -351,18 +352,26 @@ docker-compose up
 
 ## Rôles et permissions
 
-| Action | ADMIN | AGENT | COMPTABLE |
-|---|---|---|---|
-| Gérer les abonnés | ✅ | ❌ | ❌ |
-| Créer/clôturer campagne | ✅ | ❌ | ❌ |
-| Saisir un index | ✅ | ✅ | ❌ |
-| Voir la progression | ✅ | ✅ | ❌ |
-| Consulter les factures | ✅ | ❌ | ✅ |
-| Enregistrer un paiement | ✅ | ❌ | ✅ |
-| Envoyer WhatsApp | ✅ | ❌ | ✅ |
-| Voir le dashboard | ✅ | ❌ | ✅ |
-| Gérer les utilisateurs | ✅ | ❌ | ❌ |
-| Modifier les paramètres | ✅ | ❌ | ❌ |
+`ADMIN` est le super-utilisateur : accès total, sans restriction, à tout le système.
+
+| Action | ADMIN | AGENT | COMPTABLE | SUPERVISEUR |
+|---|---|---|---|---|
+| Gérer les abonnés | ✅ | ❌ | ❌ | ❌ |
+| Créer/clôturer campagne | ✅ | ❌ | ❌ | ✅ (les siennes uniquement) |
+| Saisir un index | ✅ | ✅ | ❌ | ✅ (sur ses propres campagnes) |
+| Voir la progression | ✅ | ✅ | ❌ | ✅ (sur ses propres campagnes) |
+| Consulter les factures | ✅ | ❌ | ✅ | ❌ |
+| Enregistrer un paiement | ✅ | ❌ | ✅ | ❌ |
+| Envoyer WhatsApp | ✅ | ❌ | ✅ | ❌ |
+| Voir le dashboard | ✅ | ❌ | ✅ | ❌ |
+| Gérer les utilisateurs | ✅ | ❌ | ❌ | ❌ |
+| Modifier les paramètres | ✅ | ❌ | ❌ | ❌ |
+
+`SUPERVISEUR` ne voit/gère jamais les campagnes créées par un autre
+utilisateur (filtrage par `campagne.created_by`) — à appliquer au niveau
+des resolvers/repositories de `campagne-service` lors de son implémentation
+(le filtrage par propriétaire n'existe pas encore tant que ce service n'est
+pas construit).
 
 ---
 

@@ -11,6 +11,8 @@ service AuthService {
   rpc DeactivateUser (UserIdRequest) returns (UserResponse);
   rpc ListUsers (EmptyRequest) returns (ListUsersResponse);
   rpc GetUser (UserIdRequest) returns (UserResponse);
+  rpc RequestPasswordReset (EmailRequest) returns (StatusResponse);
+  rpc SetPasswordWithToken (SetPasswordRequest) returns (StatusResponse);
 }
 
 message LoginRequest {
@@ -43,8 +45,18 @@ message UserPayload {
 message CreateUserRequest {
   string username = 1;
   string email = 2;
-  string password = 3;
-  string role = 4;
+  string role = 3;
+  // Pas de password : l'utilisateur le définit via le lien d'activation
+  // envoyé par e-mail (voir RequestPasswordReset/SetPasswordWithToken).
+}
+
+message EmailRequest {
+  string email = 1;
+}
+
+message SetPasswordRequest {
+  string token = 1;
+  string new_password = 2;
 }
 
 message UpdateUserRequest {

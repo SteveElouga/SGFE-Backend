@@ -30,16 +30,20 @@ class AuthServiceClient:
     def logout(self, token: str) -> pb.StatusResponse:
         return self._stub.Logout(pb.TokenRequest(token=token))
 
-    def create_user(self, username: str, email: str, password: str, role: str) -> pb.UserResponse:
-        return self._stub.CreateUser(
-            pb.CreateUserRequest(username=username, email=email, password=password, role=role)
-        )
+    def create_user(self, username: str, email: str, role: str) -> pb.UserResponse:
+        return self._stub.CreateUser(pb.CreateUserRequest(username=username, email=email, role=role))
 
     def deactivate_user(self, user_id: str) -> pb.UserResponse:
         return self._stub.DeactivateUser(pb.UserIdRequest(user_id=user_id))
 
     def get_user(self, user_id: str) -> pb.UserResponse:
         return self._stub.GetUser(pb.UserIdRequest(user_id=user_id))
+
+    def request_password_reset(self, email: str) -> pb.StatusResponse:
+        return self._stub.RequestPasswordReset(pb.EmailRequest(email=email))
+
+    def set_password_with_token(self, token: str, new_password: str) -> pb.StatusResponse:
+        return self._stub.SetPasswordWithToken(pb.SetPasswordRequest(token=token, new_password=new_password))
 
 
 auth_client = AuthServiceClient()

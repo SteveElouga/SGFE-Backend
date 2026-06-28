@@ -193,8 +193,7 @@ class UserAdminMutationTests(SimpleTestCase):
     def test_create_user_requires_admin_role(self):
         with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="AGENT")):
             result = schema.execute_sync(
-                'mutation { createUser(username: "x", email: "x@example.com", password: "secret123", role: AGENT) '
-                "{ username } }",
+                'mutation { createUser(username: "x", email: "x@example.com", role: AGENT) { username } }',
                 context_value=context(token="access-1"),
             )
 
@@ -208,7 +207,7 @@ class UserAdminMutationTests(SimpleTestCase):
             create_user=Mock(return_value=make_user_response(username="agent2", role="AGENT")),
         ):
             result = schema.execute_sync(
-                'mutation { createUser(username: "agent2", email: "agent2@example.com", password: "secret123", role: AGENT) '
+                'mutation { createUser(username: "agent2", email: "agent2@example.com", role: AGENT) '
                 "{ username role } }",
                 context_value=context(token="access-1"),
             )
@@ -242,10 +241,53 @@ class UserAdminMutationTests(SimpleTestCase):
     def test_create_user_with_invalid_token_raises(self):
         with patch.object(auth_client, "validate_token", side_effect=FakeRpcError("Token invalide ou expiré")):
             result = schema.execute_sync(
-                'mutation { createUser(username: "x", email: "x@example.com", password: "secret123", role: AGENT) '
-                "{ username } }",
+                'mutation { createUser(username: "x", email: "x@example.com", role: AGENT) { username } }',
                 context_value=context(token="invalide"),
             )
 
         self.assertIsNotNone(result.errors)
         self.assertIn("Token invalide ou expiré", str(result.errors))
+
+
+class PasswordSetupMutationTests(SimpleTestCase):
+    def test_request_password_reset_returns_success(self):
+        with patch.object(auth_client, "request_password_reset", return_value=Mock(success=True)):
+            result = schema.execute_sync(
+                'mutation { requestPasswordReset(email: "comptable1@example.com") }',
+                context_value=context(),
+            )
+
+        self.assertIsNone(result.errors)
+        self.assertTrue(result.data["requestPasswordReset"])
+
+    def test_activate_account_success(self):
+        with patch.object(auth_client, "set_password_with_token", return_value=Mock(success=True)) as mock_set:
+            result = schema.execute_sync(
+                'mutation { activateAccount(token: "abc123", password: "secret123") }',
+                context_value=context(),
+            )
+            mock_set.assert_called_once_with("abc123", "secret123")
+
+        self.assertIsNone(result.errors)
+        self.assertTrue(result.data["activateAccount"])
+
+    def test_activate_account_invalid_token_raises(self):
+        with patch.object(auth_client, "set_password_with_token", side_effect=FakeRpcError("Token invalide")):
+            result = schema.execute_sync(
+                'mutation { activateAccount(token: "invalide", password: "secret123") }',
+                context_value=context(),
+            )
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("Token invalide", str(result.errors))
+
+    def test_reset_password_success(self):
+        with patch.object(auth_client, "set_password_with_token", return_value=Mock(success=True)) as mock_set:
+            result = schema.execute_sync(
+                'mutation { resetPassword(token: "abc123", password: "secret123") }',
+                context_value=context(),
+            )
+            mock_set.assert_called_once_with("abc123", "secret123")
+
+        self.assertIsNone(result.errors)
+        self.assertTrue(result.data["resetPassword"])

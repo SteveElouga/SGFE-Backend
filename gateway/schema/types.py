@@ -8,6 +8,7 @@ class Role(Enum):
     ADMIN = "ADMIN"
     AGENT = "AGENT"
     COMPTABLE = "COMPTABLE"
+    SUPERVISEUR = "SUPERVISEUR"
 
 
 @strawberry.type

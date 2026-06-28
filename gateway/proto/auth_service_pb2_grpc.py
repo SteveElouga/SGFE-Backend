@@ -84,6 +84,16 @@ class AuthServiceStub(object):
                 request_serializer=auth__service__pb2.UserIdRequest.SerializeToString,
                 response_deserializer=auth__service__pb2.UserResponse.FromString,
                 _registered_method=True)
+        self.RequestPasswordReset = channel.unary_unary(
+                '/auth.AuthService/RequestPasswordReset',
+                request_serializer=auth__service__pb2.EmailRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.StatusResponse.FromString,
+                _registered_method=True)
+        self.SetPasswordWithToken = channel.unary_unary(
+                '/auth.AuthService/SetPasswordWithToken',
+                request_serializer=auth__service__pb2.SetPasswordRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.StatusResponse.FromString,
+                _registered_method=True)
 
 
 class AuthServiceServicer(object):
@@ -143,6 +153,18 @@ class AuthServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def RequestPasswordReset(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetPasswordWithToken(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AuthServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -190,6 +212,16 @@ def add_AuthServiceServicer_to_server(servicer, server):
                     servicer.GetUser,
                     request_deserializer=auth__service__pb2.UserIdRequest.FromString,
                     response_serializer=auth__service__pb2.UserResponse.SerializeToString,
+            ),
+            'RequestPasswordReset': grpc.unary_unary_rpc_method_handler(
+                    servicer.RequestPasswordReset,
+                    request_deserializer=auth__service__pb2.EmailRequest.FromString,
+                    response_serializer=auth__service__pb2.StatusResponse.SerializeToString,
+            ),
+            'SetPasswordWithToken': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetPasswordWithToken,
+                    request_deserializer=auth__service__pb2.SetPasswordRequest.FromString,
+                    response_serializer=auth__service__pb2.StatusResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -435,6 +467,60 @@ class AuthService(object):
             '/auth.AuthService/GetUser',
             auth__service__pb2.UserIdRequest.SerializeToString,
             auth__service__pb2.UserResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RequestPasswordReset(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/RequestPasswordReset',
+            auth__service__pb2.EmailRequest.SerializeToString,
+            auth__service__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetPasswordWithToken(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/SetPasswordWithToken',
+            auth__service__pb2.SetPasswordRequest.SerializeToString,
+            auth__service__pb2.StatusResponse.FromString,
             options,
             channel_credentials,
             insecure,

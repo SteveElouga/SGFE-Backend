@@ -21,6 +21,14 @@ def _auth_payload_from_tokens(token_response) -> AuthPayload:
     )
 
 
+def _set_password_with_token(token: str, password: str) -> bool:
+    # Activation de compte et réinitialisation de mot de passe partagent le
+    # même mécanisme côté auth-service (voir SetPasswordWithToken) ; deux
+    # noms de mutation distincts ici pour rester clair côté frontend.
+    response = auth_client.set_password_with_token(token, password)
+    return response.success
+
+
 @strawberry.type
 class Mutation:
     @strawberry.mutation
@@ -51,9 +59,11 @@ class Mutation:
         return response.success
 
     @strawberry.mutation
-    def create_user(self, info: strawberry.types.Info, username: str, email: str, password: str, role: Role) -> User:
+    def create_user(self, info: strawberry.types.Info, username: str, email: str, role: Role) -> User:
+        # Pas de password : un e-mail d'activation est envoyé à l'utilisateur
+        # (voir activateAccount) pour qu'il définisse lui-même son mot de passe.
         require_role(info, "ADMIN")
-        user_response = auth_client.create_user(username, email, password, role.value)
+        user_response = auth_client.create_user(username, email, role.value)
         return user_from_grpc(user_response)
 
     @strawberry.mutation
@@ -61,3 +71,18 @@ class Mutation:
         require_role(info, "ADMIN")
         user_response = auth_client.deactivate_user(str(id))
         return user_from_grpc(user_response)
+
+    @strawberry.mutation
+    def request_password_reset(self, email: str) -> bool:
+        # Toujours true, qu'un compte existe ou non pour cet e-mail (ne pas
+        # révéler l'existence d'un compte à un appelant non authentifié).
+        response = auth_client.request_password_reset(email)
+        return response.success
+
+    @strawberry.mutation
+    def activate_account(self, token: str, password: str) -> bool:
+        return _set_password_with_token(token, password)
+
+    @strawberry.mutation
+    def reset_password(self, token: str, password: str) -> bool:
+        return _set_password_with_token(token, password)

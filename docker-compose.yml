@@ -28,6 +28,10 @@ services:
       AUTH_DB_PASSWORD: devpassword
       AUTH_GRPC_PORT: "50051"
       JWT_SECRET_KEY: dev-only-local-secret-change-me
+      BREVO_API_KEY: ${BREVO_API_KEY:-dev-fake-key}
+      BREVO_SENDER_NAME: SGFE
+      BREVO_SENDER_EMAIL: no-reply@sgfe.example.com
+      FRONTEND_URL: http://localhost:4200
     ports:
       - "50051:50051"
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
@@ -43,6 +47,7 @@ services:
       AUTH_GRPC_HOST: auth-service
       AUTH_GRPC_PORT: "50051"
       GATEWAY_HTTP_PORT: "8000"
+      COOKIE_SECURE: "False"
     expose:
       - "8000"
 
