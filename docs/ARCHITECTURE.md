@@ -1909,6 +1909,25 @@ type Mutation {
 - TLS/HTTPS pour toutes les connexions externes (ngrok assure le HTTPS)
 - gRPC utilise HTTP/2 en interne sur le réseau Kubernetes (ClusterIP)
 
+**Frontend ↔ Gateway — toujours en same-origin, jamais en CORS :**
+- Le cookie `refresh_token` est `SameSite=Strict` : un navigateur ne
+  l'envoie **jamais** sur une requête cross-origin, même avec des headers
+  CORS corrects. Configurer `CORS_ALLOWED_ORIGINS` ne résout donc pas le
+  problème — il faut que le frontend et la Gateway soient vus comme la
+  **même origine** par le navigateur.
+- **En développement local :** Angular CLI doit proxyfier `/graphql` vers
+  `http://localhost:8080` via `proxy.conf.json` (voir `CLAUDE.md`), plutôt
+  que d'appeler la Gateway depuis une origine différente (`localhost:4200`
+  → `localhost:8080` = deux origines distinctes pour le navigateur).
+- **En production :** nginx (déjà en place devant la Gateway, voir §7) sert
+  le build Angular **et** proxyfie `/graphql` sous le même domaine — exactement
+  le même principe qu'en dev, à l'échelle de l'infra.
+- Si une intégration tierce nécessite un jour un vrai cross-origin (ex. app
+  mobile ou domaine séparé), il faudra explicitement passer le cookie en
+  `SameSite=None` + `Secure=True` (HTTPS obligatoire) et activer
+  `django-cors-headers` avec `CORS_ALLOW_CREDENTIALS=True` — non fait par
+  défaut, car ça affaiblit la protection CSRF du cookie.
+
 **Secrets :**
 - Stockés dans des Kubernetes Secrets (base64 encodé)
 - Jamais dans le code source ni dans les ConfigMaps
