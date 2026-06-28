@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      auth: ${{ steps.filter.outputs.auth }}
+      gateway: ${{ steps.filter.outputs.gateway }}
+      nginx: ${{ steps.filter.outputs.nginx }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            auth:
+              - 'services/auth/**'
+              - 'proto/auth_service.proto'
+            gateway:
+              - 'gateway/**'
+              - 'proto/auth_service.proto'
+            nginx:
+              - 'nginx/**'
+
+  test-auth:
+    needs: changes
+    if: needs.changes.outputs.auth == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/auth
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/auth/requirements.txt
+      - run: pip install -r requirements.txt ruff coverage
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: Tests + couverture
+        run: |
+          coverage run --source=comptes manage.py test comptes
+          coverage report -m --fail-under=80
+
+  test-gateway:
+    needs: changes
+    if: needs.changes.outputs.gateway == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: gateway/requirements.txt
+      - run: pip install -r requirements.txt ruff coverage
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: Tests + couverture
+        run: |
+          coverage run --source=schema manage.py test schema
+          coverage report -m --fail-under=80
+
+  docker-build-auth:
+    needs: changes
+    if: needs.changes.outputs.auth == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/auth
+          push: false
+
+  docker-build-gateway:
+    needs: changes
+    if: needs.changes.outputs.gateway == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: gateway
+          push: false
+
+  docker-build-nginx:
+    needs: changes
+    if: needs.changes.outputs.nginx == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: nginx
+          push: false

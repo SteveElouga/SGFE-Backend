@@ -1,10 +1,10 @@
 # SRS — Spécification des Exigences Logicielles
 ## Système de Gestion de Facturation d'Eau
 
-> **Norme de référence :** IEEE 830 (Software Requirements Specification)  
-> **Version :** 1.0.0  
-> **Date :** Juin 2026  
-> **Statut :** Validé  
+> **Norme de référence :** IEEE 830 (Software Requirements Specification)
+> **Version :** 1.0.0
+> **Date :** Juin 2026
+> **Statut :** Validé
 
 ---
 

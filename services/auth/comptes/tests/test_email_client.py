@@ -14,9 +14,7 @@ class BrevoEmailClientTests(SimpleTestCase):
     def test_send_success_calls_brevo_api(self, mock_post):
         mock_post.return_value = Mock(status_code=201)
 
-        self.client.send(
-            to_email="user@example.com", to_name="User", subject="Sujet", html_content="<p>Contenu</p>"
-        )
+        self.client.send(to_email="user@example.com", to_name="User", subject="Sujet", html_content="<p>Contenu</p>")
 
         mock_post.assert_called_once()
         _, kwargs = mock_post.call_args

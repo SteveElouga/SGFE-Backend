@@ -2,12 +2,12 @@
 
 ## Vue d'ensemble
 
-**Projet :** Système de Gestion de Facturation d'Eau  
-**Architecture :** Microservices (9 composants)  
-**Communication interne :** gRPC + Protocol Buffers v3  
-**API externe :** GraphQL (Strawberry + Apollo Client)  
-**Orchestration :** Kubernetes + Minikube (MacBook Pro)  
-**Déploiement :** Canary Deployment  
+**Projet :** Système de Gestion de Facturation d'Eau
+**Architecture :** Microservices (9 composants)
+**Communication interne :** gRPC + Protocol Buffers v3
+**API externe :** GraphQL (Strawberry + Apollo Client)
+**Orchestration :** Kubernetes + Minikube (MacBook Pro)
+**Déploiement :** Canary Deployment
 
 ---
 
@@ -149,7 +149,7 @@ services/[nom_service]/
 
 ## Fichiers .proto — Source de vérité
 
-Les fichiers `.proto` sont dans `proto/` à la racine du projet.  
+Les fichiers `.proto` sont dans `proto/` à la racine du projet.
 Après toute modification d'un `.proto`, régénérer les stubs :
 
 ```bash

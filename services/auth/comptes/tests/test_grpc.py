@@ -35,9 +35,7 @@ class AuthServiceServicerTests(TestCase):
         self.addCleanup(self.send_patcher.stop)
 
     def test_login_success(self):
-        response = self.servicer.Login(
-            pb.LoginRequest(username="comptable_grpc", password="secret123"), self.context
-        )
+        response = self.servicer.Login(pb.LoginRequest(username="comptable_grpc", password="secret123"), self.context)
         self.assertTrue(response.access_token)
         self.assertTrue(response.refresh_token)
 
@@ -46,9 +44,7 @@ class AuthServiceServicerTests(TestCase):
             self.servicer.Login(pb.LoginRequest(username="comptable_grpc", password="wrong"), self.context)
 
     def test_validate_token_success(self):
-        login = self.servicer.Login(
-            pb.LoginRequest(username="comptable_grpc", password="secret123"), self.context
-        )
+        login = self.servicer.Login(pb.LoginRequest(username="comptable_grpc", password="secret123"), self.context)
         payload = self.servicer.ValidateToken(pb.TokenRequest(token=login.access_token), self.context)
         self.assertEqual(payload.username, "comptable_grpc")
 
@@ -57,12 +53,8 @@ class AuthServiceServicerTests(TestCase):
             self.servicer.ValidateToken(pb.TokenRequest(token="invalide"), self.context)
 
     def test_refresh_token_success(self):
-        login = self.servicer.Login(
-            pb.LoginRequest(username="comptable_grpc", password="secret123"), self.context
-        )
-        refreshed = self.servicer.RefreshToken(
-            pb.RefreshRequest(refresh_token=login.refresh_token), self.context
-        )
+        login = self.servicer.Login(pb.LoginRequest(username="comptable_grpc", password="secret123"), self.context)
+        refreshed = self.servicer.RefreshToken(pb.RefreshRequest(refresh_token=login.refresh_token), self.context)
         self.assertTrue(refreshed.access_token)
 
     def test_refresh_token_failure_raises_authentication_error(self):
@@ -70,9 +62,7 @@ class AuthServiceServicerTests(TestCase):
             self.servicer.RefreshToken(pb.RefreshRequest(refresh_token="invalide"), self.context)
 
     def test_logout_success(self):
-        login = self.servicer.Login(
-            pb.LoginRequest(username="comptable_grpc", password="secret123"), self.context
-        )
+        login = self.servicer.Login(pb.LoginRequest(username="comptable_grpc", password="secret123"), self.context)
         response = self.servicer.Logout(pb.TokenRequest(token=login.access_token), self.context)
         self.assertTrue(response.success)
 
@@ -111,9 +101,7 @@ class AuthServiceServicerTests(TestCase):
         self.assertIn("comptable_grpc", usernames)
 
     def test_request_password_reset(self):
-        response = self.servicer.RequestPasswordReset(
-            pb.EmailRequest(email="comptable_grpc@example.com"), self.context
-        )
+        response = self.servicer.RequestPasswordReset(pb.EmailRequest(email="comptable_grpc@example.com"), self.context)
         self.assertTrue(response.success)
         self.mock_send.assert_called_once()
 

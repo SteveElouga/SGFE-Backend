@@ -50,8 +50,12 @@ def context(token: str | None = None, refresh_cookie: str | None = None) -> dict
 
 def make_user_response(user_id="user-1", username="comptable1", role="COMPTABLE", is_active=True):
     return Mock(
-        user_id=user_id, username=username, email=f"{username}@example.com",
-        role=role, is_active=is_active, created_at="2024-01-01T00:00:00",
+        user_id=user_id,
+        username=username,
+        email=f"{username}@example.com",
+        role=role,
+        is_active=is_active,
+        created_at="2024-01-01T00:00:00",
     )
 
 

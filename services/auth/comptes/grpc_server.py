@@ -46,15 +46,11 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):
         return pb.StatusResponse(success=True, message="Déconnexion réussie")
 
     def CreateUser(self, request, context):
-        user = self.user_admin_service.create_user(
-            username=request.username, email=request.email, role=request.role
-        )
+        user = self.user_admin_service.create_user(username=request.username, email=request.email, role=request.role)
         return pb.UserResponse(**user_to_response(user))
 
     def UpdateUser(self, request, context):
-        user = self.user_admin_service.update_user(
-            user_id=request.user_id, email=request.email, role=request.role
-        )
+        user = self.user_admin_service.update_user(user_id=request.user_id, email=request.email, role=request.role)
         return pb.UserResponse(**user_to_response(user))
 
     def DeactivateUser(self, request, context):
@@ -79,9 +75,7 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):
 
 
 def serve() -> None:
-    server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=10), interceptors=[ErrorHandlingInterceptor()]
-    )
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10), interceptors=[ErrorHandlingInterceptor()])
     pb_grpc.add_AuthServiceServicer_to_server(AuthServiceServicer(), server)
     server.add_insecure_port(f"[::]:{settings.AUTH_GRPC_PORT}")
     server.start()
