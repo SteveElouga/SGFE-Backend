@@ -8,6 +8,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -30,6 +33,16 @@ jobs:
             nginx:
               - 'nginx/**'
 
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   test-auth:
     needs: changes
     if: needs.changes.outputs.auth == 'true'
@@ -44,9 +57,13 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/auth/requirements.txt
-      - run: pip install -r requirements.txt ruff coverage
+      - run: pip install -r requirements.txt ruff coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
+      - name: Audit des dépendances (pip-audit)
+        run: pip-audit -r requirements.txt
+      - name: Analyse statique de sécurité (bandit)
+        run: bandit -r . --exclude ./proto,./comptes/migrations -ll
       - name: Tests + couverture
         run: |
           coverage run --source=comptes manage.py test comptes
@@ -66,9 +83,13 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: gateway/requirements.txt
-      - run: pip install -r requirements.txt ruff coverage
+      - run: pip install -r requirements.txt ruff coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
+      - name: Audit des dépendances (pip-audit)
+        run: pip-audit -r requirements.txt
+      - name: Analyse statique de sécurité (bandit)
+        run: bandit -r . --exclude ./proto -ll
       - name: Tests + couverture
         run: |
           coverage run --source=schema manage.py test schema
@@ -109,3 +130,90 @@ jobs:
         with:
           context: nginx
           push: false
+
+  # Job agrégateur : seul check à déclarer "required" dans la protection de
+  # branche. Les jobs test-auth/test-gateway sont conditionnels (skip si le
+  # service n'a pas changé) — les déclarer "required" individuellement
+  # bloquerait indéfiniment toute PR qui ne les déclenche pas.
+  ci-status:
+    if: always()
+    needs: [secrets-scan, test-auth, test-gateway]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifie qu'aucun job requis n'a échoué
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            echo "Au moins un job a échoué."
+            exit 1
+          fi
+
+  # Publication des images sur GHCR : uniquement sur main/develop (jamais sur
+  # les PR/feature branches), une fois les tests/scans passés.
+  publish-auth:
+    needs: [changes, test-auth, secrets-scan]
+    if: needs.changes.outputs.auth == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/auth
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/auth-service:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}/auth-service:${{ github.sha }}
+
+  publish-gateway:
+    needs: [changes, test-gateway, secrets-scan]
+    if: needs.changes.outputs.gateway == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: gateway
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/gateway:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}/gateway:${{ github.sha }}
+
+  publish-nginx:
+    needs: [changes, secrets-scan]
+    if: needs.changes.outputs.nginx == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: nginx
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/nginx:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}/nginx:${{ github.sha }}

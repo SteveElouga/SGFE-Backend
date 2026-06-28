@@ -5,5 +5,5 @@ from strawberry.django.views import AsyncGraphQLView
 from schema.schema import schema
 
 urlpatterns = [
-    path("graphql", csrf_exempt(AsyncGraphQLView.as_view(schema=schema, graphiql=True))),
+    path("graphql", csrf_exempt(AsyncGraphQLView.as_view(schema=schema, graphql_ide="graphiql"))),
 ]
