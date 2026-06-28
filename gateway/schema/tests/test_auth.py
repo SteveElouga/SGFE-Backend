@@ -23,13 +23,29 @@ class FakeRpcError(grpc.RpcError):
 
 
 class FakeRequest:
-    def __init__(self, headers: dict | None = None) -> None:
+    def __init__(self, headers: dict | None = None, cookies: dict | None = None) -> None:
         self.headers = headers or {}
+        self.COOKIES = cookies or {}
 
 
-def context(token: str | None = None) -> dict:
+class FakeResponse:
+    """Double minimal de HttpResponse : trace les cookies posés/supprimés."""
+
+    def __init__(self) -> None:
+        self.cookies_set: dict[str, str] = {}
+        self.cookies_deleted: list[str] = []
+
+    def set_cookie(self, key, value, **kwargs):
+        self.cookies_set[key] = value
+
+    def delete_cookie(self, key, **kwargs):
+        self.cookies_deleted.append(key)
+
+
+def context(token: str | None = None, refresh_cookie: str | None = None) -> dict:
     headers = {"Authorization": f"Bearer {token}"} if token else {}
-    return {"request": FakeRequest(headers=headers)}
+    cookies = {"refresh_token": refresh_cookie} if refresh_cookie else {}
+    return {"request": FakeRequest(headers=headers, cookies=cookies), "response": FakeResponse()}
 
 
 def make_user_response(user_id="user-1", username="comptable1", role="COMPTABLE", is_active=True):
@@ -41,6 +57,7 @@ def make_user_response(user_id="user-1", username="comptable1", role="COMPTABLE"
 
 class LoginMutationTests(SimpleTestCase):
     def test_login_success_returns_auth_payload(self):
+        ctx = context()
         with patch.multiple(
             auth_client,
             login=Mock(return_value=Mock(access_token="access-1", refresh_token="refresh-1", expires_in=86400)),
@@ -49,14 +66,34 @@ class LoginMutationTests(SimpleTestCase):
         ):
             result = schema.execute_sync(
                 'mutation { login(username: "comptable1", password: "secret123") '
-                "{ accessToken refreshToken expiresIn user { username role } } }",
-                context_value=context(),
+                "{ accessToken expiresIn user { username role } } }",
+                context_value=ctx,
             )
 
         self.assertIsNone(result.errors)
         self.assertEqual(result.data["login"]["accessToken"], "access-1")
         self.assertEqual(result.data["login"]["user"]["username"], "comptable1")
         self.assertEqual(result.data["login"]["user"]["role"], "COMPTABLE")
+
+    def test_login_sets_httponly_refresh_cookie(self):
+        ctx = context()
+        with patch.multiple(
+            auth_client,
+            login=Mock(return_value=Mock(access_token="access-1", refresh_token="refresh-1", expires_in=86400)),
+            validate_token=Mock(return_value=Mock(user_id="user-1", role="COMPTABLE")),
+            get_user=Mock(return_value=make_user_response()),
+        ):
+            schema.execute_sync(
+                'mutation { login(username: "comptable1", password: "secret123") { accessToken } }',
+                context_value=ctx,
+            )
+
+        self.assertEqual(ctx["response"].cookies_set.get("refresh_token"), "refresh-1")
+
+    def test_login_response_does_not_expose_refresh_token(self):
+        # AuthPayload n'a plus de champ refreshToken : il n'existe que dans le cookie.
+        # (le nom de la mutation `refreshToken` reste légitimement dans le SDL)
+        self.assertNotIn("refreshToken: String", schema.as_str())
 
     def test_login_failure_returns_graphql_error_with_grpc_details(self):
         with patch.object(auth_client, "login", side_effect=FakeRpcError("Identifiants invalides")):
@@ -84,38 +121,46 @@ class LoginMutationTests(SimpleTestCase):
 
 
 class RefreshTokenMutationTests(SimpleTestCase):
-    def test_refresh_token_success(self):
+    def test_refresh_token_success_reads_cookie_and_rotates_it(self):
+        ctx = context(refresh_cookie="refresh-1")
         with patch.multiple(
             auth_client,
             refresh_token=Mock(return_value=Mock(access_token="access-2", refresh_token="refresh-2", expires_in=86400)),
             validate_token=Mock(return_value=Mock(user_id="user-1", role="COMPTABLE")),
             get_user=Mock(return_value=make_user_response()),
         ):
-            result = schema.execute_sync(
-                'mutation { refreshToken(token: "refresh-1") { accessToken } }',
-                context_value=context(),
-            )
+            result = schema.execute_sync("mutation { refreshToken { accessToken } }", context_value=ctx)
+            auth_client.refresh_token.assert_called_once_with("refresh-1")
 
         self.assertIsNone(result.errors)
         self.assertEqual(result.data["refreshToken"]["accessToken"], "access-2")
+        self.assertEqual(ctx["response"].cookies_set.get("refresh_token"), "refresh-2")
+
+    def test_refresh_token_without_cookie_raises(self):
+        result = schema.execute_sync("mutation { refreshToken { accessToken } }", context_value=context())
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("Refresh token manquant", str(result.errors))
 
     def test_refresh_token_failure_returns_graphql_error(self):
         with patch.object(auth_client, "refresh_token", side_effect=FakeRpcError("token invalide")):
             result = schema.execute_sync(
-                'mutation { refreshToken(token: "invalide") { accessToken } }',
-                context_value=context(),
+                "mutation { refreshToken { accessToken } }",
+                context_value=context(refresh_cookie="refresh-1"),
             )
 
         self.assertIsNotNone(result.errors)
 
 
 class LogoutMutationTests(SimpleTestCase):
-    def test_logout_success(self):
+    def test_logout_success_clears_refresh_cookie(self):
+        ctx = context(token="access-1", refresh_cookie="refresh-1")
         with patch.object(auth_client, "logout", return_value=Mock(success=True)):
-            result = schema.execute_sync("mutation { logout }", context_value=context(token="access-1"))
+            result = schema.execute_sync("mutation { logout }", context_value=ctx)
 
         self.assertIsNone(result.errors)
         self.assertTrue(result.data["logout"])
+        self.assertIn("refresh_token", ctx["response"].cookies_deleted)
 
     def test_logout_without_token_returns_error(self):
         result = schema.execute_sync("mutation { logout }", context_value=context())

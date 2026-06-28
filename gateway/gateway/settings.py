@@ -52,3 +52,10 @@ GRPC_TIMEOUT = env.int("GRPC_TIMEOUT", default=30)
 
 AUTH_GRPC_HOST = env("AUTH_GRPC_HOST", default="localhost")
 AUTH_GRPC_PORT = env.int("AUTH_GRPC_PORT", default=50051)
+
+# Le refresh token n'est jamais renvoyé dans le corps de la réponse GraphQL :
+# il est posé en cookie HttpOnly par login/refreshToken, inaccessible à JS
+# (protection XSS), et lu depuis ce cookie par refreshToken/logout.
+REFRESH_TOKEN_COOKIE_NAME = "refresh_token"
+REFRESH_TOKEN_COOKIE_MAX_AGE = env.int("JWT_REFRESH_TOKEN_EXPIRE_DAYS", default=7) * 86400
+REFRESH_TOKEN_COOKIE_SECURE = env.bool("COOKIE_SECURE", default=not DEBUG)

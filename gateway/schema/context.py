@@ -1,4 +1,5 @@
 import strawberry
+from django.conf import settings
 
 from schema.grpc_clients import auth_client
 
@@ -18,6 +19,25 @@ def extract_token(request) -> str | None:
     if not header.startswith("Bearer "):
         return None
     return header.removeprefix("Bearer ").strip()
+
+
+def extract_refresh_token(request) -> str | None:
+    return request.COOKIES.get(settings.REFRESH_TOKEN_COOKIE_NAME)
+
+
+def set_refresh_token_cookie(response, refresh_token: str) -> None:
+    response.set_cookie(
+        settings.REFRESH_TOKEN_COOKIE_NAME,
+        refresh_token,
+        max_age=settings.REFRESH_TOKEN_COOKIE_MAX_AGE,
+        httponly=True,
+        secure=settings.REFRESH_TOKEN_COOKIE_SECURE,
+        samesite="Strict",
+    )
+
+
+def clear_refresh_token_cookie(response) -> None:
+    response.delete_cookie(settings.REFRESH_TOKEN_COOKIE_NAME)
 
 
 def require_auth(info: strawberry.types.Info):

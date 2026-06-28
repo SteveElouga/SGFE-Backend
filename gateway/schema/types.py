@@ -22,8 +22,10 @@ class User:
 
 @strawberry.type
 class AuthPayload:
+    """Le refresh token n'apparaît jamais ici : il est posé en cookie HttpOnly
+    (voir mutations.py), jamais exposé à JS côté client."""
+
     access_token: str
-    refresh_token: str
     expires_in: int
     user: User
 

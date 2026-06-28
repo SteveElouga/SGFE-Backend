@@ -1510,10 +1510,13 @@ message ListConfigsResponse { repeated ConfigResponse configs = 1; }
 
 type AuthPayload {
   accessToken: String!
-  refreshToken: String!
   expiresIn: Int!
   user: User!
 }
+# Le refresh token n'est jamais exposé dans le corps de la réponse : la
+# gateway le pose en cookie HttpOnly + Secure + SameSite=Strict (login,
+# refreshToken) et le lit depuis ce cookie (refreshToken, logout), afin
+# qu'il reste inaccessible à JS côté client (protection XSS).
 
 type User {
   id: ID!
@@ -1789,8 +1792,8 @@ type Query {
 type Mutation {
   # Auth
   login(username: String!, password: String!): AuthPayload!
-  refreshToken(token: String!): AuthPayload!
-  logout: Boolean!
+  refreshToken: AuthPayload!  # lit le refresh token depuis le cookie HttpOnly, pas d'argument
+  logout: Boolean!  # révoque l'access token ET supprime le cookie de refresh token
   createUser(username: String!, email: String!, password: String!, role: Role!): User!
   deactivateUser(id: ID!): User!
 
