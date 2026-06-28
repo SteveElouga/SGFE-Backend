@@ -6,9 +6,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --default-timeout=120 --retries 5 -r requirements.txt
 
-COPY . .
+COPY manage.py .
+COPY gateway/ gateway/
+COPY schema/ schema/
+COPY proto/ proto/
+
+RUN useradd --create-home --uid 1000 appuser
+USER appuser
 
 EXPOSE 8000
 

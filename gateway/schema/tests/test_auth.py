@@ -8,7 +8,18 @@ from schema.schema import schema
 
 
 class FakeRpcError(grpc.RpcError):
-    pass
+    """Simule une grpc.RpcError côté client, avec code()/details() comme un vrai appel échoué."""
+
+    def __init__(self, message: str, status_code: grpc.StatusCode = grpc.StatusCode.UNKNOWN) -> None:
+        self._message = message
+        self._status_code = status_code
+        super().__init__(message)
+
+    def details(self) -> str:
+        return self._message
+
+    def code(self) -> grpc.StatusCode:
+        return self._status_code
 
 
 class FakeRequest:
@@ -47,8 +58,8 @@ class LoginMutationTests(SimpleTestCase):
         self.assertEqual(result.data["login"]["user"]["username"], "comptable1")
         self.assertEqual(result.data["login"]["user"]["role"], "COMPTABLE")
 
-    def test_login_failure_returns_graphql_error(self):
-        with patch.object(auth_client, "login", side_effect=FakeRpcError("identifiants invalides")):
+    def test_login_failure_returns_graphql_error_with_grpc_details(self):
+        with patch.object(auth_client, "login", side_effect=FakeRpcError("Identifiants invalides")):
             result = schema.execute_sync(
                 'mutation { login(username: "comptable1", password: "wrong") { accessToken } }',
                 context_value=context(),
@@ -56,6 +67,20 @@ class LoginMutationTests(SimpleTestCase):
 
         self.assertIsNotNone(result.errors)
         self.assertIn("Identifiants invalides", str(result.errors))
+
+    def test_login_failure_without_details_falls_back_to_status_message(self):
+        with patch.object(
+            auth_client,
+            "login",
+            side_effect=FakeRpcError("", status_code=grpc.StatusCode.UNAUTHENTICATED),
+        ):
+            result = schema.execute_sync(
+                'mutation { login(username: "comptable1", password: "wrong") { accessToken } }',
+                context_value=context(),
+            )
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("Authentification requise ou invalide", str(result.errors))
 
 
 class RefreshTokenMutationTests(SimpleTestCase):
@@ -170,7 +195,7 @@ class UserAdminMutationTests(SimpleTestCase):
         self.assertFalse(result.data["deactivateUser"]["isActive"])
 
     def test_create_user_with_invalid_token_raises(self):
-        with patch.object(auth_client, "validate_token", side_effect=FakeRpcError("token invalide")):
+        with patch.object(auth_client, "validate_token", side_effect=FakeRpcError("Token invalide ou expiré")):
             result = schema.execute_sync(
                 'mutation { createUser(username: "x", email: "x@example.com", password: "secret123", role: AGENT) '
                 "{ username } }",

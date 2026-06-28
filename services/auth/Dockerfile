@@ -10,9 +10,15 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --default-timeout=120 --retries 5 -r requirements.txt
 
-COPY . .
+COPY manage.py .
+COPY auth/ auth/
+COPY comptes/ comptes/
+COPY proto/ proto/
+
+RUN useradd --create-home --uid 1000 appuser && chown -R appuser /app
+USER appuser
 
 EXPOSE 50051
 

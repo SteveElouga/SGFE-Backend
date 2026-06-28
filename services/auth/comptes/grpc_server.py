@@ -10,34 +10,31 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 import auth_service_pb2 as pb
 import auth_service_pb2_grpc as pb_grpc
 
+from comptes.grpc_interceptors import ErrorHandlingInterceptor
 from comptes.serializers import user_to_payload, user_to_response
 from comptes.services import AuthenticationError, AuthService, UserAdminService
 
 
 class AuthServiceServicer(pb_grpc.AuthServiceServicer):
+    """Les exceptions (AuthenticationError, ObjectDoesNotExist, IntegrityError)
+    ne sont pas interceptées ici : ErrorHandlingInterceptor s'en charge de
+    façon centralisée pour toutes les méthodes (voir grpc_interceptors.py).
+    """
+
     def __init__(self) -> None:
         self.auth_service = AuthService()
         self.user_admin_service = UserAdminService()
 
     def Login(self, request, context):
-        try:
-            access, refresh, expires_in = self.auth_service.login(request.username, request.password)
-        except AuthenticationError as exc:
-            context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
+        access, refresh, expires_in = self.auth_service.login(request.username, request.password)
         return pb.TokenResponse(access_token=access, refresh_token=refresh, expires_in=expires_in)
 
     def ValidateToken(self, request, context):
-        try:
-            user = self.auth_service.validate_token(request.token)
-        except AuthenticationError as exc:
-            context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
+        user = self.auth_service.validate_token(request.token)
         return pb.UserPayload(**user_to_payload(user))
 
     def RefreshToken(self, request, context):
-        try:
-            access, refresh, expires_in = self.auth_service.refresh_token(request.refresh_token)
-        except AuthenticationError as exc:
-            context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
+        access, refresh, expires_in = self.auth_service.refresh_token(request.refresh_token)
         return pb.TokenResponse(access_token=access, refresh_token=refresh, expires_in=expires_in)
 
     def Logout(self, request, context):
@@ -73,7 +70,9 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):
 
 
 def serve() -> None:
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=10), interceptors=[ErrorHandlingInterceptor()]
+    )
     pb_grpc.add_AuthServiceServicer_to_server(AuthServiceServicer(), server)
     server.add_insecure_port(f"[::]:{settings.AUTH_GRPC_PORT}")
     server.start()

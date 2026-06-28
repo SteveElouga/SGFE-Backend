@@ -1,4 +1,3 @@
-import grpc
 import strawberry
 
 from schema.context import AuthError, extract_token, require_role
@@ -20,18 +19,14 @@ def _auth_payload_from_tokens(token_response) -> AuthPayload:
 class Mutation:
     @strawberry.mutation
     def login(self, username: str, password: str) -> AuthPayload:
-        try:
-            token_response = auth_client.login(username, password)
-        except grpc.RpcError as exc:
-            raise AuthError("Identifiants invalides") from exc
+        # Les erreurs gRPC (identifiants invalides, compte verrouillé, ...)
+        # sont traduites en GraphQLError par GrpcErrorExtension.
+        token_response = auth_client.login(username, password)
         return _auth_payload_from_tokens(token_response)
 
     @strawberry.mutation
     def refresh_token(self, token: str) -> AuthPayload:
-        try:
-            token_response = auth_client.refresh_token(token)
-        except grpc.RpcError as exc:
-            raise AuthError("Refresh token invalide ou expiré") from exc
+        token_response = auth_client.refresh_token(token)
         return _auth_payload_from_tokens(token_response)
 
     @strawberry.mutation
