@@ -348,6 +348,52 @@ make build-all
 docker-compose up
 ```
 
+### Frontend (Angular) — proxy vers la Gateway, jamais de CORS
+
+Le cookie `refresh_token` (HttpOnly, `SameSite=Strict`) n'est envoyé par le
+navigateur que si le frontend et la Gateway sont vus comme la **même
+origine**. Ne JAMAIS résoudre une erreur CORS ici en ouvrant
+`CORS_ALLOWED_ORIGINS`/`SameSite=None` côté Gateway — ça ne résoudrait pas
+le cookie de toute façon, et ça affaiblirait sa protection CSRF pour rien
+(voir `docs/ARCHITECTURE.md` §11.1).
+
+En développement local, faire proxyfier `/graphql` par le serveur de dev
+Angular plutôt que d'appeler `http://localhost:8080` directement depuis
+`http://localhost:4200` :
+
+```jsonc
+// frontend/proxy.conf.json
+{
+  "/graphql": {
+    "target": "http://localhost:8080",
+    "secure": false,
+    "changeOrigin": true
+  }
+}
+```
+
+```jsonc
+// frontend/angular.json — dans serve.options
+"options": {
+  "proxyConfig": "proxy.conf.json"
+}
+```
+
+```bash
+ng serve --proxy-config proxy.conf.json
+```
+
+Le client GraphQL (Apollo) doit appeler `/graphql` en **chemin relatif**
+(pas `http://localhost:8080/graphql`) et envoyer les credentials :
+
+```ts
+new HttpLink({ uri: '/graphql', withCredentials: true })
+```
+
+En production, c'est nginx (déjà devant la Gateway, voir `docs/ARCHITECTURE.md`
+§7) qui joue ce rôle : il sert le build Angular et proxyfie `/graphql` sous
+le même domaine.
+
 ---
 
 ## Rôles et permissions
