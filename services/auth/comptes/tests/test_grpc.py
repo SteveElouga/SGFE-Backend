@@ -1,24 +1,26 @@
+from datetime import timedelta
+from unittest.mock import patch
+
 from django.test import TestCase
+from django.utils import timezone
 
 from comptes.grpc_server import AuthServiceServicer
-from comptes.models import Role, User
+from comptes.models import PasswordSetupToken, Role, User
+from comptes.services import AuthenticationError
 from proto import auth_service_pb2 as pb
 
 
-class AbortCalled(Exception):
-    """Simule l'arrêt du RPC déclenché par context.abort() côté grpc réel."""
-
-    def __init__(self, code, details):
-        self.code = code
-        self.details = details
-        super().__init__(details)
-
-
 class FakeContext:
-    """Double minimal de grpc.ServicerContext : abort() lève, comme en conditions réelles."""
+    """Double minimal de grpc.ServicerContext.
+
+    En appel direct (hors serveur gRPC réel), ErrorHandlingInterceptor n'est
+    pas dans la boucle : les méthodes du servicer laissent donc simplement
+    remonter l'exception Python (voir test_grpc_interceptors.py pour la
+    conversion en code gRPC, elle, testée séparément).
+    """
 
     def abort(self, code, details):
-        raise AbortCalled(code, details)
+        raise AssertionError("context.abort() ne devrait pas être appelé directement par le servicer")
 
 
 class AuthServiceServicerTests(TestCase):
@@ -28,6 +30,9 @@ class AuthServiceServicerTests(TestCase):
         self.user = User.objects.create_user(
             username="comptable_grpc", email="comptable_grpc@example.com", password="secret123", role=Role.COMPTABLE
         )
+        self.send_patcher = patch("comptes.services.email_client.send")
+        self.mock_send = self.send_patcher.start()
+        self.addCleanup(self.send_patcher.stop)
 
     def test_login_success(self):
         response = self.servicer.Login(
@@ -36,8 +41,8 @@ class AuthServiceServicerTests(TestCase):
         self.assertTrue(response.access_token)
         self.assertTrue(response.refresh_token)
 
-    def test_login_failure_aborts(self):
-        with self.assertRaises(AbortCalled):
+    def test_login_failure_raises_authentication_error(self):
+        with self.assertRaises(AuthenticationError):
             self.servicer.Login(pb.LoginRequest(username="comptable_grpc", password="wrong"), self.context)
 
     def test_validate_token_success(self):
@@ -47,8 +52,8 @@ class AuthServiceServicerTests(TestCase):
         payload = self.servicer.ValidateToken(pb.TokenRequest(token=login.access_token), self.context)
         self.assertEqual(payload.username, "comptable_grpc")
 
-    def test_validate_token_failure_aborts(self):
-        with self.assertRaises(AbortCalled):
+    def test_validate_token_failure_raises_authentication_error(self):
+        with self.assertRaises(AuthenticationError):
             self.servicer.ValidateToken(pb.TokenRequest(token="invalide"), self.context)
 
     def test_refresh_token_success(self):
@@ -60,8 +65,8 @@ class AuthServiceServicerTests(TestCase):
         )
         self.assertTrue(refreshed.access_token)
 
-    def test_refresh_token_failure_aborts(self):
-        with self.assertRaises(AbortCalled):
+    def test_refresh_token_failure_raises_authentication_error(self):
+        with self.assertRaises(AuthenticationError):
             self.servicer.RefreshToken(pb.RefreshRequest(refresh_token="invalide"), self.context)
 
     def test_logout_success(self):
@@ -77,11 +82,12 @@ class AuthServiceServicerTests(TestCase):
 
     def test_create_user(self):
         response = self.servicer.CreateUser(
-            pb.CreateUserRequest(username="agent_grpc", email="agent_grpc@example.com", password="secret123", role=Role.AGENT),
+            pb.CreateUserRequest(username="agent_grpc", email="agent_grpc@example.com", role=Role.AGENT),
             self.context,
         )
         self.assertEqual(response.username, "agent_grpc")
         self.assertTrue(response.user_id)
+        self.mock_send.assert_called_once()
 
     def test_get_user(self):
         response = self.servicer.GetUser(pb.UserIdRequest(user_id=str(self.user.id)), self.context)
@@ -103,3 +109,30 @@ class AuthServiceServicerTests(TestCase):
         response = self.servicer.ListUsers(pb.EmptyRequest(), self.context)
         usernames = {u.username for u in response.users}
         self.assertIn("comptable_grpc", usernames)
+
+    def test_request_password_reset(self):
+        response = self.servicer.RequestPasswordReset(
+            pb.EmailRequest(email="comptable_grpc@example.com"), self.context
+        )
+        self.assertTrue(response.success)
+        self.mock_send.assert_called_once()
+
+    def test_request_password_reset_unknown_email_still_succeeds(self):
+        response = self.servicer.RequestPasswordReset(pb.EmailRequest(email="inconnu@example.com"), self.context)
+        self.assertTrue(response.success)
+        self.mock_send.assert_not_called()
+
+    def test_set_password_with_token_success(self):
+        token = PasswordSetupToken.objects.create(user=self.user, expires_at=timezone.now() + timedelta(hours=1))
+        response = self.servicer.SetPasswordWithToken(
+            pb.SetPasswordRequest(token=token.token, new_password="nouveaumotdepasse"), self.context
+        )
+        self.assertTrue(response.success)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("nouveaumotdepasse"))
+
+    def test_set_password_with_invalid_token_raises(self):
+        with self.assertRaises(AuthenticationError):
+            self.servicer.SetPasswordWithToken(
+                pb.SetPasswordRequest(token="invalide", new_password="nouveaumotdepasse"), self.context
+            )

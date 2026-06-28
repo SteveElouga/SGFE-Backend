@@ -7,8 +7,9 @@ from django.utils import timezone
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
+from comptes.email_client import email_client
 from comptes.models import User
-from comptes.repositories import RevokedTokenRepository, UserRepository
+from comptes.repositories import PasswordSetupTokenRepository, RevokedTokenRepository, UserRepository
 
 
 class AuthenticationError(Exception):
@@ -105,9 +106,14 @@ class UserAdminService:
 
     def __init__(self) -> None:
         self.users = UserRepository()
+        self.password_setup = PasswordSetupService()
 
-    def create_user(self, username: str, email: str, password: str, role: str) -> User:
-        return self.users.create(username=username, email=email, password=password, role=role)
+    def create_user(self, username: str, email: str, role: str) -> User:
+        # Pas de mot de passe fixé par l'admin : l'utilisateur le définit
+        # lui-même via le lien d'activation envoyé par e-mail.
+        user = self.users.create(username=username, email=email, role=role)
+        self.password_setup.send_activation_email(user)
+        return user
 
     def update_user(self, user_id: str, email: str, role: str) -> User:
         user = self.users.get_by_id(user_id)
@@ -127,3 +133,61 @@ class UserAdminService:
 
     def list_users(self) -> list[User]:
         return self.users.list_all()
+
+
+class PasswordSetupService:
+    """Activation de compte et réinitialisation de mot de passe par e-mail.
+
+    Les deux flux partagent le même mécanisme : un token à usage unique,
+    limité dans le temps, envoyé par e-mail, qui permet de définir un
+    nouveau mot de passe.
+    """
+
+    def __init__(self) -> None:
+        self.users = UserRepository()
+        self.tokens = PasswordSetupTokenRepository()
+
+    def _create_token_and_send(self, user: User, subject: str, intro_html: str) -> None:
+        expires_at = timezone.now() + timedelta(hours=settings.PASSWORD_SETUP_TOKEN_VALIDITY_HOURS)
+        setup_token = self.tokens.create(user=user, expires_at=expires_at)
+        link = f"{settings.FRONTEND_URL}/set-password?token={setup_token.token}"
+        email_client.send(
+            to_email=user.email,
+            to_name=user.username,
+            subject=subject,
+            html_content=f"{intro_html}<p><a href=\"{link}\">{link}</a></p>"
+            f"<p>Ce lien expire dans {settings.PASSWORD_SETUP_TOKEN_VALIDITY_HOURS} heures.</p>",
+        )
+
+    def send_activation_email(self, user: User) -> None:
+        self._create_token_and_send(
+            user,
+            subject="Activez votre compte SGFE",
+            intro_html=f"<p>Bonjour {user.username},</p><p>Votre compte a été créé. Définissez votre mot de passe :</p>",
+        )
+
+    def request_password_reset(self, email: str) -> None:
+        # Ne jamais révéler si l'e-mail existe ou non : succès silencieux dans les deux cas.
+        try:
+            user = self.users.get_by_email(email)
+        except ObjectDoesNotExist:
+            return
+        self._create_token_and_send(
+            user,
+            subject="Réinitialisation de votre mot de passe SGFE",
+            intro_html=f"<p>Bonjour {user.username},</p><p>Cliquez sur le lien pour définir un nouveau mot de passe :</p>",
+        )
+
+    def set_password_with_token(self, token: str, new_password: str) -> None:
+        try:
+            setup_token = self.tokens.get_valid(token)
+        except ObjectDoesNotExist as exc:
+            raise AuthenticationError("Token invalide") from exc
+
+        if not setup_token.is_valid():
+            raise AuthenticationError("Token invalide ou expiré")
+
+        user = setup_token.user
+        user.set_password(new_password)
+        self.users.save(user)
+        setup_token.mark_used()

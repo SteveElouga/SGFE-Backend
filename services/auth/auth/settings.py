@@ -111,3 +111,13 @@ SIMPLE_JWT = {
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",
 }
+
+# --- E-mail (Brevo — 300 e-mails/jour gratuits) ---
+BREVO_API_KEY = env("BREVO_API_KEY", default="")
+BREVO_SENDER_NAME = env("BREVO_SENDER_NAME", default="SGFE")
+BREVO_SENDER_EMAIL = env("BREVO_SENDER_EMAIL", default="no-reply@sgfe.example.com")
+
+# Lien envoyé dans l'e-mail d'activation/réinitialisation : le frontend Angular
+# lit le token dans l'URL et appelle activateAccount/resetPassword.
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:4200")
+PASSWORD_SETUP_TOKEN_VALIDITY_HOURS = env.int("PASSWORD_SETUP_TOKEN_VALIDITY_HOURS", default=48)

@@ -10,34 +10,32 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 import auth_service_pb2 as pb
 import auth_service_pb2_grpc as pb_grpc
 
+from comptes.grpc_interceptors import ErrorHandlingInterceptor
 from comptes.serializers import user_to_payload, user_to_response
-from comptes.services import AuthenticationError, AuthService, UserAdminService
+from comptes.services import AuthenticationError, AuthService, PasswordSetupService, UserAdminService
 
 
 class AuthServiceServicer(pb_grpc.AuthServiceServicer):
+    """Les exceptions (AuthenticationError, ObjectDoesNotExist, IntegrityError)
+    ne sont pas interceptées ici : ErrorHandlingInterceptor s'en charge de
+    façon centralisée pour toutes les méthodes (voir grpc_interceptors.py).
+    """
+
     def __init__(self) -> None:
         self.auth_service = AuthService()
         self.user_admin_service = UserAdminService()
+        self.password_setup_service = PasswordSetupService()
 
     def Login(self, request, context):
-        try:
-            access, refresh, expires_in = self.auth_service.login(request.username, request.password)
-        except AuthenticationError as exc:
-            context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
+        access, refresh, expires_in = self.auth_service.login(request.username, request.password)
         return pb.TokenResponse(access_token=access, refresh_token=refresh, expires_in=expires_in)
 
     def ValidateToken(self, request, context):
-        try:
-            user = self.auth_service.validate_token(request.token)
-        except AuthenticationError as exc:
-            context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
+        user = self.auth_service.validate_token(request.token)
         return pb.UserPayload(**user_to_payload(user))
 
     def RefreshToken(self, request, context):
-        try:
-            access, refresh, expires_in = self.auth_service.refresh_token(request.refresh_token)
-        except AuthenticationError as exc:
-            context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
+        access, refresh, expires_in = self.auth_service.refresh_token(request.refresh_token)
         return pb.TokenResponse(access_token=access, refresh_token=refresh, expires_in=expires_in)
 
     def Logout(self, request, context):
@@ -49,7 +47,7 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):
 
     def CreateUser(self, request, context):
         user = self.user_admin_service.create_user(
-            username=request.username, email=request.email, password=request.password, role=request.role
+            username=request.username, email=request.email, role=request.role
         )
         return pb.UserResponse(**user_to_response(user))
 
@@ -71,9 +69,19 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):
         user = self.user_admin_service.get_user(request.user_id)
         return pb.UserResponse(**user_to_response(user))
 
+    def RequestPasswordReset(self, request, context):
+        self.password_setup_service.request_password_reset(request.email)
+        return pb.StatusResponse(success=True, message="Si ce compte existe, un e-mail a été envoyé")
+
+    def SetPasswordWithToken(self, request, context):
+        self.password_setup_service.set_password_with_token(request.token, request.new_password)
+        return pb.StatusResponse(success=True, message="Mot de passe défini")
+
 
 def serve() -> None:
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=10), interceptors=[ErrorHandlingInterceptor()]
+    )
     pb_grpc.add_AuthServiceServicer_to_server(AuthServiceServicer(), server)
     server.add_insecure_port(f"[::]:{settings.AUTH_GRPC_PORT}")
     server.start()

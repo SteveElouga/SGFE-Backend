@@ -359,8 +359,14 @@ Config Service
 4. Auth Service vérifie les credentials
 5. Si valides : génère JWT (24h) + refresh token (7j)
 6. Retourne les tokens au Gateway
-7. Gateway retourne AuthPayload à Angular
-8. Angular stocke le JWT en mémoire
+7. Gateway pose le refresh token en cookie HttpOnly + Secure + SameSite=Strict
+   (jamais exposé à JS), et retourne AuthPayload (accessToken, expiresIn,
+   user) à Angular — sans le refreshToken
+8. Angular stocke l'accessToken en mémoire (jamais en localStorage)
+9. Au-delà de l'expiration de l'access token : mutation refreshToken (sans
+   argument, le cookie est envoyé automatiquement par le navigateur) →
+   Gateway lit le cookie, appelle Auth.RefreshToken, repose un nouveau
+   cookie (rotation), retourne un nouvel AuthPayload
 ```
 
 ### 6.2 Flux — Saisie d'un index (Agent terrain)
@@ -484,6 +490,28 @@ Abonné Service consomme SuspensionRequise :
 8. Émet PaiementEnregistre
 9. Reporting Service consomme → met à jour StatsPaiements
 ```
+
+### 6.7 Flux — Création de compte et activation par e-mail
+
+```
+1. Admin envoie mutation createUser(username, email, role) — sans mot de passe
+2. Gateway vérifie le rôle ADMIN, appelle Auth.CreateUser via gRPC
+3. Auth Service crée l'utilisateur avec un mot de passe inutilisable
+   (set_unusable_password), génère un PasswordSetupToken (validité 48h)
+4. Auth Service envoie un e-mail d'activation via l'API Brevo, contenant
+   un lien vers {FRONTEND_URL}/set-password?token=...
+5. Le nouvel utilisateur ouvre le lien, Angular envoie
+   mutation activateAccount(token, password)
+6. Gateway → Auth.SetPasswordWithToken via gRPC
+7. Auth Service vérifie le token (non expiré, non utilisé), fixe le mot
+   de passe, marque le token comme utilisé
+8. L'utilisateur peut désormais se connecter via login (flux 6.1)
+```
+
+Le mot de passe oublié suit exactement le même mécanisme : mutation
+`requestPasswordReset(email)` (toujours `true`, sans révéler si l'e-mail
+existe) → e-mail avec lien → mutation `resetPassword(token, password)` →
+`Auth.SetPasswordWithToken` (même RPC que l'activation).
 
 ---
 
@@ -617,13 +645,17 @@ CREATE TABLE users (
     username        VARCHAR(100) UNIQUE NOT NULL,
     email           VARCHAR(255) UNIQUE NOT NULL,
     password_hash   VARCHAR(255) NOT NULL,
-    role            VARCHAR(20) NOT NULL CHECK (role IN ('ADMIN', 'AGENT', 'COMPTABLE')),
+    role            VARCHAR(20) NOT NULL CHECK (role IN ('ADMIN', 'AGENT', 'COMPTABLE', 'SUPERVISEUR')),
     is_active       BOOLEAN DEFAULT TRUE,
     failed_attempts INTEGER DEFAULT 0,
     locked_until    TIMESTAMP WITH TIME ZONE,
     created_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+-- password_hash est inutilisable (set_unusable_password) jusqu'à ce que
+-- l'utilisateur définisse son mot de passe via le lien d'activation reçu
+-- par e-mail (voir password_setup_tokens) — un compte créé par un admin
+-- ne peut donc pas se connecter avant cette étape.
 
 -- Tokens révoqués (blacklist JWT)
 CREATE TABLE revoked_tokens (
@@ -631,6 +663,16 @@ CREATE TABLE revoked_tokens (
     token_jti   VARCHAR(255) UNIQUE NOT NULL,
     revoked_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     expires_at  TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+-- Activation de compte / réinitialisation de mot de passe (lien envoyé par e-mail via Brevo)
+CREATE TABLE password_setup_tokens (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token       VARCHAR(64) UNIQUE NOT NULL,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expires_at  TIMESTAMP WITH TIME ZONE NOT NULL,
+    used_at     TIMESTAMP WITH TIME ZONE
 );
 ```
 
@@ -944,6 +986,8 @@ service AuthService {
   rpc DeactivateUser (UserIdRequest) returns (UserResponse);
   rpc ListUsers (EmptyRequest) returns (ListUsersResponse);
   rpc GetUser (UserIdRequest) returns (UserResponse);
+  rpc RequestPasswordReset (EmailRequest) returns (StatusResponse);
+  rpc SetPasswordWithToken (SetPasswordRequest) returns (StatusResponse);
 }
 
 message LoginRequest {
@@ -976,8 +1020,18 @@ message UserPayload {
 message CreateUserRequest {
   string username = 1;
   string email = 2;
-  string password = 3;
-  string role = 4;
+  string role = 3;
+  // Pas de password : l'utilisateur le définit via le lien d'activation
+  // envoyé par e-mail (voir RequestPasswordReset/SetPasswordWithToken).
+}
+
+message EmailRequest {
+  string email = 1;
+}
+
+message SetPasswordRequest {
+  string token = 1;
+  string new_password = 2;
 }
 
 message UpdateUserRequest {
@@ -1510,10 +1564,13 @@ message ListConfigsResponse { repeated ConfigResponse configs = 1; }
 
 type AuthPayload {
   accessToken: String!
-  refreshToken: String!
   expiresIn: Int!
   user: User!
 }
+# Le refresh token n'est jamais exposé dans le corps de la réponse : la
+# gateway le pose en cookie HttpOnly + Secure + SameSite=Strict (login,
+# refreshToken) et le lit depuis ce cookie (refreshToken, logout), afin
+# qu'il reste inaccessible à JS côté client (protection XSS).
 
 type User {
   id: ID!
@@ -1524,7 +1581,7 @@ type User {
   createdAt: String!
 }
 
-enum Role { ADMIN AGENT COMPTABLE }
+enum Role { ADMIN AGENT COMPTABLE SUPERVISEUR }
 
 type Abonne {
   id: ID!
@@ -1789,10 +1846,13 @@ type Query {
 type Mutation {
   # Auth
   login(username: String!, password: String!): AuthPayload!
-  refreshToken(token: String!): AuthPayload!
-  logout: Boolean!
-  createUser(username: String!, email: String!, password: String!, role: Role!): User!
+  refreshToken: AuthPayload!  # lit le refresh token depuis le cookie HttpOnly, pas d'argument
+  logout: Boolean!  # révoque l'access token ET supprime le cookie de refresh token
+  createUser(username: String!, email: String!, role: Role!): User!  # pas de password : e-mail d'activation envoyé
   deactivateUser(id: ID!): User!
+  requestPasswordReset(email: String!): Boolean!  # toujours true (ne révèle pas si l'e-mail existe)
+  activateAccount(token: String!, password: String!): Boolean!  # définit le 1er mot de passe (lien reçu par e-mail)
+  resetPassword(token: String!, password: String!): Boolean!  # même mécanisme que activateAccount
 
   # Abonnés
   createAbonne(input: CreateAbonneInput!): Abonne!
@@ -1830,8 +1890,13 @@ type Mutation {
 ### 11.1 Sécurité
 
 **Authentification :**
-- JWT (access token 24h, refresh token 7j)
+- JWT (access token 24h, refresh token 7j) — le refresh token est posé en
+  cookie HttpOnly + Secure + SameSite=Strict par la Gateway, jamais exposé
+  au JS client (voir flux 6.1)
 - Bcrypt pour les mots de passe (coût 12)
+- Aucun compte n'est créé avec un mot de passe fixé par un admin : un lien
+  d'activation à usage unique est envoyé par e-mail (Brevo), même
+  mécanisme pour la réinitialisation de mot de passe (voir flux 6.7)
 - Blacklist des tokens révoqués dans Auth Service
 - Blocage temporaire après 5 tentatives échouées (15 min)
 
