@@ -1,10 +1,10 @@
 # ADR — Architecture Decision Records
 ## Système de Gestion de Facturation d'Eau
 
-> **Format de référence :** Architecture Decision Records (Michael Nygard)  
-> **Version :** 1.0.0  
-> **Date :** Juin 2026  
-> **Statut global :** Validé  
+> **Format de référence :** Architecture Decision Records (Michael Nygard)
+> **Version :** 1.0.0
+> **Date :** Juin 2026
+> **Statut global :** Validé
 
 ---
 
@@ -45,9 +45,9 @@
 
 ### Titre : Architecture microservices
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -89,9 +89,9 @@ Adopter une **architecture microservices** avec 9 composants indépendants (1 AP
 
 ### Titre : gRPC pour la communication inter-services
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -133,9 +133,9 @@ Utiliser **gRPC avec Protocol Buffers v3** pour toute communication inter-servic
 
 ### Titre : GraphQL comme interface API externe unique
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -191,9 +191,9 @@ query {
 
 ### Titre : Django pour tous les services backend
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -234,9 +234,9 @@ Utiliser **Django** avec Django REST Framework comme base de chaque microservice
 
 ### Titre : PostgreSQL par service (Base de données dédiée)
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -277,9 +277,9 @@ Chaque microservice possède sa **propre instance PostgreSQL dédiée**. Aucun s
 
 ### Titre : Kubernetes + Minikube pour l'orchestration
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -322,9 +322,9 @@ Utiliser **Kubernetes avec Minikube** sur le MacBook Pro comme environnement d'o
 
 ### Titre : Canary Deployment comme stratégie de déploiement
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -374,9 +374,9 @@ Adopter le **Canary Deployment** comme stratégie principale de mise à jour des
 
 ### Titre : Angular PWA mobile-first
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -419,9 +419,9 @@ Développer le frontend en **Angular** avec le mode **PWA (Progressive Web App)*
 
 ### Titre : MacBook Pro + ngrok comme serveur
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -478,9 +478,9 @@ https://xyz-abc.ngrok.io → localhost:8000 (API Gateway)
 
 ### Titre : Telnyx comme fournisseur WhatsApp Business API
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -532,9 +532,9 @@ Pour 50 abonnés, 1 envoi/mois :
 
 ### Titre : ReportLab pour la génération de PDF
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -576,9 +576,9 @@ Utiliser **ReportLab** comme librairie Python de génération de PDF.
 
 ### Titre : Lien tokenisé pour l'accès à l'espace abonné
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -631,9 +631,9 @@ https://eau.societe.cm/espace/a1b2c3d4-e5f6-...
 
 ### Titre : Rejet de SQLite en faveur de PostgreSQL
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -666,9 +666,9 @@ Rejeter SQLite et utiliser **PostgreSQL** pour tous les services.
 
 ### Titre : Rejet du monolithe en faveur des microservices
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -697,9 +697,9 @@ Complexité opérationnelle significativement plus élevée pour un volume qui n
 
 ### Titre : Rejet de REST en faveur de GraphQL
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -731,9 +731,9 @@ Rejeter REST et adopter **GraphQL** comme interface API externe, implémenté av
 
 ### Titre : whatsapp-web.js comme alternative gratuite à Telnyx
 
-**Date :** Juin 2026  
-**Statut :** 🔄 En évaluation  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** 🔄 En évaluation
+**Décideurs :** Équipe projet
 
 ---
 
@@ -784,9 +784,9 @@ Si le risque de blocage est trop élevé         → Telnyx en production
 
 ### Titre : Strawberry comme librairie GraphQL Python
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -833,9 +833,9 @@ class Abonne:
 
 ### Titre : API Gateway sans base de données
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -871,9 +871,9 @@ L'API Gateway **n'a pas de base de données**. Il est purement stateless.
 
 ### Titre : Reporting Service en read-only aggregator
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -912,9 +912,9 @@ API Gateway query Reporting Service → réponse instantanée
 
 ### Titre : Fusion du service Compteurs dans le service Abonnés
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -944,9 +944,9 @@ Fusionner la gestion des compteurs dans l'**Abonné Service**.
 
 ### Titre : Fusion de la Tarification dans le service Facturation
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -972,9 +972,9 @@ Fusionner la tarification dans le **Facturation Service**.
 
 ### Titre : Renommage de WhatsApp Service en Notification Service
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -999,9 +999,9 @@ Renommer en **Notification Service**.
 
 ### Titre : Prix du m³ copié dans la facture au moment de la génération
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -1034,9 +1034,9 @@ facture.montant = facture.consommation * facture.prix_m3
 
 ### Titre : Délai de paiement de 5 jours après la date de relevé
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -1070,9 +1070,9 @@ facture.date_limite_paiement = (
 
 ### Titre : Processus de relance impayés en 4 étapes graduées
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -1139,9 +1139,9 @@ def check_impayes():
 
 ### Titre : Stack d'observabilité — OpenTelemetry + Prometheus + Loki + Jaeger + Grafana
 
-**Date :** Juin 2026  
-**Statut :** ✅ Accepté  
-**Décideurs :** Équipe projet  
+**Date :** Juin 2026
+**Statut :** ✅ Accepté
+**Décideurs :** Équipe projet
 
 ---
 
@@ -1220,5 +1220,5 @@ grafana-deployment       (visualisation)
 
 ---
 
-*Fin du document ADR — Système de Gestion de Facturation d'Eau*  
+*Fin du document ADR — Système de Gestion de Facturation d'Eau*
 *Toute nouvelle décision architecturale doit faire l'objet d'un ADR numéroté et daté.*

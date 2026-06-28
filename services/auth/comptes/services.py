@@ -155,7 +155,7 @@ class PasswordSetupService:
             to_email=user.email,
             to_name=user.username,
             subject=subject,
-            html_content=f"{intro_html}<p><a href=\"{link}\">{link}</a></p>"
+            html_content=f'{intro_html}<p><a href="{link}">{link}</a></p>'
             f"<p>Ce lien expire dans {settings.PASSWORD_SETUP_TOKEN_VALIDITY_HOURS} heures.</p>",
         )
 

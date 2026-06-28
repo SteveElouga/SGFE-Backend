@@ -1,10 +1,10 @@
 # Documentation Architecturale
 ## Système de Gestion de Facturation d'Eau
 
-> **Modèles de référence :** C4 Model (Simon Brown) + Arc42  
-> **Version :** 1.0.0  
-> **Date :** Juin 2026  
-> **Statut :** Validé  
+> **Modèles de référence :** C4 Model (Simon Brown) + Arc42
+> **Version :** 1.0.0
+> **Date :** Juin 2026
+> **Statut :** Validé
 
 ---
 
