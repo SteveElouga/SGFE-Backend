@@ -12,6 +12,8 @@ services:
       retries: 10
     volumes:
       - auth_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
 
   auth-service:
     build: ./services/auth
@@ -29,8 +31,8 @@ services:
       AUTH_GRPC_PORT: "50051"
       JWT_SECRET_KEY: dev-only-local-secret-change-me
       BREVO_API_KEY: ${BREVO_API_KEY:-dev-fake-key}
-      BREVO_SENDER_NAME: SGFE
-      BREVO_SENDER_EMAIL: no-reply@sgfe.example.com
+      BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-SGFE}
+      BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-no-reply@sgfe.example.com}
       FRONTEND_URL: http://localhost:4200
     ports:
       - "50051:50051"
