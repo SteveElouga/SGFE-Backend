@@ -1,11 +1,10 @@
-# Auth Service — requirements autonome (pas de -r vers la racine : chaque
-# service doit pouvoir se builder/déployer indépendamment, notamment en Docker).
-# Les versions communes sont alignées sur requirements.txt à la racine du repo,
-# qui sert de référence — pensez à le consulter avant de bumper une version ici.
+# Auth Service — requirements autonome (chaque service doit pouvoir se
+# builder/déployer indépendamment, notamment en Docker — pas de fichier
+# de dépendances partagé entre services).
 
-Django==5.0.6
-djangorestframework==3.15.1
-djangorestframework-simplejwt==5.3.1
+Django==5.2.15
+djangorestframework==3.17.1
+djangorestframework-simplejwt==5.5.1
 grpcio==1.64.1
 grpcio-tools==1.64.1
 psycopg2-binary==2.9.9

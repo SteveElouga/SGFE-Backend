@@ -18,3 +18,11 @@ repos:
       - id: check-added-large-files
         args: [--maxkb=1000]
       - id: check-case-conflict
+
+  # Valide le message de commit (Conventional Commits) — nécessite
+  # `pre-commit install --hook-type commit-msg` en plus de l'install standard.
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.16.4
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]
