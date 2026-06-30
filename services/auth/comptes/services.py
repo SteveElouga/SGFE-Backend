@@ -216,11 +216,14 @@ class PasswordSetupService:
         if not setup_token.is_valid():
             raise AuthenticationError("Token invalide ou expiré")
 
+        from django.db import transaction
+
         user = setup_token.user
-        user.set_password(new_password)
-        user.is_active = True
-        self.users.save(user)
-        setup_token.mark_used()
+        with transaction.atomic():
+            user.set_password(new_password)
+            user.is_active = True
+            self.users.save(user)
+            setup_token.mark_used()
 
 
 class PhoneOtpService:
@@ -279,7 +282,10 @@ class PhoneOtpService:
         if not otp_token.check_otp(otp_code):
             raise AuthenticationError("Code OTP invalide ou expiré")
 
-        user.set_password(new_password)
-        user.is_active = True
-        self.users.save(user)
-        otp_token.mark_used()
+        from django.db import transaction
+
+        with transaction.atomic():
+            user.set_password(new_password)
+            user.is_active = True
+            self.users.save(user)
+            otp_token.mark_used()
