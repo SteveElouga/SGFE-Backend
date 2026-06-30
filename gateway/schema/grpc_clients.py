@@ -50,6 +50,9 @@ class AuthServiceClient:
     def get_user(self, user_id: str) -> auth_pb.UserResponse:
         return self._stub.GetUser(auth_pb.UserIdRequest(user_id=user_id))
 
+    def list_users(self) -> auth_pb.ListUsersResponse:
+        return self._stub.ListUsers(auth_pb.EmptyRequest())
+
     def request_password_reset(self, email: str) -> auth_pb.StatusResponse:
         return self._stub.RequestPasswordReset(auth_pb.EmailRequest(email=email))
 

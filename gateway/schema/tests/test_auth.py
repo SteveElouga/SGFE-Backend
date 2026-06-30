@@ -254,6 +254,42 @@ class UserAdminMutationTests(SimpleTestCase):
         self.assertIn("Token invalide ou expiré", str(result.errors))
 
 
+class UsersQueryTests(SimpleTestCase):
+    def test_users_requires_admin_role(self):
+        with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="COMPTABLE")):
+            result = schema.execute_sync("query { users { username } }", context_value=context(token="access-1"))
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("Accès non autorisé", str(result.errors))
+
+    def test_users_returns_list_as_admin(self):
+        with patch.multiple(
+            auth_client,
+            validate_token=Mock(return_value=Mock(user_id="admin-1", role="ADMIN")),
+            list_users=Mock(
+                return_value=Mock(
+                    users=[
+                        make_user_response(user_id="u-1", username="agent1", role="AGENT"),
+                        make_user_response(user_id="u-2", username="comptable1", role="COMPTABLE"),
+                    ]
+                )
+            ),
+        ):
+            result = schema.execute_sync("query { users { username role } }", context_value=context(token="access-1"))
+
+        self.assertIsNone(result.errors)
+        self.assertEqual(len(result.data["users"]), 2)
+        usernames = {u["username"] for u in result.data["users"]}
+        self.assertIn("agent1", usernames)
+        self.assertIn("comptable1", usernames)
+
+    def test_users_requires_auth(self):
+        result = schema.execute_sync("query { users { username } }", context_value=context())
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("Authentification requise", str(result.errors))
+
+
 class PasswordSetupMutationTests(SimpleTestCase):
     def test_request_password_reset_returns_success(self):
         with patch.object(auth_client, "request_password_reset", return_value=Mock(success=True)):
