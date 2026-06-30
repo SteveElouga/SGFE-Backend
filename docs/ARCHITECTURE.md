@@ -1135,8 +1135,11 @@ service AbonneService {
   rpc UpdateAbonne (UpdateAbonneRequest) returns (AbonneResponse);
   rpc SuspendreAbonne (AbonneIdRequest) returns (AbonneResponse);
   rpc ReactiverAbonne (AbonneIdRequest) returns (AbonneResponse);
+  rpc ResilierAbonne (AbonneIdRequest) returns (AbonneResponse);
   rpc GetCompteur (AbonneIdRequest) returns (CompteurResponse);
+  rpc UpdateCompteur (UpdateCompteurRequest) returns (CompteurResponse);
   rpc RemplacerCompteur (RemplacerCompteurRequest) returns (CompteurResponse);
+  rpc GetHistoriqueCompteur (AbonneIdRequest) returns (ListHistoriqueResponse);
 }
 
 message AbonneIdRequest { string abonne_id = 1; }
@@ -1161,6 +1164,14 @@ message UpdateAbonneRequest {
   string prenom = 3;
   string telephone_whatsapp = 4;
   string adresse = 5;
+}
+
+message UpdateCompteurRequest {
+  string abonne_id = 1;
+  optional string quartier = 2;
+  optional int32 camp = 3;
+  optional double index_initial = 4;
+  optional string date_pose = 5;
 }
 
 message RemplacerCompteurRequest {
@@ -1195,7 +1206,17 @@ message CompteurResponse {
   string statut = 7;
 }
 
+message HistoriqueCompteurResponse {
+  string historique_id = 1;
+  CompteurResponse ancien_compteur = 2;
+  CompteurResponse nouveau_compteur = 3;
+  double index_fermeture = 4;
+  string date_remplacement = 5;
+  string created_at = 6;
+}
+
 message ListAbonnesResponse { repeated AbonneResponse abonnes = 1; }
+message ListHistoriqueResponse { repeated HistoriqueCompteurResponse historique = 1; }
 message EmptyRequest {}
 ```
 
@@ -1794,11 +1815,21 @@ type StatsPaiements {
   tauxRecouvrement: Float!
 }
 
+type HistoriqueCompteur {
+  id: ID!
+  ancienCompteur: Compteur!
+  nouveauCompteur: Compteur!
+  indexFermeture: Float!
+  dateRemplacement: String!
+  createdAt: String!
+}
+
 type InfosSociete {
   nom: String!
   adresse: String
   telephone: String
   logoPath: String
+  updatedAt: String!
 }
 
 type Config {
@@ -1857,21 +1888,32 @@ input PaiementInput {
   referenceTransaction: String
 }
 
+input UpdateCompteurInput {
+  quartier: String
+  camp: Int
+  indexInitial: Float
+  datePose: String
+}
+
 input InfosSocieteInput {
-  nom: String!
+  nom: String
   adresse: String
   telephone: String
+  logoPath: String
 }
 
 # ===================== QUERIES =====================
 
 type Query {
   # Auth
-  me: User
+  me: User                          # token requis
+  users: [User!]!                   # ADMIN uniquement
 
   # Abonnés
   abonne(id: ID!): Abonne
   abonnes(statut: StatutAbonne): [Abonne!]!
+  abonnesActifs: [Abonne!]!         # sans auth — consommé par Campagne Service
+  historiqueCompteur(id: ID!): [HistoriqueCompteur!]!
 
   # Campagnes
   campagne(id: ID!): Campagne
@@ -1898,8 +1940,9 @@ type Query {
   statsGlobales: StatsGlobalesResponse
 
   # Configuration
-  infosSociete: InfosSociete
-  configs: [Config!]!
+  infosSociete: InfosSociete        # public — apparaît sur les factures PDF
+  config(cle: String!): Config      # ADMIN uniquement
+  configs: [Config!]!               # ADMIN uniquement — retourne les 10 clés
 }
 
 # ===================== MUTATIONS =====================
@@ -1926,11 +1969,13 @@ type Mutation {
   requestPhoneOtp(phoneNumber: String!): OtpSentPayload!
   verifyOtpAndSetPassword(phoneNumber: String!, otpCode: String!, password: String!): Boolean!
 
-  # Abonnés
+  # Abonnés (ADMIN uniquement)
   createAbonne(input: CreateAbonneInput!): Abonne!
   updateAbonne(id: ID!, input: UpdateAbonneInput!): Abonne!
   suspendreAbonne(id: ID!): Abonne!
   reactiverAbonne(id: ID!): Abonne!
+  resilierAbonne(id: ID!): Abonne!
+  updateCompteur(abonneId: ID!, input: UpdateCompteurInput!): Compteur!
   remplacerCompteur(abonneId: ID!, input: RemplacerCompteurInput!): Compteur!
 
   # Campagnes
@@ -1949,15 +1994,93 @@ type Mutation {
   envoyerFacture(factureId: ID!): Envoi!
   reenvoyerFacture(factureId: ID!): Envoi!
 
-  # Configuration
+  # Configuration (ADMIN uniquement)
   updateInfosSociete(input: InfosSocieteInput!): InfosSociete!
   updateConfig(cle: String!, valeur: String!): Config!
+}
+
+# ===================== SUBSCRIPTIONS =====================
+
+type Subscription {
+  # Pousse l'abonné mis à jour en temps réel via WebSocket (Redis Pub/Sub).
+  # - Sans filtre  → toutes les modifications (page liste)
+  # - abonneId=ID  → uniquement cet abonné (page détail)
+  # Protocoles supportés : graphql-transport-ws (prioritaire) et graphql-ws.
+  abonneUpdated(abonneId: ID): Abonne!
 }
 ```
 
 ---
 
 ## 11. Concepts transversaux
+
+### 11.0 Subscriptions GraphQL temps réel (Redis Pub/Sub + WebSocket)
+
+#### Architecture
+
+```
+Frontend (Apollo Client)
+  │  WebSocket ws:///graphql (graphql-transport-ws)
+  ▼
+Gateway ASGI dispatcher (gateway/gateway/asgi.py)
+  ├── WebSocket /graphql  → strawberry.asgi.GraphQL (Starlette)
+  │                           └── Subscription.abonneUpdated
+  │                               └── redis.asyncio pubsub.listen("abonne:events")
+  └── HTTP /graphql       → Django AsyncGraphQLView (queries + mutations)
+
+Abonné Service (gRPC server)
+  └── Après chaque mutation (CreateAbonne, UpdateAbonne, Suspendre…)
+      └── redis.publish("abonne:events", {event_type, abonne_id})
+```
+
+#### Pourquoi deux apps ASGI ?
+
+`strawberry.asgi.GraphQL` (Starlette) supporte nativement les WebSocket et donc
+les subscriptions. `django.core.asgi.get_asgi_application` (Django) gère les
+requêtes HTTP avec la session, les cookies et le middleware Django.
+
+Un dispatcher ASGI minimal route :
+- `scope.type == "websocket" && path == "/graphql"` → Starlette
+- tout le reste → Django
+
+Cela préserve le fonctionnement des cookies HttpOnly (refresh token) sur HTTP
+tout en activant les subscriptions WebSocket sur le même port 8000.
+
+#### Canal Redis
+
+| Canal | Producteur | Consommateur |
+|---|---|---|
+| `abonne:events` | Abonné Service (`event_publisher.py`) | Gateway subscription resolver |
+
+Payload JSON : `{"event_type": "ABONNE_CREATED" | "ABONNE_UPDATED", "abonne_id": "<uuid>"}`
+
+#### Pattern frontend recommandé (Apollo Client)
+
+```typescript
+// Query initiale : cache-first (pas de re-fetch si données déjà en cache)
+const { data } = useQuery(GET_ABONNE, { variables: { id }, fetchPolicy: 'cache-first' });
+
+// Mise à jour temps réel via subscription
+useEffect(() => {
+  const unsub = subscribeToMore({
+    document: ABONNE_UPDATED_SUBSCRIPTION,
+    variables: { abonneId: id },
+    updateQuery: (prev, { subscriptionData }) => ({
+      abonne: subscriptionData.data.abonneUpdated,
+    }),
+  });
+  return unsub;
+}, [id]);
+```
+
+#### Résilience
+
+Le producteur (`publish_abonne_event`) capture toute exception Redis et log un
+warning — une indisponibilité Redis ne fait jamais échouer une mutation gRPC.
+Le consommateur (subscription resolver) se désinscrit proprement du canal à la
+fermeture de la connexion WebSocket.
+
+---
 
 ### 11.1 Sécurité
 

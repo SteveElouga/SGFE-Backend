@@ -1198,5 +1198,120 @@ grafana-deployment       (visualisation)
 
 ---
 
+---
+
+## ADR-027 — Redis Pub/Sub comme bus d'événements interne pour les subscriptions GraphQL
+
+**Date :** 2026-06-28
+**Statut :** Accepté
+**Décideurs :** Équipe backend
+
+### Contexte
+
+Le frontend doit recevoir les modifications d'abonnés en temps réel (suspension,
+réactivation, remplacement de compteur) sans ré-interroger le serveur à chaque
+changement de page. L'architecture microservices implique que la Gateway ne peut
+pas observer directement la base de données de l'Abonné Service.
+
+### Décision
+
+Utiliser **Redis Pub/Sub** comme bus d'événements léger entre l'Abonné Service
+(producteur) et la Gateway (consommateur via subscriptions GraphQL WebSocket).
+
+- L'Abonné Service publie sur le canal `abonne:events` après chaque mutation gRPC
+  (create, update, suspend, reactiver, resilier, update/remplace compteur).
+- La Gateway s'abonne à ce canal via `redis.asyncio` et pousse les données au
+  frontend via la subscription GraphQL `abonneUpdated`.
+- Redis est déjà présent dans la stack pour d'autres usages futurs
+  (cache, sessions APScheduler).
+
+### Conséquences
+
+**Positives :**
+- Aucun nouveau composant d'infrastructure : Redis est déjà dans docker-compose et K8s.
+- Découplage total : l'Abonné Service ne connaît pas les abonnés WebSocket.
+- Résilience : si Redis est indisponible, la publication est silencieusement ignorée
+  (log warning) — les mutations gRPC ne sont jamais bloquées.
+
+**Négatives / compromis :**
+- Pas de persistance des événements : un client déconnecté au moment d'une mutation
+  ne reçoit pas le missed event (acceptable — la query initiale `cache-first` reste
+  la source de vérité).
+- Redis Pub/Sub ne garantit pas la livraison exactement-une-fois (at-most-once).
+  Pour des cas critiques futurs (ex. événements de facturation), préférer une
+  queue persistante (Redis Streams ou Kafka).
+
+### Alternatives considérées
+
+| Alternative | Raison du rejet |
+|---|---|
+| Polling depuis le frontend | Charge inutile, latence élevée, expérience dégradée |
+| Server-Sent Events (SSE) | Unidirectionnel, pas supporté nativement par Apollo Client |
+| Kafka / Redis Streams | Trop lourd pour la volumétrie actuelle (quelques dizaines d'abonnés) |
+| WebSocket custom (sans GraphQL subscriptions) | Casse le contrat GraphQL unifié attendu par Apollo |
+
+---
+
+## ADR-028 — Dispatcher ASGI pour cohabitation WebSocket (Starlette) et HTTP (Django)
+
+**Date :** 2026-06-28
+**Statut :** Accepté
+**Décideurs :** Équipe backend
+
+### Contexte
+
+Les subscriptions GraphQL nécessitent le protocole WebSocket. Strawberry propose
+deux implémentations ASGI :
+
+1. `strawberry.asgi.GraphQL` (Starlette) — supporte WebSocket nativement.
+2. `strawberry.django.views.AsyncGraphQLView` (Django) — HTTP uniquement,
+   gère les cookies et le middleware Django.
+
+La Gateway doit exposer les deux sur le même port 8000 (contrainte Kubernetes
+ClusterIP) tout en préservant le cookie HttpOnly du refresh token (uniquement
+pertinent sur HTTP).
+
+### Décision
+
+Implémenter un **dispatcher ASGI minimal** dans `gateway/gateway/asgi.py` qui
+route les connexions en fonction du type de scope :
+
+```python
+async def application(scope, receive, send):
+    if scope["type"] == "websocket" and scope.get("path") == "/graphql":
+        await _graphql_ws_app(scope, receive, send)   # Starlette
+    else:
+        await _django_app(scope, receive, send)        # Django
+```
+
+Les deux protocoles WebSocket sont activés sur l'app Starlette :
+`GRAPHQL_TRANSPORT_WS_PROTOCOL` (prioritaire, recommandé) et `GRAPHQL_WS_PROTOCOL`
+(compat. anciens clients).
+
+### Conséquences
+
+**Positives :**
+- Un seul port exposé — aucun changement Kubernetes ou nginx.
+- Django conserve le plein contrôle sur HTTP (middleware, cookies, sessions).
+- Les subscriptions sont supportées sans migrer toute la Gateway vers Starlette.
+
+**Négatives / compromis :**
+- Le contexte GraphQL des subscriptions (Starlette) n'a pas accès au middleware
+  Django (session, CSRF). L'authentification sur les subscriptions doit passer
+  par le header `Authorization: Bearer <token>` dans le payload de connexion
+  WebSocket — pas par cookie.
+- Dépendance à `starlette` (ajoutée à `gateway/requirements.txt`).
+
+### Alternatives considérées
+
+| Alternative | Raison du rejet |
+|---|---|
+| Migrer toute la Gateway vers Starlette | Risque élevé : perte du middleware Django, cookies, CSRF |
+| Deux ports séparés (HTTP 8000, WS 8001) | Complexité Kubernetes + nginx, CORS entre ports |
+| Django Channels | Ajout de `channels` + `daphne` + `channel layers` Redis — plus lourd que le dispatcher 10 lignes |
+| Désactiver les subscriptions | Expérience frontend dégradée (polling à la place) |
+
+---
+
 *Fin du document ADR — Système de Gestion de Facturation d'Eau*
 *Toute nouvelle décision architecturale doit faire l'objet d'un ADR numéroté et daté.*
