@@ -12,6 +12,7 @@ from .campagne_types import (
     campagne_from_grpc,
     releve_from_grpc,
 )
+from .campagne_queries import _verifier_propriete_superviseur
 from .context import require_auth, require_role
 from .grpc_clients import campagne_client
 
@@ -34,17 +35,19 @@ class CampagneMutations:
 
     @strawberry.mutation
     def cloturer_campagne(self, info: strawberry.types.Info, campagne_id: str) -> Campagne:
-        """Clôture une campagne EN_COURS — ADMIN ou SUPERVISEUR."""
-        require_auth(info)
+        """Clôture une campagne EN_COURS — ADMIN (toutes), SUPERVISEUR (les siennes)."""
+        user = require_auth(info)
         require_role(info, "ADMIN", "SUPERVISEUR")
+        _verifier_propriete_superviseur(user, campagne_id)
         response = campagne_client.cloturer_campagne(campagne_id)
         return campagne_from_grpc(response)
 
     @strawberry.mutation
     def saisir_index(self, info: strawberry.types.Info, input: SaisirIndexInput) -> Releve:
-        """Saisit le nouvel index d'un abonné pour une campagne — ADMIN, AGENT, SUPERVISEUR."""
+        """Saisit le nouvel index d'un abonné — ADMIN, AGENT, SUPERVISEUR (les siennes)."""
         user = require_auth(info)
         require_role(info, "ADMIN", "AGENT", "SUPERVISEUR")
+        _verifier_propriete_superviseur(user, input.campagne_id)
         response = campagne_client.saisir_index(
             campagne_id=input.campagne_id,
             abonne_id=input.abonne_id,
@@ -56,9 +59,10 @@ class CampagneMutations:
 
     @strawberry.mutation
     def marquer_non_releve(self, info: strawberry.types.Info, input: MarquerNonReleveInput) -> Releve:
-        """Marque un relevé comme NON_RELEVE ou ESTIME — ADMIN, AGENT, SUPERVISEUR."""
+        """Marque un relevé comme NON_RELEVE ou ESTIME — ADMIN, AGENT, SUPERVISEUR (les siennes)."""
         user = require_auth(info)
         require_role(info, "ADMIN", "AGENT", "SUPERVISEUR")
+        _verifier_propriete_superviseur(user, input.campagne_id)
         response = campagne_client.marquer_non_releve(
             campagne_id=input.campagne_id,
             abonne_id=input.abonne_id,

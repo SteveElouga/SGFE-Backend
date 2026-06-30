@@ -40,11 +40,17 @@ def make_list_abonnes_response(*abonnes):
 
 
 class AbonneQueryTests(SimpleTestCase):
+    def _admin_context(self):
+        return context(token="access-1")
+
     def test_abonne_returns_abonne_with_compteur(self):
-        with patch.object(abonne_client, "get_abonne", return_value=make_abonne_response()):
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(abonne_client, "get_abonne", return_value=make_abonne_response()),
+        ):
             result = schema.execute_sync(
                 'query { abonne(id: "abonne-1") { numeroAbonne compteur { numeroCompteur } } }',
-                context_value=context(),
+                context_value=self._admin_context(),
             )
 
         self.assertIsNone(result.errors)
@@ -52,19 +58,29 @@ class AbonneQueryTests(SimpleTestCase):
         self.assertEqual(result.data["abonne"]["compteur"]["numeroCompteur"], 1)
 
     def test_abonnes_lists_all(self):
-        with patch.object(
-            abonne_client,
-            "list_abonnes",
-            return_value=make_list_abonnes_response(make_abonne_response(), make_abonne_response(abonne_id="abonne-2")),
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(
+                abonne_client,
+                "list_abonnes",
+                return_value=make_list_abonnes_response(
+                    make_abonne_response(), make_abonne_response(abonne_id="abonne-2")
+                ),
+            ),
         ):
-            result = schema.execute_sync("query { abonnes { numeroAbonne } }", context_value=context())
+            result = schema.execute_sync("query { abonnes { numeroAbonne } }", context_value=self._admin_context())
 
         self.assertIsNone(result.errors)
         self.assertEqual(len(result.data["abonnes"]), 2)
 
     def test_abonnes_filters_by_statut(self):
-        with patch.object(abonne_client, "list_abonnes", return_value=make_list_abonnes_response()) as mock_list:
-            schema.execute_sync("query { abonnes(statut: SUSPENDU) { numeroAbonne } }", context_value=context())
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(abonne_client, "list_abonnes", return_value=make_list_abonnes_response()) as mock_list,
+        ):
+            schema.execute_sync(
+                "query { abonnes(statut: SUSPENDU) { numeroAbonne } }", context_value=self._admin_context()
+            )
             mock_list.assert_called_once_with("SUSPENDU")
 
 
@@ -211,17 +227,20 @@ class AbonneMutationTests(SimpleTestCase):
 
 class AbonnesActifsQueryTests(SimpleTestCase):
     def test_abonnes_actifs_returns_list(self):
-        with patch.object(
-            abonne_client,
-            "list_abonnes_actifs",
-            return_value=make_list_abonnes_response(
-                make_abonne_response("abonne-1", "AB-0001", "ACTIF"),
-                make_abonne_response("abonne-2", "AB-0002", "ACTIF"),
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(
+                abonne_client,
+                "list_abonnes_actifs",
+                return_value=make_list_abonnes_response(
+                    make_abonne_response("abonne-1", "AB-0001", "ACTIF"),
+                    make_abonne_response("abonne-2", "AB-0002", "ACTIF"),
+                ),
             ),
         ):
             result = schema.execute_sync(
                 "query { abonnesActifs { id numeroAbonne statut } }",
-                context_value={},
+                context_value=context(token="access-1"),
             )
 
         self.assertIsNone(result.errors)
@@ -241,15 +260,18 @@ class HistoriqueCompteurQueryTests(SimpleTestCase):
         return h
 
     def test_historique_compteur_returns_list(self):
-        with patch.object(
-            abonne_client,
-            "get_historique_compteur",
-            return_value=Mock(historique=[self._make_historique_response()]),
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(
+                abonne_client,
+                "get_historique_compteur",
+                return_value=Mock(historique=[self._make_historique_response()]),
+            ),
         ):
             result = schema.execute_sync(
                 'query { historiqueCompteur(id: "abonne-1") { id indexFermeture '
                 "ancienCompteur { numeroCompteur statut } nouveauCompteur { numeroCompteur } } }",
-                context_value={},
+                context_value=context(token="access-1"),
             )
 
         self.assertIsNone(result.errors)
@@ -261,14 +283,17 @@ class HistoriqueCompteurQueryTests(SimpleTestCase):
         self.assertEqual(entry["nouveauCompteur"]["numeroCompteur"], 2)
 
     def test_historique_compteur_empty_returns_empty_list(self):
-        with patch.object(
-            abonne_client,
-            "get_historique_compteur",
-            return_value=Mock(historique=[]),
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(
+                abonne_client,
+                "get_historique_compteur",
+                return_value=Mock(historique=[]),
+            ),
         ):
             result = schema.execute_sync(
                 'query { historiqueCompteur(id: "abonne-1") { id } }',
-                context_value={},
+                context_value=context(token="access-1"),
             )
 
         self.assertIsNone(result.errors)
