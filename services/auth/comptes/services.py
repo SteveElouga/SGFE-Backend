@@ -218,6 +218,7 @@ class PasswordSetupService:
 
         user = setup_token.user
         user.set_password(new_password)
+        user.is_active = True
         self.users.save(user)
         setup_token.mark_used()
 
@@ -254,7 +255,11 @@ class PhoneOtpService:
             user = self.users.get_by_phone(phone)
         except ObjectDoesNotExist:
             return
-        if not user.is_active:
+        # Bloquer les comptes explicitement désactivés par un admin (is_active=False
+        # + mot de passe utilisable). Les comptes en attente d'activation
+        # (is_active=False + mot de passe inutilisable) peuvent recevoir un OTP
+        # pour le renvoi du code d'activation.
+        if not user.is_active and user.has_usable_password():
             return
         self.send_otp(user)
 
@@ -275,5 +280,6 @@ class PhoneOtpService:
             raise AuthenticationError("Code OTP invalide ou expiré")
 
         user.set_password(new_password)
+        user.is_active = True
         self.users.save(user)
         otp_token.mark_used()
