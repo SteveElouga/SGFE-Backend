@@ -56,6 +56,9 @@ AUTH_GRPC_PORT = env.int("AUTH_GRPC_PORT", default=50051)
 ABONNE_GRPC_HOST = env("ABONNE_GRPC_HOST", default="localhost")
 ABONNE_GRPC_PORT = env.int("ABONNE_GRPC_PORT", default=50052)
 
+CAMPAGNE_GRPC_HOST = env("CAMPAGNE_GRPC_HOST", default="localhost")
+CAMPAGNE_GRPC_PORT = env.int("CAMPAGNE_GRPC_PORT", default=50053)
+
 CONFIG_GRPC_HOST = env("CONFIG_GRPC_HOST", default="localhost")
 CONFIG_GRPC_PORT = env.int("CONFIG_GRPC_PORT", default=50058)
 

@@ -10,6 +10,8 @@ import abonne_service_pb2 as abonne_pb
 import abonne_service_pb2_grpc as abonne_pb_grpc
 import auth_service_pb2 as auth_pb
 import auth_service_pb2_grpc as auth_pb_grpc
+import campagne_service_pb2 as campagne_pb
+import campagne_service_pb2_grpc as campagne_pb_grpc
 import config_service_pb2 as config_pb
 import config_service_pb2_grpc as config_pb_grpc
 
@@ -138,6 +140,49 @@ class ConfigServiceClient:
         return self._stub.ListConfigs(config_pb.EmptyRequest())
 
 
+class CampagneServiceClient:
+    """Client gRPC vers campagne-service:50053 (voir proto/campagne_service.proto)."""
+
+    def __init__(self) -> None:
+        address = f"{settings.CAMPAGNE_GRPC_HOST}:{settings.CAMPAGNE_GRPC_PORT}"
+        self._channel = grpc.insecure_channel(address)
+        self._stub = campagne_pb_grpc.CampagneServiceStub(self._channel)
+
+    def create_campagne(self, **kwargs) -> campagne_pb.CampagneResponse:
+        return self._stub.CreateCampagne(campagne_pb.CreateCampagneRequest(**kwargs))
+
+    def get_campagne(self, campagne_id: str) -> campagne_pb.CampagneResponse:
+        return self._stub.GetCampagne(campagne_pb.CampagneIdRequest(campagne_id=campagne_id))
+
+    def list_campagnes(self, created_by: str = "", agent_id: str = "") -> campagne_pb.ListCampagnesResponse:
+        return self._stub.ListCampagnes(campagne_pb.ListCampagnesRequest(created_by=created_by, agent_id=agent_id))
+
+    def assigner_agent(self, campagne_id: str, agent_id: str) -> campagne_pb.CampagneResponse:
+        return self._stub.AssignerAgent(campagne_pb.AssignerAgentRequest(campagne_id=campagne_id, agent_id=agent_id))
+
+    def saisir_index(self, **kwargs) -> campagne_pb.ReleveResponse:
+        return self._stub.SaisirIndex(campagne_pb.SaisirIndexRequest(**kwargs))
+
+    def marquer_non_releve(self, **kwargs) -> campagne_pb.ReleveResponse:
+        return self._stub.MarquerNonReleve(campagne_pb.MarquerNonReleveRequest(**kwargs))
+
+    def get_releve(self, releve_id: str) -> campagne_pb.ReleveResponse:
+        return self._stub.GetReleve(campagne_pb.ReleveIdRequest(releve_id=releve_id))
+
+    def list_releves(self, campagne_id: str) -> campagne_pb.ListRelevesResponse:
+        return self._stub.ListReleves(campagne_pb.CampagneIdRequest(campagne_id=campagne_id))
+
+    def get_progression(self, campagne_id: str) -> campagne_pb.ProgressionResponse:
+        return self._stub.GetProgression(campagne_pb.CampagneIdRequest(campagne_id=campagne_id))
+
+    def cloturer_campagne(self, campagne_id: str) -> campagne_pb.CampagneResponse:
+        return self._stub.CloturerCampagne(campagne_pb.CampagneIdRequest(campagne_id=campagne_id))
+
+    def get_dernier_index(self, abonne_id: str) -> campagne_pb.DernierIndexResponse:
+        return self._stub.GetDernierIndex(campagne_pb.AbonneIdRequest(abonne_id=abonne_id))
+
+
 auth_client = AuthServiceClient()
 abonne_client = AbonneServiceClient()
 config_client = ConfigServiceClient()
+campagne_client = CampagneServiceClient()

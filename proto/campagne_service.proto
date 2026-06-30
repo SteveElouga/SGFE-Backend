@@ -4,7 +4,8 @@ package campagne;
 service CampagneService {
   rpc CreateCampagne (CreateCampagneRequest) returns (CampagneResponse);
   rpc GetCampagne (CampagneIdRequest) returns (CampagneResponse);
-  rpc ListCampagnes (EmptyRequest) returns (ListCampagnesResponse);
+  rpc ListCampagnes (ListCampagnesRequest) returns (ListCampagnesResponse);
+  rpc AssignerAgent (AssignerAgentRequest) returns (CampagneResponse);
   rpc SaisirIndex (SaisirIndexRequest) returns (ReleveResponse);
   rpc MarquerNonReleve (MarquerNonReleveRequest) returns (ReleveResponse);
   rpc GetReleve (ReleveIdRequest) returns (ReleveResponse);
@@ -76,6 +77,16 @@ message DernierIndexResponse {
   string abonne_id = 1;
   double dernier_index = 2;
   bool est_index_initial = 3;
+}
+
+message ListCampagnesRequest {
+  string created_by = 1;  // vide = pas de filtre propriétaire ; non-vide = filtre SUPERVISEUR
+  string agent_id = 2;    // vide = pas de filtre agent ; non-vide = campagnes où l'agent est affecté
+}
+
+message AssignerAgentRequest {
+  string campagne_id = 1;
+  string agent_id = 2;
 }
 
 message ListCampagnesResponse { repeated CampagneResponse campagnes = 1; }

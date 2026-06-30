@@ -4,6 +4,8 @@ import grpc
 from graphql import GraphQLError
 from strawberry.extensions import SchemaExtension
 
+from schema.context import AuthError
+
 # Code GraphQL (extensions.code) par code gRPC — utilisé par le frontend
 # pour distinguer les types d'erreur sans parser le message texte.
 _CODE_BY_STATUS = {
@@ -51,6 +53,10 @@ class GrpcErrorExtension(SchemaExtension):
             result = _next(root, info, *args, **kwargs)
         except grpc.RpcError as exc:
             raise _build_graphql_error(exc) from exc
+        except AuthError as exc:
+            raise GraphQLError(str(exc), extensions={"code": exc.code}) from exc
+        except PermissionError as exc:
+            raise GraphQLError(str(exc), extensions={"code": "PERMISSION_DENIED"}) from exc
 
         if inspect.isawaitable(result):
             return self._await_and_translate(result)
@@ -62,3 +68,7 @@ class GrpcErrorExtension(SchemaExtension):
             return await awaitable
         except grpc.RpcError as exc:
             raise _build_graphql_error(exc) from exc
+        except AuthError as exc:
+            raise GraphQLError(str(exc), extensions={"code": exc.code}) from exc
+        except PermissionError as exc:
+            raise GraphQLError(str(exc), extensions={"code": "PERMISSION_DENIED"}) from exc

@@ -7,11 +7,17 @@ from schema.grpc_clients import auth_client
 class AuthError(Exception):
     """Erreur d'authentification/autorisation locale (absence de token, rôle insuffisant).
 
-    Pour les erreurs renvoyées par les services gRPC eux-mêmes (token
-    invalide/expiré/révoqué, etc.), voir GrpcErrorExtension (extensions.py)
-    qui les traduit déjà en GraphQLError lisible — pas besoin de les
-    capturer ici.
+    `code` est le code machine stable renvoyé au frontend via extensions.code :
+    - "UNAUTHENTICATED" : token absent ou invalide
+    - "PERMISSION_DENIED" : rôle insuffisant
+
+    Pour les erreurs renvoyées par les services gRPC eux-mêmes, voir
+    GrpcErrorExtension (extensions.py) qui les traduit déjà.
     """
+
+    def __init__(self, message: str, code: str = "UNAUTHENTICATED") -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def extract_token(request) -> str | None:
@@ -44,7 +50,7 @@ def require_auth(info: strawberry.types.Info):
     """Valide le token de la requête courante auprès de auth-service. Lève AuthError si absent."""
     token = extract_token(info.context["request"])
     if not token:
-        raise AuthError("Authentification requise")
+        raise AuthError("Authentification requise", code="UNAUTHENTICATED")
     return auth_client.validate_token(token)
 
 
@@ -52,5 +58,5 @@ def require_role(info: strawberry.types.Info, *roles: str):
     """Valide le token ET vérifie que le rôle de l'utilisateur fait partie de `roles`."""
     user_payload = require_auth(info)
     if user_payload.role not in roles:
-        raise AuthError("Accès non autorisé")
+        raise AuthError("Accès non autorisé", code="PERMISSION_DENIED")
     return user_payload

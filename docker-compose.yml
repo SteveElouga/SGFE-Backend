@@ -41,7 +41,7 @@ services:
       whatsapp-service:
         condition: service_started
     environment:
-      DJANGO_SECRET_KEY: dev-only-local-secret-change-me
+      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
       DJANGO_DEBUG: "True"
       AUTH_DB_HOST: auth-postgres
       AUTH_DB_PORT: "5432"
@@ -49,7 +49,7 @@ services:
       AUTH_DB_USER: auth_user
       AUTH_DB_PASSWORD: devpassword
       AUTH_GRPC_PORT: "50051"
-      JWT_SECRET_KEY: dev-only-local-secret-change-me
+      JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
       BREVO_API_KEY: ${BREVO_API_KEY:-dev-fake-key}
       BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-SGFE}
       BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-no-reply@sgfe.example.com}
@@ -76,6 +76,22 @@ services:
     ports:
       - "5433:5432"
 
+  campagne-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: campagne_db
+      POSTGRES_USER: campagne_user
+      POSTGRES_PASSWORD: devpassword
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U campagne_user -d campagne_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - campagne_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+
   abonne-service:
     build: ./services/abonne
     depends_on:
@@ -84,7 +100,7 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DJANGO_SECRET_KEY: dev-only-local-secret-change-me
+      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
       DJANGO_DEBUG: "True"
       ABONNE_DB_HOST: abonne-postgres
       ABONNE_DB_PORT: "5432"
@@ -95,6 +111,29 @@ services:
       REDIS_URL: "redis://redis:6379/0"
     ports:
       - "50052:50052"
+    command: sh -c "python manage.py migrate && python manage.py grpc_server"
+
+  campagne-service:
+    build: ./services/campagne
+    depends_on:
+      campagne-postgres:
+        condition: service_healthy
+    environment:
+      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_DEBUG: "True"
+      CAMPAGNE_DB_HOST: campagne-postgres
+      CAMPAGNE_DB_PORT: "5432"
+      CAMPAGNE_DB_NAME: campagne_db
+      CAMPAGNE_DB_USER: campagne_user
+      CAMPAGNE_DB_PASSWORD: devpassword
+      CAMPAGNE_GRPC_PORT: "50053"
+      ABONNE_GRPC_HOST: abonne-service
+      ABONNE_GRPC_PORT: "50052"
+      FACTURATION_GRPC_HOST: facturation-service
+      FACTURATION_GRPC_PORT: "50054"
+      JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
+    ports:
+      - "50053:50053"
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
   config-postgres:
@@ -119,7 +158,7 @@ services:
       config-postgres:
         condition: service_healthy
     environment:
-      DJANGO_SECRET_KEY: dev-only-local-secret-change-me
+      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
       DJANGO_DEBUG: "True"
       CONFIG_DB_HOST: config-postgres
       CONFIG_DB_PORT: "5432"
@@ -136,16 +175,19 @@ services:
     depends_on:
       - auth-service
       - abonne-service
+      - campagne-service
       - config-service
       - redis
     environment:
-      DJANGO_SECRET_KEY: dev-only-local-secret-change-me
+      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
       DJANGO_DEBUG: "True"
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
       AUTH_GRPC_HOST: auth-service
       AUTH_GRPC_PORT: "50051"
       ABONNE_GRPC_HOST: abonne-service
       ABONNE_GRPC_PORT: "50052"
+      CAMPAGNE_GRPC_HOST: campagne-service
+      CAMPAGNE_GRPC_PORT: "50053"
       CONFIG_GRPC_HOST: config-service
       CONFIG_GRPC_PORT: "50058"
       GATEWAY_HTTP_PORT: "8000"
@@ -164,6 +206,7 @@ services:
 volumes:
   auth_postgres_data:
   abonne_postgres_data:
+  campagne_postgres_data:
   config_postgres_data:
   whatsapp_session:
   redis_data:
