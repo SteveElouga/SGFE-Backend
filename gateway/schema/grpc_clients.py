@@ -10,6 +10,8 @@ import abonne_service_pb2 as abonne_pb
 import abonne_service_pb2_grpc as abonne_pb_grpc
 import auth_service_pb2 as auth_pb
 import auth_service_pb2_grpc as auth_pb_grpc
+import config_service_pb2 as config_pb
+import config_service_pb2_grpc as config_pb_grpc
 
 
 class AuthServiceClient:
@@ -112,5 +114,30 @@ class AbonneServiceClient:
         return self._stub.GetHistoriqueCompteur(abonne_pb.AbonneIdRequest(abonne_id=abonne_id))
 
 
+class ConfigServiceClient:
+    """Client gRPC vers config-service:50058 (voir proto/config_service.proto)."""
+
+    def __init__(self) -> None:
+        address = f"{settings.CONFIG_GRPC_HOST}:{settings.CONFIG_GRPC_PORT}"
+        self._channel = grpc.insecure_channel(address)
+        self._stub = config_pb_grpc.ConfigServiceStub(self._channel)
+
+    def get_infos_societe(self) -> config_pb.InfosSocieteResponse:
+        return self._stub.GetInfosSociete(config_pb.EmptyRequest())
+
+    def update_infos_societe(self, **kwargs) -> config_pb.InfosSocieteResponse:
+        return self._stub.UpdateInfosSociete(config_pb.UpdateInfosRequest(**kwargs))
+
+    def get_config(self, cle: str) -> config_pb.ConfigResponse:
+        return self._stub.GetConfig(config_pb.ConfigKeyRequest(cle=cle))
+
+    def update_config(self, cle: str, valeur: str) -> config_pb.ConfigResponse:
+        return self._stub.UpdateConfig(config_pb.UpdateConfigRequest(cle=cle, valeur=valeur))
+
+    def list_configs(self) -> config_pb.ListConfigsResponse:
+        return self._stub.ListConfigs(config_pb.EmptyRequest())
+
+
 auth_client = AuthServiceClient()
 abonne_client = AbonneServiceClient()
+config_client = ConfigServiceClient()

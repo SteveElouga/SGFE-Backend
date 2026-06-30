@@ -97,11 +97,46 @@ services:
       - "50052:50052"
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
+  config-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: config_db
+      POSTGRES_USER: config_user
+      POSTGRES_PASSWORD: devpassword
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U config_user -d config_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - config_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5436:5432"
+
+  config-service:
+    build: ./services/config
+    depends_on:
+      config-postgres:
+        condition: service_healthy
+    environment:
+      DJANGO_SECRET_KEY: dev-only-local-secret-change-me
+      DJANGO_DEBUG: "True"
+      CONFIG_DB_HOST: config-postgres
+      CONFIG_DB_PORT: "5432"
+      CONFIG_DB_NAME: config_db
+      CONFIG_DB_USER: config_user
+      CONFIG_DB_PASSWORD: devpassword
+      CONFIG_GRPC_PORT: "50058"
+    ports:
+      - "50058:50058"
+    command: sh -c "python manage.py migrate && python manage.py grpc_server"
+
   gateway:
     build: ./gateway
     depends_on:
       - auth-service
       - abonne-service
+      - config-service
       - redis
     environment:
       DJANGO_SECRET_KEY: dev-only-local-secret-change-me
@@ -111,6 +146,8 @@ services:
       AUTH_GRPC_PORT: "50051"
       ABONNE_GRPC_HOST: abonne-service
       ABONNE_GRPC_PORT: "50052"
+      CONFIG_GRPC_HOST: config-service
+      CONFIG_GRPC_PORT: "50058"
       GATEWAY_HTTP_PORT: "8000"
       COOKIE_SECURE: "False"
       REDIS_URL: "redis://redis:6379/0"
@@ -127,5 +164,6 @@ services:
 volumes:
   auth_postgres_data:
   abonne_postgres_data:
+  config_postgres_data:
   whatsapp_session:
   redis_data:
