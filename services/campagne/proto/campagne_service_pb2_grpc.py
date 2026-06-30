@@ -54,6 +54,11 @@ class CampagneServiceStub(object):
                 request_serializer=campagne__service__pb2.ListCampagnesRequest.SerializeToString,
                 response_deserializer=campagne__service__pb2.ListCampagnesResponse.FromString,
                 _registered_method=True)
+        self.AssignerAgent = channel.unary_unary(
+                '/campagne.CampagneService/AssignerAgent',
+                request_serializer=campagne__service__pb2.AssignerAgentRequest.SerializeToString,
+                response_deserializer=campagne__service__pb2.CampagneResponse.FromString,
+                _registered_method=True)
         self.SaisirIndex = channel.unary_unary(
                 '/campagne.CampagneService/SaisirIndex',
                 request_serializer=campagne__service__pb2.SaisirIndexRequest.SerializeToString,
@@ -107,6 +112,12 @@ class CampagneServiceServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def ListCampagnes(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AssignerAgent(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -171,6 +182,11 @@ def add_CampagneServiceServicer_to_server(servicer, server):
                     servicer.ListCampagnes,
                     request_deserializer=campagne__service__pb2.ListCampagnesRequest.FromString,
                     response_serializer=campagne__service__pb2.ListCampagnesResponse.SerializeToString,
+            ),
+            'AssignerAgent': grpc.unary_unary_rpc_method_handler(
+                    servicer.AssignerAgent,
+                    request_deserializer=campagne__service__pb2.AssignerAgentRequest.FromString,
+                    response_serializer=campagne__service__pb2.CampagneResponse.SerializeToString,
             ),
             'SaisirIndex': grpc.unary_unary_rpc_method_handler(
                     servicer.SaisirIndex,
@@ -289,6 +305,33 @@ class CampagneService(object):
             '/campagne.CampagneService/ListCampagnes',
             campagne__service__pb2.ListCampagnesRequest.SerializeToString,
             campagne__service__pb2.ListCampagnesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AssignerAgent(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/campagne.CampagneService/AssignerAgent',
+            campagne__service__pb2.AssignerAgentRequest.SerializeToString,
+            campagne__service__pb2.CampagneResponse.FromString,
             options,
             channel_credentials,
             insecure,

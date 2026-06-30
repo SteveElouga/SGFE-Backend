@@ -154,8 +154,11 @@ class CampagneServiceClient:
     def get_campagne(self, campagne_id: str) -> campagne_pb.CampagneResponse:
         return self._stub.GetCampagne(campagne_pb.CampagneIdRequest(campagne_id=campagne_id))
 
-    def list_campagnes(self, created_by: str = "") -> campagne_pb.ListCampagnesResponse:
-        return self._stub.ListCampagnes(campagne_pb.ListCampagnesRequest(created_by=created_by))
+    def list_campagnes(self, created_by: str = "", agent_id: str = "") -> campagne_pb.ListCampagnesResponse:
+        return self._stub.ListCampagnes(campagne_pb.ListCampagnesRequest(created_by=created_by, agent_id=agent_id))
+
+    def assigner_agent(self, campagne_id: str, agent_id: str) -> campagne_pb.CampagneResponse:
+        return self._stub.AssignerAgent(campagne_pb.AssignerAgentRequest(campagne_id=campagne_id, agent_id=agent_id))
 
     def saisir_index(self, **kwargs) -> campagne_pb.ReleveResponse:
         return self._stub.SaisirIndex(campagne_pb.SaisirIndexRequest(**kwargs))

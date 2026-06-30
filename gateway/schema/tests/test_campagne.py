@@ -59,7 +59,7 @@ class TestCampagneQueries(SimpleTestCase):
         )
         info = MagicMock()
         result = CampagneQueries().campagnes(info)
-        mock_client.list_campagnes.assert_called_once_with(created_by="")
+        mock_client.list_campagnes.assert_called_once_with(created_by="", agent_id="")
         self.assertEqual(len(result), 2)
 
     @patch("schema.campagne_queries.campagne_client")
@@ -70,7 +70,17 @@ class TestCampagneQueries(SimpleTestCase):
         mock_client.list_campagnes.return_value = MagicMock(campagnes=[_campagne_response()])
         info = MagicMock()
         CampagneQueries().campagnes(info)
-        mock_client.list_campagnes.assert_called_once_with(created_by="sup-001")
+        mock_client.list_campagnes.assert_called_once_with(created_by="sup-001", agent_id="")
+
+    @patch("schema.campagne_queries.campagne_client")
+    @patch("schema.campagne_queries.require_auth")
+    @patch("schema.campagne_queries.require_role")
+    def test_campagnes_agent_filtre_par_affectation(self, mock_role, mock_auth, mock_client) -> None:
+        mock_auth.return_value = MagicMock(role="AGENT", user_id="agent-001")
+        mock_client.list_campagnes.return_value = MagicMock(campagnes=[_campagne_response()])
+        info = MagicMock()
+        CampagneQueries().campagnes(info)
+        mock_client.list_campagnes.assert_called_once_with(created_by="", agent_id="agent-001")
 
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")
@@ -135,6 +145,17 @@ class TestCampagneMutations(SimpleTestCase):
         info = MagicMock()
         result = CampagneMutations().cloturer_campagne(info, campagne_id="camp-001")
         self.assertEqual(result.statut, "CLOTUREE")
+
+    @patch("schema.campagne_mutations.campagne_client")
+    @patch("schema.campagne_mutations.require_auth")
+    @patch("schema.campagne_mutations.require_role")
+    def test_affecter_agent_admin(self, mock_role, mock_auth, mock_client) -> None:
+        mock_auth.return_value = MagicMock(role="ADMIN", user_id="admin-001")
+        mock_client.assigner_agent.return_value = _campagne_response()
+        info = MagicMock()
+        result = CampagneMutations().affecter_agent(info, campagne_id="camp-001", agent_id="agent-001")
+        self.assertEqual(result.campagne_id, "camp-001")
+        mock_client.assigner_agent.assert_called_once_with(campagne_id="camp-001", agent_id="agent-001")
 
     @patch("schema.campagne_mutations.campagne_client")
     @patch("schema.campagne_mutations.require_auth")

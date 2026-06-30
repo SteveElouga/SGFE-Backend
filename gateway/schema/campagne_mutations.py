@@ -34,6 +34,15 @@ class CampagneMutations:
         return campagne_from_grpc(response)
 
     @strawberry.mutation
+    def affecter_agent(self, info: strawberry.types.Info, campagne_id: str, agent_id: str) -> Campagne:
+        """Affecte un AGENT à une campagne — ADMIN (toutes), SUPERVISEUR (les siennes)."""
+        user = require_auth(info)
+        require_role(info, "ADMIN", "SUPERVISEUR")
+        _verifier_propriete_superviseur(user, campagne_id)
+        response = campagne_client.assigner_agent(campagne_id=campagne_id, agent_id=agent_id)
+        return campagne_from_grpc(response)
+
+    @strawberry.mutation
     def cloturer_campagne(self, info: strawberry.types.Info, campagne_id: str) -> Campagne:
         """Clôture une campagne EN_COURS — ADMIN (toutes), SUPERVISEUR (les siennes)."""
         user = require_auth(info)

@@ -17,7 +17,11 @@ import campagne_service_pb2_grpc as pb_grpc
 
 from campagnes.grpc_clients import FacturationServiceClient
 from campagnes.models import StatutReleve
-from campagnes.repositories import CampagneRepository, ReleveRepository
+from campagnes.repositories import (
+    CampagneAgentRepository,
+    CampagneRepository,
+    ReleveRepository,
+)
 from campagnes.serializers import campagne_to_proto, releve_to_proto
 from campagnes.services import CampagneService, ReleveService
 
@@ -32,6 +36,7 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         self._releve_svc = ReleveService()
         self._releve_repo = ReleveRepository()
         self._campagne_repo = CampagneRepository()
+        self._agent_repo = CampagneAgentRepository()
         self._facturation_client = FacturationServiceClient()
 
     # ------------------------------------------------------------------ #
@@ -79,14 +84,33 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         request: pb.ListCampagnesRequest,
         context: grpc.ServicerContext,
     ) -> pb.ListCampagnesResponse:
-        """Liste les campagnes, avec filtre optionnel par créateur (SUPERVISEUR)."""
+        """Liste les campagnes — filtre optionnel par créateur (SUPERVISEUR) ou agent affecté (AGENT)."""
         try:
-            campagnes = self._campagne_svc.list_campagnes(created_by=request.created_by)
+            campagnes = self._campagne_svc.list_campagnes(
+                created_by=request.created_by,
+                agent_id=request.agent_id,
+            )
             return pb.ListCampagnesResponse(
                 campagnes=[campagne_to_proto(c) for c in campagnes]
             )
         except Exception as exc:
             logger.exception("ListCampagnes échoué")
+            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+
+    def AssignerAgent(
+        self,
+        request: pb.AssignerAgentRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.CampagneResponse:
+        """Affecte un agent à une campagne — idempotent."""
+        try:
+            campagne = self._campagne_repo.get_by_id(request.campagne_id)
+            self._agent_repo.assigner(campagne=campagne, agent_id=request.agent_id)
+            return campagne_to_proto(campagne)
+        except ObjectDoesNotExist as exc:
+            context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
+        except Exception as exc:
+            logger.exception("AssignerAgent échoué")
             context.abort(grpc.StatusCode.INTERNAL, str(exc))
 
     def CloturerCampagne(

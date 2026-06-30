@@ -40,6 +40,25 @@ class Campagne(models.Model):
         return f"{self.nom} ({self.periode_mois:02d}/{self.periode_annee})"
 
 
+class CampagneAgent(models.Model):
+    """Affectation d'un AGENT à une campagne — seuls les agents affectés voient et travaillent la campagne."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    campagne = models.ForeignKey(
+        Campagne, on_delete=models.CASCADE, related_name="agents_affectes"
+    )
+    # ID de l'agent dans Auth Service — pas de FK inter-service
+    agent_id = models.CharField(max_length=36)
+    date_affectation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "campagne_agents"
+        unique_together = [("campagne", "agent_id")]
+
+    def __str__(self) -> str:
+        return f"Agent {self.agent_id} → {self.campagne}"
+
+
 class Releve(models.Model):
     """Relevé d'index pour un abonné dans une campagne (docs/ARCHITECTURE.md §8.3)."""
 

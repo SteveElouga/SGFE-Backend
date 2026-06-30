@@ -5,6 +5,7 @@ service CampagneService {
   rpc CreateCampagne (CreateCampagneRequest) returns (CampagneResponse);
   rpc GetCampagne (CampagneIdRequest) returns (CampagneResponse);
   rpc ListCampagnes (ListCampagnesRequest) returns (ListCampagnesResponse);
+  rpc AssignerAgent (AssignerAgentRequest) returns (CampagneResponse);
   rpc SaisirIndex (SaisirIndexRequest) returns (ReleveResponse);
   rpc MarquerNonReleve (MarquerNonReleveRequest) returns (ReleveResponse);
   rpc GetReleve (ReleveIdRequest) returns (ReleveResponse);
@@ -79,7 +80,13 @@ message DernierIndexResponse {
 }
 
 message ListCampagnesRequest {
-  string created_by = 1;  // vide = toutes les campagnes (ADMIN) ; non-vide = filtre SUPERVISEUR
+  string created_by = 1;  // vide = pas de filtre propriétaire ; non-vide = filtre SUPERVISEUR
+  string agent_id = 2;    // vide = pas de filtre agent ; non-vide = campagnes où l'agent est affecté
+}
+
+message AssignerAgentRequest {
+  string campagne_id = 1;
+  string agent_id = 2;
 }
 
 message ListCampagnesResponse { repeated CampagneResponse campagnes = 1; }

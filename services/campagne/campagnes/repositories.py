@@ -3,7 +3,7 @@ from typing import Optional
 from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
 
-from .models import Campagne, Releve, StatutCampagne, StatutReleve
+from .models import Campagne, CampagneAgent, Releve, StatutCampagne, StatutReleve
 
 
 class CampagneRepository:
@@ -32,10 +32,12 @@ class CampagneRepository:
         except Campagne.DoesNotExist:
             raise ObjectDoesNotExist(f"Campagne introuvable : {campagne_id}")
 
-    def list_all(self, created_by: str = "") -> list[Campagne]:
+    def list_all(self, created_by: str = "", agent_id: str = "") -> list[Campagne]:
         qs = Campagne.objects.all()
         if created_by:
             qs = qs.filter(created_by=created_by)
+        if agent_id:
+            qs = qs.filter(agents_affectes__agent_id=agent_id)
         return list(qs)
 
     def list_en_cours(self) -> list[Campagne]:
@@ -137,3 +139,20 @@ class ReleveRepository:
         for row in counts:
             result[row["statut"]] = row["total"]
         return result
+
+
+class CampagneAgentRepository:
+    """Accès base de données pour les affectations agent-campagne."""
+
+    def assigner(self, campagne: Campagne, agent_id: str) -> CampagneAgent:
+        """Affecte un agent à une campagne (idempotent — ignoré si déjà affecté)."""
+        obj, _ = CampagneAgent.objects.get_or_create(
+            campagne=campagne,
+            agent_id=agent_id,
+        )
+        return obj
+
+    def est_affecte(self, campagne_id: str, agent_id: str) -> bool:
+        return CampagneAgent.objects.filter(
+            campagne_id=campagne_id, agent_id=agent_id
+        ).exists()

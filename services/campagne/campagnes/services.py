@@ -58,8 +58,10 @@ class CampagneService:
     def get_campagne(self, campagne_id: str) -> Campagne:
         return self._repo.get_by_id(campagne_id)
 
-    def list_campagnes(self, created_by: str = "") -> list[Campagne]:
-        return self._repo.list_all(created_by=created_by)
+    def list_campagnes(
+        self, created_by: str = "", agent_id: str = ""
+    ) -> list[Campagne]:
+        return self._repo.list_all(created_by=created_by, agent_id=agent_id)
 
     def get_progression(self, campagne_id: str) -> dict[str, int]:
         """Retourne le nombre de relevés par statut pour la campagne."""
