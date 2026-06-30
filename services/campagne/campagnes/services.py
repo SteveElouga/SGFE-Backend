@@ -145,13 +145,28 @@ class ReleveService:
             observation=observation,
         )
 
-    def marquer_non_releve(self, releve_id: str, observation: str = "") -> Releve:
+    def marquer_non_releve(
+        self,
+        releve_id: str,
+        statut: str = StatutReleve.NON_RELEVE,
+        observation: str = "",
+    ) -> Releve:
+        if statut not in (StatutReleve.NON_RELEVE, StatutReleve.ESTIME):
+            raise ValidationError(
+                f"Statut invalide : {statut}. Valeurs attendues : NON_RELEVE, ESTIME."
+            )
         releve = self._repo.get_by_id(releve_id)
         if releve.campagne.statut != StatutCampagne.EN_COURS:
             raise ValidationError(
                 "Le relevé ne peut être modifié que sur une campagne EN_COURS."
             )
-        return self._repo.marquer_non_releve(releve, observation=observation)
+        if releve.statut == StatutReleve.RELEVE:
+            raise ValidationError(
+                "Un relevé déjà saisi ne peut pas être marqué non-relevé."
+            )
+        return self._repo.marquer_non_releve(
+            releve, statut=statut, observation=observation
+        )
 
     def get_releve(self, releve_id: str) -> Releve:
         return self._repo.get_by_id(releve_id)

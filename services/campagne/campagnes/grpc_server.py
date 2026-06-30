@@ -205,18 +205,20 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.ReleveResponse:
         """Marque un relevé comme NON_RELEVE ou ESTIME."""
-        try:
-            releve = self._releve_repo.get_by_campagne_abonne(
-                request.campagne_id, request.abonne_id
+        releve = self._releve_repo.get_by_campagne_abonne(
+            request.campagne_id, request.abonne_id
+        )
+        if releve is None:
+            context.abort(
+                grpc.StatusCode.NOT_FOUND,
+                f"Relevé introuvable pour l'abonné {request.abonne_id} dans la campagne.",
             )
-            if releve is None:
-                context.abort(
-                    grpc.StatusCode.NOT_FOUND,
-                    f"Relevé introuvable pour l'abonné {request.abonne_id} dans la campagne.",
-                )
-                return
+            return
+        try:
             releve = self._releve_svc.marquer_non_releve(
-                str(releve.id), observation=request.observation
+                str(releve.id),
+                statut=request.statut or "NON_RELEVE",
+                observation=request.observation,
             )
             return releve_to_proto(releve)
         except ObjectDoesNotExist as exc:
@@ -265,7 +267,7 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         """Retourne le dernier index relevé pour un abonné (pour pré-remplissage)."""
         try:
             valeur = self._get_dernier_index_value(request.abonne_id)
-            est_initial = valeur == 0.0
+            est_initial = valeur < 1e-9
             return pb.DernierIndexResponse(
                 abonne_id=request.abonne_id,
                 dernier_index=valeur,

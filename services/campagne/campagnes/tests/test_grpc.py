@@ -86,7 +86,7 @@ class TestListCampagnesRPC(TestCase):
     def setUp(self) -> None:
         self.servicer = CampagneServicer()
         svc = CampagneService()
-        svc.creer_campagne("C1", 1, 2026, created_by="user-A")
+        self.c1 = svc.creer_campagne("C1", 1, 2026, created_by="user-A")
         svc.creer_campagne("C2", 2, 2026, created_by="user-B")
 
     def test_list_all_sans_filtre(self) -> None:
@@ -99,6 +99,55 @@ class TestListCampagnesRPC(TestCase):
         response = self.servicer.ListCampagnes(request, _mock_context())
         self.assertEqual(len(response.campagnes), 1)
         self.assertEqual(response.campagnes[0].nom, "C1")
+
+    def test_list_filtre_agent_id(self) -> None:
+        self.servicer.AssignerAgent(
+            pb.AssignerAgentRequest(campagne_id=str(self.c1.id), agent_id="agent-X"),
+            _mock_context(),
+        )
+        request = pb.ListCampagnesRequest(agent_id="agent-X")
+        response = self.servicer.ListCampagnes(request, _mock_context())
+        self.assertEqual(len(response.campagnes), 1)
+        self.assertEqual(response.campagnes[0].nom, "C1")
+
+    def test_list_filtre_agent_id_sans_affectation_retourne_vide(self) -> None:
+        request = pb.ListCampagnesRequest(agent_id="agent-inconnu")
+        response = self.servicer.ListCampagnes(request, _mock_context())
+        self.assertEqual(len(response.campagnes), 0)
+
+
+class TestAssignerAgentRPC(TestCase):
+    def setUp(self) -> None:
+        self.servicer = CampagneServicer()
+        svc = CampagneService()
+        self.campagne = svc.creer_campagne("C1", 1, 2026, created_by="user-A")
+
+    def test_assigner_agent_succes(self) -> None:
+        request = pb.AssignerAgentRequest(
+            campagne_id=str(self.campagne.id), agent_id="agent-001"
+        )
+        response = self.servicer.AssignerAgent(request, _mock_context())
+        self.assertEqual(response.campagne_id, str(self.campagne.id))
+
+    def test_assigner_agent_idempotent(self) -> None:
+        req = pb.AssignerAgentRequest(
+            campagne_id=str(self.campagne.id), agent_id="agent-001"
+        )
+        self.servicer.AssignerAgent(req, _mock_context())
+        # deuxième appel ne doit pas lever d'exception
+        response = self.servicer.AssignerAgent(req, _mock_context())
+        self.assertEqual(response.campagne_id, str(self.campagne.id))
+
+    def test_assigner_agent_campagne_inexistante_abort(self) -> None:
+        request = pb.AssignerAgentRequest(
+            campagne_id="00000000-0000-0000-0000-000000000000", agent_id="agent-001"
+        )
+        ctx = _mock_context()
+        with self.assertRaises(Exception):
+            self.servicer.AssignerAgent(request, ctx)
+        ctx.abort.assert_called_once_with(
+            grpc.StatusCode.NOT_FOUND, ctx.abort.call_args[0][1]
+        )
 
 
 class TestCloturerCampagneRPC(TestCase):
@@ -189,6 +238,116 @@ class TestGetProgressionRPC(TestCase):
         self.assertEqual(response.nb_releves, 0)
         self.assertEqual(response.nb_en_attente, 2)
         self.assertAlmostEqual(response.pourcentage, 0.0)
+
+
+class TestMarquerNonReleveRPC(TestCase):
+    def setUp(self) -> None:
+        self.servicer = CampagneServicer()
+        svc = CampagneService()
+        campagne = svc.creer_campagne("C1", 1, 2026, created_by="user-A")
+        svc.demarrer_campagne(str(campagne.id))
+        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", 100.0)
+        self.campagne = campagne
+
+    def test_marquer_non_releve_succes(self) -> None:
+        request = pb.MarquerNonReleveRequest(
+            campagne_id=str(self.campagne.id),
+            abonne_id="abonne-001",
+            statut="NON_RELEVE",
+            observation="Absent",
+        )
+        response = self.servicer.MarquerNonReleve(request, _mock_context())
+        self.assertEqual(response.statut, StatutReleve.NON_RELEVE)
+
+    def test_marquer_estime_succes(self) -> None:
+        request = pb.MarquerNonReleveRequest(
+            campagne_id=str(self.campagne.id),
+            abonne_id="abonne-001",
+            statut="ESTIME",
+            observation="Compteur illisible",
+        )
+        response = self.servicer.MarquerNonReleve(request, _mock_context())
+        self.assertEqual(response.statut, StatutReleve.ESTIME)
+
+    def test_marquer_statut_invalide_abort(self) -> None:
+        request = pb.MarquerNonReleveRequest(
+            campagne_id=str(self.campagne.id),
+            abonne_id="abonne-001",
+            statut="RELEVE",
+        )
+        ctx = _mock_context()
+        with self.assertRaises(Exception):
+            self.servicer.MarquerNonReleve(request, ctx)
+        ctx.abort.assert_called_once()
+
+    def test_marquer_releve_absent_abort(self) -> None:
+        request = pb.MarquerNonReleveRequest(
+            campagne_id=str(self.campagne.id),
+            abonne_id="abonne-inconnu",
+            statut="NON_RELEVE",
+        )
+        ctx = _mock_context()
+        with self.assertRaises(Exception):
+            self.servicer.MarquerNonReleve(request, ctx)
+        ctx.abort.assert_called_once_with(
+            grpc.StatusCode.NOT_FOUND, ctx.abort.call_args[0][1]
+        )
+
+
+class TestGetReleveRPC(TestCase):
+    def setUp(self) -> None:
+        self.servicer = CampagneServicer()
+        svc = CampagneService()
+        campagne = svc.creer_campagne("C1", 1, 2026, created_by="user-A")
+        svc.demarrer_campagne(str(campagne.id))
+        releve = svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", 100.0)
+        from campagnes.services import ReleveService
+
+        ReleveService().saisir_index(
+            str(releve.id), nouveau_index=150.0, agent_id="agent-001"
+        )
+        self.releve_id = str(releve.id)
+
+    def test_get_releve_succes(self) -> None:
+        request = pb.ReleveIdRequest(releve_id=self.releve_id)
+        response = self.servicer.GetReleve(request, _mock_context())
+        self.assertEqual(response.releve_id, self.releve_id)
+        self.assertEqual(response.statut, StatutReleve.RELEVE)
+        self.assertAlmostEqual(response.consommation, 50.0)
+
+    def test_get_releve_inexistant_abort(self) -> None:
+        request = pb.ReleveIdRequest(releve_id="00000000-0000-0000-0000-000000000000")
+        ctx = _mock_context()
+        with self.assertRaises(Exception):
+            self.servicer.GetReleve(request, ctx)
+        ctx.abort.assert_called_once_with(
+            grpc.StatusCode.NOT_FOUND, ctx.abort.call_args[0][1]
+        )
+
+
+class TestListRelevesRPC(TestCase):
+    def setUp(self) -> None:
+        self.servicer = CampagneServicer()
+        svc = CampagneService()
+        campagne = svc.creer_campagne("C1", 1, 2026, created_by="user-A")
+        svc.demarrer_campagne(str(campagne.id))
+        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", 100.0)
+        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-002", 200.0)
+        self.campagne = campagne
+
+    def test_list_releves_retourne_tous(self) -> None:
+        request = pb.CampagneIdRequest(campagne_id=str(self.campagne.id))
+        response = self.servicer.ListReleves(request, _mock_context())
+        self.assertEqual(len(response.releves), 2)
+
+    def test_list_releves_campagne_inexistante_abort(self) -> None:
+        request = pb.CampagneIdRequest(
+            campagne_id="00000000-0000-0000-0000-000000000000"
+        )
+        ctx = _mock_context()
+        with self.assertRaises(Exception):
+            self.servicer.ListReleves(request, ctx)
+        ctx.abort.assert_called_once()
 
 
 class TestGetDernierIndexRPC(TestCase):

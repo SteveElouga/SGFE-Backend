@@ -4,6 +4,7 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.test import TestCase
 
 from campagnes.models import Campagne, StatutCampagne, StatutReleve
+from campagnes.repositories import CampagneAgentRepository, CampagneRepository
 from campagnes.services import CampagneService, ReleveService
 
 
@@ -197,16 +198,37 @@ class TestReleveService(TestCase):
                 str(self.releve.id), nouveau_index=150.0, agent_id="agent-001"
             )
 
-    # --- marquer non relevé ---
+    # --- marquer non relevé / estimé ---
 
     def test_marquer_non_releve_succes(self) -> None:
-        releve = self.svc.marquer_non_releve(str(self.releve.id), observation="Absent")
+        releve = self.svc.marquer_non_releve(
+            str(self.releve.id), statut=StatutReleve.NON_RELEVE, observation="Absent"
+        )
         self.assertEqual(releve.statut, StatutReleve.NON_RELEVE)
         self.assertEqual(releve.observation, "Absent")
 
-    def test_marquer_non_releve_campagne_cloturee_leve_erreur(self) -> None:
-        from campagnes.repositories import CampagneRepository
+    def test_marquer_estime_succes(self) -> None:
+        releve = self.svc.marquer_non_releve(
+            str(self.releve.id),
+            statut=StatutReleve.ESTIME,
+            observation="Compteur illisible",
+        )
+        self.assertEqual(releve.statut, StatutReleve.ESTIME)
 
+    def test_marquer_statut_invalide_leve_erreur(self) -> None:
+        with self.assertRaises(ValidationError):
+            self.svc.marquer_non_releve(str(self.releve.id), statut="RELEVE")
+
+    def test_marquer_releve_deja_saisi_leve_erreur(self) -> None:
+        self.svc.saisir_index(
+            str(self.releve.id), nouveau_index=150.0, agent_id="agent-001"
+        )
+        with self.assertRaises(ValidationError):
+            self.svc.marquer_non_releve(
+                str(self.releve.id), statut=StatutReleve.NON_RELEVE
+            )
+
+    def test_marquer_non_releve_campagne_cloturee_leve_erreur(self) -> None:
         CampagneRepository().update_statut(self.campagne, StatutCampagne.CLOTUREE)
         with self.assertRaises(ValidationError):
             self.svc.marquer_non_releve(str(self.releve.id))
@@ -227,3 +249,85 @@ class TestReleveService(TestCase):
         )
         releves = self.svc.list_releves(str(self.campagne.id))
         self.assertEqual(len(releves), 2)
+
+
+class TestCampagneAgentRepository(TestCase):
+    """Tests de CampagneAgentRepository."""
+
+    def setUp(self) -> None:
+        self.repo = CampagneAgentRepository()
+        self.campagne = CampagneService().creer_campagne(
+            nom="Campagne Test", periode_mois=6, periode_annee=2026, created_by="user-A"
+        )
+
+    def test_assigner_agent_cree_affectation(self) -> None:
+        affectation = self.repo.assigner(self.campagne, agent_id="agent-001")
+        self.assertEqual(affectation.agent_id, "agent-001")
+        self.assertEqual(affectation.campagne_id, self.campagne.id)
+
+    def test_assigner_agent_idempotent(self) -> None:
+        self.repo.assigner(self.campagne, agent_id="agent-001")
+        self.repo.assigner(self.campagne, agent_id="agent-001")  # pas d'exception
+        from campagnes.models import CampagneAgent
+
+        count = CampagneAgent.objects.filter(
+            campagne=self.campagne, agent_id="agent-001"
+        ).count()
+        self.assertEqual(count, 1)
+
+    def test_est_affecte_retourne_vrai(self) -> None:
+        self.repo.assigner(self.campagne, agent_id="agent-001")
+        self.assertTrue(self.repo.est_affecte(str(self.campagne.id), "agent-001"))
+
+    def test_est_affecte_retourne_faux_si_non_affecte(self) -> None:
+        self.assertFalse(self.repo.est_affecte(str(self.campagne.id), "agent-inconnu"))
+
+    def test_filtre_list_campagnes_par_agent(self) -> None:
+        c2 = CampagneService().creer_campagne(
+            nom="Autre campagne",
+            periode_mois=7,
+            periode_annee=2026,
+            created_by="user-B",
+        )
+        self.repo.assigner(self.campagne, agent_id="agent-001")
+        self.repo.assigner(c2, agent_id="agent-002")
+        campagnes = CampagneRepository().list_all(agent_id="agent-001")
+        self.assertEqual(len(campagnes), 1)
+        self.assertEqual(campagnes[0].id, self.campagne.id)
+
+
+class TestScheduler(TestCase):
+    """Tests du cron 7h00 — démarrage des campagnes planifiées."""
+
+    def setUp(self) -> None:
+        self.svc = CampagneService()
+
+    def test_demarrage_campagne_planifiee_pour_aujourd_hui(self) -> None:
+        from datetime import date
+        from campagnes.schedulers import campagne_planifiee_job
+
+        campagne = self.svc.creer_campagne(
+            nom="Campagne Aujourd'hui",
+            periode_mois=6,
+            periode_annee=2026,
+            created_by="user-A",
+            date_planifiee=str(date.today()),
+        )
+        campagne_planifiee_job()
+        campagne.refresh_from_db()
+        self.assertEqual(campagne.statut, StatutCampagne.EN_COURS)
+
+    def test_aucune_campagne_planifiee_ne_change_rien(self) -> None:
+        from datetime import date, timedelta
+        from campagnes.schedulers import campagne_planifiee_job
+
+        campagne = self.svc.creer_campagne(
+            nom="Campagne Demain",
+            periode_mois=7,
+            periode_annee=2026,
+            created_by="user-A",
+            date_planifiee=str(date.today() + timedelta(days=1)),
+        )
+        campagne_planifiee_job()
+        campagne.refresh_from_db()
+        self.assertEqual(campagne.statut, StatutCampagne.PLANIFIEE)

@@ -120,8 +120,13 @@ class ReleveRepository:
         )
         return releve
 
-    def marquer_non_releve(self, releve: Releve, observation: str = "") -> Releve:
-        releve.statut = StatutReleve.NON_RELEVE
+    def marquer_non_releve(
+        self,
+        releve: Releve,
+        statut: str = StatutReleve.NON_RELEVE,
+        observation: str = "",
+    ) -> Releve:
+        releve.statut = statut
         releve.observation = observation
         releve.save(update_fields=["statut", "observation"])
         return releve
