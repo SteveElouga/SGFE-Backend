@@ -8,8 +8,18 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 from comptes.email_client import email_client
-from comptes.models import User
-from comptes.repositories import PasswordSetupTokenRepository, RevokedTokenRepository, UserRepository
+from comptes.models import User, _generate_otp
+from comptes.repositories import (
+    PasswordSetupTokenRepository,
+    PhoneOtpTokenRepository,
+    RevokedTokenRepository,
+    UserRepository,
+)
+from comptes.validators import validate_phone_cameroon
+from comptes.whatsapp_client import whatsapp_client
+
+
+_MSG_INVALID_CREDENTIALS = "Identifiants invalides"
 
 
 class AuthenticationError(Exception):
@@ -23,11 +33,12 @@ class AuthService:
         self.users = UserRepository()
         self.revoked_tokens = RevokedTokenRepository()
 
-    def login(self, username: str, password: str) -> tuple[str, str, int]:
+    def login(self, identifier: str, password: str) -> tuple[str, str, int]:
+        """Authentifie un utilisateur par son username ou son numéro de téléphone."""
         try:
-            user = self.users.get_by_username(username)
+            user = self.users.get_by_username_or_phone(identifier)
         except ObjectDoesNotExist as exc:
-            raise AuthenticationError("Identifiants invalides") from exc
+            raise AuthenticationError(_MSG_INVALID_CREDENTIALS) from exc
 
         if user.locked_until and user.locked_until > timezone.now():
             raise AuthenticationError("Compte verrouillé temporairement")
@@ -37,7 +48,7 @@ class AuthService:
 
         if not check_password(password, user.password):
             self._enregistrer_echec(user)
-            raise AuthenticationError("Identifiants invalides")
+            raise AuthenticationError(_MSG_INVALID_CREDENTIALS)
 
         user.failed_attempts = 0
         user.locked_until = None
@@ -107,20 +118,35 @@ class UserAdminService:
     def __init__(self) -> None:
         self.users = UserRepository()
         self.password_setup = PasswordSetupService()
+        self.phone_otp = PhoneOtpService()
 
-    def create_user(self, username: str, email: str, role: str) -> User:
-        # Pas de mot de passe fixé par l'admin : l'utilisateur le définit
-        # lui-même via le lien d'activation envoyé par e-mail.
-        user = self.users.create(username=username, email=email, role=role)
-        self.password_setup.send_activation_email(user)
+    def create_user(self, username: str, phone_number: str, role: str, email: str = "") -> User:
+        """Crée un utilisateur et déclenche le flux d'activation adapté au rôle.
+
+        ADMIN : activation par e-mail (lien de définition du mot de passe).
+        Autres rôles : activation par OTP WhatsApp.
+        """
+        phone = validate_phone_cameroon(phone_number)
+
+        if role == "ADMIN":
+            if not email:
+                raise ValueError("L'e-mail est obligatoire pour le rôle ADMIN")
+            user = self.users.create(username=username, email=email, phone_number=phone, role=role)
+            self.password_setup.send_activation_email(user)
+        else:
+            user = self.users.create(username=username, phone_number=phone, role=role)
+            self.phone_otp.send_otp(user)
+
         return user
 
-    def update_user(self, user_id: str, email: str, role: str) -> User:
+    def update_user(self, user_id: str, email: str, role: str, phone_number: str = "") -> User:
         user = self.users.get_by_id(user_id)
         if email:
             user.email = email
         if role:
             user.role = role
+        if phone_number:
+            user.phone_number = validate_phone_cameroon(phone_number)
         return self.users.save(user)
 
     def deactivate_user(self, user_id: str) -> User:
@@ -136,7 +162,7 @@ class UserAdminService:
 
 
 class PasswordSetupService:
-    """Activation de compte et réinitialisation de mot de passe par e-mail.
+    """Activation de compte et réinitialisation de mot de passe par e-mail (ADMIN uniquement).
 
     Les deux flux partagent le même mécanisme : un token à usage unique,
     limité dans le temps, envoyé par e-mail, qui permet de définir un
@@ -172,6 +198,9 @@ class PasswordSetupService:
             user = self.users.get_by_email(email)
         except ObjectDoesNotExist:
             return
+        # Seul l'ADMIN peut réinitialiser par e-mail
+        if user.role != "ADMIN":
+            return
         self._create_token_and_send(
             user,
             subject="Réinitialisation de votre mot de passe SGFE",
@@ -191,3 +220,60 @@ class PasswordSetupService:
         user.set_password(new_password)
         self.users.save(user)
         setup_token.mark_used()
+
+
+class PhoneOtpService:
+    """Activation de compte et réinitialisation de mot de passe par OTP WhatsApp.
+
+    Utilisé pour tous les rôles (ADMIN peut aussi passer par ce flux en plus de l'e-mail).
+    L'OTP est valide pendant PHONE_OTP_VALIDITY_MINUTES minutes, à usage unique.
+    """
+
+    def __init__(self) -> None:
+        self.users = UserRepository()
+        self.otp_tokens = PhoneOtpTokenRepository()
+
+    def send_otp(self, user: User) -> None:
+        """Génère un OTP, invalide les précédents, et l'envoie par WhatsApp."""
+        self.otp_tokens.invalidate_previous(user)
+        raw_otp = _generate_otp()
+        expires_at = timezone.now() + timedelta(minutes=settings.PHONE_OTP_VALIDITY_MINUTES)
+        self.otp_tokens.create(user=user, raw_otp=raw_otp, expires_at=expires_at)
+        whatsapp_client.send(
+            to_phone=user.phone_number,
+            message=f"Votre code SGFE : {raw_otp}\nValable {settings.PHONE_OTP_VALIDITY_MINUTES} minutes. Ne le partagez jamais.",
+        )
+
+    def request_otp_by_phone(self, phone_number: str) -> None:
+        """Point d'entrée public : résout l'utilisateur par téléphone et envoie un OTP.
+
+        Succès silencieux si le numéro n'existe pas (ne révèle pas les comptes).
+        """
+        phone = validate_phone_cameroon(phone_number)
+        try:
+            user = self.users.get_by_phone(phone)
+        except ObjectDoesNotExist:
+            return
+        if not user.is_active:
+            return
+        self.send_otp(user)
+
+    def verify_otp_and_set_password(self, phone_number: str, otp_code: str, new_password: str) -> None:
+        """Vérifie l'OTP et définit le nouveau mot de passe si valide."""
+        phone = validate_phone_cameroon(phone_number)
+
+        try:
+            user = self.users.get_by_phone(phone)
+        except ObjectDoesNotExist as exc:
+            raise AuthenticationError(_MSG_INVALID_CREDENTIALS) from exc
+
+        otp_token = self.otp_tokens.get_latest_valid(user)
+        if otp_token is None or not otp_token.is_valid():
+            raise AuthenticationError("Code OTP invalide ou expiré")
+
+        if not otp_token.check_otp(otp_code):
+            raise AuthenticationError("Code OTP invalide ou expiré")
+
+        user.set_password(new_password)
+        self.users.save(user)
+        otp_token.mark_used()

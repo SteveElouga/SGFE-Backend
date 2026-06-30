@@ -6,3 +6,5 @@ grpcio==1.64.1
 grpcio-tools==1.64.1
 django-environ==0.11.2
 daphne==4.2.2
+redis[hiredis]==5.2.1
+starlette==0.46.2

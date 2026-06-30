@@ -63,6 +63,14 @@ class UpdateAbonneInput:
 
 
 @strawberry.input
+class UpdateCompteurInput:
+    quartier: str | None = None
+    camp: int | None = None
+    index_initial: float | None = None
+    date_pose: str | None = None
+
+
+@strawberry.input
 class RemplacerCompteurInput:
     index_fermeture: float
     nouveau_numero_compteur: int
@@ -70,6 +78,16 @@ class RemplacerCompteurInput:
     nouveau_camp: int
     nouvel_index_initial: float
     date_remplacement: str
+
+
+@strawberry.type
+class HistoriqueCompteur:
+    id: strawberry.ID
+    ancien_compteur: Compteur
+    nouveau_compteur: Compteur
+    index_fermeture: float
+    date_remplacement: str
+    created_at: str
 
 
 def compteur_from_grpc(compteur_response) -> Compteur:
@@ -81,6 +99,17 @@ def compteur_from_grpc(compteur_response) -> Compteur:
         index_initial=compteur_response.index_initial,
         date_pose=compteur_response.date_pose,
         statut=StatutCompteur(compteur_response.statut),
+    )
+
+
+def historique_from_grpc(h) -> HistoriqueCompteur:
+    return HistoriqueCompteur(
+        id=strawberry.ID(h.historique_id),
+        ancien_compteur=compteur_from_grpc(h.ancien_compteur),
+        nouveau_compteur=compteur_from_grpc(h.nouveau_compteur),
+        index_fermeture=h.index_fermeture,
+        date_remplacement=h.date_remplacement,
+        created_at=h.created_at,
     )
 
 

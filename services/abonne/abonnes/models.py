@@ -42,7 +42,7 @@ class Compteur(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     abonne = models.ForeignKey(Abonne, on_delete=models.CASCADE, related_name="compteurs")
-    numero_compteur = models.IntegerField()
+    numero_compteur = models.IntegerField(unique=True)
     quartier = models.CharField(max_length=100)
     camp = models.IntegerField()
     index_initial = models.DecimalField(max_digits=10, decimal_places=3, default=0)

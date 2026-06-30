@@ -9,8 +9,11 @@ service AbonneService {
   rpc UpdateAbonne (UpdateAbonneRequest) returns (AbonneResponse);
   rpc SuspendreAbonne (AbonneIdRequest) returns (AbonneResponse);
   rpc ReactiverAbonne (AbonneIdRequest) returns (AbonneResponse);
+  rpc ResilierAbonne (AbonneIdRequest) returns (AbonneResponse);
   rpc GetCompteur (AbonneIdRequest) returns (CompteurResponse);
+  rpc UpdateCompteur (UpdateCompteurRequest) returns (CompteurResponse);
   rpc RemplacerCompteur (RemplacerCompteurRequest) returns (CompteurResponse);
+  rpc GetHistoriqueCompteur (AbonneIdRequest) returns (ListHistoriqueResponse);
 }
 
 message AbonneIdRequest { string abonne_id = 1; }
@@ -35,6 +38,14 @@ message UpdateAbonneRequest {
   string prenom = 3;
   string telephone_whatsapp = 4;
   string adresse = 5;
+}
+
+message UpdateCompteurRequest {
+  string abonne_id = 1;
+  optional string quartier = 2;
+  optional int32 camp = 3;
+  optional double index_initial = 4;
+  optional string date_pose = 5;
 }
 
 message RemplacerCompteurRequest {
@@ -71,3 +82,16 @@ message CompteurResponse {
 
 message ListAbonnesResponse { repeated AbonneResponse abonnes = 1; }
 message EmptyRequest {}
+
+message HistoriqueCompteurResponse {
+  string historique_id = 1;
+  CompteurResponse ancien_compteur = 2;
+  CompteurResponse nouveau_compteur = 3;
+  double index_fermeture = 4;
+  string date_remplacement = 5;
+  string created_at = 6;
+}
+
+message ListHistoriqueResponse {
+  repeated HistoriqueCompteurResponse historique = 1;
+}

@@ -2,6 +2,7 @@ syntax = "proto3";
 package auth;
 
 service AuthService {
+  // identifier accepte un username ou un numéro de téléphone (+237XXXXXXXXX)
   rpc Login (LoginRequest) returns (TokenResponse);
   rpc ValidateToken (TokenRequest) returns (UserPayload);
   rpc RefreshToken (RefreshRequest) returns (TokenResponse);
@@ -11,12 +12,17 @@ service AuthService {
   rpc DeactivateUser (UserIdRequest) returns (UserResponse);
   rpc ListUsers (EmptyRequest) returns (ListUsersResponse);
   rpc GetUser (UserIdRequest) returns (UserResponse);
+  // Reset mot de passe ADMIN uniquement (lien e-mail)
   rpc RequestPasswordReset (EmailRequest) returns (StatusResponse);
   rpc SetPasswordWithToken (SetPasswordRequest) returns (StatusResponse);
+  // Activation et reset par OTP WhatsApp (tous les rôles)
+  rpc RequestPhoneOtp (PhoneRequest) returns (StatusResponse);
+  rpc VerifyOtpAndSetPassword (VerifyOtpRequest) returns (StatusResponse);
 }
 
 message LoginRequest {
-  string username = 1;
+  // Accepte un nom d'utilisateur ou un numéro de téléphone camerounais (+237XXXXXXXXX)
+  string identifier = 1;
   string password = 2;
 }
 
@@ -40,18 +46,24 @@ message UserPayload {
   string email = 3;
   string role = 4;
   bool is_active = 5;
+  string phone_number = 6;
 }
 
 message CreateUserRequest {
   string username = 1;
+  // Obligatoire pour ADMIN, ignoré pour les autres rôles
   string email = 2;
   string role = 3;
-  // Pas de password : l'utilisateur le définit via le lien d'activation
-  // envoyé par e-mail (voir RequestPasswordReset/SetPasswordWithToken).
+  // Obligatoire pour tous les rôles
+  string phone_number = 4;
 }
 
 message EmailRequest {
   string email = 1;
+}
+
+message PhoneRequest {
+  string phone_number = 1;
 }
 
 message SetPasswordRequest {
@@ -59,10 +71,17 @@ message SetPasswordRequest {
   string new_password = 2;
 }
 
+message VerifyOtpRequest {
+  string phone_number = 1;
+  string otp_code = 2;
+  string new_password = 3;
+}
+
 message UpdateUserRequest {
   string user_id = 1;
   string email = 2;
   string role = 3;
+  string phone_number = 4;
 }
 
 message UserIdRequest {
@@ -76,6 +95,7 @@ message UserResponse {
   string role = 4;
   bool is_active = 5;
   string created_at = 6;
+  string phone_number = 7;
 }
 
 message ListUsersResponse {

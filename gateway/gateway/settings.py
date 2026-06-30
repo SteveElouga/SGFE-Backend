@@ -56,6 +56,8 @@ AUTH_GRPC_PORT = env.int("AUTH_GRPC_PORT", default=50051)
 ABONNE_GRPC_HOST = env("ABONNE_GRPC_HOST", default="localhost")
 ABONNE_GRPC_PORT = env.int("ABONNE_GRPC_PORT", default=50052)
 
+REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
+
 # Le refresh token n'est jamais renvoyé dans le corps de la réponse GraphQL :
 # il est posé en cookie HttpOnly par login/refreshToken, inaccessible à JS
 # (protection XSS), et lu depuis ce cookie par refreshToken/logout.

@@ -121,3 +121,9 @@ BREVO_SENDER_EMAIL = env("BREVO_SENDER_EMAIL", default="no-reply@sgfe.example.co
 # lit le token dans l'URL et appelle activateAccount/resetPassword.
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:4200")
 PASSWORD_SETUP_TOKEN_VALIDITY_HOURS = env.int("PASSWORD_SETUP_TOKEN_VALIDITY_HOURS", default=48)
+
+# --- WhatsApp OTP (whatsapp-web.js service) ---
+# URL du service Node.js whatsapp-service (voir whatsapp-service/server.js)
+WHATSAPP_SERVICE_URL = env("WHATSAPP_SERVICE_URL", default="http://whatsapp-service:3000")
+# Durée de validité du code OTP en minutes
+PHONE_OTP_VALIDITY_MINUTES = env.int("PHONE_OTP_VALIDITY_MINUTES", default=10)

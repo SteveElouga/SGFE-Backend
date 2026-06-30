@@ -6,6 +6,7 @@ from django.db import IntegrityError
 
 from comptes.email_client import EmailDeliveryError
 from comptes.services import AuthenticationError
+from comptes.whatsapp_client import WhatsAppDeliveryError
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +18,10 @@ logger = logging.getLogger(__name__)
 _STATUS_BY_EXCEPTION = (
     (AuthenticationError, grpc.StatusCode.UNAUTHENTICATED, None),
     (ObjectDoesNotExist, grpc.StatusCode.NOT_FOUND, None),
+    (ValueError, grpc.StatusCode.INVALID_ARGUMENT, None),
     (IntegrityError, grpc.StatusCode.ALREADY_EXISTS, "Cette ressource existe déjà"),
     (EmailDeliveryError, grpc.StatusCode.UNAVAILABLE, "Échec de l'envoi de l'e-mail, réessayez plus tard"),
+    (WhatsAppDeliveryError, grpc.StatusCode.UNAVAILABLE, "Échec de l'envoi WhatsApp, réessayez plus tard"),
 )
 
 

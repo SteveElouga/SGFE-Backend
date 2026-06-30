@@ -1,4 +1,14 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   auth-postgres:
     image: postgres:16-alpine
     environment:
@@ -15,11 +25,21 @@ services:
     ports:
       - "5432:5432"
 
+  whatsapp-service:
+    build: ./whatsapp-service
+    ports:
+      - "3000:3000"
+    volumes:
+      - whatsapp_session:/app/session
+    restart: unless-stopped
+
   auth-service:
     build: ./services/auth
     depends_on:
       auth-postgres:
         condition: service_healthy
+      whatsapp-service:
+        condition: service_started
     environment:
       DJANGO_SECRET_KEY: dev-only-local-secret-change-me
       DJANGO_DEBUG: "True"
@@ -34,6 +54,8 @@ services:
       BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-SGFE}
       BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-no-reply@sgfe.example.com}
       FRONTEND_URL: http://localhost:4200
+      WHATSAPP_SERVICE_URL: http://whatsapp-service:3000
+      PHONE_OTP_VALIDITY_MINUTES: "10"
     ports:
       - "50051:50051"
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
@@ -59,6 +81,8 @@ services:
     depends_on:
       abonne-postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       DJANGO_SECRET_KEY: dev-only-local-secret-change-me
       DJANGO_DEBUG: "True"
@@ -68,6 +92,7 @@ services:
       ABONNE_DB_USER: abonne_user
       ABONNE_DB_PASSWORD: devpassword
       ABONNE_GRPC_PORT: "50052"
+      REDIS_URL: "redis://redis:6379/0"
     ports:
       - "50052:50052"
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
@@ -77,6 +102,7 @@ services:
     depends_on:
       - auth-service
       - abonne-service
+      - redis
     environment:
       DJANGO_SECRET_KEY: dev-only-local-secret-change-me
       DJANGO_DEBUG: "True"
@@ -87,6 +113,7 @@ services:
       ABONNE_GRPC_PORT: "50052"
       GATEWAY_HTTP_PORT: "8000"
       COOKIE_SECURE: "False"
+      REDIS_URL: "redis://redis:6379/0"
     expose:
       - "8000"
 
@@ -100,3 +127,5 @@ services:
 volumes:
   auth_postgres_data:
   abonne_postgres_data:
+  whatsapp_session:
+  redis_data:

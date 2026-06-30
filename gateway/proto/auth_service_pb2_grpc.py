@@ -94,13 +94,24 @@ class AuthServiceStub(object):
                 request_serializer=auth__service__pb2.SetPasswordRequest.SerializeToString,
                 response_deserializer=auth__service__pb2.StatusResponse.FromString,
                 _registered_method=True)
+        self.RequestPhoneOtp = channel.unary_unary(
+                '/auth.AuthService/RequestPhoneOtp',
+                request_serializer=auth__service__pb2.PhoneRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.StatusResponse.FromString,
+                _registered_method=True)
+        self.VerifyOtpAndSetPassword = channel.unary_unary(
+                '/auth.AuthService/VerifyOtpAndSetPassword',
+                request_serializer=auth__service__pb2.VerifyOtpRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.StatusResponse.FromString,
+                _registered_method=True)
 
 
 class AuthServiceServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     def Login(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """identifier accepte un username ou un numéro de téléphone (+237XXXXXXXXX)
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -154,12 +165,26 @@ class AuthServiceServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def RequestPasswordReset(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Reset mot de passe ADMIN uniquement (lien e-mail)
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def SetPasswordWithToken(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RequestPhoneOtp(self, request, context):
+        """Activation et reset par OTP WhatsApp (tous les rôles)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def VerifyOtpAndSetPassword(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -221,6 +246,16 @@ def add_AuthServiceServicer_to_server(servicer, server):
             'SetPasswordWithToken': grpc.unary_unary_rpc_method_handler(
                     servicer.SetPasswordWithToken,
                     request_deserializer=auth__service__pb2.SetPasswordRequest.FromString,
+                    response_serializer=auth__service__pb2.StatusResponse.SerializeToString,
+            ),
+            'RequestPhoneOtp': grpc.unary_unary_rpc_method_handler(
+                    servicer.RequestPhoneOtp,
+                    request_deserializer=auth__service__pb2.PhoneRequest.FromString,
+                    response_serializer=auth__service__pb2.StatusResponse.SerializeToString,
+            ),
+            'VerifyOtpAndSetPassword': grpc.unary_unary_rpc_method_handler(
+                    servicer.VerifyOtpAndSetPassword,
+                    request_deserializer=auth__service__pb2.VerifyOtpRequest.FromString,
                     response_serializer=auth__service__pb2.StatusResponse.SerializeToString,
             ),
     }
@@ -520,6 +555,60 @@ class AuthService(object):
             target,
             '/auth.AuthService/SetPasswordWithToken',
             auth__service__pb2.SetPasswordRequest.SerializeToString,
+            auth__service__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RequestPhoneOtp(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/RequestPhoneOtp',
+            auth__service__pb2.PhoneRequest.SerializeToString,
+            auth__service__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def VerifyOtpAndSetPassword(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/VerifyOtpAndSetPassword',
+            auth__service__pb2.VerifyOtpRequest.SerializeToString,
             auth__service__pb2.StatusResponse.FromString,
             options,
             channel_credentials,

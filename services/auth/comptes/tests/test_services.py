@@ -6,8 +6,8 @@ from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken as RefreshTokenJWT
 
 from comptes.email_client import EmailDeliveryError
-from comptes.models import PasswordSetupToken, Role, User
-from comptes.services import AuthenticationError, AuthService, PasswordSetupService, UserAdminService
+from comptes.models import PasswordSetupToken, PhoneOtpToken, Role, User
+from comptes.services import AuthenticationError, AuthService, PasswordSetupService, PhoneOtpService, UserAdminService
 
 
 class AuthServiceTests(TestCase):
@@ -15,7 +15,11 @@ class AuthServiceTests(TestCase):
         self.user_admin = UserAdminService()
         self.auth = AuthService()
         User.objects.create_user(
-            username="comptable1", email="comptable1@example.com", password="secret123", role=Role.COMPTABLE
+            username="comptable1",
+            email="comptable1@example.com",
+            password="secret123",
+            role=Role.COMPTABLE,
+            phone_number="+237690000001",
         )
 
     def test_login_success_returns_tokens(self):
@@ -23,6 +27,11 @@ class AuthServiceTests(TestCase):
         self.assertTrue(access)
         self.assertTrue(refresh)
         self.assertGreater(expires_in, 0)
+
+    def test_login_by_phone_returns_tokens(self):
+        access, refresh, _ = self.auth.login("+237690000001", "secret123")
+        self.assertTrue(access)
+        self.assertTrue(refresh)
 
     def test_login_unknown_username_raises(self):
         with self.assertRaises(AuthenticationError):
@@ -33,8 +42,12 @@ class AuthServiceTests(TestCase):
             self.auth.login("comptable1", "wrongpassword")
 
     def test_login_with_unusable_password_raises(self):
-        # Cas d'un compte créé par un admin, pas encore activé.
-        User.objects.create_user(username="pending1", email="pending1@example.com", role=Role.AGENT)
+        User.objects.create_user(
+            username="pending1",
+            email="pending1@example.com",
+            role=Role.AGENT,
+            phone_number="+237690000002",
+        )
         with self.assertRaises(AuthenticationError):
             self.auth.login("pending1", "n'importe quoi")
 
@@ -112,49 +125,77 @@ class AuthServiceTests(TestCase):
 class UserAdminServiceTests(TestCase):
     def setUp(self):
         self.user_admin = UserAdminService()
+        # E-mail mocké pour les créations ADMIN (activation par e-mail).
         self.send_patcher = patch("comptes.services.email_client.send")
         self.mock_send = self.send_patcher.start()
         self.addCleanup(self.send_patcher.stop)
+        # WhatsApp mocké pour les créations non-ADMIN (activation par OTP).
+        self.whatsapp_patcher = patch("comptes.services.whatsapp_client.send")
+        self.mock_whatsapp = self.whatsapp_patcher.start()
+        self.addCleanup(self.whatsapp_patcher.stop)
 
-    def test_create_user_has_no_usable_password(self):
-        user = self.user_admin.create_user(username="agent3", email="agent3@example.com", role=Role.AGENT)
+    def test_create_agent_has_no_usable_password(self):
+        user = self.user_admin.create_user(username="agent3", phone_number="+237690000011", role=Role.AGENT)
         self.assertEqual(user.role, Role.AGENT)
         self.assertFalse(user.has_usable_password())
 
-    def test_create_user_sends_activation_email(self):
-        self.user_admin.create_user(username="agent3b", email="agent3b@example.com", role=Role.AGENT)
-        self.mock_send.assert_called_once()
-        self.assertEqual(self.mock_send.call_args.kwargs["to_email"], "agent3b@example.com")
+    def test_create_agent_sends_whatsapp_otp(self):
+        self.user_admin.create_user(username="agent3b", phone_number="+237690000012", role=Role.AGENT)
+        self.mock_whatsapp.assert_called_once()
+        self.mock_send.assert_not_called()
 
-    def test_create_user_creates_password_setup_token(self):
-        user = self.user_admin.create_user(username="agent3c", email="agent3c@example.com", role=Role.AGENT)
+    def test_create_agent_creates_phone_otp_token(self):
+        user = self.user_admin.create_user(username="agent3c", phone_number="+237690000013", role=Role.AGENT)
+        self.assertTrue(PhoneOtpToken.objects.filter(user=user).exists())
+
+    def test_create_admin_sends_activation_email(self):
+        self.user_admin.create_user(
+            username="admin2",
+            email="admin2@example.com",
+            phone_number="+237690000014",
+            role=Role.ADMIN,
+        )
+        self.mock_send.assert_called_once()
+        call_kwargs = self.mock_send.call_args.kwargs
+        self.assertEqual(call_kwargs["to_email"], "admin2@example.com")
+
+    def test_create_admin_creates_password_setup_token(self):
+        user = self.user_admin.create_user(
+            username="admin3",
+            email="admin3@example.com",
+            phone_number="+237690000015",
+            role=Role.ADMIN,
+        )
         self.assertTrue(PasswordSetupToken.objects.filter(user=user).exists())
 
+    def test_create_admin_without_email_raises(self):
+        with self.assertRaises(ValueError):
+            self.user_admin.create_user(username="admin4", phone_number="+237690000016", role=Role.ADMIN)
+
     def test_get_user(self):
-        created = self.user_admin.create_user(username="agent4", email="agent4@example.com", role=Role.AGENT)
+        created = self.user_admin.create_user(username="agent4", phone_number="+237690000021", role=Role.AGENT)
         fetched = self.user_admin.get_user(str(created.id))
         self.assertEqual(fetched.username, "agent4")
 
     def test_update_user(self):
-        created = self.user_admin.create_user(username="agent5", email="agent5@example.com", role=Role.AGENT)
+        created = self.user_admin.create_user(username="agent5", phone_number="+237690000022", role=Role.AGENT)
         updated = self.user_admin.update_user(str(created.id), email="new@example.com", role=Role.ADMIN)
         self.assertEqual(updated.email, "new@example.com")
         self.assertEqual(updated.role, Role.ADMIN)
 
     def test_update_user_without_changes_keeps_values(self):
-        created = self.user_admin.create_user(username="agent6", email="agent6@example.com", role=Role.AGENT)
+        created = self.user_admin.create_user(username="agent6", phone_number="+237690000023", role=Role.AGENT)
         updated = self.user_admin.update_user(str(created.id), email="", role="")
-        self.assertEqual(updated.email, "agent6@example.com")
         self.assertEqual(updated.role, Role.AGENT)
 
     def test_deactivate_user(self):
-        created = self.user_admin.create_user(username="agent7", email="agent7@example.com", role=Role.AGENT)
+        created = self.user_admin.create_user(username="agent7", phone_number="+237690000024", role=Role.AGENT)
         deactivated = self.user_admin.deactivate_user(str(created.id))
         self.assertFalse(deactivated.is_active)
 
     def test_list_users(self):
-        self.user_admin.create_user(username="agent8", email="agent8@example.com", role=Role.AGENT)
-        self.user_admin.create_user(username="agent9", email="agent9@example.com", role=Role.AGENT)
+        self.user_admin.create_user(username="agent8", phone_number="+237690000025", role=Role.AGENT)
+        self.user_admin.create_user(username="agent9", phone_number="+237690000026", role=Role.AGENT)
         usernames = {u.username for u in self.user_admin.list_users()}
         self.assertIn("agent8", usernames)
         self.assertIn("agent9", usernames)
@@ -163,8 +204,13 @@ class UserAdminServiceTests(TestCase):
 class PasswordSetupServiceTests(TestCase):
     def setUp(self):
         self.service = PasswordSetupService()
+        # La réinitialisation de mot de passe par e-mail est réservée aux ADMIN.
         self.user = User.objects.create_user(
-            username="comptable2", email="comptable2@example.com", password="oldpassword", role=Role.COMPTABLE
+            username="admin_reset",
+            email="admin_reset@example.com",
+            password="oldpassword",
+            role=Role.ADMIN,
+            phone_number="+237690000030",
         )
         self.send_patcher = patch("comptes.services.email_client.send")
         self.mock_send = self.send_patcher.start()
@@ -176,10 +222,22 @@ class PasswordSetupServiceTests(TestCase):
         self.assertTrue(token.is_valid())
         self.mock_send.assert_called_once()
 
-    def test_request_password_reset_existing_email_sends_mail(self):
-        self.service.request_password_reset("comptable2@example.com")
+    def test_request_password_reset_admin_sends_email(self):
+        self.service.request_password_reset("admin_reset@example.com")
         self.assertTrue(PasswordSetupToken.objects.filter(user=self.user).exists())
         self.mock_send.assert_called_once()
+
+    def test_request_password_reset_non_admin_is_silent(self):
+        User.objects.create_user(
+            username="comptable_reset",
+            email="comptable_reset@example.com",
+            password="pwd",
+            role=Role.COMPTABLE,
+            phone_number="+237690000031",
+        )
+        self.service.request_password_reset("comptable_reset@example.com")
+        self.mock_send.assert_not_called()
+        self.assertFalse(PasswordSetupToken.objects.filter(user__username="comptable_reset").exists())
 
     def test_request_password_reset_unknown_email_is_silent(self):
         self.service.request_password_reset("inconnu@example.com")
@@ -216,3 +274,52 @@ class PasswordSetupServiceTests(TestCase):
         self.mock_send.side_effect = EmailDeliveryError("Brevo a renvoyé 500")
         with self.assertRaises(EmailDeliveryError):
             self.service.send_activation_email(self.user)
+
+
+class PhoneOtpServiceTests(TestCase):
+    def setUp(self):
+        self.service = PhoneOtpService()
+        self.user = User.objects.create_user(
+            username="agent_otp",
+            phone_number="+237690000040",
+            password="secret123",
+            role=Role.AGENT,
+        )
+        self.whatsapp_patcher = patch("comptes.services.whatsapp_client.send")
+        self.mock_whatsapp = self.whatsapp_patcher.start()
+        self.addCleanup(self.whatsapp_patcher.stop)
+
+    def test_send_otp_creates_token_and_sends_whatsapp(self):
+        self.service.send_otp(self.user)
+        self.assertTrue(PhoneOtpToken.objects.filter(user=self.user).exists())
+        self.mock_whatsapp.assert_called_once()
+        call_args = self.mock_whatsapp.call_args
+        self.assertEqual(call_args.kwargs["to_phone"], "+237690000040")
+
+    def test_request_otp_by_phone_sends_otp(self):
+        self.service.request_otp_by_phone("+237690000040")
+        self.mock_whatsapp.assert_called_once()
+
+    def test_request_otp_unknown_phone_is_silent(self):
+        self.service.request_otp_by_phone("+237600000000")
+        self.mock_whatsapp.assert_not_called()
+
+    def test_verify_otp_and_set_password_success(self):
+        self.service.send_otp(self.user)
+        # Accès direct au token brut via le mock
+        raw_otp = self.mock_whatsapp.call_args.kwargs["message"].split(":")[1].strip().split("\n")[0]
+
+        self.service.verify_otp_and_set_password("+237690000040", raw_otp, "newpassword123")
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("newpassword123"))
+
+    def test_verify_wrong_otp_raises(self):
+        self.service.send_otp(self.user)
+        with self.assertRaises(AuthenticationError):
+            self.service.verify_otp_and_set_password("+237690000040", "000000", "newpass")
+
+    def test_previous_otps_invalidated_on_new_send(self):
+        self.service.send_otp(self.user)
+        self.service.send_otp(self.user)
+        valid_tokens = PhoneOtpToken.objects.filter(user=self.user, used_at__isnull=True)
+        self.assertEqual(valid_tokens.count(), 1)

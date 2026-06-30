@@ -76,10 +76,30 @@ class AbonneServiceServicerTests(TestCase):
         reactive = self.servicer.ReactiverAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
         self.assertEqual(reactive.statut, "ACTIF")
 
+    def test_resilier_abonne(self):
+        created = self._create()
+        resilie = self.servicer.ResilierAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
+        self.assertEqual(resilie.statut, "RESILIE")
+
+    def test_resilier_abonne_deja_resilie_raises(self):
+        created = self._create()
+        self.servicer.ResilierAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
+        with self.assertRaises(ValidationError):
+            self.servicer.ResilierAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
+
     def test_get_compteur(self):
         created = self._create()
         response = self.servicer.GetCompteur(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
         self.assertEqual(response.numero_compteur, 1)
+
+    def test_update_compteur(self):
+        created = self._create(quartier="Ancien", camp=1)
+        response = self.servicer.UpdateCompteur(
+            pb.UpdateCompteurRequest(abonne_id=created.abonne_id, quartier="Nouveau", camp=2),
+            self.context,
+        )
+        self.assertEqual(response.quartier, "Nouveau")
+        self.assertEqual(response.camp, 2)
 
     def test_remplacer_compteur(self):
         created = self._create()

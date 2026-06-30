@@ -72,7 +72,7 @@ Ce document décrit l'architecture technique complète du Système de Gestion de
 ### 2.2 Contraintes budgétaires
 
 - Hébergement : zéro coût (MacBook Pro + ngrok gratuit)
-- WhatsApp : Telnyx API, environ $1/mois pour 50 abonnés
+- WhatsApp : zéro coût (whatsapp-web.js + compte WhatsApp dédié de la régie)
 - Toutes les librairies utilisées sont open source
 
 ---
@@ -167,9 +167,10 @@ Ce niveau montre la décomposition technique du système en services déployable
 | Campagne Service | Campagnes + relevés | PostgreSQL campagne_db | 50053 | — |
 | Facturation Service | Factures + PDF | PostgreSQL facturation_db | 50054 | — |
 | Paiement Service | Paiements + impayés | PostgreSQL paiement_db | 50055 | — |
-| Notification Service | WhatsApp + tokens | PostgreSQL notification_db | 50056 | — |
+| Notification Service | Tokens abonnés | PostgreSQL notification_db | 50056 | — |
 | Reporting Service | Agrégateur read-only | PostgreSQL reporting_db | 50057 | — |
 | Config Service | Paramètres système | PostgreSQL config_db | 50058 | — |
+| WhatsApp Service | Envoi WhatsApp (whatsapp-web.js) | Aucune | N/A | 3000 |
 
 ---
 
@@ -353,10 +354,11 @@ Config Service
 ### 6.1 Flux — Connexion d'un utilisateur
 
 ```
-1. Angular envoie mutation GraphQL login(username, password)
+1. Angular envoie mutation GraphQL login(identifier, password)
+   identifier accepte un nom d'utilisateur OU un numéro de téléphone (+237XXXXXXXXX)
 2. API Gateway reçoit la requête (pas de JWT requis pour login)
 3. Gateway appelle Auth.Login via gRPC
-4. Auth Service vérifie les credentials
+4. Auth Service résout l'identifiant (username OU phone_number) et vérifie les credentials
 5. Si valides : génère JWT (24h) + refresh token (7j)
 6. Retourne les tokens au Gateway
 7. Gateway pose le refresh token en cookie HttpOnly + Secure + SameSite=Strict
@@ -425,13 +427,14 @@ Config Service
    b. Le numéro WhatsApp de l'abonné via gRPC → Abonné Service
 4. Génère un token UUID v4
 5. Calcule la date d'expiration (date_envoi + 20 jours)
-6. Construit le message WhatsApp (texte + lien tokenisé)
-7. Récupère le PDF de la facture
-8. Appelle l'API Telnyx (message + PDF en pièce jointe)
-9. Si succès : enregistre l'envoi (statut ENVOYE)
-10. Si échec : retry (3 fois max), puis statut ECHEC + notification admin
-11. Émet événement FactureEnvoyee
-12. Reporting Service consomme → met à jour StatsFacturation
+6. Construit le message WhatsApp (texte structuré avec détails de la facture,
+   sans PDF — le PDF reste disponible côté backoffice uniquement)
+7. Appelle le WhatsApp Service via HTTP POST /send
+   (whatsapp-service Node.js — whatsapp-web.js, compte dédié de la régie)
+8. Si succès : enregistre l'envoi (statut ENVOYE)
+9. Si échec : retry (3 fois max), puis statut ECHEC + notification admin
+10. Émet événement FactureEnvoyee
+11. Reporting Service consomme → met à jour StatsFacturation
 ```
 
 ### 6.5 Flux — Gestion des impayés (cron quotidien)
@@ -464,7 +467,7 @@ Pour chaque SuiviImpaye non résolu :
 
 Notification Service consomme RelanceRequise :
   → Construit le message correspondant à l'étape
-  → Envoie via Telnyx
+  → Envoie via WhatsApp Service (HTTP POST /send)
 
 Abonné Service consomme SuspensionRequise :
   → Passe l'abonné en statut SUSPENDU
@@ -491,27 +494,47 @@ Abonné Service consomme SuspensionRequise :
 9. Reporting Service consomme → met à jour StatsPaiements
 ```
 
-### 6.7 Flux — Création de compte et activation par e-mail
+### 6.7 Flux — Création de compte et activation
 
+Le flux d'activation dépend du rôle. Tous les rôles nécessitent un numéro
+de téléphone camerounais (+2376XXXXXXXX). L'e-mail n'est obligatoire que
+pour le rôle ADMIN.
+
+**ADMIN — activation par e-mail (Brevo)**
 ```
-1. Admin envoie mutation createUser(username, email, role) — sans mot de passe
+1. Admin envoie mutation createUser(username, email, phoneNumber, role=ADMIN)
 2. Gateway vérifie le rôle ADMIN, appelle Auth.CreateUser via gRPC
-3. Auth Service crée l'utilisateur avec un mot de passe inutilisable
-   (set_unusable_password), génère un PasswordSetupToken (validité 48h)
-4. Auth Service envoie un e-mail d'activation via l'API Brevo, contenant
-   un lien vers {FRONTEND_URL}/set-password?token=...
-5. Le nouvel utilisateur ouvre le lien, Angular envoie
-   mutation activateAccount(token, password)
-6. Gateway → Auth.SetPasswordWithToken via gRPC
-7. Auth Service vérifie le token (non expiré, non utilisé), fixe le mot
-   de passe, marque le token comme utilisé
-8. L'utilisateur peut désormais se connecter via login (flux 6.1)
+3. Auth Service crée l'utilisateur (set_unusable_password),
+   génère un PasswordSetupToken (validité 48h)
+4. Auth Service envoie un e-mail Brevo avec lien
+   {FRONTEND_URL}/set-password?token=...
+5. Utilisateur clique le lien → mutation activateAccount(token, password)
+6. Gateway → Auth.SetPasswordWithToken → mot de passe défini
+7. L'utilisateur peut se connecter via login (flux 6.1)
 ```
 
-Le mot de passe oublié suit exactement le même mécanisme : mutation
-`requestPasswordReset(email)` (toujours `true`, sans révéler si l'e-mail
-existe) → e-mail avec lien → mutation `resetPassword(token, password)` →
-`Auth.SetPasswordWithToken` (même RPC que l'activation).
+**AGENT / COMPTABLE / SUPERVISEUR — activation par OTP WhatsApp**
+```
+1. Admin envoie mutation createUser(username, phoneNumber, role)
+2. Gateway vérifie le rôle ADMIN, appelle Auth.CreateUser via gRPC
+3. Auth Service crée l'utilisateur (set_unusable_password),
+   génère un PhoneOtpToken à 6 chiffres (validité 10 min)
+4. Auth Service appelle WhatsApp Service (HTTP) → envoie l'OTP au phoneNumber
+5. Utilisateur reçoit l'OTP sur WhatsApp → saisit le code dans l'app
+   → mutation verifyOtpAndSetPassword(phoneNumber, otpCode, password)
+6. Gateway → Auth.VerifyOtpAndSetPassword → OTP vérifié, mot de passe défini
+7. L'utilisateur peut se connecter via login (identifiant = username ou téléphone)
+```
+
+**Réinitialisation du mot de passe**
+
+| Rôle | Méthode |
+|---|---|
+| ADMIN | `requestPasswordReset(email)` → lien Brevo → `resetPassword(token, password)` |
+| Autres | `requestPhoneOtp(phoneNumber)` → OTP WhatsApp → `verifyOtpAndSetPassword(...)` |
+
+Les deux flux retournent toujours `true` côté client, sans révéler si
+l'identifiant existe (protection contre l'énumération de comptes).
 
 ---
 
@@ -643,7 +666,10 @@ kubectl scale deployment api-gateway-v2-canary --replicas=0
 CREATE TABLE users (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username        VARCHAR(100) UNIQUE NOT NULL,
-    email           VARCHAR(255) UNIQUE NOT NULL,
+    -- Obligatoire pour ADMIN (activation + reset par e-mail), NULL pour les autres rôles
+    email           VARCHAR(255) UNIQUE,
+    -- Obligatoire pour tous les rôles (+2376XXXXXXXX) — login et OTP WhatsApp
+    phone_number    VARCHAR(20) UNIQUE,
     password_hash   VARCHAR(255) NOT NULL,
     role            VARCHAR(20) NOT NULL CHECK (role IN ('ADMIN', 'AGENT', 'COMPTABLE', 'SUPERVISEUR')),
     is_active       BOOLEAN DEFAULT TRUE,
@@ -653,9 +679,8 @@ CREATE TABLE users (
     updated_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 -- password_hash est inutilisable (set_unusable_password) jusqu'à ce que
--- l'utilisateur définisse son mot de passe via le lien d'activation reçu
--- par e-mail (voir password_setup_tokens) — un compte créé par un admin
--- ne peut donc pas se connecter avant cette étape.
+-- l'utilisateur définisse son mot de passe via le lien d'activation (ADMIN)
+-- ou l'OTP WhatsApp (autres rôles) — voir flux 6.7.
 
 -- Tokens révoqués (blacklist JWT)
 CREATE TABLE revoked_tokens (
@@ -665,13 +690,24 @@ CREATE TABLE revoked_tokens (
     expires_at  TIMESTAMP WITH TIME ZONE NOT NULL
 );
 
--- Activation de compte / réinitialisation de mot de passe (lien envoyé par e-mail via Brevo)
+-- Activation de compte / reset de mot de passe par e-mail (ADMIN uniquement, via Brevo)
 CREATE TABLE password_setup_tokens (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     token       VARCHAR(64) UNIQUE NOT NULL,
     created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     expires_at  TIMESTAMP WITH TIME ZONE NOT NULL,
+    used_at     TIMESTAMP WITH TIME ZONE
+);
+
+-- OTP WhatsApp pour activation et reset (tous les rôles, via WhatsApp Service)
+-- Le code est stocké haché — jamais en clair
+CREATE TABLE phone_otp_tokens (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    otp_hash    VARCHAR(255) NOT NULL,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expires_at  TIMESTAMP WITH TIME ZONE NOT NULL,  -- validité 10 min
     used_at     TIMESTAMP WITH TIME ZONE
 );
 ```
@@ -977,6 +1013,7 @@ syntax = "proto3";
 package auth;
 
 service AuthService {
+  // identifier accepte un username ou un numéro de téléphone (+237XXXXXXXXX)
   rpc Login (LoginRequest) returns (TokenResponse);
   rpc ValidateToken (TokenRequest) returns (UserPayload);
   rpc RefreshToken (RefreshRequest) returns (TokenResponse);
@@ -986,12 +1023,17 @@ service AuthService {
   rpc DeactivateUser (UserIdRequest) returns (UserResponse);
   rpc ListUsers (EmptyRequest) returns (ListUsersResponse);
   rpc GetUser (UserIdRequest) returns (UserResponse);
+  // Reset mot de passe ADMIN uniquement (lien e-mail Brevo)
   rpc RequestPasswordReset (EmailRequest) returns (StatusResponse);
   rpc SetPasswordWithToken (SetPasswordRequest) returns (StatusResponse);
+  // Activation et reset par OTP WhatsApp (tous les rôles)
+  rpc RequestPhoneOtp (PhoneRequest) returns (StatusResponse);
+  rpc VerifyOtpAndSetPassword (VerifyOtpRequest) returns (StatusResponse);
 }
 
 message LoginRequest {
-  string username = 1;
+  // Accepte un nom d'utilisateur ou un numéro de téléphone (+237XXXXXXXXX)
+  string identifier = 1;
   string password = 2;
 }
 
@@ -1015,18 +1057,24 @@ message UserPayload {
   string email = 3;
   string role = 4;
   bool is_active = 5;
+  string phone_number = 6;
 }
 
 message CreateUserRequest {
   string username = 1;
+  // Obligatoire pour ADMIN, ignoré pour les autres rôles
   string email = 2;
   string role = 3;
-  // Pas de password : l'utilisateur le définit via le lien d'activation
-  // envoyé par e-mail (voir RequestPasswordReset/SetPasswordWithToken).
+  // Obligatoire pour tous les rôles (+2376XXXXXXXX)
+  string phone_number = 4;
 }
 
 message EmailRequest {
   string email = 1;
+}
+
+message PhoneRequest {
+  string phone_number = 1;
 }
 
 message SetPasswordRequest {
@@ -1034,10 +1082,17 @@ message SetPasswordRequest {
   string new_password = 2;
 }
 
+message VerifyOtpRequest {
+  string phone_number = 1;
+  string otp_code = 2;
+  string new_password = 3;
+}
+
 message UpdateUserRequest {
   string user_id = 1;
   string email = 2;
   string role = 3;
+  string phone_number = 4;
 }
 
 message UserIdRequest {
@@ -1051,6 +1106,7 @@ message UserResponse {
   string role = 4;
   bool is_active = 5;
   string created_at = 6;
+  string phone_number = 7;
 }
 
 message ListUsersResponse {
@@ -1575,10 +1631,15 @@ type AuthPayload {
 type User {
   id: ID!
   username: String!
-  email: String!
+  email: String!        # Vide ("") pour les rôles non-ADMIN
+  phoneNumber: String!  # Toujours présent (+237XXXXXXXXX)
   role: Role!
   isActive: Boolean!
   createdAt: String!
+}
+
+type OtpSentPayload {
+  maskedPhone: String!  # Ex. "+237 6•• ••• •78" — dérivé de l'input
 }
 
 enum Role { ADMIN AGENT COMPTABLE SUPERVISEUR }
@@ -1844,15 +1905,26 @@ type Query {
 # ===================== MUTATIONS =====================
 
 type Mutation {
-  # Auth
-  login(username: String!, password: String!): AuthPayload!
+  # Auth — connexion
+  # identifier accepte un username ou un numéro de téléphone (+237XXXXXXXXX)
+  login(identifier: String!, password: String!): AuthPayload!
   refreshToken: AuthPayload!  # lit le refresh token depuis le cookie HttpOnly, pas d'argument
-  logout: Boolean!  # révoque l'access token ET supprime le cookie de refresh token
-  createUser(username: String!, email: String!, role: Role!): User!  # pas de password : e-mail d'activation envoyé
+  logout: Boolean!
+
+  # Auth — gestion utilisateurs (ADMIN requis)
+  createUser(username: String!, phoneNumber: String!, role: Role!, email: String): User!
+  updateUser(id: ID!, email: String, role: Role, phoneNumber: String): User!
   deactivateUser(id: ID!): User!
+
+  # Auth — activation et reset par e-mail (ADMIN uniquement, Brevo)
   requestPasswordReset(email: String!): Boolean!  # toujours true (ne révèle pas si l'e-mail existe)
-  activateAccount(token: String!, password: String!): Boolean!  # définit le 1er mot de passe (lien reçu par e-mail)
-  resetPassword(token: String!, password: String!): Boolean!  # même mécanisme que activateAccount
+  activateAccount(token: String!, password: String!): Boolean!
+  resetPassword(token: String!, password: String!): Boolean!
+
+  # Auth — activation et reset par OTP WhatsApp (tous les rôles)
+  # Toujours true — ne révèle pas si le numéro est enregistré
+  requestPhoneOtp(phoneNumber: String!): OtpSentPayload!
+  verifyOtpAndSetPassword(phoneNumber: String!, otpCode: String!, password: String!): Boolean!
 
   # Abonnés
   createAbonne(input: CreateAbonneInput!): Abonne!
@@ -1894,9 +1966,10 @@ type Mutation {
   cookie HttpOnly + Secure + SameSite=Strict par la Gateway, jamais exposé
   au JS client (voir flux 6.1)
 - Bcrypt pour les mots de passe (coût 12)
-- Aucun compte n'est créé avec un mot de passe fixé par un admin : un lien
-  d'activation à usage unique est envoyé par e-mail (Brevo), même
-  mécanisme pour la réinitialisation de mot de passe (voir flux 6.7)
+- Aucun compte n'est créé avec un mot de passe fixé par un admin :
+  ADMIN → lien d'activation par e-mail (Brevo, 48h) ;
+  Autres rôles → OTP à 6 chiffres par WhatsApp (10 min, haché en base).
+  Même mécanisme pour la réinitialisation selon le rôle (voir flux 6.7)
 - Blacklist des tokens révoqués dans Auth Service
 - Blocage temporaire après 5 tentatives échouées (15 min)
 

@@ -21,13 +21,13 @@
 | [ADR-007](#adr-007) | Canary Deployment comme stratégie de déploiement | ✅ Accepté |
 | [ADR-008](#adr-008) | Angular PWA mobile-first | ✅ Accepté |
 | [ADR-009](#adr-009) | MacBook Pro + ngrok comme serveur | ✅ Accepté |
-| [ADR-010](#adr-010) | Telnyx comme fournisseur WhatsApp | ✅ Accepté |
+| [ADR-010](#adr-010) | Telnyx comme fournisseur WhatsApp | ⛔ Remplacé par ADR-016 |
 | [ADR-011](#adr-011) | ReportLab pour la génération de PDF | ✅ Accepté |
 | [ADR-012](#adr-012) | Lien tokenisé pour l'espace abonné | ✅ Accepté |
 | [ADR-013](#adr-013) | Rejet de SQLite en faveur de PostgreSQL | ✅ Accepté |
 | [ADR-014](#adr-014) | Rejet du monolithe en faveur des microservices | ✅ Accepté |
 | [ADR-015](#adr-015) | Rejet de REST en faveur de GraphQL | ✅ Accepté |
-| [ADR-016](#adr-016) | whatsapp-web.js comme alternative gratuite | 🔄 En évaluation |
+| [ADR-016](#adr-016) | whatsapp-web.js comme solution WhatsApp | ✅ Accepté |
 | [ADR-017](#adr-017) | Strawberry comme librairie GraphQL Python | ✅ Accepté |
 | [ADR-018](#adr-018) | API Gateway sans base de données | ✅ Accepté |
 | [ADR-019](#adr-019) | Reporting Service en read-only aggregator | ✅ Accepté |
@@ -479,7 +479,7 @@ https://xyz-abc.ngrok.io → localhost:8000 (API Gateway)
 ### Titre : Telnyx comme fournisseur WhatsApp Business API
 
 **Date :** Juin 2026
-**Statut :** ✅ Accepté
+**Statut :** ⛔ Remplacé — voir ADR-016
 **Décideurs :** Équipe projet
 
 ---
@@ -488,43 +488,13 @@ https://xyz-abc.ngrok.io → localhost:8000 (API Gateway)
 
 L'envoi de factures et de notifications via WhatsApp nécessite un accès à l'API WhatsApp Business. Meta ne donne pas d'accès direct aux petites structures — un Business Solution Provider (BSP) est nécessaire.
 
-#### Décision
+#### Décision initiale
 
 Utiliser **Telnyx** comme BSP pour l'accès à l'API WhatsApp Business.
 
-#### Raisons
+#### Raison du remplacement
 
-- **Aucun abonnement mensuel fixe :** Telnyx facture uniquement le markup par message ($0.004/message) + les frais Meta.
-- **Coût réel estimé :** Environ $1/mois pour 50 abonnés (frais Meta ~$0.40 + markup ~$0.20).
-- **API bien documentée :** Documentation claire, SDKs disponibles.
-- **Envoi de fichiers :** Supporte l'envoi de PDF en pièce jointe (nécessaire pour les factures).
-- **Pas de setup fee :** Aucun frais d'installation ou d'onboarding.
-- **Markup le plus bas :** Parmi les BSPs sans abonnement, Telnyx offre le markup par message le plus compétitif.
-
-#### Modèle de coût détaillé
-
-```
-Pour 50 abonnés, 1 envoi/mois :
-  Frais Meta (Cameroun, catégorie utility) : ~$0.008 × 50 = $0.40
-  Markup Telnyx                             : $0.004 × 50 = $0.20
-  TOTAL mensuel                             : ~$0.60/mois
-```
-
-#### Compromis acceptés
-
-- Dépendance à un service tiers payant (même si très peu cher).
-- En cas de blocage du compte WhatsApp Business par Meta, l'envoi est interrompu.
-- Nécessite une clé API à sécuriser dans Kubernetes Secrets.
-
-#### Alternatives considérées
-
-| Alternative | Coût | Raison du rejet |
-|---|---|---|
-| WhatsApp Business API officielle (Meta direct) | Gratuit frais Meta | Accès difficile sans BSP agréé |
-| whatsapp-web.js | Gratuit | Non officiel, risque de blocage de compte — évaluation en parallèle (ADR-016) |
-| Twilio | $0.005/msg + Meta | Légèrement plus cher que Telnyx, abonnement plateforme |
-| Gupshup | $0.001/msg | Dashboard orienté Asie, moins adapté à l'Afrique |
-| Lien wa.me | Gratuit | Envoi non automatique, interaction manuelle requise |
+La complexité de configuration de Telnyx (vérification Meta Business Manager, approbation des templates, délais d'activation) a conduit à choisir whatsapp-web.js comme solution immédiatement opérationnelle sans frais ni dépendances externes (voir ADR-016). Twilio a aussi été évalué entre-temps et rejeté pour les mêmes raisons de complexité.
 
 ---
 
@@ -729,54 +699,62 @@ Rejeter REST et adopter **GraphQL** comme interface API externe, implémenté av
 
 ## ADR-016
 
-### Titre : whatsapp-web.js comme alternative gratuite à Telnyx
+### Titre : whatsapp-web.js comme solution WhatsApp
 
-**Date :** Juin 2026
-**Statut :** 🔄 En évaluation
+**Date :** Juin 2026 (mis à jour)
+**Statut :** ✅ Accepté — remplace ADR-010
 **Décideurs :** Équipe projet
 
 ---
 
 #### Contexte
 
-Telnyx est le fournisseur WhatsApp choisi (ADR-010), mais ses frais (même minimes) ne sont pas nuls. whatsapp-web.js offre une alternative totalement gratuite.
+Telnyx (ADR-010) puis Twilio ont été évalués comme BSP pour l'API WhatsApp Business. Les deux ont été rejetés en raison de la complexité de configuration (vérification Meta Business Manager, approbation des templates WhatsApp, délais d'activation pouvant aller jusqu'à 5 jours ouvrables). Le besoin est immédiat et le volume (OTP + factures) reste maîtrisé.
 
-#### Décision en cours
+#### Décision
 
-Évaluer **whatsapp-web.js** en parallèle comme alternative gratuite, avec une décision finale après tests.
+Utiliser **whatsapp-web.js** comme seule solution d'envoi WhatsApp, via un service Node.js dédié (`whatsapp-service`) tournant dans le cluster.
 
-#### Description de la solution
+#### Architecture retenue
 
-whatsapp-web.js est une librairie Node.js qui simule WhatsApp Web via Puppeteer (navigateur headless). Elle permet l'envoi automatique de messages sans passer par l'API officielle.
+```
+whatsapp-service/        ← service Node.js (10e pod du cluster)
+├── server.js            ← Express + whatsapp-web.js
+├── Dockerfile           ← node:18-slim + Chromium
+└── /app/session/        ← volume persistant (session WhatsApp)
+
+API HTTP interne :
+  POST /send   { phone, message }  → envoie un message WhatsApp
+  GET  /health                     → { ready: true/false }
+  GET  /qr                         → page HTML pour scanner le QR (setup initial)
+```
+
+Les services Django (Auth, Notification) appellent `whatsapp-service:3000/send` via HTTP. Aucune clé API externe requise.
 
 #### Avantages
 
-- Totalement gratuit, aucun frais Meta ou BSP.
-- Envoi automatique sans intervention humaine.
-- Supporte l'envoi de fichiers (PDF).
+- **Zéro coût** — aucun frais Meta, BSP ou abonnement.
+- **Opérationnel immédiatement** — un seul QR code à scanner, session persistée localement.
+- **Envoi automatique** — OTP, notifications de facture, relances impayés sans intervention humaine.
+- **Déjà en production** — connexion WhatsApp établie et validée.
 
-#### Risques identifiés
+#### Risques et mitigations
 
-- **Non officiel :** Violant potentiellement les conditions d'utilisation de WhatsApp/Meta.
-- **Risque de blocage :** Meta peut bloquer le numéro si l'activité est détectée comme automatisée.
-- **Dépendance à un navigateur headless :** Puppeteer est lourd (~300MB) et complexe à conteneuriser.
-- **Instabilité :** La librairie peut se casser lors des mises à jour de WhatsApp Web.
-- **Pas de SLA :** Aucun support ni garantie de fonctionnement.
-
-#### Décision conditionnelle
-
-```
-Si les tests montrent une stabilité acceptable → whatsapp-web.js pour usage dev/demo
-Si le risque de blocage est trop élevé         → Telnyx en production
-```
-
-#### Alternatives dans cette catégorie
-
-| Solution | Coût | Risque |
+| Risque | Probabilité | Mitigation |
 |---|---|---|
-| whatsapp-web.js | Gratuit | Élevé (non officiel) |
-| Lien wa.me | Gratuit | Faible (officiel, manuel) |
-| Telnyx | ~$1/mois | Faible (officiel) |
+| Blocage du numéro par Meta | Faible (usage métier ciblé) | Compte dédié de la régie, volume maîtrisé |
+| Casse lors d'une MàJ WhatsApp Web | Modérée | Mise à jour du package (projet open source très actif) |
+| Session expirée | Faible (LocalAuth persistante) | Endpoint /qr pour rescan rapide |
+| Indisponibilité temporaire | Possible | Auth Service renvoie erreur SERVICE_UNAVAILABLE, retry côté client |
+
+#### Alternatives rejetées
+
+| Solution | Raison du rejet |
+|---|---|
+| Telnyx | Complexité config Meta Business Manager, délais d'approbation |
+| Twilio | Même complexité, mêmes délais |
+| Africa's Talking | Payant (SMS), pas de sandbox WhatsApp |
+| Brevo SMS | Payant, pas de quota gratuit |
 
 ---
 

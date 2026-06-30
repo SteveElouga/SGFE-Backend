@@ -74,15 +74,30 @@ class AbonneServiceStub(object):
                 request_serializer=abonne__service__pb2.AbonneIdRequest.SerializeToString,
                 response_deserializer=abonne__service__pb2.AbonneResponse.FromString,
                 _registered_method=True)
+        self.ResilierAbonne = channel.unary_unary(
+                '/abonne.AbonneService/ResilierAbonne',
+                request_serializer=abonne__service__pb2.AbonneIdRequest.SerializeToString,
+                response_deserializer=abonne__service__pb2.AbonneResponse.FromString,
+                _registered_method=True)
         self.GetCompteur = channel.unary_unary(
                 '/abonne.AbonneService/GetCompteur',
                 request_serializer=abonne__service__pb2.AbonneIdRequest.SerializeToString,
+                response_deserializer=abonne__service__pb2.CompteurResponse.FromString,
+                _registered_method=True)
+        self.UpdateCompteur = channel.unary_unary(
+                '/abonne.AbonneService/UpdateCompteur',
+                request_serializer=abonne__service__pb2.UpdateCompteurRequest.SerializeToString,
                 response_deserializer=abonne__service__pb2.CompteurResponse.FromString,
                 _registered_method=True)
         self.RemplacerCompteur = channel.unary_unary(
                 '/abonne.AbonneService/RemplacerCompteur',
                 request_serializer=abonne__service__pb2.RemplacerCompteurRequest.SerializeToString,
                 response_deserializer=abonne__service__pb2.CompteurResponse.FromString,
+                _registered_method=True)
+        self.GetHistoriqueCompteur = channel.unary_unary(
+                '/abonne.AbonneService/GetHistoriqueCompteur',
+                request_serializer=abonne__service__pb2.AbonneIdRequest.SerializeToString,
+                response_deserializer=abonne__service__pb2.ListHistoriqueResponse.FromString,
                 _registered_method=True)
 
 
@@ -131,13 +146,31 @@ class AbonneServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ResilierAbonne(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def GetCompteur(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def UpdateCompteur(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def RemplacerCompteur(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetHistoriqueCompteur(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -181,15 +214,30 @@ def add_AbonneServiceServicer_to_server(servicer, server):
                     request_deserializer=abonne__service__pb2.AbonneIdRequest.FromString,
                     response_serializer=abonne__service__pb2.AbonneResponse.SerializeToString,
             ),
+            'ResilierAbonne': grpc.unary_unary_rpc_method_handler(
+                    servicer.ResilierAbonne,
+                    request_deserializer=abonne__service__pb2.AbonneIdRequest.FromString,
+                    response_serializer=abonne__service__pb2.AbonneResponse.SerializeToString,
+            ),
             'GetCompteur': grpc.unary_unary_rpc_method_handler(
                     servicer.GetCompteur,
                     request_deserializer=abonne__service__pb2.AbonneIdRequest.FromString,
+                    response_serializer=abonne__service__pb2.CompteurResponse.SerializeToString,
+            ),
+            'UpdateCompteur': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateCompteur,
+                    request_deserializer=abonne__service__pb2.UpdateCompteurRequest.FromString,
                     response_serializer=abonne__service__pb2.CompteurResponse.SerializeToString,
             ),
             'RemplacerCompteur': grpc.unary_unary_rpc_method_handler(
                     servicer.RemplacerCompteur,
                     request_deserializer=abonne__service__pb2.RemplacerCompteurRequest.FromString,
                     response_serializer=abonne__service__pb2.CompteurResponse.SerializeToString,
+            ),
+            'GetHistoriqueCompteur': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetHistoriqueCompteur,
+                    request_deserializer=abonne__service__pb2.AbonneIdRequest.FromString,
+                    response_serializer=abonne__service__pb2.ListHistoriqueResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -392,6 +440,33 @@ class AbonneService(object):
             _registered_method=True)
 
     @staticmethod
+    def ResilierAbonne(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/abonne.AbonneService/ResilierAbonne',
+            abonne__service__pb2.AbonneIdRequest.SerializeToString,
+            abonne__service__pb2.AbonneResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def GetCompteur(request,
             target,
             options=(),
@@ -407,6 +482,33 @@ class AbonneService(object):
             target,
             '/abonne.AbonneService/GetCompteur',
             abonne__service__pb2.AbonneIdRequest.SerializeToString,
+            abonne__service__pb2.CompteurResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateCompteur(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/abonne.AbonneService/UpdateCompteur',
+            abonne__service__pb2.UpdateCompteurRequest.SerializeToString,
             abonne__service__pb2.CompteurResponse.FromString,
             options,
             channel_credentials,
@@ -435,6 +537,33 @@ class AbonneService(object):
             '/abonne.AbonneService/RemplacerCompteur',
             abonne__service__pb2.RemplacerCompteurRequest.SerializeToString,
             abonne__service__pb2.CompteurResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetHistoriqueCompteur(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/abonne.AbonneService/GetHistoriqueCompteur',
+            abonne__service__pb2.AbonneIdRequest.SerializeToString,
+            abonne__service__pb2.ListHistoriqueResponse.FromString,
             options,
             channel_credentials,
             insecure,
