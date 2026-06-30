@@ -14,6 +14,8 @@ import campagne_service_pb2 as campagne_pb
 import campagne_service_pb2_grpc as campagne_pb_grpc
 import config_service_pb2 as config_pb
 import config_service_pb2_grpc as config_pb_grpc
+import facturation_service_pb2 as facturation_pb
+import facturation_service_pb2_grpc as facturation_pb_grpc
 
 
 class AuthServiceClient:
@@ -182,7 +184,45 @@ class CampagneServiceClient:
         return self._stub.GetDernierIndex(campagne_pb.AbonneIdRequest(abonne_id=abonne_id))
 
 
+class FacturationServiceClient:
+    """Client gRPC vers facturation-service:50054 (voir proto/facturation_service.proto)."""
+
+    def __init__(self) -> None:
+        address = f"{settings.FACTURATION_GRPC_HOST}:{settings.FACTURATION_GRPC_PORT}"
+        self._channel = grpc.insecure_channel(address)
+        self._stub = facturation_pb_grpc.FacturationServiceStub(self._channel)
+
+    def get_tarif_actuel(self) -> facturation_pb.TarifResponse:
+        return self._stub.GetTarifActuel(facturation_pb.EmptyRequest())
+
+    def update_tarif(self, prix_m3: float, date_effet: str) -> facturation_pb.TarifResponse:
+        return self._stub.UpdateTarif(facturation_pb.UpdateTarifRequest(prix_m3=prix_m3, date_effet=date_effet))
+
+    def generer_factures(self, campagne_id: str) -> facturation_pb.GenererFacturesResponse:
+        return self._stub.GenererFactures(facturation_pb.GenererFacturesRequest(campagne_id=campagne_id))
+
+    def get_facture(self, facture_id: str) -> facturation_pb.FactureResponse:
+        return self._stub.GetFacture(facturation_pb.FactureIdRequest(facture_id=facture_id))
+
+    def list_factures(
+        self, campagne_id: str = "", abonne_id: str = "", statut: str = ""
+    ) -> facturation_pb.ListFacturesResponse:
+        return self._stub.ListFactures(
+            facturation_pb.ListFacturesRequest(campagne_id=campagne_id, abonne_id=abonne_id, statut=statut)
+        )
+
+    def get_factures_par_campagne(self, campagne_id: str) -> facturation_pb.ListFacturesResponse:
+        return self._stub.GetFacturesParCampagne(facturation_pb.CampagneIdRequest(campagne_id=campagne_id))
+
+    def get_facture_pdf(self, facture_id: str) -> facturation_pb.PDFResponse:
+        return self._stub.GetFacturePDF(facturation_pb.FactureIdRequest(facture_id=facture_id))
+
+    def update_statut_facture(self, facture_id: str, statut: str) -> facturation_pb.FactureResponse:
+        return self._stub.UpdateStatutFacture(facturation_pb.UpdateStatutRequest(facture_id=facture_id, statut=statut))
+
+
 auth_client = AuthServiceClient()
 abonne_client = AbonneServiceClient()
 config_client = ConfigServiceClient()
 campagne_client = CampagneServiceClient()
+facturation_client = FacturationServiceClient()

@@ -1,0 +1,87 @@
+"""Configuration Django du Facturation Service."""
+
+import sys
+from pathlib import Path
+
+import environ
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+TESTING = "test" in sys.argv
+
+env = environ.Env()
+environ.Env.read_env(BASE_DIR / ".env")
+
+SECRET_KEY = env("DJANGO_SECRET_KEY", default="django-insecure-dev-key-change-me")
+DEBUG = env.bool("DJANGO_DEBUG", default=True)
+ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
+
+INSTALLED_APPS = [
+    "django.contrib.contenttypes",
+    "django.contrib.staticfiles",
+    "factures",
+]
+
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "django.middleware.common.CommonMiddleware",
+]
+
+ROOT_URLCONF = "facturation.urls"
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {"context_processors": []},
+    },
+]
+
+WSGI_APPLICATION = "facturation.wsgi.application"
+
+if TESTING:
+    DATABASES = {
+        "default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}
+    }
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "HOST": env("FACTURATION_DB_HOST", default="localhost"),
+            "PORT": env("FACTURATION_DB_PORT", default="5432"),
+            "NAME": env("FACTURATION_DB_NAME", default="facturation_db"),
+            "USER": env("FACTURATION_DB_USER", default="facturation_user"),
+            "PASSWORD": env("FACTURATION_DB_PASSWORD", default=""),
+        }
+    }
+
+LANGUAGE_CODE = "fr-fr"
+TIME_ZONE = "UTC"
+USE_I18N = True
+USE_TZ = True
+
+STATIC_URL = "static/"
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# --- gRPC ---
+FACTURATION_GRPC_PORT = env.int("FACTURATION_GRPC_PORT", default=50054)
+
+# --- Services gRPC consommés ---
+CAMPAGNE_GRPC_HOST = env("CAMPAGNE_GRPC_HOST", default="localhost")
+CAMPAGNE_GRPC_PORT = env.int("CAMPAGNE_GRPC_PORT", default=50053)
+
+CONFIG_GRPC_HOST = env("CONFIG_GRPC_HOST", default="localhost")
+CONFIG_GRPC_PORT = env.int("CONFIG_GRPC_PORT", default=50058)
+
+PAIEMENT_GRPC_HOST = env("PAIEMENT_GRPC_HOST", default="localhost")
+PAIEMENT_GRPC_PORT = env.int("PAIEMENT_GRPC_PORT", default=50055)
+
+# --- JWT (validation interne) ---
+JWT_SECRET_KEY = env("JWT_SECRET_KEY", default="changeme")
+JWT_ALGORITHM = env("JWT_ALGORITHM", default="HS256")
+
+# --- PDF ---
+PDF_STORAGE_DIR = env("PDF_STORAGE_DIR", default=str(BASE_DIR / "pdfs"))
+
+# --- Délai de paiement par défaut (en jours) si Config Service est indisponible ---
+DEFAULT_DELAI_PAIEMENT_JOURS = 5

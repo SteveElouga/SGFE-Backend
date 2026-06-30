@@ -1,6 +1,8 @@
 """Clients gRPC vers les services externes consommés par Campagne Service."""
 
 import logging
+import sys
+from pathlib import Path
 
 import grpc
 from django.conf import settings
@@ -29,30 +31,39 @@ class AbonneServiceClient:
 
 
 class FacturationServiceClient:
-    """Client gRPC vers Facturation Service (port 50054) — appel CampagneCloturee."""
+    """Client gRPC vers Facturation Service (port 50054) — déclenchement GenererFactures."""
 
     def __init__(self) -> None:
         address = f"{settings.FACTURATION_GRPC_HOST}:{settings.FACTURATION_GRPC_PORT}"
         self._channel = grpc.insecure_channel(address)
-        self._address = address
+
+        proto_path = str(Path(settings.BASE_DIR) / "proto")
+        if proto_path not in sys.path:
+            sys.path.insert(0, proto_path)
+
+        import facturation_service_pb2 as pb
+        import facturation_service_pb2_grpc as pb_grpc
+
+        self._stub = pb_grpc.FacturationServiceStub(self._channel)
+        self._pb = pb
 
     def notifier_campagne_cloturee(self, campagne_id: str) -> bool:
-        """
-        Notifie Facturation Service qu'une campagne a été clôturée.
+        """Déclenche la génération des factures après clôture d'une campagne.
+
         Retourne True si l'appel a réussi, False sinon (dégradation gracieuse).
         """
         try:
-            # Import du stub facturation_service_pb2 quand disponible
-            # Pour l'instant log uniquement — implémentation complète lors de
-            # la construction du Facturation Service.
+            self._stub.GenererFactures(
+                self._pb.GenererFacturesRequest(campagne_id=campagne_id)
+            )
             logger.info(
-                "CampagneCloturee notification vers Facturation Service",
-                extra={"campagne_id": campagne_id, "address": self._address},
+                "Factures générées par Facturation Service",
+                extra={"campagne_id": campagne_id},
             )
             return True
-        except Exception as exc:  # noqa: BLE001
+        except grpc.RpcError as exc:
             logger.warning(
-                "Impossible de notifier Facturation Service — dégradation gracieuse",
+                "Impossible de générer les factures — dégradation gracieuse",
                 extra={"campagne_id": campagne_id, "error": str(exc)},
             )
             return False
