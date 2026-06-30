@@ -201,6 +201,44 @@ class UserAdminServiceTests(TestCase):
         updated = self.user_admin.update_user(str(created.id), email="", role="")
         self.assertEqual(updated.role, Role.AGENT)
 
+    def test_update_user_phone_change_resend_otp_si_non_active(self):
+        """Quand le téléphone change pour un compte en attente d'activation, l'OTP est renvoyé."""
+        created = self.user_admin.create_user(username="agent7b", phone_number="+237690000030", role=Role.AGENT)
+        # Après create_user, un premier OTP a déjà été envoyé
+        first_call_count = self.mock_whatsapp.call_count
+
+        self.user_admin.update_user(str(created.id), email="", role="", phone_number="+237690000031")
+
+        self.assertEqual(self.mock_whatsapp.call_count, first_call_count + 1)
+        last_call_kwargs = self.mock_whatsapp.call_args.kwargs
+        self.assertEqual(last_call_kwargs["to_phone"], "+237690000031")
+
+    def test_update_user_phone_change_ne_renvoie_pas_otp_si_actif(self):
+        """Aucun OTP n'est renvoyé si l'utilisateur est déjà activé."""
+        created = self.user_admin.create_user(username="agent7c", phone_number="+237690000032", role=Role.AGENT)
+        created.is_active = True
+        created.set_password("S3cr3t!")
+        created.save()
+        before = self.mock_whatsapp.call_count
+
+        self.user_admin.update_user(str(created.id), email="", role="", phone_number="+237690000033")
+
+        self.assertEqual(self.mock_whatsapp.call_count, before)
+
+    def test_update_user_admin_phone_change_ne_renvoie_pas_otp(self):
+        """Un ADMIN s'active par e-mail, pas par OTP — le changement de téléphone n'envoie rien."""
+        created = self.user_admin.create_user(
+            username="admin_phone",
+            phone_number="+237690000034",
+            role=Role.ADMIN,
+            email="adminp@example.com",
+        )
+        before = self.mock_whatsapp.call_count
+
+        self.user_admin.update_user(str(created.id), email="", role="", phone_number="+237690000035")
+
+        self.assertEqual(self.mock_whatsapp.call_count, before)
+
     def test_deactivate_user(self):
         created = self.user_admin.create_user(username="agent7", phone_number="+237690000024", role=Role.AGENT)
         deactivated = self.user_admin.deactivate_user(str(created.id))

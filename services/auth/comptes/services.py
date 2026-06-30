@@ -140,14 +140,28 @@ class UserAdminService:
         return user
 
     def update_user(self, user_id: str, email: str, role: str, phone_number: str = "") -> User:
+        """Met à jour un utilisateur.
+
+        Si le numéro de téléphone change et que le compte n'est pas encore
+        activé (non-ADMIN en attente d'OTP), un nouvel OTP est envoyé
+        automatiquement sur le nouveau numéro.
+        """
         user = self.users.get_by_id(user_id)
+        old_phone = user.phone_number
         if email:
             user.email = email
         if role:
             user.role = role
         if phone_number:
             user.phone_number = validate_phone_cameroon(phone_number)
-        return self.users.save(user)
+        saved_user = self.users.save(user)
+
+        phone_changed = phone_number and saved_user.phone_number != old_phone
+        pending_activation = not saved_user.is_active and not saved_user.has_usable_password()
+        if phone_changed and pending_activation and saved_user.role != "ADMIN":
+            self.phone_otp.send_otp(saved_user)
+
+        return saved_user
 
     def deactivate_user(self, user_id: str) -> User:
         user = self.users.get_by_id(user_id)
