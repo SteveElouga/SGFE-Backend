@@ -1,0 +1,139 @@
+from typing import Optional
+
+from django.core.exceptions import ObjectDoesNotExist
+from django.utils import timezone
+
+from .models import Campagne, Releve, StatutCampagne, StatutReleve
+
+
+class CampagneRepository:
+    """Accès base de données pour les campagnes."""
+
+    def create(
+        self,
+        nom: str,
+        periode_mois: int,
+        periode_annee: int,
+        created_by: str,
+        date_planifiee: Optional[str] = None,
+    ) -> Campagne:
+        return Campagne.objects.create(
+            nom=nom,
+            periode_mois=periode_mois,
+            periode_annee=periode_annee,
+            created_by=created_by,
+            date_planifiee=date_planifiee,
+            statut=StatutCampagne.PLANIFIEE,
+        )
+
+    def get_by_id(self, campagne_id: str) -> Campagne:
+        try:
+            return Campagne.objects.get(pk=campagne_id)
+        except Campagne.DoesNotExist:
+            raise ObjectDoesNotExist(f"Campagne introuvable : {campagne_id}")
+
+    def list_all(self, created_by: str = "") -> list[Campagne]:
+        qs = Campagne.objects.all()
+        if created_by:
+            qs = qs.filter(created_by=created_by)
+        return list(qs)
+
+    def list_en_cours(self) -> list[Campagne]:
+        return list(Campagne.objects.filter(statut=StatutCampagne.EN_COURS))
+
+    def list_planifiees(self) -> list[Campagne]:
+        return list(Campagne.objects.filter(statut=StatutCampagne.PLANIFIEE))
+
+    def update_statut(self, campagne: Campagne, statut: str) -> Campagne:
+        campagne.statut = statut
+        if statut == StatutCampagne.CLOTUREE:
+            campagne.date_cloture = timezone.now()
+        campagne.save(update_fields=["statut", "date_cloture"])
+        return campagne
+
+    def find_planifiee_pour_date(self, date_planifiee) -> Optional[Campagne]:
+        return Campagne.objects.filter(
+            statut=StatutCampagne.PLANIFIEE,
+            date_planifiee=date_planifiee,
+        ).first()
+
+
+class ReleveRepository:
+    """Accès base de données pour les relevés."""
+
+    def create(
+        self,
+        campagne: Campagne,
+        abonne_id: str,
+        ancien_index: float,
+    ) -> Releve:
+        return Releve.objects.create(
+            campagne=campagne,
+            abonne_id=abonne_id,
+            ancien_index=ancien_index,
+            statut=StatutReleve.A_RELEVER,
+        )
+
+    def get_by_id(self, releve_id: str) -> Releve:
+        try:
+            return Releve.objects.select_related("campagne").get(pk=releve_id)
+        except Releve.DoesNotExist:
+            raise ObjectDoesNotExist(f"Relevé introuvable : {releve_id}")
+
+    def list_by_campagne(self, campagne_id: str) -> list[Releve]:
+        return list(
+            Releve.objects.filter(campagne_id=campagne_id).select_related("campagne")
+        )
+
+    def get_by_campagne_abonne(
+        self, campagne_id: str, abonne_id: str
+    ) -> Optional[Releve]:
+        return Releve.objects.filter(
+            campagne_id=campagne_id, abonne_id=abonne_id
+        ).first()
+
+    def saisir_index(
+        self,
+        releve: Releve,
+        nouveau_index: float,
+        agent_id: str,
+        observation: str = "",
+    ) -> Releve:
+        consommation = nouveau_index - releve.ancien_index
+        releve.nouveau_index = nouveau_index
+        releve.consommation = consommation
+        releve.agent_id = agent_id
+        releve.observation = observation
+        releve.statut = StatutReleve.RELEVE
+        releve.date_releve = timezone.now()
+        releve.save(
+            update_fields=[
+                "nouveau_index",
+                "consommation",
+                "agent_id",
+                "observation",
+                "statut",
+                "date_releve",
+            ]
+        )
+        return releve
+
+    def marquer_non_releve(self, releve: Releve, observation: str = "") -> Releve:
+        releve.statut = StatutReleve.NON_RELEVE
+        releve.observation = observation
+        releve.save(update_fields=["statut", "observation"])
+        return releve
+
+    def count_by_campagne(self, campagne_id: str) -> dict[str, int]:
+        """Retourne le nombre de relevés par statut pour une campagne."""
+        from django.db.models import Count
+
+        counts = (
+            Releve.objects.filter(campagne_id=campagne_id)
+            .values("statut")
+            .annotate(total=Count("id"))
+        )
+        result: dict[str, int] = {s: 0 for s in StatutReleve.values}
+        for row in counts:
+            result[row["statut"]] = row["total"]
+        return result
