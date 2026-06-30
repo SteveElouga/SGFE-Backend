@@ -41,7 +41,7 @@ services:
       whatsapp-service:
         condition: service_started
     environment:
-      DJANGO_SECRET_KEY: dev-only-local-secret-change-me
+      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
       DJANGO_DEBUG: "True"
       AUTH_DB_HOST: auth-postgres
       AUTH_DB_PORT: "5432"
@@ -49,7 +49,7 @@ services:
       AUTH_DB_USER: auth_user
       AUTH_DB_PASSWORD: devpassword
       AUTH_GRPC_PORT: "50051"
-      JWT_SECRET_KEY: dev-only-local-secret-change-me
+      JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
       BREVO_API_KEY: ${BREVO_API_KEY:-dev-fake-key}
       BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-SGFE}
       BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-no-reply@sgfe.example.com}
@@ -100,7 +100,7 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DJANGO_SECRET_KEY: dev-only-local-secret-change-me
+      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
       DJANGO_DEBUG: "True"
       ABONNE_DB_HOST: abonne-postgres
       ABONNE_DB_PORT: "5432"
@@ -119,7 +119,7 @@ services:
       campagne-postgres:
         condition: service_healthy
     environment:
-      DJANGO_SECRET_KEY: dev-only-local-secret-change-me
+      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
       DJANGO_DEBUG: "True"
       CAMPAGNE_DB_HOST: campagne-postgres
       CAMPAGNE_DB_PORT: "5432"
@@ -131,7 +131,7 @@ services:
       ABONNE_GRPC_PORT: "50052"
       FACTURATION_GRPC_HOST: facturation-service
       FACTURATION_GRPC_PORT: "50054"
-      JWT_SECRET_KEY: dev-only-local-secret-change-me
+      JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
     ports:
       - "50053:50053"
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
@@ -158,7 +158,7 @@ services:
       config-postgres:
         condition: service_healthy
     environment:
-      DJANGO_SECRET_KEY: dev-only-local-secret-change-me
+      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
       DJANGO_DEBUG: "True"
       CONFIG_DB_HOST: config-postgres
       CONFIG_DB_PORT: "5432"
@@ -179,7 +179,7 @@ services:
       - config-service
       - redis
     environment:
-      DJANGO_SECRET_KEY: dev-only-local-secret-change-me
+      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
       DJANGO_DEBUG: "True"
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
       AUTH_GRPC_HOST: auth-service
