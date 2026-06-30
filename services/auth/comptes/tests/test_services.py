@@ -310,6 +310,12 @@ class PhoneOtpServiceTests(TestCase):
         call_args = self.mock_whatsapp.call_args
         self.assertEqual(call_args.kwargs["to_phone"], "+237690000040")
 
+    def test_send_otp_message_contient_lien_activation(self):
+        self.service.send_otp(self.user)
+        message = self.mock_whatsapp.call_args.kwargs["message"]
+        self.assertIn("/activer-compte", message)
+        self.assertIn("%2B237690000040", message)
+
     def test_request_otp_by_phone_sends_otp(self):
         self.service.request_otp_by_phone("+237690000040")
         self.mock_whatsapp.assert_called_once()
@@ -320,7 +326,9 @@ class PhoneOtpServiceTests(TestCase):
 
     def test_verify_otp_and_set_password_success(self):
         self.service.send_otp(self.user)
-        raw_otp = self.mock_whatsapp.call_args.kwargs["message"].split(":")[1].strip().split("\n")[0]
+        import re
+
+        raw_otp = re.search(r"\*(\d{6})\*", self.mock_whatsapp.call_args.kwargs["message"]).group(1)
 
         self.service.verify_otp_and_set_password("+237690000040", raw_otp, "newpassword123")
         self.user.refresh_from_db()
@@ -337,7 +345,9 @@ class PhoneOtpServiceTests(TestCase):
         )
         self.assertFalse(pending.is_active)
         self.service.send_otp(pending)
-        raw_otp = self.mock_whatsapp.call_args.kwargs["message"].split(":")[1].strip().split("\n")[0]
+        import re
+
+        raw_otp = re.search(r"\*(\d{6})\*", self.mock_whatsapp.call_args.kwargs["message"]).group(1)
 
         self.service.verify_otp_and_set_password("+237690000041", raw_otp, "newpassword123")
         pending.refresh_from_db()

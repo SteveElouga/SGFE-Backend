@@ -243,9 +243,17 @@ class PhoneOtpService:
         raw_otp = _generate_otp()
         expires_at = timezone.now() + timedelta(minutes=settings.PHONE_OTP_VALIDITY_MINUTES)
         self.otp_tokens.create(user=user, raw_otp=raw_otp, expires_at=expires_at)
+        phone_encoded = user.phone_number.replace("+", "%2B")
+        activation_url = f"{settings.FRONTEND_URL}/activer-compte?phone={phone_encoded}"
         whatsapp_client.send(
             to_phone=user.phone_number,
-            message=f"Votre code SGFE : {raw_otp}\nValable {settings.PHONE_OTP_VALIDITY_MINUTES} minutes. Ne le partagez jamais.",
+            message=(
+                f"Bonjour {user.username},\n\n"
+                f"Votre code d'activation SGFE : *{raw_otp}*\n\n"
+                f"Activez votre compte ici :\n{activation_url}\n\n"
+                f"Saisissez le code et définissez votre mot de passe.\n"
+                f"Valable {settings.PHONE_OTP_VALIDITY_MINUTES} minutes. Ne partagez jamais ce code."
+            ),
         )
 
     def request_otp_by_phone(self, phone_number: str) -> None:
