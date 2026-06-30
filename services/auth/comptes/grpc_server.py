@@ -12,7 +12,7 @@ import auth_service_pb2_grpc as pb_grpc
 
 from comptes.grpc_interceptors import ErrorHandlingInterceptor
 from comptes.serializers import user_to_payload, user_to_response
-from comptes.services import AuthenticationError, AuthService, PasswordSetupService, UserAdminService
+from comptes.services import AuthenticationError, AuthService, PasswordSetupService, PhoneOtpService, UserAdminService
 
 
 class AuthServiceServicer(pb_grpc.AuthServiceServicer):
@@ -25,9 +25,10 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):
         self.auth_service = AuthService()
         self.user_admin_service = UserAdminService()
         self.password_setup_service = PasswordSetupService()
+        self.phone_otp_service = PhoneOtpService()
 
     def Login(self, request, context):
-        access, refresh, expires_in = self.auth_service.login(request.username, request.password)
+        access, refresh, expires_in = self.auth_service.login(request.identifier, request.password)
         return pb.TokenResponse(access_token=access, refresh_token=refresh, expires_in=expires_in)
 
     def ValidateToken(self, request, context):
@@ -46,11 +47,21 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):
         return pb.StatusResponse(success=True, message="Déconnexion réussie")
 
     def CreateUser(self, request, context):
-        user = self.user_admin_service.create_user(username=request.username, email=request.email, role=request.role)
+        user = self.user_admin_service.create_user(
+            username=request.username,
+            email=request.email,
+            phone_number=request.phone_number,
+            role=request.role,
+        )
         return pb.UserResponse(**user_to_response(user))
 
     def UpdateUser(self, request, context):
-        user = self.user_admin_service.update_user(user_id=request.user_id, email=request.email, role=request.role)
+        user = self.user_admin_service.update_user(
+            user_id=request.user_id,
+            email=request.email,
+            role=request.role,
+            phone_number=request.phone_number,
+        )
         return pb.UserResponse(**user_to_response(user))
 
     def DeactivateUser(self, request, context):
@@ -71,6 +82,18 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):
 
     def SetPasswordWithToken(self, request, context):
         self.password_setup_service.set_password_with_token(request.token, request.new_password)
+        return pb.StatusResponse(success=True, message="Mot de passe défini")
+
+    def RequestPhoneOtp(self, request, context):
+        self.phone_otp_service.request_otp_by_phone(request.phone_number)
+        return pb.StatusResponse(success=True, message="Si ce numéro est enregistré, un code a été envoyé par WhatsApp")
+
+    def VerifyOtpAndSetPassword(self, request, context):
+        self.phone_otp_service.verify_otp_and_set_password(
+            phone_number=request.phone_number,
+            otp_code=request.otp_code,
+            new_password=request.new_password,
+        )
         return pb.StatusResponse(success=True, message="Mot de passe défini")
 
 

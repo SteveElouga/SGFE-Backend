@@ -14,7 +14,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12\x61uth_service.proto\x12\x04\x61uth\"2\n\x0cLoginRequest\x12\x10\n\x08username\x18\x01 \x01(\t\x12\x10\n\x08password\x18\x02 \x01(\t\"P\n\rTokenResponse\x12\x14\n\x0c\x61\x63\x63\x65ss_token\x18\x01 \x01(\t\x12\x15\n\rrefresh_token\x18\x02 \x01(\t\x12\x12\n\nexpires_in\x18\x03 \x01(\x03\"\x1d\n\x0cTokenRequest\x12\r\n\x05token\x18\x01 \x01(\t\"\'\n\x0eRefreshRequest\x12\x15\n\rrefresh_token\x18\x01 \x01(\t\"`\n\x0bUserPayload\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x10\n\x08username\x18\x02 \x01(\t\x12\r\n\x05\x65mail\x18\x03 \x01(\t\x12\x0c\n\x04role\x18\x04 \x01(\t\x12\x11\n\tis_active\x18\x05 \x01(\x08\"B\n\x11\x43reateUserRequest\x12\x10\n\x08username\x18\x01 \x01(\t\x12\r\n\x05\x65mail\x18\x02 \x01(\t\x12\x0c\n\x04role\x18\x03 \x01(\t\"\x1d\n\x0c\x45mailRequest\x12\r\n\x05\x65mail\x18\x01 \x01(\t\"9\n\x12SetPasswordRequest\x12\r\n\x05token\x18\x01 \x01(\t\x12\x14\n\x0cnew_password\x18\x02 \x01(\t\"A\n\x11UpdateUserRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\r\n\x05\x65mail\x18\x02 \x01(\t\x12\x0c\n\x04role\x18\x03 \x01(\t\" \n\rUserIdRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\"u\n\x0cUserResponse\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x10\n\x08username\x18\x02 \x01(\t\x12\r\n\x05\x65mail\x18\x03 \x01(\t\x12\x0c\n\x04role\x18\x04 \x01(\t\x12\x11\n\tis_active\x18\x05 \x01(\x08\x12\x12\n\ncreated_at\x18\x06 \x01(\t\"6\n\x11ListUsersResponse\x12!\n\x05users\x18\x01 \x03(\x0b\x32\x12.auth.UserResponse\"2\n\x0eStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"\x0e\n\x0c\x45mptyRequest2\x8f\x05\n\x0b\x41uthService\x12\x30\n\x05Login\x12\x12.auth.LoginRequest\x1a\x13.auth.TokenResponse\x12\x36\n\rValidateToken\x12\x12.auth.TokenRequest\x1a\x11.auth.UserPayload\x12\x39\n\x0cRefreshToken\x12\x14.auth.RefreshRequest\x1a\x13.auth.TokenResponse\x12\x32\n\x06Logout\x12\x12.auth.TokenRequest\x1a\x14.auth.StatusResponse\x12\x39\n\nCreateUser\x12\x17.auth.CreateUserRequest\x1a\x12.auth.UserResponse\x12\x39\n\nUpdateUser\x12\x17.auth.UpdateUserRequest\x1a\x12.auth.UserResponse\x12\x39\n\x0e\x44\x65\x61\x63tivateUser\x12\x13.auth.UserIdRequest\x1a\x12.auth.UserResponse\x12\x38\n\tListUsers\x12\x12.auth.EmptyRequest\x1a\x17.auth.ListUsersResponse\x12\x32\n\x07GetUser\x12\x13.auth.UserIdRequest\x1a\x12.auth.UserResponse\x12@\n\x14RequestPasswordReset\x12\x12.auth.EmailRequest\x1a\x14.auth.StatusResponse\x12\x46\n\x14SetPasswordWithToken\x12\x18.auth.SetPasswordRequest\x1a\x14.auth.StatusResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12\x61uth_service.proto\x12\x04\x61uth\"4\n\x0cLoginRequest\x12\x12\n\nidentifier\x18\x01 \x01(\t\x12\x10\n\x08password\x18\x02 \x01(\t\"P\n\rTokenResponse\x12\x14\n\x0c\x61\x63\x63\x65ss_token\x18\x01 \x01(\t\x12\x15\n\rrefresh_token\x18\x02 \x01(\t\x12\x12\n\nexpires_in\x18\x03 \x01(\x03\"\x1d\n\x0cTokenRequest\x12\r\n\x05token\x18\x01 \x01(\t\"\'\n\x0eRefreshRequest\x12\x15\n\rrefresh_token\x18\x01 \x01(\t\"v\n\x0bUserPayload\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x10\n\x08username\x18\x02 \x01(\t\x12\r\n\x05\x65mail\x18\x03 \x01(\t\x12\x0c\n\x04role\x18\x04 \x01(\t\x12\x11\n\tis_active\x18\x05 \x01(\x08\x12\x14\n\x0cphone_number\x18\x06 \x01(\t\"X\n\x11\x43reateUserRequest\x12\x10\n\x08username\x18\x01 \x01(\t\x12\r\n\x05\x65mail\x18\x02 \x01(\t\x12\x0c\n\x04role\x18\x03 \x01(\t\x12\x14\n\x0cphone_number\x18\x04 \x01(\t\"\x1d\n\x0c\x45mailRequest\x12\r\n\x05\x65mail\x18\x01 \x01(\t\"$\n\x0cPhoneRequest\x12\x14\n\x0cphone_number\x18\x01 \x01(\t\"9\n\x12SetPasswordRequest\x12\r\n\x05token\x18\x01 \x01(\t\x12\x14\n\x0cnew_password\x18\x02 \x01(\t\"P\n\x10VerifyOtpRequest\x12\x14\n\x0cphone_number\x18\x01 \x01(\t\x12\x10\n\x08otp_code\x18\x02 \x01(\t\x12\x14\n\x0cnew_password\x18\x03 \x01(\t\"W\n\x11UpdateUserRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\r\n\x05\x65mail\x18\x02 \x01(\t\x12\x0c\n\x04role\x18\x03 \x01(\t\x12\x14\n\x0cphone_number\x18\x04 \x01(\t\" \n\rUserIdRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\"\x8b\x01\n\x0cUserResponse\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x10\n\x08username\x18\x02 \x01(\t\x12\r\n\x05\x65mail\x18\x03 \x01(\t\x12\x0c\n\x04role\x18\x04 \x01(\t\x12\x11\n\tis_active\x18\x05 \x01(\x08\x12\x12\n\ncreated_at\x18\x06 \x01(\t\x12\x14\n\x0cphone_number\x18\x07 \x01(\t\"6\n\x11ListUsersResponse\x12!\n\x05users\x18\x01 \x03(\x0b\x32\x12.auth.UserResponse\"2\n\x0eStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"\x0e\n\x0c\x45mptyRequest2\x95\x06\n\x0b\x41uthService\x12\x30\n\x05Login\x12\x12.auth.LoginRequest\x1a\x13.auth.TokenResponse\x12\x36\n\rValidateToken\x12\x12.auth.TokenRequest\x1a\x11.auth.UserPayload\x12\x39\n\x0cRefreshToken\x12\x14.auth.RefreshRequest\x1a\x13.auth.TokenResponse\x12\x32\n\x06Logout\x12\x12.auth.TokenRequest\x1a\x14.auth.StatusResponse\x12\x39\n\nCreateUser\x12\x17.auth.CreateUserRequest\x1a\x12.auth.UserResponse\x12\x39\n\nUpdateUser\x12\x17.auth.UpdateUserRequest\x1a\x12.auth.UserResponse\x12\x39\n\x0e\x44\x65\x61\x63tivateUser\x12\x13.auth.UserIdRequest\x1a\x12.auth.UserResponse\x12\x38\n\tListUsers\x12\x12.auth.EmptyRequest\x1a\x17.auth.ListUsersResponse\x12\x32\n\x07GetUser\x12\x13.auth.UserIdRequest\x1a\x12.auth.UserResponse\x12@\n\x14RequestPasswordReset\x12\x12.auth.EmailRequest\x1a\x14.auth.StatusResponse\x12\x46\n\x14SetPasswordWithToken\x12\x18.auth.SetPasswordRequest\x1a\x14.auth.StatusResponse\x12;\n\x0fRequestPhoneOtp\x12\x12.auth.PhoneRequest\x1a\x14.auth.StatusResponse\x12G\n\x17VerifyOtpAndSetPassword\x12\x16.auth.VerifyOtpRequest\x1a\x14.auth.StatusResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -22,33 +22,37 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'auth_service_pb2', _globals
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_LOGINREQUEST']._serialized_start=28
-  _globals['_LOGINREQUEST']._serialized_end=78
-  _globals['_TOKENRESPONSE']._serialized_start=80
-  _globals['_TOKENRESPONSE']._serialized_end=160
-  _globals['_TOKENREQUEST']._serialized_start=162
-  _globals['_TOKENREQUEST']._serialized_end=191
-  _globals['_REFRESHREQUEST']._serialized_start=193
-  _globals['_REFRESHREQUEST']._serialized_end=232
-  _globals['_USERPAYLOAD']._serialized_start=234
-  _globals['_USERPAYLOAD']._serialized_end=330
-  _globals['_CREATEUSERREQUEST']._serialized_start=332
-  _globals['_CREATEUSERREQUEST']._serialized_end=398
-  _globals['_EMAILREQUEST']._serialized_start=400
-  _globals['_EMAILREQUEST']._serialized_end=429
-  _globals['_SETPASSWORDREQUEST']._serialized_start=431
-  _globals['_SETPASSWORDREQUEST']._serialized_end=488
-  _globals['_UPDATEUSERREQUEST']._serialized_start=490
-  _globals['_UPDATEUSERREQUEST']._serialized_end=555
-  _globals['_USERIDREQUEST']._serialized_start=557
-  _globals['_USERIDREQUEST']._serialized_end=589
-  _globals['_USERRESPONSE']._serialized_start=591
-  _globals['_USERRESPONSE']._serialized_end=708
-  _globals['_LISTUSERSRESPONSE']._serialized_start=710
-  _globals['_LISTUSERSRESPONSE']._serialized_end=764
-  _globals['_STATUSRESPONSE']._serialized_start=766
-  _globals['_STATUSRESPONSE']._serialized_end=816
-  _globals['_EMPTYREQUEST']._serialized_start=818
-  _globals['_EMPTYREQUEST']._serialized_end=832
-  _globals['_AUTHSERVICE']._serialized_start=835
-  _globals['_AUTHSERVICE']._serialized_end=1490
+  _globals['_LOGINREQUEST']._serialized_end=80
+  _globals['_TOKENRESPONSE']._serialized_start=82
+  _globals['_TOKENRESPONSE']._serialized_end=162
+  _globals['_TOKENREQUEST']._serialized_start=164
+  _globals['_TOKENREQUEST']._serialized_end=193
+  _globals['_REFRESHREQUEST']._serialized_start=195
+  _globals['_REFRESHREQUEST']._serialized_end=234
+  _globals['_USERPAYLOAD']._serialized_start=236
+  _globals['_USERPAYLOAD']._serialized_end=354
+  _globals['_CREATEUSERREQUEST']._serialized_start=356
+  _globals['_CREATEUSERREQUEST']._serialized_end=444
+  _globals['_EMAILREQUEST']._serialized_start=446
+  _globals['_EMAILREQUEST']._serialized_end=475
+  _globals['_PHONEREQUEST']._serialized_start=477
+  _globals['_PHONEREQUEST']._serialized_end=513
+  _globals['_SETPASSWORDREQUEST']._serialized_start=515
+  _globals['_SETPASSWORDREQUEST']._serialized_end=572
+  _globals['_VERIFYOTPREQUEST']._serialized_start=574
+  _globals['_VERIFYOTPREQUEST']._serialized_end=654
+  _globals['_UPDATEUSERREQUEST']._serialized_start=656
+  _globals['_UPDATEUSERREQUEST']._serialized_end=743
+  _globals['_USERIDREQUEST']._serialized_start=745
+  _globals['_USERIDREQUEST']._serialized_end=777
+  _globals['_USERRESPONSE']._serialized_start=780
+  _globals['_USERRESPONSE']._serialized_end=919
+  _globals['_LISTUSERSRESPONSE']._serialized_start=921
+  _globals['_LISTUSERSRESPONSE']._serialized_end=975
+  _globals['_STATUSRESPONSE']._serialized_start=977
+  _globals['_STATUSRESPONSE']._serialized_end=1027
+  _globals['_EMPTYREQUEST']._serialized_start=1029
+  _globals['_EMPTYREQUEST']._serialized_end=1043
+  _globals['_AUTHSERVICE']._serialized_start=1046
+  _globals['_AUTHSERVICE']._serialized_end=1835
 # @@protoc_insertion_point(module_scope)

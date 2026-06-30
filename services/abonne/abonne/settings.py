@@ -63,3 +63,5 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- gRPC ---
 ABONNE_GRPC_PORT = env.int("ABONNE_GRPC_PORT", default=50052)
+
+REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")

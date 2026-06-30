@@ -4,14 +4,16 @@ from pathlib import Path
 
 import grpc
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 
 sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 
 import abonne_service_pb2 as pb
 import abonne_service_pb2_grpc as pb_grpc
 
+from abonnes.event_publisher import publish_abonne_event
 from abonnes.grpc_interceptors import ErrorHandlingInterceptor
-from abonnes.serializers import abonne_to_response, compteur_to_response
+from abonnes.serializers import abonne_to_response, compteur_to_response, historique_to_response
 from abonnes.services import AbonneService, CompteurService
 
 
@@ -28,7 +30,7 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
     def _response(self, abonne) -> pb.AbonneResponse:
         try:
             compteur = self.compteur_service.get_compteur_actif(str(abonne.id))
-        except Exception:
+        except ObjectDoesNotExist:
             compteur = None
         data = abonne_to_response(abonne, compteur)
         compteur_data = data.pop("compteur")
@@ -61,6 +63,7 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
             index_initial=request.index_initial,
             date_pose=request.date_pose,
         )
+        publish_abonne_event(str(abonne.id), "ABONNE_CREATED")
         return self._response(abonne)
 
     def UpdateAbonne(self, request, context):
@@ -71,19 +74,55 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
             telephone_whatsapp=request.telephone_whatsapp,
             adresse=request.adresse,
         )
+        publish_abonne_event(str(abonne.id))
         return self._response(abonne)
 
     def SuspendreAbonne(self, request, context):
         abonne = self.abonne_service.suspendre_abonne(request.abonne_id)
+        publish_abonne_event(str(abonne.id))
         return self._response(abonne)
 
     def ReactiverAbonne(self, request, context):
         abonne = self.abonne_service.reactiver_abonne(request.abonne_id)
+        publish_abonne_event(str(abonne.id))
+        return self._response(abonne)
+
+    def ResilierAbonne(self, request, context):
+        abonne = self.abonne_service.resilier_abonne(request.abonne_id)
+        publish_abonne_event(str(abonne.id))
         return self._response(abonne)
 
     def GetCompteur(self, request, context):
         compteur = self.compteur_service.get_compteur_actif(request.abonne_id)
         return pb.CompteurResponse(**compteur_to_response(compteur))
+
+    def UpdateCompteur(self, request, context):
+        compteur = self.compteur_service.update_compteur(
+            abonne_id=request.abonne_id,
+            quartier=request.quartier if request.HasField("quartier") else None,
+            camp=request.camp if request.HasField("camp") else None,
+            index_initial=request.index_initial if request.HasField("index_initial") else None,
+            date_pose=request.date_pose if request.HasField("date_pose") else None,
+        )
+        publish_abonne_event(request.abonne_id)
+        return pb.CompteurResponse(**compteur_to_response(compteur))
+
+    def GetHistoriqueCompteur(self, request, context):
+        historique = self.compteur_service.get_historique(request.abonne_id)
+        items = []
+        for h in historique:
+            data = historique_to_response(h)
+            items.append(
+                pb.HistoriqueCompteurResponse(
+                    historique_id=data["historique_id"],
+                    ancien_compteur=pb.CompteurResponse(**data["ancien_compteur"]),
+                    nouveau_compteur=pb.CompteurResponse(**data["nouveau_compteur"]),
+                    index_fermeture=data["index_fermeture"],
+                    date_remplacement=data["date_remplacement"],
+                    created_at=data["created_at"],
+                )
+            )
+        return pb.ListHistoriqueResponse(historique=items)
 
     def RemplacerCompteur(self, request, context):
         compteur = self.compteur_service.remplacer_compteur(
@@ -95,6 +134,7 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
             nouvel_index_initial=request.nouvel_index_initial,
             date_remplacement=request.date_remplacement,
         )
+        publish_abonne_event(request.abonne_id)
         return pb.CompteurResponse(**compteur_to_response(compteur))
 
 

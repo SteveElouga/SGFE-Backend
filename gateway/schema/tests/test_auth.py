@@ -53,6 +53,7 @@ def make_user_response(user_id="user-1", username="comptable1", role="COMPTABLE"
         user_id=user_id,
         username=username,
         email=f"{username}@example.com",
+        phone_number="+237690000001",
         role=role,
         is_active=is_active,
         created_at="2024-01-01T00:00:00",
@@ -69,7 +70,7 @@ class LoginMutationTests(SimpleTestCase):
             get_user=Mock(return_value=make_user_response()),
         ):
             result = schema.execute_sync(
-                'mutation { login(username: "comptable1", password: "secret123") '
+                'mutation { login(identifier: "comptable1", password: "secret123") '
                 "{ accessToken expiresIn user { username role } } }",
                 context_value=ctx,
             )
@@ -88,7 +89,7 @@ class LoginMutationTests(SimpleTestCase):
             get_user=Mock(return_value=make_user_response()),
         ):
             schema.execute_sync(
-                'mutation { login(username: "comptable1", password: "secret123") { accessToken } }',
+                'mutation { login(identifier: "comptable1", password: "secret123") { accessToken } }',
                 context_value=ctx,
             )
 
@@ -102,7 +103,7 @@ class LoginMutationTests(SimpleTestCase):
     def test_login_failure_returns_graphql_error_with_grpc_details(self):
         with patch.object(auth_client, "login", side_effect=FakeRpcError("Identifiants invalides")):
             result = schema.execute_sync(
-                'mutation { login(username: "comptable1", password: "wrong") { accessToken } }',
+                'mutation { login(identifier: "comptable1", password: "wrong") { accessToken } }',
                 context_value=context(),
             )
 
@@ -116,7 +117,7 @@ class LoginMutationTests(SimpleTestCase):
             side_effect=FakeRpcError("", status_code=grpc.StatusCode.UNAUTHENTICATED),
         ):
             result = schema.execute_sync(
-                'mutation { login(username: "comptable1", password: "wrong") { accessToken } }',
+                'mutation { login(identifier: "comptable1", password: "wrong") { accessToken } }',
                 context_value=context(),
             )
 
@@ -197,7 +198,7 @@ class UserAdminMutationTests(SimpleTestCase):
     def test_create_user_requires_admin_role(self):
         with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="AGENT")):
             result = schema.execute_sync(
-                'mutation { createUser(username: "x", email: "x@example.com", role: AGENT) { username } }',
+                'mutation { createUser(username: "x", phoneNumber: "+237690000001", email: "x@example.com", role: AGENT) { username } }',
                 context_value=context(token="access-1"),
             )
 
@@ -211,8 +212,8 @@ class UserAdminMutationTests(SimpleTestCase):
             create_user=Mock(return_value=make_user_response(username="agent2", role="AGENT")),
         ):
             result = schema.execute_sync(
-                'mutation { createUser(username: "agent2", email: "agent2@example.com", role: AGENT) '
-                "{ username role } }",
+                'mutation { createUser(username: "agent2", phoneNumber: "+237690000002", '
+                'email: "agent2@example.com", role: AGENT) { username role } }',
                 context_value=context(token="access-1"),
             )
 
@@ -245,12 +246,48 @@ class UserAdminMutationTests(SimpleTestCase):
     def test_create_user_with_invalid_token_raises(self):
         with patch.object(auth_client, "validate_token", side_effect=FakeRpcError("Token invalide ou expiré")):
             result = schema.execute_sync(
-                'mutation { createUser(username: "x", email: "x@example.com", role: AGENT) { username } }',
+                'mutation { createUser(username: "x", phoneNumber: "+237690000001", email: "x@example.com", role: AGENT) { username } }',
                 context_value=context(token="invalide"),
             )
 
         self.assertIsNotNone(result.errors)
         self.assertIn("Token invalide ou expiré", str(result.errors))
+
+
+class UsersQueryTests(SimpleTestCase):
+    def test_users_requires_admin_role(self):
+        with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="COMPTABLE")):
+            result = schema.execute_sync("query { users { username } }", context_value=context(token="access-1"))
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("Accès non autorisé", str(result.errors))
+
+    def test_users_returns_list_as_admin(self):
+        with patch.multiple(
+            auth_client,
+            validate_token=Mock(return_value=Mock(user_id="admin-1", role="ADMIN")),
+            list_users=Mock(
+                return_value=Mock(
+                    users=[
+                        make_user_response(user_id="u-1", username="agent1", role="AGENT"),
+                        make_user_response(user_id="u-2", username="comptable1", role="COMPTABLE"),
+                    ]
+                )
+            ),
+        ):
+            result = schema.execute_sync("query { users { username role } }", context_value=context(token="access-1"))
+
+        self.assertIsNone(result.errors)
+        self.assertEqual(len(result.data["users"]), 2)
+        usernames = {u["username"] for u in result.data["users"]}
+        self.assertIn("agent1", usernames)
+        self.assertIn("comptable1", usernames)
+
+    def test_users_requires_auth(self):
+        result = schema.execute_sync("query { users { username } }", context_value=context())
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("Authentification requise", str(result.errors))
 
 
 class PasswordSetupMutationTests(SimpleTestCase):

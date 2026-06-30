@@ -2,6 +2,7 @@ import secrets
 import uuid
 
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
+from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 from django.utils import timezone
@@ -17,10 +18,20 @@ class Role(models.TextChoices):
 class UserManager(BaseUserManager):
     """Manager personnalisé : authentification par username, pas d'email obligatoire en USERNAME_FIELD."""
 
-    def create_user(self, username: str, email: str, role: str, password: str | None = None, **extra_fields) -> "User":
+    def create_user(
+        self,
+        username: str,
+        email: str | None = None,
+        role: str | None = None,
+        password: str | None = None,
+        **extra_fields,
+    ) -> "User":
         if not username:
             raise ValueError("Le username est obligatoire")
-        user = self.model(username=username, email=self.normalize_email(email), role=role, **extra_fields)
+        if not role:
+            raise ValueError("Le rôle est obligatoire")
+        normalized_email = self.normalize_email(email) if email else None
+        user = self.model(username=username, email=normalized_email, role=role, **extra_fields)
         if password:
             user.set_password(password)
         else:
@@ -42,7 +53,10 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     username = models.CharField(max_length=100, unique=True)
-    email = models.EmailField(max_length=255, unique=True)
+    # Obligatoire pour ADMIN (activation e-mail + reset e-mail). Vide pour les autres rôles.
+    email = models.EmailField(max_length=255, unique=True, null=True, blank=True)
+    # Obligatoire pour tous les rôles (activation et reset par OTP WhatsApp).
+    phone_number = models.CharField(max_length=20, unique=True)
     role = models.CharField(max_length=20, choices=Role.choices)
     is_active = models.BooleanField(default=True)
     failed_attempts = models.IntegerField(default=0)
@@ -94,6 +108,44 @@ class PasswordSetupToken(models.Model):
 
     class Meta:
         db_table = "password_setup_tokens"
+
+    def is_valid(self) -> bool:
+        return self.used_at is None and self.expires_at > timezone.now()
+
+    def mark_used(self) -> None:
+        self.used_at = timezone.now()
+        self.save(update_fields=["used_at"])
+
+
+def _generate_otp() -> str:
+    """Génère un code OTP à 6 chiffres cryptographiquement sûr."""
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+class PhoneOtpToken(models.Model):
+    """OTP à 6 chiffres envoyé par WhatsApp pour l'activation de compte
+    et la réinitialisation de mot de passe des utilisateurs non-ADMIN
+    (et optionnellement ADMIN via téléphone).
+
+    Le code est stocké haché — jamais en clair.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="phone_otp_tokens")
+    # Stocké haché via Django's make_password (bcrypt/pbkdf2 selon config)
+    otp_hash = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "phone_otp_tokens"
+
+    def set_otp(self, raw_otp: str) -> None:
+        self.otp_hash = make_password(raw_otp)
+
+    def check_otp(self, raw_otp: str) -> bool:
+        return check_password(raw_otp, self.otp_hash)
 
     def is_valid(self) -> bool:
         return self.used_at is None and self.expires_at > timezone.now()

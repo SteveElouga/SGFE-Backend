@@ -22,6 +22,7 @@ media/
 .env
 .env.*
 !.env.example
+services/*/.env
 
 # Node / Angular (frontend)
 node_modules/

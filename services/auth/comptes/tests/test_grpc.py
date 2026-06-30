@@ -28,23 +28,31 @@ class AuthServiceServicerTests(TestCase):
         self.servicer = AuthServiceServicer()
         self.context = FakeContext()
         self.user = User.objects.create_user(
-            username="comptable_grpc", email="comptable_grpc@example.com", password="secret123", role=Role.COMPTABLE
+            username="comptable_grpc",
+            email="comptable_grpc@example.com",
+            password="secret123",
+            role=Role.COMPTABLE,
+            phone_number="+237690000001",
         )
         self.send_patcher = patch("comptes.services.email_client.send")
         self.mock_send = self.send_patcher.start()
         self.addCleanup(self.send_patcher.stop)
 
     def test_login_success(self):
-        response = self.servicer.Login(pb.LoginRequest(username="comptable_grpc", password="secret123"), self.context)
+        response = self.servicer.Login(pb.LoginRequest(identifier="comptable_grpc", password="secret123"), self.context)
         self.assertTrue(response.access_token)
         self.assertTrue(response.refresh_token)
 
+    def test_login_by_phone_success(self):
+        response = self.servicer.Login(pb.LoginRequest(identifier="+237690000001", password="secret123"), self.context)
+        self.assertTrue(response.access_token)
+
     def test_login_failure_raises_authentication_error(self):
         with self.assertRaises(AuthenticationError):
-            self.servicer.Login(pb.LoginRequest(username="comptable_grpc", password="wrong"), self.context)
+            self.servicer.Login(pb.LoginRequest(identifier="comptable_grpc", password="wrong"), self.context)
 
     def test_validate_token_success(self):
-        login = self.servicer.Login(pb.LoginRequest(username="comptable_grpc", password="secret123"), self.context)
+        login = self.servicer.Login(pb.LoginRequest(identifier="comptable_grpc", password="secret123"), self.context)
         payload = self.servicer.ValidateToken(pb.TokenRequest(token=login.access_token), self.context)
         self.assertEqual(payload.username, "comptable_grpc")
 
@@ -53,7 +61,7 @@ class AuthServiceServicerTests(TestCase):
             self.servicer.ValidateToken(pb.TokenRequest(token="invalide"), self.context)
 
     def test_refresh_token_success(self):
-        login = self.servicer.Login(pb.LoginRequest(username="comptable_grpc", password="secret123"), self.context)
+        login = self.servicer.Login(pb.LoginRequest(identifier="comptable_grpc", password="secret123"), self.context)
         refreshed = self.servicer.RefreshToken(pb.RefreshRequest(refresh_token=login.refresh_token), self.context)
         self.assertTrue(refreshed.access_token)
 
@@ -62,7 +70,7 @@ class AuthServiceServicerTests(TestCase):
             self.servicer.RefreshToken(pb.RefreshRequest(refresh_token="invalide"), self.context)
 
     def test_logout_success(self):
-        login = self.servicer.Login(pb.LoginRequest(username="comptable_grpc", password="secret123"), self.context)
+        login = self.servicer.Login(pb.LoginRequest(identifier="comptable_grpc", password="secret123"), self.context)
         response = self.servicer.Logout(pb.TokenRequest(token=login.access_token), self.context)
         self.assertTrue(response.success)
 
@@ -70,18 +78,38 @@ class AuthServiceServicerTests(TestCase):
         response = self.servicer.Logout(pb.TokenRequest(token="invalide"), self.context)
         self.assertFalse(response.success)
 
-    def test_create_user(self):
+    def test_create_admin_sends_activation_email(self):
         response = self.servicer.CreateUser(
-            pb.CreateUserRequest(username="agent_grpc", email="agent_grpc@example.com", role=Role.AGENT),
+            pb.CreateUserRequest(
+                username="admin_grpc2",
+                email="admin_grpc2@example.com",
+                phone_number="+237690000002",
+                role=Role.ADMIN,
+            ),
             self.context,
         )
-        self.assertEqual(response.username, "agent_grpc")
+        self.assertEqual(response.username, "admin_grpc2")
         self.assertTrue(response.user_id)
         self.mock_send.assert_called_once()
+
+    def test_create_agent_sends_whatsapp_otp(self):
+        with patch("comptes.services.whatsapp_client.send") as mock_wa:
+            response = self.servicer.CreateUser(
+                pb.CreateUserRequest(
+                    username="agent_grpc",
+                    phone_number="+237690000003",
+                    role=Role.AGENT,
+                ),
+                self.context,
+            )
+        self.assertEqual(response.username, "agent_grpc")
+        self.assertFalse(response.email)
+        mock_wa.assert_called_once()
 
     def test_get_user(self):
         response = self.servicer.GetUser(pb.UserIdRequest(user_id=str(self.user.id)), self.context)
         self.assertEqual(response.username, "comptable_grpc")
+        self.assertEqual(response.phone_number, "+237690000001")
 
     def test_update_user(self):
         response = self.servicer.UpdateUser(
@@ -101,7 +129,14 @@ class AuthServiceServicerTests(TestCase):
         self.assertIn("comptable_grpc", usernames)
 
     def test_request_password_reset(self):
-        response = self.servicer.RequestPasswordReset(pb.EmailRequest(email="comptable_grpc@example.com"), self.context)
+        admin = User.objects.create_user(
+            username="admin_reset",
+            email="admin_reset@example.com",
+            password="secret",
+            role=Role.ADMIN,
+            phone_number="+237690000099",
+        )
+        response = self.servicer.RequestPasswordReset(pb.EmailRequest(email=admin.email), self.context)
         self.assertTrue(response.success)
         self.mock_send.assert_called_once()
 

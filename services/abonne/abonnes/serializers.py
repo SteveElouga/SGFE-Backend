@@ -1,4 +1,4 @@
-from abonnes.models import Abonne, Compteur
+from abonnes.models import Abonne, Compteur, HistoriqueCompteur
 
 
 def _date_to_str(value) -> str:
@@ -17,6 +17,17 @@ def compteur_to_response(compteur: Compteur) -> dict:
         "index_initial": float(compteur.index_initial),
         "date_pose": _date_to_str(compteur.date_pose),
         "statut": compteur.statut,
+    }
+
+
+def historique_to_response(h: HistoriqueCompteur) -> dict:
+    return {
+        "historique_id": str(h.id),
+        "ancien_compteur": compteur_to_response(h.ancien_compteur),
+        "nouveau_compteur": compteur_to_response(h.nouveau_compteur),
+        "index_fermeture": float(h.index_fermeture),
+        "date_remplacement": _date_to_str(h.date_remplacement),
+        "created_at": h.created_at.isoformat(),
     }
 
 

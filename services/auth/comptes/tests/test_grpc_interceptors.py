@@ -6,6 +6,7 @@ from django.test import SimpleTestCase
 from comptes.email_client import EmailDeliveryError
 from comptes.grpc_interceptors import ErrorHandlingInterceptor
 from comptes.services import AuthenticationError
+from comptes.whatsapp_client import WhatsAppDeliveryError
 
 
 class FakeHandler:
@@ -56,12 +57,18 @@ class ErrorHandlingInterceptorTests(SimpleTestCase):
             behavior(request=None, context=self.context)
         self.assertEqual(cm.exception.code, grpc.StatusCode.NOT_FOUND)
 
+    def test_value_error_maps_to_invalid_argument(self):
+        behavior = self._wrapped_behavior(ValueError("Numéro de téléphone invalide"))
+        with self.assertRaises(AbortCalled) as cm:
+            behavior(request=None, context=self.context)
+        self.assertEqual(cm.exception.code, grpc.StatusCode.INVALID_ARGUMENT)
+        self.assertEqual(cm.exception.details, "Numéro de téléphone invalide")
+
     def test_integrity_error_maps_to_already_exists_with_generic_message(self):
         behavior = self._wrapped_behavior(IntegrityError("duplicate key value violates unique constraint"))
         with self.assertRaises(AbortCalled) as cm:
             behavior(request=None, context=self.context)
         self.assertEqual(cm.exception.code, grpc.StatusCode.ALREADY_EXISTS)
-        # Le détail brut du driver SQL ne doit pas fuiter vers le client.
         self.assertEqual(cm.exception.details, "Cette ressource existe déjà")
 
     def test_email_delivery_error_maps_to_unavailable_with_generic_message(self):
@@ -71,9 +78,17 @@ class ErrorHandlingInterceptorTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, grpc.StatusCode.UNAVAILABLE)
         self.assertEqual(cm.exception.details, "Échec de l'envoi de l'e-mail, réessayez plus tard")
 
+    def test_whatsapp_delivery_error_maps_to_unavailable_with_generic_message(self):
+        behavior = self._wrapped_behavior(WhatsAppDeliveryError("Service WhatsApp inaccessible"))
+        with self.assertRaises(AbortCalled) as cm:
+            behavior(request=None, context=self.context)
+        self.assertEqual(cm.exception.code, grpc.StatusCode.UNAVAILABLE)
+        self.assertEqual(cm.exception.details, "Échec de l'envoi WhatsApp, réessayez plus tard")
+
     def test_unknown_exception_propagates_unchanged(self):
-        behavior = self._wrapped_behavior(ValueError("boom"))
-        with self.assertRaises(ValueError):
+        # RuntimeError n'est pas dans le mapping → remonte sans modification.
+        behavior = self._wrapped_behavior(RuntimeError("boom"))
+        with self.assertRaises(RuntimeError):
             behavior(request=None, context=self.context)
 
     def test_successful_call_passes_through(self):

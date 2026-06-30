@@ -6,6 +6,7 @@ from schema.abonne_types import (
     CreateAbonneInput,
     RemplacerCompteurInput,
     UpdateAbonneInput,
+    UpdateCompteurInput,
     abonne_from_grpc,
     compteur_from_grpc,
 )
@@ -52,6 +53,28 @@ class AbonneMutations:
     def reactiver_abonne(self, info: strawberry.types.Info, id: strawberry.ID) -> Abonne:
         require_role(info, "ADMIN")
         return abonne_from_grpc(abonne_client.reactiver_abonne(str(id)))
+
+    @strawberry.mutation
+    def resilier_abonne(self, info: strawberry.types.Info, id: strawberry.ID) -> Abonne:
+        require_role(info, "ADMIN")
+        return abonne_from_grpc(abonne_client.resilier_abonne(str(id)))
+
+    @strawberry.mutation
+    def update_compteur(
+        self, info: strawberry.types.Info, abonne_id: strawberry.ID, input: UpdateCompteurInput
+    ) -> Compteur:
+        require_role(info, "ADMIN")
+        kwargs = {}
+        if input.quartier is not None:
+            kwargs["quartier"] = input.quartier
+        if input.camp is not None:
+            kwargs["camp"] = input.camp
+        if input.index_initial is not None:
+            kwargs["index_initial"] = input.index_initial
+        if input.date_pose is not None:
+            kwargs["date_pose"] = input.date_pose
+        response = abonne_client.update_compteur(str(abonne_id), **kwargs)
+        return compteur_from_grpc(response)
 
     @strawberry.mutation
     def remplacer_compteur(

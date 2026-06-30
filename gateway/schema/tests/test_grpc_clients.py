@@ -13,7 +13,7 @@ class AuthServiceClientTests(SimpleTestCase):
     def test_login(self):
         self.client.login("user", "pass")
         request = self.client._stub.Login.call_args[0][0]
-        self.assertEqual((request.username, request.password), ("user", "pass"))
+        self.assertEqual((request.identifier, request.password), ("user", "pass"))
 
     def test_validate_token(self):
         self.client.validate_token("tok")
@@ -28,9 +28,12 @@ class AuthServiceClientTests(SimpleTestCase):
         self.assertEqual(self.client._stub.Logout.call_args[0][0].token, "tok")
 
     def test_create_user(self):
-        self.client.create_user("agent1", "agent1@example.com", "AGENT")
+        self.client.create_user("agent1", "+237690000001", "AGENT", "agent1@example.com")
         request = self.client._stub.CreateUser.call_args[0][0]
-        self.assertEqual((request.username, request.email, request.role), ("agent1", "agent1@example.com", "AGENT"))
+        self.assertEqual(
+            (request.username, request.phone_number, request.email, request.role),
+            ("agent1", "+237690000001", "agent1@example.com", "AGENT"),
+        )
 
     def test_deactivate_user(self):
         self.client.deactivate_user("user-1")

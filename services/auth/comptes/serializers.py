@@ -6,7 +6,8 @@ def user_to_payload(user: User) -> dict:
     return {
         "user_id": str(user.id),
         "username": user.username,
-        "email": user.email,
+        "email": user.email or "",
+        "phone_number": user.phone_number,
         "role": user.role,
         "is_active": user.is_active,
     }
@@ -17,7 +18,8 @@ def user_to_response(user: User) -> dict:
     return {
         "user_id": str(user.id),
         "username": user.username,
-        "email": user.email,
+        "email": user.email or "",
+        "phone_number": user.phone_number,
         "role": user.role,
         "is_active": user.is_active,
         "created_at": user.created_at.isoformat(),

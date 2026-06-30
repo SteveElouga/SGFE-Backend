@@ -137,6 +137,50 @@ class AbonneMutationTests(SimpleTestCase):
         self.assertIsNone(result.errors)
         self.assertEqual(result.data["reactiverAbonne"]["statut"], "ACTIF")
 
+    def test_update_compteur_success_as_admin(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(abonne_client, "update_compteur", return_value=make_compteur_response()) as mock_update,
+        ):
+            result = schema.execute_sync(
+                'mutation { updateCompteur(abonneId: "abonne-1", input: { quartier: "Bastos", camp: 2 }) '
+                "{ quartier camp } }",
+                context_value=self._admin_context(),
+            )
+            mock_update.assert_called_once_with("abonne-1", quartier="Bastos", camp=2)
+
+        self.assertIsNone(result.errors)
+
+    def test_update_compteur_requires_admin_role(self):
+        with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="AGENT")):
+            result = schema.execute_sync(
+                'mutation { updateCompteur(abonneId: "abonne-1", input: { quartier: "X" }) { quartier } }',
+                context_value=self._admin_context(),
+            )
+        self.assertIsNotNone(result.errors)
+        self.assertIn("Accès non autorisé", str(result.errors))
+
+    def test_resilier_abonne_success_as_admin(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(abonne_client, "resilier_abonne", return_value=make_abonne_response(statut="RESILIE")),
+        ):
+            result = schema.execute_sync(
+                'mutation { resilierAbonne(id: "abonne-1") { statut } }', context_value=self._admin_context()
+            )
+
+        self.assertIsNone(result.errors)
+        self.assertEqual(result.data["resilierAbonne"]["statut"], "RESILIE")
+
+    def test_resilier_abonne_requires_admin_role(self):
+        with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="COMPTABLE")):
+            result = schema.execute_sync(
+                'mutation { resilierAbonne(id: "abonne-1") { statut } }', context_value=self._admin_context()
+            )
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("Accès non autorisé", str(result.errors))
+
     def test_remplacer_compteur_requires_admin_role(self):
         with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="COMPTABLE")):
             result = schema.execute_sync(
@@ -163,3 +207,69 @@ class AbonneMutationTests(SimpleTestCase):
 
         self.assertIsNone(result.errors)
         self.assertEqual(result.data["remplacerCompteur"]["numeroCompteur"], 2)
+
+
+class AbonnesActifsQueryTests(SimpleTestCase):
+    def test_abonnes_actifs_returns_list(self):
+        with patch.object(
+            abonne_client,
+            "list_abonnes_actifs",
+            return_value=make_list_abonnes_response(
+                make_abonne_response("abonne-1", "AB-0001", "ACTIF"),
+                make_abonne_response("abonne-2", "AB-0002", "ACTIF"),
+            ),
+        ):
+            result = schema.execute_sync(
+                "query { abonnesActifs { id numeroAbonne statut } }",
+                context_value={},
+            )
+
+        self.assertIsNone(result.errors)
+        self.assertEqual(len(result.data["abonnesActifs"]), 2)
+        self.assertEqual(result.data["abonnesActifs"][0]["statut"], "ACTIF")
+
+
+class HistoriqueCompteurQueryTests(SimpleTestCase):
+    def _make_historique_response(self):
+        h = Mock()
+        h.historique_id = "histo-1"
+        h.ancien_compteur = make_compteur_response(numero_compteur=1, statut="REMPLACE")
+        h.nouveau_compteur = make_compteur_response(numero_compteur=2, statut="ACTIF")
+        h.index_fermeture = 120.0
+        h.date_remplacement = "2024-06-01"
+        h.created_at = "2024-06-01T08:00:00"
+        return h
+
+    def test_historique_compteur_returns_list(self):
+        with patch.object(
+            abonne_client,
+            "get_historique_compteur",
+            return_value=Mock(historique=[self._make_historique_response()]),
+        ):
+            result = schema.execute_sync(
+                'query { historiqueCompteur(id: "abonne-1") { id indexFermeture '
+                "ancienCompteur { numeroCompteur statut } nouveauCompteur { numeroCompteur } } }",
+                context_value={},
+            )
+
+        self.assertIsNone(result.errors)
+        self.assertEqual(len(result.data["historiqueCompteur"]), 1)
+        entry = result.data["historiqueCompteur"][0]
+        self.assertEqual(entry["indexFermeture"], 120.0)
+        self.assertEqual(entry["ancienCompteur"]["numeroCompteur"], 1)
+        self.assertEqual(entry["ancienCompteur"]["statut"], "REMPLACE")
+        self.assertEqual(entry["nouveauCompteur"]["numeroCompteur"], 2)
+
+    def test_historique_compteur_empty_returns_empty_list(self):
+        with patch.object(
+            abonne_client,
+            "get_historique_compteur",
+            return_value=Mock(historique=[]),
+        ):
+            result = schema.execute_sync(
+                'query { historiqueCompteur(id: "abonne-1") { id } }',
+                context_value={},
+            )
+
+        self.assertIsNone(result.errors)
+        self.assertEqual(result.data["historiqueCompteur"], [])
