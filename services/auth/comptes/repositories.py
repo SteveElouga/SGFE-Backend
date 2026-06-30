@@ -26,7 +26,15 @@ class UserRepository:
         return list(User.objects.all().order_by("-created_at"))
 
     def create(self, username: str, phone_number: str, role: str, email: str | None = None) -> User:
-        return User.objects.create_user(username=username, email=email, phone_number=phone_number, role=role)
+        # is_active=False : le compte n'est activé qu'après définition du mot de passe
+        # (via lien email pour ADMIN, ou OTP WhatsApp pour les autres rôles).
+        return User.objects.create_user(
+            username=username,
+            email=email,
+            phone_number=phone_number,
+            role=role,
+            is_active=False,
+        )
 
     def save(self, user: User) -> User:
         user.save()

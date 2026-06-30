@@ -139,6 +139,19 @@ class UserAdminServiceTests(TestCase):
         self.assertEqual(user.role, Role.AGENT)
         self.assertFalse(user.has_usable_password())
 
+    def test_create_agent_is_inactive_until_activation(self):
+        user = self.user_admin.create_user(username="agent3z", phone_number="+237690000019", role=Role.AGENT)
+        self.assertFalse(user.is_active)
+
+    def test_create_admin_is_inactive_until_activation(self):
+        user = self.user_admin.create_user(
+            username="admin3z",
+            email="admin3z@example.com",
+            phone_number="+237690000018",
+            role=Role.ADMIN,
+        )
+        self.assertFalse(user.is_active)
+
     def test_create_agent_sends_whatsapp_otp(self):
         self.user_admin.create_user(username="agent3b", phone_number="+237690000012", role=Role.AGENT)
         self.mock_whatsapp.assert_called_once()
@@ -187,6 +200,44 @@ class UserAdminServiceTests(TestCase):
         created = self.user_admin.create_user(username="agent6", phone_number="+237690000023", role=Role.AGENT)
         updated = self.user_admin.update_user(str(created.id), email="", role="")
         self.assertEqual(updated.role, Role.AGENT)
+
+    def test_update_user_phone_change_resend_otp_si_non_active(self):
+        """Quand le téléphone change pour un compte en attente d'activation, l'OTP est renvoyé."""
+        created = self.user_admin.create_user(username="agent7b", phone_number="+237690000030", role=Role.AGENT)
+        # Après create_user, un premier OTP a déjà été envoyé
+        first_call_count = self.mock_whatsapp.call_count
+
+        self.user_admin.update_user(str(created.id), email="", role="", phone_number="+237690000031")
+
+        self.assertEqual(self.mock_whatsapp.call_count, first_call_count + 1)
+        last_call_kwargs = self.mock_whatsapp.call_args.kwargs
+        self.assertEqual(last_call_kwargs["to_phone"], "+237690000031")
+
+    def test_update_user_phone_change_ne_renvoie_pas_otp_si_actif(self):
+        """Aucun OTP n'est renvoyé si l'utilisateur est déjà activé."""
+        created = self.user_admin.create_user(username="agent7c", phone_number="+237690000032", role=Role.AGENT)
+        created.is_active = True
+        created.set_password("S3cr3t!")
+        created.save()
+        before = self.mock_whatsapp.call_count
+
+        self.user_admin.update_user(str(created.id), email="", role="", phone_number="+237690000033")
+
+        self.assertEqual(self.mock_whatsapp.call_count, before)
+
+    def test_update_user_admin_phone_change_ne_renvoie_pas_otp(self):
+        """Un ADMIN s'active par e-mail, pas par OTP — le changement de téléphone n'envoie rien."""
+        created = self.user_admin.create_user(
+            username="admin_phone",
+            phone_number="+237690000034",
+            role=Role.ADMIN,
+            email="adminp@example.com",
+        )
+        before = self.mock_whatsapp.call_count
+
+        self.user_admin.update_user(str(created.id), email="", role="", phone_number="+237690000035")
+
+        self.assertEqual(self.mock_whatsapp.call_count, before)
 
     def test_deactivate_user(self):
         created = self.user_admin.create_user(username="agent7", phone_number="+237690000024", role=Role.AGENT)
@@ -252,6 +303,7 @@ class PasswordSetupServiceTests(TestCase):
 
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("newpassword123"))
+        self.assertTrue(self.user.is_active)
         token.refresh_from_db()
         self.assertIsNotNone(token.used_at)
 
@@ -296,6 +348,12 @@ class PhoneOtpServiceTests(TestCase):
         call_args = self.mock_whatsapp.call_args
         self.assertEqual(call_args.kwargs["to_phone"], "+237690000040")
 
+    def test_send_otp_message_contient_lien_activation(self):
+        self.service.send_otp(self.user)
+        message = self.mock_whatsapp.call_args.kwargs["message"]
+        self.assertIn("/activer-compte", message)
+        self.assertIn("%2B237690000040", message)
+
     def test_request_otp_by_phone_sends_otp(self):
         self.service.request_otp_by_phone("+237690000040")
         self.mock_whatsapp.assert_called_once()
@@ -306,12 +364,51 @@ class PhoneOtpServiceTests(TestCase):
 
     def test_verify_otp_and_set_password_success(self):
         self.service.send_otp(self.user)
-        # Accès direct au token brut via le mock
-        raw_otp = self.mock_whatsapp.call_args.kwargs["message"].split(":")[1].strip().split("\n")[0]
+        import re
+
+        raw_otp = re.search(r"\*(\d{6})\*", self.mock_whatsapp.call_args.kwargs["message"]).group(1)
 
         self.service.verify_otp_and_set_password("+237690000040", raw_otp, "newpassword123")
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("newpassword123"))
+        self.assertTrue(self.user.is_active)
+
+    def test_verify_otp_actives_pending_user(self):
+        """Un compte en attente d'activation (is_active=False, sans mot de passe) doit devenir actif."""
+        pending = User.objects.create_user(
+            username="pending_otp",
+            phone_number="+237690000041",
+            role=Role.AGENT,
+            is_active=False,
+        )
+        self.assertFalse(pending.is_active)
+        self.service.send_otp(pending)
+        import re
+
+        raw_otp = re.search(r"\*(\d{6})\*", self.mock_whatsapp.call_args.kwargs["message"]).group(1)
+
+        self.service.verify_otp_and_set_password("+237690000041", raw_otp, "newpassword123")
+        pending.refresh_from_db()
+        self.assertTrue(pending.is_active)
+
+    def test_request_otp_blocked_for_deactivated_user_with_password(self):
+        """Un compte désactivé par un admin (is_active=False + mot de passe) ne doit pas recevoir d'OTP."""
+        self.user.is_active = False
+        self.user.save()
+        self.service.request_otp_by_phone("+237690000040")
+        self.mock_whatsapp.assert_not_called()
+
+    def test_request_otp_allowed_for_pending_activation_user(self):
+        """Un compte en attente d'activation (is_active=False + sans mot de passe) peut recevoir un OTP."""
+        pending = User.objects.create_user(
+            username="pending_resend",
+            phone_number="+237690000042",
+            role=Role.AGENT,
+            is_active=False,
+        )
+        self.assertFalse(pending.is_active)
+        self.service.request_otp_by_phone("+237690000042")
+        self.mock_whatsapp.assert_called_once()
 
     def test_verify_wrong_otp_raises(self):
         self.service.send_otp(self.user)

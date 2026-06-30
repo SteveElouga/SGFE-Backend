@@ -140,14 +140,28 @@ class UserAdminService:
         return user
 
     def update_user(self, user_id: str, email: str, role: str, phone_number: str = "") -> User:
+        """Met à jour un utilisateur.
+
+        Si le numéro de téléphone change et que le compte n'est pas encore
+        activé (non-ADMIN en attente d'OTP), un nouvel OTP est envoyé
+        automatiquement sur le nouveau numéro.
+        """
         user = self.users.get_by_id(user_id)
+        old_phone = user.phone_number
         if email:
             user.email = email
         if role:
             user.role = role
         if phone_number:
             user.phone_number = validate_phone_cameroon(phone_number)
-        return self.users.save(user)
+        saved_user = self.users.save(user)
+
+        phone_changed = phone_number and saved_user.phone_number != old_phone
+        pending_activation = not saved_user.is_active and not saved_user.has_usable_password()
+        if phone_changed and pending_activation and saved_user.role != "ADMIN":
+            self.phone_otp.send_otp(saved_user)
+
+        return saved_user
 
     def deactivate_user(self, user_id: str) -> User:
         user = self.users.get_by_id(user_id)
@@ -216,10 +230,14 @@ class PasswordSetupService:
         if not setup_token.is_valid():
             raise AuthenticationError("Token invalide ou expiré")
 
+        from django.db import transaction
+
         user = setup_token.user
-        user.set_password(new_password)
-        self.users.save(user)
-        setup_token.mark_used()
+        with transaction.atomic():
+            user.set_password(new_password)
+            user.is_active = True
+            self.users.save(user)
+            setup_token.mark_used()
 
 
 class PhoneOtpService:
@@ -239,9 +257,17 @@ class PhoneOtpService:
         raw_otp = _generate_otp()
         expires_at = timezone.now() + timedelta(minutes=settings.PHONE_OTP_VALIDITY_MINUTES)
         self.otp_tokens.create(user=user, raw_otp=raw_otp, expires_at=expires_at)
+        phone_encoded = user.phone_number.replace("+", "%2B")
+        activation_url = f"{settings.FRONTEND_URL}/activer-compte?phone={phone_encoded}"
         whatsapp_client.send(
             to_phone=user.phone_number,
-            message=f"Votre code SGFE : {raw_otp}\nValable {settings.PHONE_OTP_VALIDITY_MINUTES} minutes. Ne le partagez jamais.",
+            message=(
+                f"Bonjour {user.username},\n\n"
+                f"Votre code d'activation SGFE : *{raw_otp}*\n\n"
+                f"Activez votre compte ici :\n{activation_url}\n\n"
+                f"Saisissez le code et définissez votre mot de passe.\n"
+                f"Valable {settings.PHONE_OTP_VALIDITY_MINUTES} minutes. Ne partagez jamais ce code."
+            ),
         )
 
     def request_otp_by_phone(self, phone_number: str) -> None:
@@ -254,7 +280,11 @@ class PhoneOtpService:
             user = self.users.get_by_phone(phone)
         except ObjectDoesNotExist:
             return
-        if not user.is_active:
+        # Bloquer les comptes explicitement désactivés par un admin (is_active=False
+        # + mot de passe utilisable). Les comptes en attente d'activation
+        # (is_active=False + mot de passe inutilisable) peuvent recevoir un OTP
+        # pour le renvoi du code d'activation.
+        if not user.is_active and user.has_usable_password():
             return
         self.send_otp(user)
 
@@ -274,6 +304,10 @@ class PhoneOtpService:
         if not otp_token.check_otp(otp_code):
             raise AuthenticationError("Code OTP invalide ou expiré")
 
-        user.set_password(new_password)
-        self.users.save(user)
-        otp_token.mark_used()
+        from django.db import transaction
+
+        with transaction.atomic():
+            user.set_password(new_password)
+            user.is_active = True
+            self.users.save(user)
+            otp_token.mark_used()
