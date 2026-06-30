@@ -157,19 +157,22 @@ class TestCampagneMutations(SimpleTestCase):
         self.assertEqual(result.campagne_id, "camp-001")
         mock_client.assigner_agent.assert_called_once_with(campagne_id="camp-001", agent_id="agent-001")
 
+    @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_mutations.campagne_client")
     @patch("schema.campagne_mutations.require_auth")
     @patch("schema.campagne_mutations.require_role")
-    def test_saisir_index_agent(self, mock_role, mock_auth, mock_client) -> None:
+    def test_saisir_index_agent(self, mock_role, mock_auth, mock_mut_client, mock_query_client) -> None:
         from schema.campagne_types import SaisirIndexInput
 
         mock_auth.return_value = MagicMock(role="AGENT", user_id="agent-001")
-        mock_client.saisir_index.return_value = _releve_response()
+        mock_mut_client.saisir_index.return_value = _releve_response()
+        # _verifier_acces_campagne appelle list_campagnes via campagne_queries.campagne_client
+        mock_query_client.list_campagnes.return_value = MagicMock(campagnes=[MagicMock(campagne_id="camp-001")])
         info = MagicMock()
         input_data = SaisirIndexInput(campagne_id="camp-001", abonne_id="abonne-001", nouveau_index=150.0)
         result = CampagneMutations().saisir_index(info, input=input_data)
         self.assertEqual(result.statut, "RELEVE")
-        mock_client.saisir_index.assert_called_once_with(
+        mock_mut_client.saisir_index.assert_called_once_with(
             campagne_id="camp-001",
             abonne_id="abonne-001",
             nouveau_index=150.0,
@@ -177,14 +180,16 @@ class TestCampagneMutations(SimpleTestCase):
             agent_id="agent-001",
         )
 
+    @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_mutations.campagne_client")
     @patch("schema.campagne_mutations.require_auth")
     @patch("schema.campagne_mutations.require_role")
-    def test_marquer_non_releve(self, mock_role, mock_auth, mock_client) -> None:
+    def test_marquer_non_releve(self, mock_role, mock_auth, mock_mut_client, mock_query_client) -> None:
         from schema.campagne_types import MarquerNonReleveInput
 
         mock_auth.return_value = MagicMock(role="AGENT", user_id="agent-001")
-        mock_client.marquer_non_releve.return_value = _releve_response(statut="NON_RELEVE")
+        mock_mut_client.marquer_non_releve.return_value = _releve_response(statut="NON_RELEVE")
+        mock_query_client.list_campagnes.return_value = MagicMock(campagnes=[MagicMock(campagne_id="camp-001")])
         info = MagicMock()
         input_data = MarquerNonReleveInput(campagne_id="camp-001", abonne_id="abonne-001", observation="Absent")
         result = CampagneMutations().marquer_non_releve(info, input=input_data)

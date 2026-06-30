@@ -8,31 +8,36 @@ from .context import require_auth, require_role
 from .grpc_clients import campagne_client
 
 
-def _verifier_propriete_superviseur(user: object, campagne_id: str) -> None:
-    """Lève PermissionError si un SUPERVISEUR tente d'accéder à une campagne qui n'est pas la sienne."""
-    if getattr(user, "role", None) == "SUPERVISEUR":
+def _verifier_acces_campagne(user: object, campagne_id: str) -> None:
+    """Vérifie l'accès à une campagne selon le rôle :
+    - SUPERVISEUR : doit en être le créateur.
+    - AGENT : doit y être affecté.
+    - ADMIN : accès libre (no-op).
+    """
+    role = getattr(user, "role", None)
+    if role == "SUPERVISEUR":
         campagne = campagne_from_grpc(campagne_client.get_campagne(campagne_id))
         if campagne.created_by != user.user_id:
             raise PermissionError("Accès refusé : cette campagne ne vous appartient pas.")
+    elif role == "AGENT":
+        affectees = campagne_client.list_campagnes(agent_id=user.user_id)
+        if campagne_id not in {c.campagne_id for c in affectees.campagnes}:
+            raise PermissionError("Accès refusé : vous n'êtes pas affecté à cette campagne.")
+
+
+# Alias conservé pour l'import dans campagne_mutations.py
+_verifier_propriete_superviseur = _verifier_acces_campagne
 
 
 @strawberry.type
 class CampagneQueries:
     @strawberry.field
     def campagne(self, info: strawberry.types.Info, campagne_id: str) -> Campagne:
-        """Détails d'une campagne — ADMIN (toutes), SUPERVISEUR (les siennes), AGENT (celles où il est affecté)."""
+        """Détails d'une campagne — ADMIN (toutes), SUPERVISEUR (les siennes), AGENT (les siennes)."""
         user = require_auth(info)
         require_role(info, "ADMIN", "AGENT", "SUPERVISEUR")
-        response = campagne_client.get_campagne(campagne_id)
-        campagne = campagne_from_grpc(response)
-        if user.role == "SUPERVISEUR" and campagne.created_by != user.user_id:
-            raise PermissionError("Accès refusé : cette campagne ne vous appartient pas.")
-        if user.role == "AGENT":
-            affectees = campagne_client.list_campagnes(agent_id=user.user_id)
-            ids_affectees = {c.campagne_id for c in affectees.campagnes}
-            if campagne_id not in ids_affectees:
-                raise PermissionError("Accès refusé : vous n'êtes pas affecté à cette campagne.")
-        return campagne
+        _verifier_acces_campagne(user, campagne_id)
+        return campagne_from_grpc(campagne_client.get_campagne(campagne_id))
 
     @strawberry.field
     def campagnes(self, info: strawberry.types.Info) -> list[Campagne]:
@@ -54,7 +59,7 @@ class CampagneQueries:
         """Liste des relevés d'une campagne — ADMIN, AGENT, SUPERVISEUR (les siennes)."""
         user = require_auth(info)
         require_role(info, "ADMIN", "AGENT", "SUPERVISEUR")
-        _verifier_propriete_superviseur(user, campagne_id)
+        _verifier_acces_campagne(user, campagne_id)
         response = campagne_client.list_releves(campagne_id)
         return [releve_from_grpc(r) for r in response.releves]
 
@@ -63,7 +68,7 @@ class CampagneQueries:
         """Progression d'une campagne — ADMIN, AGENT, SUPERVISEUR (les siennes)."""
         user = require_auth(info)
         require_role(info, "ADMIN", "AGENT", "SUPERVISEUR")
-        _verifier_propriete_superviseur(user, campagne_id)
+        _verifier_acces_campagne(user, campagne_id)
         r = campagne_client.get_progression(campagne_id)
         return Progression(
             campagne_id=r.campagne_id,
