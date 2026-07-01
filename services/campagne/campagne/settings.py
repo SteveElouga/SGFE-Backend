@@ -40,9 +40,7 @@ TEMPLATES = [
 WSGI_APPLICATION = "campagne.wsgi.application"
 
 if TESTING:
-    DATABASES = {
-        "default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}
-    }
+    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
 else:
     DATABASES = {
         "default": {
@@ -72,6 +70,9 @@ ABONNE_GRPC_PORT = env.int("ABONNE_GRPC_PORT", default=50052)
 
 FACTURATION_GRPC_HOST = env("FACTURATION_GRPC_HOST", default="localhost")
 FACTURATION_GRPC_PORT = env.int("FACTURATION_GRPC_PORT", default=50054)
+
+NOTIFICATION_GRPC_HOST = env("NOTIFICATION_GRPC_HOST", default="localhost")
+NOTIFICATION_GRPC_PORT = env.int("NOTIFICATION_GRPC_PORT", default=50056)
 
 # --- JWT (validation interne) ---
 JWT_SECRET_KEY = env("JWT_SECRET_KEY", default="changeme")

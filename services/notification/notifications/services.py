@@ -11,6 +11,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
+from notifications.brevo_client import envoyer_email_admin
 from notifications.grpc_clients import abonne_client, config_client, facturation_client
 from notifications.message_builder import (
     build_message_facture,
@@ -154,9 +155,7 @@ class EnvoiService:
             ValidationError: Si l'étape est hors de la plage [1, 4].
         """
         if etape not in _ETAPE_TO_TYPE:
-            raise ValidationError(
-                f"Étape de relance invalide : {etape}. Les étapes valides sont 1, 2, 3 et 4."
-            )
+            raise ValidationError(f"Étape de relance invalide : {etape}. Les étapes valides sont 1, 2, 3 et 4.")
 
         facture = facturation_client.get_facture(facture_id)
         abonne = abonne_client.get_abonne(abonne_id)
@@ -262,8 +261,31 @@ class EnvoiService:
                     "erreur": str(exc),
                 },
             )
+            # EF-NOTIF-005 — Notifier les admins de chaque échec WhatsApp
+            notifier_admins(
+                evenement="ECHEC_WHATSAPP",
+                detail=f"Échec envoi WhatsApp facture {envoi.facture_id} : {exc}",
+                entite_id=envoi.facture_id,
+            )
         self._envois.save(envoi)
         return envoi
+
+
+def notifier_admins(evenement: str, detail: str, entite_id: str = "") -> None:
+    """Envoie un email de notification aux administrateurs via Brevo.
+
+    Récupère l'email destinataire depuis Config Service (clé EMAIL_ADMIN_NOTIFICATIONS).
+    Dégradation gracieuse : si Brevo ou Config Service est indisponible, on logue et on continue.
+    """
+    _SUJETS: dict[str, str] = {
+        "CAMPAGNE_PLANIFIEE": "[SGFE] Campagne planifiée",
+        "SUSPENSION": "[SGFE] Suspension d'abonné",
+        "ECHEC_WHATSAPP": "[SGFE] Échec envoi WhatsApp",
+    }
+    sujet = _SUJETS.get(evenement, f"[SGFE] Événement : {evenement}")
+    corps = f"Événement : {evenement}\nEntité : {entite_id or 'N/A'}\n\n{detail}"
+    email_admin = config_client.get_email_admin_notifications()
+    envoyer_email_admin(to_email=email_admin, subject=sujet, body=corps)
 
 
 class TokenService:

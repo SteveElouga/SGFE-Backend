@@ -111,9 +111,7 @@ class ConfigServiceClient:
         par défaut configurée dans settings (DEFAULT_TOKEN_VALIDITE_JOURS).
         """
         try:
-            response = self._stub.GetConfig(
-                self._pb.ConfigKeyRequest(cle="token_validite_jours")
-            )
+            response = self._stub.GetConfig(self._pb.ConfigKeyRequest(cle="token_validite_jours"))
             return int(response.valeur)
         except (grpc.RpcError, ValueError) as exc:
             logger.warning(
@@ -123,6 +121,17 @@ class ConfigServiceClient:
                 exc,
             )
             return settings.DEFAULT_TOKEN_VALIDITE_JOURS
+
+    def get_email_admin_notifications(self) -> str:
+        """Récupère l'email de notification admin (clé : EMAIL_ADMIN_NOTIFICATIONS).
+
+        Retourne une chaîne vide si la clé est absente ou le service indisponible.
+        """
+        try:
+            response = self._stub.GetConfig(self._pb.ConfigKeyRequest(cle="EMAIL_ADMIN_NOTIFICATIONS"))
+            return response.valeur.strip()
+        except (grpc.RpcError, ValueError):
+            return ""
 
 
 # Instances singleton utilisées dans services.py

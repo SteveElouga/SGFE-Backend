@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1anotification_service.proto\x12\x0cnotification\">\n\x15\x45nvoyerFactureRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\"M\n\x15\x45nvoyerRelanceRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\r\n\x05\x65tape\x18\x03 \x01(\x05\"&\n\x10\x46\x61\x63tureIdRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\"\"\n\x0e\x45nvoiIdRequest\x12\x10\n\x08\x65nvoi_id\x18\x01 \x01(\t\"\"\n\x0eTokenIdRequest\x12\x10\n\x08token_id\x18\x01 \x01(\t\":\n\x11ListEnvoisRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\"$\n\x13ValiderTokenRequest\x12\r\n\x05token\x18\x01 \x01(\t\"\x84\x01\n\rEnvoiResponse\x12\x10\n\x08\x65nvoi_id\x18\x01 \x01(\t\x12\x12\n\nfacture_id\x18\x02 \x01(\t\x12\x0e\n\x06statut\x18\x03 \x01(\t\x12\x12\n\ndate_envoi\x18\x04 \x01(\t\x12\x19\n\x11telnyx_message_id\x18\x05 \x01(\t\x12\x0e\n\x06\x65rreur\x18\x06 \x01(\t\"T\n\x14ValiderTokenResponse\x12\x10\n\x08is_valid\x18\x01 \x01(\x08\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x17\n\x0f\x64\x61te_expiration\x18\x03 \x01(\t\"A\n\x12ListEnvoisResponse\x12+\n\x06\x65nvois\x18\x01 \x03(\x0b\x32\x1b.notification.EnvoiResponse\"2\n\x0eStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t2\xca\x04\n\x13NotificationService\x12R\n\x0e\x45nvoyerFacture\x12#.notification.EnvoyerFactureRequest\x1a\x1b.notification.EnvoiResponse\x12O\n\x10ReenvoyerFacture\x12\x1e.notification.FactureIdRequest\x1a\x1b.notification.EnvoiResponse\x12R\n\x0e\x45nvoyerRelance\x12#.notification.EnvoyerRelanceRequest\x1a\x1b.notification.EnvoiResponse\x12\x45\n\x08GetEnvoi\x12\x1c.notification.EnvoiIdRequest\x1a\x1b.notification.EnvoiResponse\x12O\n\nListEnvois\x12\x1f.notification.ListEnvoisRequest\x1a .notification.ListEnvoisResponse\x12U\n\x0cValiderToken\x12!.notification.ValiderTokenRequest\x1a\".notification.ValiderTokenResponse\x12K\n\rRevoquerToken\x12\x1c.notification.TokenIdRequest\x1a\x1c.notification.StatusResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1anotification_service.proto\x12\x0cnotification\">\n\x15\x45nvoyerFactureRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\"M\n\x15\x45nvoyerRelanceRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\r\n\x05\x65tape\x18\x03 \x01(\x05\"&\n\x10\x46\x61\x63tureIdRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\"\"\n\x0e\x45nvoiIdRequest\x12\x10\n\x08\x65nvoi_id\x18\x01 \x01(\t\"\"\n\x0eTokenIdRequest\x12\x10\n\x08token_id\x18\x01 \x01(\t\":\n\x11ListEnvoisRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\"$\n\x13ValiderTokenRequest\x12\r\n\x05token\x18\x01 \x01(\t\"M\n\x15NotifierAdminsRequest\x12\x11\n\tevenement\x18\x01 \x01(\t\x12\x0e\n\x06\x64\x65tail\x18\x02 \x01(\t\x12\x11\n\tentite_id\x18\x03 \x01(\t\"\x84\x01\n\rEnvoiResponse\x12\x10\n\x08\x65nvoi_id\x18\x01 \x01(\t\x12\x12\n\nfacture_id\x18\x02 \x01(\t\x12\x0e\n\x06statut\x18\x03 \x01(\t\x12\x12\n\ndate_envoi\x18\x04 \x01(\t\x12\x19\n\x11telnyx_message_id\x18\x05 \x01(\t\x12\x0e\n\x06\x65rreur\x18\x06 \x01(\t\"T\n\x14ValiderTokenResponse\x12\x10\n\x08is_valid\x18\x01 \x01(\x08\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x17\n\x0f\x64\x61te_expiration\x18\x03 \x01(\t\"A\n\x12ListEnvoisResponse\x12+\n\x06\x65nvois\x18\x01 \x03(\x0b\x32\x1b.notification.EnvoiResponse\"2\n\x0eStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t2\x9f\x05\n\x13NotificationService\x12R\n\x0e\x45nvoyerFacture\x12#.notification.EnvoyerFactureRequest\x1a\x1b.notification.EnvoiResponse\x12O\n\x10ReenvoyerFacture\x12\x1e.notification.FactureIdRequest\x1a\x1b.notification.EnvoiResponse\x12R\n\x0e\x45nvoyerRelance\x12#.notification.EnvoyerRelanceRequest\x1a\x1b.notification.EnvoiResponse\x12\x45\n\x08GetEnvoi\x12\x1c.notification.EnvoiIdRequest\x1a\x1b.notification.EnvoiResponse\x12O\n\nListEnvois\x12\x1f.notification.ListEnvoisRequest\x1a .notification.ListEnvoisResponse\x12U\n\x0cValiderToken\x12!.notification.ValiderTokenRequest\x1a\".notification.ValiderTokenResponse\x12K\n\rRevoquerToken\x12\x1c.notification.TokenIdRequest\x1a\x1c.notification.StatusResponse\x12S\n\x0eNotifierAdmins\x12#.notification.NotifierAdminsRequest\x1a\x1c.notification.StatusResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -45,14 +45,16 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_LISTENVOISREQUEST']._serialized_end=357
   _globals['_VALIDERTOKENREQUEST']._serialized_start=359
   _globals['_VALIDERTOKENREQUEST']._serialized_end=395
-  _globals['_ENVOIRESPONSE']._serialized_start=398
-  _globals['_ENVOIRESPONSE']._serialized_end=530
-  _globals['_VALIDERTOKENRESPONSE']._serialized_start=532
-  _globals['_VALIDERTOKENRESPONSE']._serialized_end=616
-  _globals['_LISTENVOISRESPONSE']._serialized_start=618
-  _globals['_LISTENVOISRESPONSE']._serialized_end=683
-  _globals['_STATUSRESPONSE']._serialized_start=685
-  _globals['_STATUSRESPONSE']._serialized_end=735
-  _globals['_NOTIFICATIONSERVICE']._serialized_start=738
-  _globals['_NOTIFICATIONSERVICE']._serialized_end=1324
+  _globals['_NOTIFIERADMINSREQUEST']._serialized_start=397
+  _globals['_NOTIFIERADMINSREQUEST']._serialized_end=474
+  _globals['_ENVOIRESPONSE']._serialized_start=477
+  _globals['_ENVOIRESPONSE']._serialized_end=609
+  _globals['_VALIDERTOKENRESPONSE']._serialized_start=611
+  _globals['_VALIDERTOKENRESPONSE']._serialized_end=695
+  _globals['_LISTENVOISRESPONSE']._serialized_start=697
+  _globals['_LISTENVOISRESPONSE']._serialized_end=762
+  _globals['_STATUSRESPONSE']._serialized_start=764
+  _globals['_STATUSRESPONSE']._serialized_end=814
+  _globals['_NOTIFICATIONSERVICE']._serialized_start=817
+  _globals['_NOTIFICATIONSERVICE']._serialized_end=1488
 # @@protoc_insertion_point(module_scope)

@@ -9,6 +9,7 @@ service NotificationService {
   rpc ListEnvois (ListEnvoisRequest) returns (ListEnvoisResponse);
   rpc ValiderToken (ValiderTokenRequest) returns (ValiderTokenResponse);
   rpc RevoquerToken (TokenIdRequest) returns (StatusResponse);
+  rpc NotifierAdmins (NotifierAdminsRequest) returns (StatusResponse);
 }
 
 message EnvoyerFactureRequest {
@@ -32,6 +33,12 @@ message ListEnvoisRequest {
 }
 
 message ValiderTokenRequest { string token = 1; }
+
+message NotifierAdminsRequest {
+  string evenement = 1;
+  string detail = 2;
+  string entite_id = 3;
+}
 
 message EnvoiResponse {
   string envoi_id = 1;

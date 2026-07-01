@@ -30,6 +30,43 @@ class AbonneServiceClient:
             return False
 
 
+class NotificationServiceClient:
+    """Client gRPC vers Notification Service (port 50056) — notifications admin."""
+
+    def __init__(self) -> None:
+        address = f"{settings.NOTIFICATION_GRPC_HOST}:{settings.NOTIFICATION_GRPC_PORT}"
+        self._channel = grpc.insecure_channel(address)
+
+        proto_path = str(Path(settings.BASE_DIR) / "proto")
+        if proto_path not in sys.path:
+            sys.path.insert(0, proto_path)
+
+        import notification_service_pb2 as pb
+        import notification_service_pb2_grpc as pb_grpc
+
+        self._stub = pb_grpc.NotificationServiceStub(self._channel)
+        self._pb = pb
+
+    def notifier_admins(self, evenement: str, detail: str, entite_id: str = "") -> None:
+        """Notifie les administrateurs d'un événement campagne.
+
+        Dégradation gracieuse en cas d'erreur gRPC.
+        """
+        try:
+            self._stub.NotifierAdmins(
+                self._pb.NotifierAdminsRequest(
+                    evenement=evenement,
+                    detail=detail,
+                    entite_id=entite_id,
+                )
+            )
+        except Exception as exc:
+            logger.warning(
+                "NotifierAdmins échoué — dégradation gracieuse",
+                extra={"evenement": evenement, "error": str(exc)},
+            )
+
+
 class FacturationServiceClient:
     """Client gRPC vers Facturation Service (port 50054) — déclenchement GenererFactures."""
 
@@ -53,9 +90,7 @@ class FacturationServiceClient:
         Retourne True si l'appel a réussi, False sinon (dégradation gracieuse).
         """
         try:
-            self._stub.GenererFactures(
-                self._pb.GenererFacturesRequest(campagne_id=campagne_id)
-            )
+            self._stub.GenererFactures(self._pb.GenererFacturesRequest(campagne_id=campagne_id))
             logger.info(
                 "Factures générées par Facturation Service",
                 extra={"campagne_id": campagne_id},
