@@ -21,6 +21,7 @@ class Facture:
     date_limite_paiement: str
     date_generation: str
     pdf_path: str
+    numero_mobile_money: str
 
 
 @strawberry.type
@@ -48,6 +49,7 @@ def facture_from_grpc(r: object) -> Facture:
         date_limite_paiement=r.date_limite_paiement,
         date_generation=r.date_generation,
         pdf_path=r.pdf_path,
+        numero_mobile_money=r.numero_mobile_money,
     )
 
 

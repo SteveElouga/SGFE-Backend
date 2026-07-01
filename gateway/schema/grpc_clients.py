@@ -202,8 +202,15 @@ class FacturationServiceClient:
     def update_tarif(self, prix_m3: float, date_effet: str) -> facturation_pb.TarifResponse:
         return self._stub.UpdateTarif(facturation_pb.UpdateTarifRequest(prix_m3=prix_m3, date_effet=date_effet))
 
-    def generer_factures(self, campagne_id: str) -> facturation_pb.GenererFacturesResponse:
-        return self._stub.GenererFactures(facturation_pb.GenererFacturesRequest(campagne_id=campagne_id))
+    def generer_factures(
+        self, campagne_id: str, envoyer_whatsapp_auto: bool = True
+    ) -> facturation_pb.GenererFacturesResponse:
+        return self._stub.GenererFactures(
+            facturation_pb.GenererFacturesRequest(
+                campagne_id=campagne_id,
+                envoyer_whatsapp_auto=envoyer_whatsapp_auto,
+            )
+        )
 
     def get_facture(self, facture_id: str) -> facturation_pb.FactureResponse:
         return self._stub.GetFacture(facturation_pb.FactureIdRequest(facture_id=facture_id))

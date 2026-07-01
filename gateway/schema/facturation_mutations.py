@@ -1,11 +1,12 @@
 """Mutations GraphQL du Facturation Service."""
 
+import grpc
 import strawberry
 import strawberry.types
 
 from .context import require_auth, require_role
 from .facturation_types import Facture, Tarif, facture_from_grpc, tarif_from_grpc
-from .grpc_clients import facturation_client
+from .grpc_clients import facturation_client, notification_client
 
 
 @strawberry.type
@@ -27,16 +28,44 @@ class FacturationMutations:
         self,
         info: strawberry.types.Info,
         campagne_id: str,
+        envoyer_whatsapp_auto: bool = True,
     ) -> list[Facture]:
-        """Génère les factures pour une campagne clôturée — ADMIN uniquement.
+        """Génère les factures pour une campagne clôturée — ADMIN, COMPTABLE.
 
-        Normalement déclenché automatiquement par CloturerCampagne.
-        Cette mutation permet un déclenchement manuel si nécessaire.
+        Utilisé quand generer_factures_auto=false sur la campagne.
+        envoyer_whatsapp_auto=true envoie le WhatsApp immédiatement après chaque facture.
         """
         require_auth(info)
-        require_role(info, "ADMIN")
-        response = facturation_client.generer_factures(campagne_id)
+        require_role(info, "ADMIN", "COMPTABLE")
+        response = facturation_client.generer_factures(
+            campagne_id=campagne_id,
+            envoyer_whatsapp_auto=envoyer_whatsapp_auto,
+        )
         return [facture_from_grpc(f) for f in response.factures]
+
+    @strawberry.mutation
+    def envoyer_toutes_factures_whatsapp(
+        self,
+        info: strawberry.types.Info,
+        campagne_id: str,
+    ) -> int:
+        """Envoie (ou renvoie) le WhatsApp pour toutes les factures d'une campagne — ADMIN, COMPTABLE.
+
+        Parcourt toutes les factures de la campagne et déclenche ReenvoyerFacture
+        pour chacune. Retourne le nombre de messages envoyés avec succès.
+        Dégradation gracieuse : les échecs individuels n'interrompent pas le lot.
+        """
+        require_auth(info)
+        require_role(info, "ADMIN", "COMPTABLE")
+        response = facturation_client.get_factures_par_campagne(campagne_id)
+        succes = 0
+        for f in response.factures:
+            try:
+                notification_client.renvoyer_facture(facture_id=f.facture_id)
+                succes += 1
+            except grpc.RpcError:
+                pass
+        return succes
 
     @strawberry.mutation
     def update_statut_facture(

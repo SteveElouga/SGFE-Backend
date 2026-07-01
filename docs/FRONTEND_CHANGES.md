@@ -1,164 +1,447 @@
-# Résumé des changements backend — Frontend Update Guide
+# Guide Frontend — API SGFE
 
-## PR #12 — Gaps EF-IMP-005, EF-NOTIF-003, EF-NOTIF-005
+> Point d'entrée unique : `POST /graphql` (GraphQL) + endpoints REST dédiés.
+> Authentification : `Authorization: Bearer <access_token>` sur toutes les requêtes GraphQL protégées.
 
-### Nouveaux endpoints REST (Gateway)
+---
 
-#### Espace abonné (accès via token WhatsApp)
+## 1. Campagne — Détail complet
+
+### Type `Campagne`
+
+```graphql
+type Campagne {
+  campagneId: String!
+  nom: String!
+  periodeMois: Int!          # 1-12
+  periodeAnnee: Int!
+  statut: String!            # "PLANIFIEE" | "EN_COURS" | "CLOTUREE"
+  datePlanifiee: String!     # "YYYY-MM-DD" ou ""
+  dateCreation: String!      # ISO datetime
+  dateCloture: String!       # ISO datetime ou ""
+  numeroMobileMoney: String! # ex "658552294", vide si non renseigné
+  genererFacturesAuto: Boolean! # true = génère les factures à la clôture
+  envoyerWhatsappAuto: Boolean! # true = envoie le WhatsApp après génération
+}
+```
+
+### Queries
+
+```graphql
+# Détail d'une campagne
+query {
+  campagne(campagneId: "uuid") {
+    campagneId nom statut periodeMois periodeAnnee
+    numeroMobileMoney genererFacturesAuto envoyerWhatsappAuto
+    datePlanifiee dateCreation dateCloture
+  }
+}
+
+# Liste des campagnes
+# ADMIN → toutes | SUPERVISEUR → les siennes (filtré par created_by) | AGENT → les siennes
+query {
+  campagnes(createdBy: "", agentId: "") {
+    campagneId nom statut periodeMois periodeAnnee
+    genererFacturesAuto envoyerWhatsappAuto
+  }
+}
+
+# Progression d'une campagne (comptage des relevés)
+query {
+  progression(campagneId: "uuid") {
+    campagneId totalAbonnes nbReleves nbEnAttente pourcentage
+  }
+}
+```
+
+### Mutations
+
+```graphql
+# Créer une campagne — ADMIN, SUPERVISEUR
+mutation {
+  creerCampagne(input: {
+    nom: "Campagne Août 2026"
+    periodeMois: 8
+    periodeAnnee: 2026
+    datePlanifiee: "2026-08-01"       # optionnel — démarre automatiquement ce jour à 07:00
+    numeroMobileMoney: "658552294"    # optionnel — 9 chiffres camerounais exactement
+    genererFacturesAuto: true         # défaut true
+    envoyerWhatsappAuto: true         # défaut true
+  }) {
+    campagneId statut genererFacturesAuto envoyerWhatsappAuto
+  }
+}
+
+# Affecter un agent à une campagne — ADMIN (toutes), SUPERVISEUR (les siennes)
+mutation {
+  affecterAgent(campagneId: "uuid", agentId: "uuid") {
+    campagneId
+  }
+}
+
+# Clôturer une campagne EN_COURS — ADMIN (toutes), SUPERVISEUR (les siennes)
+# → Si genererFacturesAuto=true : déclenche la génération des factures automatiquement
+# → Si genererFacturesAuto=false : rien — le COMPTABLE génère manuellement plus tard
+mutation {
+  cloturerCampagne(campagneId: "uuid") {
+    campagneId statut dateCloture
+  }
+}
+
+# Saisir l'index d'un abonné — ADMIN, AGENT, SUPERVISEUR (les siennes)
+mutation {
+  saisirIndex(input: {
+    campagneId: "uuid"
+    abonneId: "uuid"
+    nouveauIndex: 145.5
+    observation: ""
+  }) {
+    releveId statut consommation
+  }
+}
+```
+
+### Comportement `genererFacturesAuto` + `envoyerWhatsappAuto`
+
+| `genererFacturesAuto` | `envoyerWhatsappAuto` | À la clôture | Action manuelle requise |
+|---|---|---|---|
+| `true` | `true` | Factures générées + WhatsApp envoyé | Aucune |
+| `true` | `false` | Factures générées, pas de WhatsApp | Envoyer WhatsApp manuellement |
+| `false` | peu importe | Rien | Générer les factures manuellement |
+
+---
+
+## 2. Facturation — Détail complet
+
+### Type `Facture`
+
+```graphql
+type Facture {
+  factureId: String!
+  numeroFacture: String!       # ex "FACT-2026-08-0001"
+  abonneId: String!
+  campagneId: String!
+  ancienIndex: Float!
+  nouveauIndex: Float!
+  consommation: Float!         # m³ consommés
+  prixM3: Float!               # prix copié au moment de la génération (immuable)
+  montant: Float!              # FCFA
+  statut: String!              # "IMPAYEE" | "PARTIELLE" | "PAYEE"
+  dateReleve: String!          # "YYYY-MM-DD"
+  dateLimitePaiement: String!  # "YYYY-MM-DD"
+  dateGeneration: String!      # ISO datetime
+  pdfPath: String!             # chemin interne — ne pas afficher; utiliser l'URL PDF
+  numeroMobileMoney: String!   # copié depuis la campagne, vide si non renseigné
+}
+```
+
+### Queries
+
+```graphql
+# Détail d'une facture — ADMIN, COMPTABLE
+query {
+  facture(factureId: "uuid") {
+    factureId numeroFacture abonneId campagneId
+    consommation montant statut dateReleve dateLimitePaiement
+    numeroMobileMoney
+  }
+}
+
+# Liste des factures (filtres optionnels) — ADMIN, COMPTABLE
+query {
+  factures(campagneId: "", abonneId: "", statut: "") {
+    factureId numeroFacture abonneId statut montant
+    dateLimitePaiement numeroMobileMoney
+  }
+}
+
+# Toutes les factures d'une campagne — ADMIN, COMPTABLE
+query {
+  facturesParCampagne(campagneId: "uuid") {
+    factureId numeroFacture abonneId statut montant
+  }
+}
+
+# Tarif actuel (prix du m³) — ADMIN, COMPTABLE
+query {
+  tarifActuel { tarifId prixM3 dateEffet isActive }
+}
+```
+
+### Mutations
+
+```graphql
+# Générer les factures manuellement — ADMIN, COMPTABLE
+# À utiliser quand genererFacturesAuto=false sur la campagne
+# envoyerWhatsappAuto=true envoie le WhatsApp immédiatement après chaque facture
+mutation {
+  genererFactures(campagneId: "uuid", envoyerWhatsappAuto: true) {
+    factureId numeroFacture abonneId montant statut numeroMobileMoney
+  }
+}
+
+# Envoyer le WhatsApp pour TOUTES les factures d'une campagne d'un coup — ADMIN, COMPTABLE
+# Retourne le nombre de messages envoyés avec succès
+mutation {
+  envoyerToutesFacturesWhatsapp(campagneId: "uuid")
+}
+
+# Modifier le tarif (prix du m³) — ADMIN uniquement
+mutation {
+  updateTarif(prixM3: 600.0, dateEffet: "2026-08-01") {
+    tarifId prixM3 dateEffet isActive
+  }
+}
+```
+
+### Obtenir le PDF d'une facture
 
 ```
-GET /espace-abonne/{token}/
+GET /espace-abonne/{token}/facture/{factureId}/pdf/
 ```
+Retourne le PDF en `application/pdf` (voir section 4 — Espace Abonné).
+
+---
+
+## 3. WhatsApp — Notifications manuelles
+
+### Type `Envoi`
+
+```graphql
+type Envoi {
+  envoiId: String!
+  factureId: String!
+  statut: String!          # "EN_ATTENTE" | "ENVOYE" | "ECHEC"
+  dateEnvoi: String!
+  telnyxMessageId: String!
+  erreur: String!          # vide si succès
+}
+```
+
+### Mutations
+
+```graphql
+# Envoyer le WhatsApp d'une facture (1ère fois) — ADMIN, COMPTABLE
+mutation {
+  envoyerFactureWhatsapp(factureId: "uuid", abonneId: "uuid") {
+    envoiId statut dateEnvoi erreur
+  }
+}
+
+# Renvoyer le WhatsApp d'une facture (révoque l'ancien token, crée un nouveau) — ADMIN, COMPTABLE
+# À utiliser quand l'abonné dit que son lien est expiré
+mutation {
+  renvoyerFactureWhatsapp(factureId: "uuid") {
+    envoiId statut dateEnvoi erreur
+  }
+}
+
+# Queries — historique des envois — ADMIN, COMPTABLE
+query {
+  envois(factureId: "uuid", abonneId: "") {
+    envoiId statut dateEnvoi typeEnvoi erreur
+  }
+}
+```
+
+---
+
+## 4. Espace Abonné — Accès public via token WhatsApp
+
+Ces endpoints sont **sans authentification JWT** — ils utilisent le token partagé dans le lien WhatsApp.
+
+### `GET /espace-abonne/{token}/`
+
+Retourne toutes les factures de l'abonné avec leur solde de paiement.
+
 **Réponse JSON :**
 ```json
 {
   "abonne_id": "uuid",
-  "token_expiration": "JJ/MM/AAAA",
+  "token_expiration": "YYYY-MM-DD",
   "factures": [
     {
       "facture_id": "uuid",
-      "numero": "FACT-2025-07-0001",
+      "numero": "FACT-2026-08-0001",
       "date_releve": "YYYY-MM-DD",
-      "montant": 15000.0,
-      "statut": "IMPAYEE | PARTIELLE | PAYEE",
+      "montant": 7200.0,
+      "statut": "IMPAYEE",
       "date_limite_paiement": "YYYY-MM-DD",
-      "solde_restant": 15000.0,
+      "solde_restant": 7200.0,
       "montant_paye": 0.0
     }
   ]
 }
 ```
 
+**Codes d'erreur :**
+- `401` → token invalide ou expiré → afficher page "Lien expiré, contactez-nous"
+- `503` → service indisponible → afficher message d'erreur temporaire
+
+### `GET /espace-abonne/{token}/facture/{factureId}/pdf/`
+
+Retourne le PDF en `application/pdf` avec `Content-Disposition: inline`.
+
+**Utilisation recommandée :**
+```html
+<!-- Dans l'espace abonné -->
+<a href="/espace-abonne/{token}/facture/{factureId}/pdf/" target="_blank">
+  Télécharger ma facture
+</a>
 ```
-GET /espace-abonne/{token}/facture/{facture_id}/pdf/
-```
-**Réponse :** PDF binaire (`application/pdf`), headers `Content-Disposition: attachment`.
 
 ---
 
-## PR #13 — Numéro Mobile Money + Toggles campagne + Notifications admin
+## 5. Paiement
 
-### 1. Mutation GraphQL `creerCampagne` — nouveaux champs
+### Queries
 
 ```graphql
-mutation {
-  creerCampagne(input: {
-    nom: "Campagne Août 2026"
-    periodeMois: 8
-    periodeAnnee: 2026
-    datePlanifiee: ""            # optionnel
-    numeroMobileMoney: "658552294"  # 9 chiffres camerounais, optionnel
-    genererFacturesAuto: true    # défaut true — génère les factures à la clôture
-    envoyerWhatsappAuto: true    # défaut true — envoie les factures par WhatsApp
-  }) {
-    campagneId
-    nom
-    statut
-    numeroMobileMoney
-    genererFacturesAuto
-    envoyerWhatsappAuto
+# Solde d'une facture — ADMIN, COMPTABLE
+query {
+  soldeFacture(factureId: "uuid") {
+    factureId abonneId montantTotal montantPaye soldeRestant dateLimitePaiement
+  }
+}
+
+# Liste des paiements d'une facture ou d'un abonné — ADMIN, COMPTABLE
+query {
+  paiements(factureId: "uuid", abonneId: "") {
+    paiementId factureId montant datePaiement modePaiement referenceTransaction
+  }
+}
+
+# Factures impayées (date limite dépassée) — ADMIN, COMPTABLE
+query {
+  impayes {
+    factureId abonneId montantTotal soldeRestant dateLimitePaiement
+  }
+}
+
+# Détail du suivi de relance d'un impayé — ADMIN, COMPTABLE
+query {
+  suiviImpaye(factureId: "uuid") {
+    factureId etapeActuelle dateDerniereRelance
   }
 }
 ```
 
-**Validation `numeroMobileMoney` :**
-- Exactement **9 chiffres** (format camerounais, ex: `658552294`)
-- Champ vide = pas de numéro Mobile Money (aucun affichage dans le message WhatsApp)
-- En cas d'erreur : code GraphQL `INVALID_ARGUMENT`, message : *"Le numéro Mobile Money doit contenir exactement 9 chiffres (ex: 658552294)."*
-
-### 2. Type GraphQL `Campagne` — nouveaux champs retournés
+### Mutations
 
 ```graphql
-type Campagne {
-  campagneId: String!
-  nom: String!
-  periodeMois: Int!
-  periodeAnnee: Int!
-  statut: String!
-  datePlanifiee: String!
-  dateCreation: String!
-  dateCloture: String!
-  numeroMobileMoney: String!      # NEW — vide si non renseigné
-  genererFacturesAuto: Boolean!   # NEW — défaut true
-  envoyerWhatsappAuto: Boolean!   # NEW — défaut true
+# Enregistrer un versement — ADMIN, COMPTABLE
+# modePaiement : "ESPECES" | "CHEQUE" | "MOBILE_MONEY" | "VIREMENT"
+# referenceTransaction : obligatoire pour MOBILE_MONEY et VIREMENT
+mutation {
+  enregistrerPaiement(
+    factureId: "uuid"
+    abonneId: "uuid"
+    montant: 5000.0
+    datePaiement: "2026-08-15"
+    modePaiement: "MOBILE_MONEY"
+    referenceTransaction: "TXN-ABC123"
+  ) {
+    paiementId montant statut modePaiement
+  }
 }
 ```
 
-### 3. Comportements à la clôture (`cloturerCampagne`)
+---
 
-| `genererFacturesAuto` | `envoyerWhatsappAuto` | Comportement |
-|---|---|---|
-| `true` | `true` | Factures générées + WhatsApp envoyé à chaque abonné |
-| `true` | `false` | Factures générées, **aucun** WhatsApp |
-| `false` | `true` | Rien (pas de factures, pas de WhatsApp) |
-| `false` | `false` | Rien |
+## 6. Flux complets — Scénarios d'utilisation
 
-### 4. Message WhatsApp de facture
-
-Quand `numeroMobileMoney` est renseigné sur la campagne, le message inclut automatiquement :
-
+### Scénario A : Génération automatique (flux standard)
 ```
-Bonjour Jean DUPONT,
-
-Votre facture d'eau - Août 2026
-
-Consommation : 12 m³
-Montant dû    : 7200 FCFA
-Date limite   : 20/08/2026
-
-💳 Paiement Mobile Money : 658552294
-
-📄 Votre facture est en pièce jointe.
-
-🔗 Consultez votre historique :
-https://app.sgfe.cm/espace/abc123...
-
-(Lien valable jusqu'au 09/09/2026)
+1. SUPERVISEUR crée campagne (genererFacturesAuto=true, envoyerWhatsappAuto=true)
+2. AGENT saisit les index
+3. SUPERVISEUR clôture la campagne → factures générées + WhatsApp envoyé automatiquement
+4. COMPTABLE consulte les factures et enregistre les paiements
 ```
 
-### 5. Notifications admin (Config Service)
+### Scénario B : Génération différée (contrôle total)
+```
+1. SUPERVISEUR crée campagne (genererFacturesAuto=false)
+2. AGENT saisit les index
+3. SUPERVISEUR clôture la campagne → rien de généré
+4. COMPTABLE va sur la page des factures :
+   ┌─────────────────────────────────────────────────────────────┐
+   │ [Générer toutes les factures]   → mutation genererFactures(
+   │   campagneId, envoyerWhatsappAuto: false)                   │
+   └─────────────────────────────────────────────────────────────┘
+5. Les factures apparaissent dans le tableau
+6. COMPTABLE choisit :
+   ┌──────────────────────────────────────────────────────────────────┐
+   │ [📤 Envoyer tout par WhatsApp]                                   │
+   │   → mutation envoyerToutesFacturesWhatsapp(campagneId)           │
+   │                                                                  │
+   │ Ou par ligne dans le tableau :                                   │
+   │ [ FACT-2026-08-0001 | Jean DUPONT | 7200 FCFA | IMPAYEE | 📤 ]  │
+   │   → mutation renvoyerFactureWhatsapp(factureId)                  │
+   └──────────────────────────────────────────────────────────────────┘
+```
 
-Deux clés configurables via le backoffice admin :
-
-| Clé | Valeur par défaut | Description |
-|---|---|---|
-| `EMAIL_ADMIN_NOTIFICATIONS` | `""` (vide = désactivé) | Email destinataire des alertes (Brevo) |
-| `NOTIFICATIONS_ADMIN_ACTIVEES` | `"true"` | Bascule globale — `"false"` coupe tous les emails |
-
-**Événements déclencheurs d'email admin :**
-- Campagne démarrée automatiquement (cron 7h00)
-- Abonné suspendu pour impayé
-- Échec envoi WhatsApp
+### Scénario C : Renvoi WhatsApp (lien expiré)
+```
+1. L'abonné signale que son lien a expiré (token_validite_jours = 20 jours par défaut)
+2. COMPTABLE dans le détail de la facture :
+   [🔄 Renvoyer le lien WhatsApp]
+   → mutation renvoyerFactureWhatsapp(factureId)
+   → L'ancien token est révoqué, un nouveau est créé, nouveau message envoyé
+```
 
 ---
 
-## Variables d'environnement ajoutées
+## 7. Pages à construire — Ce qui manque côté frontend
 
-### Facturation Service (`.env`)
+### Page : Création de campagne
+Ajouter les champs :
+- `numeroMobileMoney` : input text, placeholder "658552294", validation 9 chiffres, optionnel
+- `genererFacturesAuto` : toggle (libellé : "Générer les factures automatiquement à la clôture"), défaut ON
+- `envoyerWhatsappAuto` : toggle (libellé : "Envoyer les factures par WhatsApp"), défaut ON
+  - Ce toggle doit être **grisé et forcé à false** si `genererFacturesAuto = false`
+
+### Page : Détail de la campagne
+Afficher :
+- `numeroMobileMoney` (si renseigné)
+- `genererFacturesAuto` + `envoyerWhatsappAuto` (badges lecture seule)
+- Bouton **[Clôturer la campagne]** — `cloturerCampagne`
+
+### Page : Factures d'une campagne
+Afficher la liste via `facturesParCampagne(campagneId)`.
+
+Si `genererFacturesAuto = false` et aucune facture → afficher une **bannière** :
+> ⚠️ Les factures de cette campagne n'ont pas encore été générées.
+> [Générer toutes les factures] → `genererFactures(campagneId, envoyerWhatsappAuto: true/false)`
+
+En tête de liste (si factures existent) :
+- Bouton **[📤 Envoyer tout par WhatsApp]** → `envoyerToutesFacturesWhatsapp(campagneId)`
+
+Par ligne dans le tableau : icône ou bouton **📤** → `renvoyerFactureWhatsapp(factureId)`
+
+### Page : Détail d'une facture
+Afficher `numeroMobileMoney` (si renseigné) avec un libellé "Paiement Mobile Money".
+Bouton **[📤 Renvoyer par WhatsApp]** → `renvoyerFactureWhatsapp(factureId)`.
+
+### Page : Espace Abonné (PWA publique, sans login)
+Route : `/espace/{token}`
+- Appel : `GET /espace-abonne/{token}/`
+- Afficher la liste des factures avec statut et solde restant
+- Lien PDF par facture : `GET /espace-abonne/{token}/facture/{factureId}/pdf/`
+- Si `401` : afficher page "Votre lien a expiré, contactez-nous."
+
+---
+
+## 8. Migrations à appliquer
+
+```bash
+cd services/campagne  && python manage.py migrate  # 0003 + 0004
+cd services/facturation && python manage.py migrate # 0002
+```
+
+## 9. Variables d'environnement ajoutées
+
 ```env
+# Facturation Service
 NOTIFICATION_GRPC_HOST=notification-service
 NOTIFICATION_GRPC_PORT=50056
 ```
-
-### Notification Service (déjà présent, vérifier)
-```env
-BREVO_API_KEY=your_brevo_api_key
-EMAIL_ADMIN_NOTIFICATIONS=admin@example.com  # dans Config Service DB, pas .env
-```
-
----
-
-## Migrations à appliquer
-
-```bash
-# Campagne Service
-cd services/campagne && python manage.py migrate
-
-# Facturation Service
-cd services/facturation && python manage.py migrate
-```
-
-**Détail :**
-- `campagnes 0003` : ajout `numero_mobile_money` (CharField)
-- `campagnes 0004` : ajout `generer_factures_auto` (bool) + `envoyer_whatsapp_auto` (bool)
-- `factures 0002` : ajout `numero_mobile_money` (CharField)
