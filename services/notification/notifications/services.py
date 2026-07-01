@@ -113,6 +113,7 @@ class EnvoiService:
             token=token_str,
             date_expiration_token=date_expiration_fr,
             frontend_url=frontend_url,
+            numero_mobile_money=facture.numero_mobile_money,
         )
 
         envoi = self._envois.create(
@@ -275,8 +276,13 @@ def notifier_admins(evenement: str, detail: str, entite_id: str = "") -> None:
     """Envoie un email de notification aux administrateurs via Brevo.
 
     Récupère l'email destinataire depuis Config Service (clé EMAIL_ADMIN_NOTIFICATIONS).
+    Respecte le toggle NOTIFICATIONS_ADMIN_ACTIVEES — si désactivé, ne fait rien.
     Dégradation gracieuse : si Brevo ou Config Service est indisponible, on logue et on continue.
     """
+    if not config_client.get_notifications_admin_activees():
+        logger.debug("Notifications admin désactivées — événement ignoré", extra={"evenement": evenement})
+        return
+
     _SUJETS: dict[str, str] = {
         "CAMPAGNE_PLANIFIEE": "[SGFE] Campagne planifiée",
         "SUSPENSION": "[SGFE] Suspension d'abonné",

@@ -21,6 +21,7 @@ message CreateCampagneRequest {
   int32 periode_annee = 3;
   string date_planifiee = 4;
   string created_by = 5;
+  string numero_mobile_money = 6;
 }
 
 message SaisirIndexRequest {
@@ -52,6 +53,7 @@ message CampagneResponse {
   string date_planifiee = 6;
   string date_creation = 7;
   string date_cloture = 8;
+  string numero_mobile_money = 9;
 }
 
 message ReleveResponse {

@@ -67,6 +67,7 @@ class FactureService:
         releves: list[ReleveData],
         delai_paiement_jours: int,
         societe: InfosSociete,
+        numero_mobile_money: str = "",
     ) -> list[Facture]:
         """Génère une facture pour chaque relevé RELEVE (index saisi).
 
@@ -76,9 +77,7 @@ class FactureService:
         try:
             tarif = self._tarif_repo.get_actif()
         except ObjectDoesNotExist as exc:
-            raise ValidationError(
-                "Aucun tarif actif — configurez un tarif avant de générer des factures."
-            ) from exc
+            raise ValidationError("Aucun tarif actif — configurez un tarif avant de générer des factures.") from exc
 
         factures: list[Facture] = []
 
@@ -90,12 +89,8 @@ class FactureService:
             date_releve = datetime.date.fromisoformat(releve.date_releve)
             date_limite = date_releve + datetime.timedelta(days=delai_paiement_jours)
 
-            consommation = Decimal(str(releve.consommation)).quantize(
-                Decimal("0.001"), rounding=ROUND_HALF_UP
-            )
-            montant = (consommation * tarif.prix_m3).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
+            consommation = Decimal(str(releve.consommation)).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
+            montant = (consommation * tarif.prix_m3).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             annee = date_releve.year
             mois = date_releve.month
 
@@ -113,6 +108,7 @@ class FactureService:
                     date_releve=date_releve,
                     date_limite_paiement=date_limite,
                     numero_facture=numero,
+                    numero_mobile_money=numero_mobile_money,
                 )
                 pdf_path = self._generer_et_sauver_pdf(facture, societe)
                 self._repo.update_pdf_path(facture, pdf_path)
@@ -170,19 +166,13 @@ class FactureService:
     ) -> list[Facture]:
         """Retourne les factures filtrées. Tous les paramètres sont optionnels."""
         if statut and statut not in StatutFacture.values:
-            raise ValidationError(
-                f"Statut invalide : {statut}. Valeurs attendues : {', '.join(StatutFacture.values)}"
-            )
-        return self._repo.list_by_filters(
-            campagne_id=campagne_id, abonne_id=abonne_id, statut=statut
-        )
+            raise ValidationError(f"Statut invalide : {statut}. Valeurs attendues : {', '.join(StatutFacture.values)}")
+        return self._repo.list_by_filters(campagne_id=campagne_id, abonne_id=abonne_id, statut=statut)
 
     def update_statut(self, facture_id: str, statut: str) -> Facture:
         """Met à jour le statut d'une facture (appelé par Paiement Service)."""
         if statut not in StatutFacture.values:
-            raise ValidationError(
-                f"Statut invalide : {statut}. Valeurs attendues : {', '.join(StatutFacture.values)}"
-            )
+            raise ValidationError(f"Statut invalide : {statut}. Valeurs attendues : {', '.join(StatutFacture.values)}")
         facture = self._repo.get_by_id(facture_id)
         return self._repo.update_statut(facture, statut)
 
@@ -205,8 +195,6 @@ class FactureService:
             self._repo.update_pdf_path(facture, pdf_path)
 
         if not pdf_path or not __import__("os").path.exists(pdf_path):
-            raise FileNotFoundError(
-                f"Impossible de générer le PDF pour la facture {facture_id}."
-            )
+            raise FileNotFoundError(f"Impossible de générer le PDF pour la facture {facture_id}.")
 
         return lire_pdf(pdf_path), f"{facture.numero_facture}.pdf"

@@ -133,6 +133,17 @@ class ConfigServiceClient:
         except (grpc.RpcError, ValueError):
             return ""
 
+    def get_notifications_admin_activees(self) -> bool:
+        """Vérifie si les notifications admin sont activées (clé : NOTIFICATIONS_ADMIN_ACTIVEES).
+
+        Retourne True par défaut si la clé est absente ou le service indisponible.
+        """
+        try:
+            response = self._stub.GetConfig(self._pb.ConfigKeyRequest(cle="NOTIFICATIONS_ADMIN_ACTIVEES"))
+            return response.valeur.strip().lower() not in ("false", "0", "non", "no")
+        except (grpc.RpcError, ValueError):
+            return True
+
 
 # Instances singleton utilisées dans services.py
 facturation_client = FacturationServiceClient()

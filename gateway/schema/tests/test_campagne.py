@@ -134,6 +134,7 @@ class TestCampagneMutations(SimpleTestCase):
             periode_annee=2026,
             date_planifiee="",
             created_by="user-001",
+            numero_mobile_money="",
         )
 
     @patch("schema.campagne_mutations.campagne_client")

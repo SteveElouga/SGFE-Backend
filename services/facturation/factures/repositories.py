@@ -21,9 +21,7 @@ class TarifRepository:
 
     def create(self, prix_m3: Decimal, date_effet: datetime.date) -> Tarif:
         """Crée un nouveau tarif actif."""
-        return Tarif.objects.create(
-            prix_m3=prix_m3, date_effet=date_effet, is_active=True
-        )
+        return Tarif.objects.create(prix_m3=prix_m3, date_effet=date_effet, is_active=True)
 
     def save(self, tarif: Tarif) -> Tarif:
         tarif.save()
@@ -56,6 +54,7 @@ class FactureRepository:
         date_releve: datetime.date,
         date_limite_paiement: datetime.date,
         numero_facture: str,
+        numero_mobile_money: str = "",
     ) -> Facture:
         return Facture.objects.create(
             numero_facture=numero_facture,
@@ -68,6 +67,7 @@ class FactureRepository:
             montant=montant,
             date_releve=date_releve,
             date_limite_paiement=date_limite_paiement,
+            numero_mobile_money=numero_mobile_money,
             statut=StatutFacture.IMPAYEE,
         )
 

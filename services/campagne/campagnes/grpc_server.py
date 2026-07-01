@@ -56,6 +56,7 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
                 periode_annee=request.periode_annee,
                 created_by=request.created_by,
                 date_planifiee=request.date_planifiee or None,
+                numero_mobile_money=request.numero_mobile_money,
             )
             return campagne_to_proto(campagne)
         except ValidationError as exc:
@@ -90,9 +91,7 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
                 created_by=request.created_by,
                 agent_id=request.agent_id,
             )
-            return pb.ListCampagnesResponse(
-                campagnes=[campagne_to_proto(c) for c in campagnes]
-            )
+            return pb.ListCampagnesResponse(campagnes=[campagne_to_proto(c) for c in campagnes])
         except Exception as exc:
             logger.exception("ListCampagnes échoué")
             context.abort(grpc.StatusCode.INTERNAL, str(exc))
@@ -121,7 +120,10 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         """Clôture une campagne EN_COURS et notifie Facturation Service."""
         try:
             campagne = self._campagne_svc.cloturer_campagne(request.campagne_id)
-            self._facturation_client.notifier_campagne_cloturee(str(campagne.id))
+            self._facturation_client.notifier_campagne_cloturee(
+                str(campagne.id),
+                numero_mobile_money=campagne.numero_mobile_money,
+            )
             return campagne_to_proto(campagne)
         except ObjectDoesNotExist as exc:
             context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
@@ -173,9 +175,7 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         Crée le relevé si inexistant (avec ancien_index = dernier index connu ou 0).
         """
         try:
-            releve = self._releve_repo.get_by_campagne_abonne(
-                request.campagne_id, request.abonne_id
-            )
+            releve = self._releve_repo.get_by_campagne_abonne(request.campagne_id, request.abonne_id)
             if releve is None:
                 dernier_index = self._get_dernier_index_value(request.abonne_id)
                 campagne = self._campagne_repo.get_by_id(request.campagne_id)
@@ -205,9 +205,7 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.ReleveResponse:
         """Marque un relevé comme NON_RELEVE ou ESTIME."""
-        releve = self._releve_repo.get_by_campagne_abonne(
-            request.campagne_id, request.abonne_id
-        )
+        releve = self._releve_repo.get_by_campagne_abonne(request.campagne_id, request.abonne_id)
         if releve is None:
             context.abort(
                 grpc.StatusCode.NOT_FOUND,

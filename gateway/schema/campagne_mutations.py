@@ -30,6 +30,7 @@ class CampagneMutations:
             periode_annee=input.periode_annee,
             date_planifiee=input.date_planifiee,
             created_by=user.user_id,
+            numero_mobile_money=input.numero_mobile_money,
         )
         return campagne_from_grpc(response)
 

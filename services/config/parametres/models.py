@@ -49,6 +49,10 @@ CONFIG_DEFAULTS: dict[str, tuple[str, str]] = {
         "",
         "Adresse email destinataire des notifications administratives (Brevo). Vide = désactivé.",
     ),
+    "NOTIFICATIONS_ADMIN_ACTIVEES": (
+        "true",
+        "Activer les notifications email aux administrateurs (true/false). false = silence total.",
+    ),
 }
 
 

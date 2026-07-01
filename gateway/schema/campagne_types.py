@@ -15,6 +15,7 @@ class Campagne:
     date_planifiee: str
     date_creation: str
     date_cloture: str
+    numero_mobile_money: str
 
 
 @strawberry.type
@@ -51,6 +52,7 @@ class CreateCampagneInput:
     periode_mois: int
     periode_annee: int
     date_planifiee: str = ""
+    numero_mobile_money: str = ""
 
 
 @strawberry.input
@@ -79,6 +81,7 @@ def campagne_from_grpc(r: campagne_pb.CampagneResponse) -> Campagne:
         date_planifiee=r.date_planifiee,
         date_creation=r.date_creation,
         date_cloture=r.date_cloture,
+        numero_mobile_money=r.numero_mobile_money,
     )
 
 

@@ -20,13 +20,10 @@ def campagne_to_proto(campagne: Campagne) -> pb.CampagneResponse:
         periode_mois=campagne.periode_mois,
         periode_annee=campagne.periode_annee,
         statut=campagne.statut,
-        date_planifiee=campagne.date_planifiee.isoformat()
-        if campagne.date_planifiee
-        else "",
-        date_creation=campagne.date_creation.isoformat()
-        if campagne.date_creation
-        else "",
+        date_planifiee=campagne.date_planifiee.isoformat() if campagne.date_planifiee else "",
+        date_creation=campagne.date_creation.isoformat() if campagne.date_creation else "",
         date_cloture=campagne.date_cloture.isoformat() if campagne.date_cloture else "",
+        numero_mobile_money=campagne.numero_mobile_money,
     )
 
 
