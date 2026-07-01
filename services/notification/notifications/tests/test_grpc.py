@@ -69,9 +69,8 @@ class TestEnvoyerFactureRPC(TestCase):
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
 
-        mock_fact.get_facture.return_value = _make_facture_mock(
-            facture_id=facture_id, abonne_id=abonne_id
-        )
+        mock_fact.get_facture.return_value = _make_facture_mock(facture_id=facture_id, abonne_id=abonne_id)
+        mock_fact.get_facture_pdf.return_value = (b"", "")
         mock_abonne.get_abonne.return_value = _make_abonne_mock(abonne_id=abonne_id)
         mock_config.get_token_validite_jours.return_value = 20
         mock_wa.send.return_value = None
@@ -91,21 +90,16 @@ class TestEnvoyerFactureRPC(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_facture_whatsapp_ko_degradation_gracieuse(
-        self, mock_fact, mock_abonne, mock_config, mock_wa
-    ):
+    def test_envoyer_facture_whatsapp_ko_degradation_gracieuse(self, mock_fact, mock_abonne, mock_config, mock_wa):
         """Si WhatsApp échoue, EnvoyerFacture retourne ECHEC sans abort gRPC."""
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
 
-        mock_fact.get_facture.return_value = _make_facture_mock(
-            facture_id=facture_id, abonne_id=abonne_id
-        )
+        mock_fact.get_facture.return_value = _make_facture_mock(facture_id=facture_id, abonne_id=abonne_id)
+        mock_fact.get_facture_pdf.return_value = (b"", "")
         mock_abonne.get_abonne.return_value = _make_abonne_mock(abonne_id=abonne_id)
         mock_config.get_token_validite_jours.return_value = 20
-        mock_wa.send.side_effect = WhatsAppDeliveryError(
-            "Service WhatsApp inaccessible"
-        )
+        mock_wa.send.side_effect = WhatsAppDeliveryError("Service WhatsApp inaccessible")
 
         servicer = NotificationServiceServicer()
         request = pb.EnvoyerFactureRequest(facture_id=facture_id, abonne_id=abonne_id)
@@ -126,24 +120,18 @@ class TestEnvoyerRelanceRPC(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_relance_etape_valide(
-        self, mock_fact, mock_abonne, mock_config, mock_wa
-    ):
+    def test_envoyer_relance_etape_valide(self, mock_fact, mock_abonne, mock_config, mock_wa):
         """EnvoyerRelance avec étape valide retourne un EnvoiResponse ENVOYE."""
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
 
-        mock_fact.get_facture.return_value = _make_facture_mock(
-            facture_id=facture_id, abonne_id=abonne_id
-        )
+        mock_fact.get_facture.return_value = _make_facture_mock(facture_id=facture_id, abonne_id=abonne_id)
         mock_abonne.get_abonne.return_value = _make_abonne_mock(abonne_id=abonne_id)
         mock_config.get_token_validite_jours.return_value = 20
         mock_wa.send.return_value = None
 
         servicer = NotificationServiceServicer()
-        request = pb.EnvoyerRelanceRequest(
-            facture_id=facture_id, abonne_id=abonne_id, etape=2
-        )
+        request = pb.EnvoyerRelanceRequest(facture_id=facture_id, abonne_id=abonne_id, etape=2)
         context = MagicMock()
 
         response = servicer.EnvoyerRelance(request, context)

@@ -61,9 +61,8 @@ class TestEnvoiServiceEnvoyerFacture(TestCase):
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
 
-        mock_fact.get_facture.return_value = _make_facture_mock(
-            facture_id=facture_id, abonne_id=abonne_id
-        )
+        mock_fact.get_facture.return_value = _make_facture_mock(facture_id=facture_id, abonne_id=abonne_id)
+        mock_fact.get_facture_pdf.return_value = (b"", "")
         mock_abonne.get_abonne.return_value = _make_abonne_mock(abonne_id=abonne_id)
         mock_config.get_token_validite_jours.return_value = 20
         mock_wa.send.return_value = None  # Pas d'exception = succès
@@ -83,18 +82,15 @@ class TestEnvoiServiceEnvoyerFacture(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_facture_whatsapp_ko(
-        self, mock_fact, mock_abonne, mock_config, mock_wa
-    ):
+    def test_envoyer_facture_whatsapp_ko(self, mock_fact, mock_abonne, mock_config, mock_wa):
         """Si WhatsApp échoue, l'envoi est marqué ECHEC sans lever d'exception."""
         from notifications.whatsapp_client import WhatsAppDeliveryError
 
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
 
-        mock_fact.get_facture.return_value = _make_facture_mock(
-            facture_id=facture_id, abonne_id=abonne_id
-        )
+        mock_fact.get_facture.return_value = _make_facture_mock(facture_id=facture_id, abonne_id=abonne_id)
+        mock_fact.get_facture_pdf.return_value = (b"", "")
         mock_abonne.get_abonne.return_value = _make_abonne_mock(abonne_id=abonne_id)
         mock_config.get_token_validite_jours.return_value = 20
         mock_wa.send.side_effect = WhatsAppDeliveryError("Service inaccessible")
@@ -111,16 +107,13 @@ class TestEnvoiServiceEnvoyerFacture(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_facture_cree_token_acces(
-        self, mock_fact, mock_abonne, mock_config, mock_wa
-    ):
+    def test_envoyer_facture_cree_token_acces(self, mock_fact, mock_abonne, mock_config, mock_wa):
         """Un envoi de facture doit créer un TokenAcces en base."""
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
 
-        mock_fact.get_facture.return_value = _make_facture_mock(
-            facture_id=facture_id, abonne_id=abonne_id
-        )
+        mock_fact.get_facture.return_value = _make_facture_mock(facture_id=facture_id, abonne_id=abonne_id)
+        mock_fact.get_facture_pdf.return_value = (b"", "")
         mock_abonne.get_abonne.return_value = _make_abonne_mock(abonne_id=abonne_id)
         mock_config.get_token_validite_jours.return_value = 20
         mock_wa.send.return_value = None
@@ -142,16 +135,12 @@ class TestEnvoiServiceEnvoyerRelance(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_relance_etape_1(
-        self, mock_fact, mock_abonne, mock_config, mock_wa
-    ):
+    def test_envoyer_relance_etape_1(self, mock_fact, mock_abonne, mock_config, mock_wa):
         """La relance étape 1 doit envoyer un message RELANCE_1."""
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
 
-        mock_fact.get_facture.return_value = _make_facture_mock(
-            facture_id=facture_id, abonne_id=abonne_id
-        )
+        mock_fact.get_facture.return_value = _make_facture_mock(facture_id=facture_id, abonne_id=abonne_id)
         mock_abonne.get_abonne.return_value = _make_abonne_mock(abonne_id=abonne_id)
         mock_config.get_token_validite_jours.return_value = 20
         mock_wa.send.return_value = None
@@ -173,9 +162,7 @@ class TestEnvoiServiceEnvoyerRelance(TestCase):
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
 
-        mock_fact.get_facture.return_value = _make_facture_mock(
-            facture_id=facture_id, abonne_id=abonne_id
-        )
+        mock_fact.get_facture.return_value = _make_facture_mock(facture_id=facture_id, abonne_id=abonne_id)
         mock_abonne.get_abonne.return_value = _make_abonne_mock(abonne_id=abonne_id)
         mock_wa.send.return_value = None
 
@@ -195,9 +182,7 @@ class TestEnvoiServiceEnvoyerRelance(TestCase):
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
 
-        mock_fact.get_facture.return_value = _make_facture_mock(
-            facture_id=facture_id, abonne_id=abonne_id
-        )
+        mock_fact.get_facture.return_value = _make_facture_mock(facture_id=facture_id, abonne_id=abonne_id)
         mock_abonne.get_abonne.return_value = _make_abonne_mock(abonne_id=abonne_id)
         mock_wa.send.return_value = None
 
@@ -213,20 +198,14 @@ class TestEnvoiServiceEnvoyerRelance(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_relance_etape_4(
-        self, mock_fact, mock_abonne, mock_config, mock_wa
-    ):
+    def test_envoyer_relance_etape_4(self, mock_fact, mock_abonne, mock_config, mock_wa):
         """La relance étape 4 doit envoyer un message SUSPENSION."""
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
 
-        mock_fact.get_facture.return_value = _make_facture_mock(
-            facture_id=facture_id, abonne_id=abonne_id
-        )
+        mock_fact.get_facture.return_value = _make_facture_mock(facture_id=facture_id, abonne_id=abonne_id)
         mock_abonne.get_abonne.return_value = _make_abonne_mock(abonne_id=abonne_id)
-        mock_config.get_infos_societe.return_value = MagicMock(
-            telephone="+237690000000"
-        )
+        mock_config.get_infos_societe.return_value = MagicMock(telephone="+237690000000")
         mock_wa.send.return_value = None
 
         service = EnvoiService()
@@ -257,16 +236,13 @@ class TestEnvoiServiceRenvoyer(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_renvoyer_facture_revoque_ancien_token(
-        self, mock_fact, mock_abonne, mock_config, mock_wa
-    ):
+    def test_renvoyer_facture_revoque_ancien_token(self, mock_fact, mock_abonne, mock_config, mock_wa):
         """renvoyer_facture doit révoquer les tokens actifs existants."""
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
 
-        mock_fact.get_facture.return_value = _make_facture_mock(
-            facture_id=facture_id, abonne_id=abonne_id
-        )
+        mock_fact.get_facture.return_value = _make_facture_mock(facture_id=facture_id, abonne_id=abonne_id)
+        mock_fact.get_facture_pdf.return_value = (b"", "")
         mock_abonne.get_abonne.return_value = _make_abonne_mock(abonne_id=abonne_id)
         mock_config.get_token_validite_jours.return_value = 20
         mock_wa.send.return_value = None
@@ -294,9 +270,7 @@ class TestEnvoiServiceRenvoyer(TestCase):
 class TestTokenService(TestCase):
     """Tests de TokenService."""
 
-    def _create_token(
-        self, is_active: bool = True, jours_expiration: int = 20
-    ) -> TokenAcces:
+    def _create_token(self, is_active: bool = True, jours_expiration: int = 20) -> TokenAcces:
         """Crée un TokenAcces pour les tests."""
         return TokenAcces.objects.create(
             abonne_id=str(uuid.uuid4()),
