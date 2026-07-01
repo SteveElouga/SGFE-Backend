@@ -163,6 +163,8 @@ services:
         condition: service_healthy
       facturation-service:
         condition: service_started
+      notification-service:
+        condition: service_started
       abonne-service:
         condition: service_started
       config-service:
@@ -178,6 +180,8 @@ services:
       PAIEMENT_GRPC_PORT: "50055"
       FACTURATION_GRPC_HOST: facturation-service
       FACTURATION_GRPC_PORT: "50054"
+      NOTIFICATION_GRPC_HOST: notification-service
+      NOTIFICATION_GRPC_PORT: "50056"
       ABONNE_GRPC_HOST: abonne-service
       ABONNE_GRPC_PORT: "50052"
       CONFIG_GRPC_HOST: config-service
@@ -185,6 +189,56 @@ services:
       JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
     ports:
       - "50055:50055"
+    command: sh -c "python manage.py migrate && python manage.py grpc_server"
+
+  notification-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: notification_db
+      POSTGRES_USER: notification_user
+      POSTGRES_PASSWORD: devpassword
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notification_user -d notification_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - notification_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5438:5432"
+
+  notification-service:
+    build: ./services/notification
+    depends_on:
+      notification-postgres:
+        condition: service_healthy
+      facturation-service:
+        condition: service_started
+      abonne-service:
+        condition: service_started
+      config-service:
+        condition: service_started
+      whatsapp-service:
+        condition: service_started
+    environment:
+      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_DEBUG: "True"
+      NOTIFICATION_DB_HOST: notification-postgres
+      NOTIFICATION_DB_PORT: "5432"
+      NOTIFICATION_DB_NAME: notification_db
+      NOTIFICATION_DB_USER: notification_user
+      NOTIFICATION_DB_PASSWORD: devpassword
+      NOTIFICATION_GRPC_PORT: "50056"
+      FACTURATION_GRPC_HOST: facturation-service
+      FACTURATION_GRPC_PORT: "50054"
+      ABONNE_GRPC_HOST: abonne-service
+      ABONNE_GRPC_PORT: "50052"
+      CONFIG_GRPC_HOST: config-service
+      CONFIG_GRPC_PORT: "50058"
+      WHATSAPP_SERVICE_URL: http://whatsapp-service:3000
+      FRONTEND_URL: http://localhost:4200
+    ports:
+      - "50056:50056"
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
   abonne-service:
@@ -273,6 +327,7 @@ services:
       - campagne-service
       - facturation-service
       - paiement-service
+      - notification-service
       - config-service
       - redis
     environment:
@@ -289,6 +344,8 @@ services:
       FACTURATION_GRPC_PORT: "50054"
       PAIEMENT_GRPC_HOST: paiement-service
       PAIEMENT_GRPC_PORT: "50055"
+      NOTIFICATION_GRPC_HOST: notification-service
+      NOTIFICATION_GRPC_PORT: "50056"
       CONFIG_GRPC_HOST: config-service
       CONFIG_GRPC_PORT: "50058"
       GATEWAY_HTTP_PORT: "8000"
@@ -311,6 +368,7 @@ volumes:
   facturation_postgres_data:
   facturation_pdfs:
   paiement_postgres_data:
+  notification_postgres_data:
   config_postgres_data:
   whatsapp_session:
   redis_data:

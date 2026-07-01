@@ -16,6 +16,8 @@ import config_service_pb2 as config_pb
 import config_service_pb2_grpc as config_pb_grpc
 import facturation_service_pb2 as facturation_pb
 import facturation_service_pb2_grpc as facturation_pb_grpc
+import notification_service_pb2 as notification_pb
+import notification_service_pb2_grpc as notification_pb_grpc
 import paiement_service_pb2 as paiement_pb
 import paiement_service_pb2_grpc as paiement_pb_grpc
 
@@ -266,9 +268,36 @@ class PaiementServiceClient:
         return self._stub.GetSuiviImpaye(paiement_pb.FactureIdRequest(facture_id=facture_id))
 
 
+class NotificationServiceClient:
+    """Client gRPC vers notification-service:50056 (voir proto/notification_service.proto)."""
+
+    def __init__(self) -> None:
+        address = f"{settings.NOTIFICATION_GRPC_HOST}:{settings.NOTIFICATION_GRPC_PORT}"
+        self._channel = grpc.insecure_channel(address)
+        self._stub = notification_pb_grpc.NotificationServiceStub(self._channel)
+
+    def envoyer_facture(self, facture_id: str, abonne_id: str) -> notification_pb.EnvoiResponse:
+        return self._stub.EnvoyerFacture(
+            notification_pb.EnvoyerFactureRequest(facture_id=facture_id, abonne_id=abonne_id)
+        )
+
+    def renvoyer_facture(self, facture_id: str) -> notification_pb.EnvoiResponse:
+        return self._stub.ReenvoyerFacture(notification_pb.FactureIdRequest(facture_id=facture_id))
+
+    def get_envoi(self, envoi_id: str) -> notification_pb.EnvoiResponse:
+        return self._stub.GetEnvoi(notification_pb.EnvoiIdRequest(envoi_id=envoi_id))
+
+    def list_envois(self, facture_id: str = "", abonne_id: str = "") -> notification_pb.ListEnvoisResponse:
+        return self._stub.ListEnvois(notification_pb.ListEnvoisRequest(facture_id=facture_id, abonne_id=abonne_id))
+
+    def revoquer_token(self, token_id: str) -> notification_pb.StatusResponse:
+        return self._stub.RevoquerToken(notification_pb.TokenIdRequest(token_id=token_id))
+
+
 auth_client = AuthServiceClient()
 abonne_client = AbonneServiceClient()
 config_client = ConfigServiceClient()
 campagne_client = CampagneServiceClient()
 facturation_client = FacturationServiceClient()
 paiement_client = PaiementServiceClient()
+notification_client = NotificationServiceClient()

@@ -5,6 +5,7 @@ from schema.auth_mutations import AuthMutations
 from schema.campagne_mutations import CampagneMutations
 from schema.config_mutations import ConfigMutations
 from schema.facturation_mutations import FacturationMutations
+from schema.notification_mutations import NotificationMutations
 from schema.paiement_mutations import PaiementMutations
 
 
@@ -16,5 +17,6 @@ class Mutation(
     ConfigMutations,
     FacturationMutations,
     PaiementMutations,
+    NotificationMutations,
 ):
     pass
