@@ -2,11 +2,19 @@ syntax = "proto3";
 package paiement;
 
 service PaiementService {
+  rpc InitialiserSolde (InitialiserSoldeRequest) returns (SoldeResponse);
   rpc EnregistrerPaiement (EnregistrerPaiementRequest) returns (PaiementResponse);
   rpc GetSolde (FactureIdRequest) returns (SoldeResponse);
   rpc ListPaiements (ListPaiementsRequest) returns (ListPaiementsResponse);
   rpc ListImpayes (EmptyRequest) returns (ListImpayesResponse);
   rpc GetSuiviImpaye (FactureIdRequest) returns (SuiviImpayeResponse);
+}
+
+message InitialiserSoldeRequest {
+  string facture_id = 1;
+  string abonne_id = 2;
+  double montant_total = 3;
+  string date_limite_paiement = 4;
 }
 
 message EnregistrerPaiementRequest {

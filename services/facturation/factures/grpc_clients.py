@@ -104,3 +104,49 @@ class ConfigServiceClient:
                 "Config Service inaccessible — infos société par défaut pour PDF"
             )
             return InfosSociete()
+
+
+class PaiementServiceClient:
+    """Client gRPC vers Paiement Service (port 50055) — initialisation du solde."""
+
+    def __init__(self) -> None:
+        address = f"{settings.PAIEMENT_GRPC_HOST}:{settings.PAIEMENT_GRPC_PORT}"
+        self._channel = grpc.insecure_channel(address)
+
+        proto_path = str(Path(settings.BASE_DIR) / "proto")
+        if proto_path not in sys.path:
+            sys.path.insert(0, proto_path)
+
+        import paiement_service_pb2 as pb
+        import paiement_service_pb2_grpc as pb_grpc
+
+        self._stub = pb_grpc.PaiementServiceStub(self._channel)
+        self._pb = pb
+
+    def initialiser_solde(
+        self,
+        facture_id: str,
+        abonne_id: str,
+        montant_total: float,
+        date_limite_paiement: str,
+    ) -> bool:
+        """Initialise le solde de la facture dans Paiement Service.
+
+        Retourne True si OK, False en cas d'erreur (dégradation gracieuse).
+        """
+        try:
+            self._stub.InitialiserSolde(
+                self._pb.InitialiserSoldeRequest(
+                    facture_id=facture_id,
+                    abonne_id=abonne_id,
+                    montant_total=montant_total,
+                    date_limite_paiement=date_limite_paiement,
+                )
+            )
+            return True
+        except Exception as exc:
+            logger.warning(
+                "Paiement Service inaccessible — InitialiserSolde ignoré",
+                extra={"facture_id": facture_id, "error": str(exc)},
+            )
+            return False

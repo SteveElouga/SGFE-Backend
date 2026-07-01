@@ -56,6 +56,10 @@ class FactureService:
     def __init__(self) -> None:
         self._repo = FactureRepository()
         self._tarif_repo = TarifRepository()
+        # Import tardif pour éviter la circularité au niveau module
+        from .grpc_clients import PaiementServiceClient
+
+        self._paiement_client = PaiementServiceClient()
 
     def generer_factures(
         self,
@@ -114,6 +118,13 @@ class FactureService:
                 self._repo.update_pdf_path(facture, pdf_path)
                 facture.pdf_path = pdf_path
 
+            # Initialise le solde dans Paiement Service (dégradation gracieuse si KO)
+            self._paiement_client.initialiser_solde(
+                facture_id=str(facture.id),
+                abonne_id=releve.abonne_id,
+                montant_total=float(facture.montant),
+                date_limite_paiement=date_limite.isoformat(),
+            )
             factures.append(facture)
 
         logger.info(
