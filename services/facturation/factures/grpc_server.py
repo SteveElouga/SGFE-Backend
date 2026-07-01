@@ -59,9 +59,7 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
         """Crée un nouveau tarif actif en désactivant le précédent."""
         try:
             date_effet = (
-                datetime.date.fromisoformat(request.date_effet)
-                if request.date_effet
-                else datetime.date.today()
+                datetime.date.fromisoformat(request.date_effet) if request.date_effet else datetime.date.today()
             )
             tarif = self._tarif_svc.update_tarif(
                 prix_m3=Decimal(str(request.prix_m3)),
@@ -115,6 +113,8 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
                 releves=releves,
                 delai_paiement_jours=delai,
                 societe=societe,
+                numero_mobile_money=request.numero_mobile_money,
+                envoyer_whatsapp_auto=request.envoyer_whatsapp_auto,
             )
         except ValidationError as exc:
             context.abort(grpc.StatusCode.FAILED_PRECONDITION, str(exc))
@@ -124,9 +124,7 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
             context.abort(grpc.StatusCode.INTERNAL, f"Erreur interne : {exc}")
             return pb.GenererFacturesResponse()
 
-        return pb.GenererFacturesResponse(
-            factures=[facture_to_proto(f) for f in factures]
-        )
+        return pb.GenererFacturesResponse(factures=[facture_to_proto(f) for f in factures])
 
     def GetFacture(
         self,
@@ -154,9 +152,7 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
                 abonne_id=request.abonne_id,
                 statut=request.statut,
             )
-            return pb.ListFacturesResponse(
-                factures=[facture_to_proto(f) for f in factures]
-            )
+            return pb.ListFacturesResponse(factures=[facture_to_proto(f) for f in factures])
         except ValidationError as exc:
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
             return pb.ListFacturesResponse()
@@ -193,9 +189,7 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.FactureResponse:
         try:
-            facture = self._facture_svc.update_statut(
-                request.facture_id, request.statut
-            )
+            facture = self._facture_svc.update_statut(request.facture_id, request.statut)
             return facture_to_proto(facture)
         except ObjectDoesNotExist:
             context.abort(

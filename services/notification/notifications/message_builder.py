@@ -14,6 +14,7 @@ def build_message_facture(
     token: str,
     date_expiration_token: str,
     frontend_url: str,
+    numero_mobile_money: str = "",
 ) -> str:
     """Construit le message WhatsApp d'envoi de facture (EF-NOTIF-001).
 
@@ -26,24 +27,24 @@ def build_message_facture(
         token: UUID du token d'accès à l'espace abonné.
         date_expiration_token: Date d'expiration du token au format JJ/MM/AAAA.
         frontend_url: URL de base du frontend Angular.
+        numero_mobile_money: Numéro Mobile Money pour le paiement (optionnel).
 
     Returns:
         Message WhatsApp formaté.
     """
     lien = f"{frontend_url}/espace/{token}"
-    consommation_str = (
-        f"{consommation:.0f}"
-        if consommation == int(consommation)
-        else f"{consommation}"
-    )
+    consommation_str = f"{consommation:.0f}" if consommation == int(consommation) else f"{consommation}"
     montant_str = f"{montant:.0f}" if montant == int(montant) else f"{montant}"
+
+    paiement_mobile = f"\n💳 Paiement Mobile Money : {numero_mobile_money}\n" if numero_mobile_money else ""
 
     return (
         f"Bonjour {prenom_nom},\n\n"
         f"Votre facture d'eau - {periode}\n\n"
         f"Consommation : {consommation_str} m³\n"
         f"Montant dû    : {montant_str} FCFA\n"
-        f"Date limite   : {date_limite}\n\n"
+        f"Date limite   : {date_limite}\n"
+        f"{paiement_mobile}\n"
         f"📄 Votre facture est en pièce jointe.\n\n"
         f"🔗 Consultez votre historique :\n"
         f"{lien}\n\n"

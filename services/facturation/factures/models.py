@@ -54,13 +54,12 @@ class Facture(models.Model):
     prix_m3 = models.DecimalField(max_digits=10, decimal_places=2)
     montant = models.DecimalField(max_digits=14, decimal_places=2)
     # Suivi
-    statut = models.CharField(
-        max_length=10, choices=StatutFacture.choices, default=StatutFacture.IMPAYEE
-    )
+    statut = models.CharField(max_length=10, choices=StatutFacture.choices, default=StatutFacture.IMPAYEE)
     date_releve = models.DateField()
     date_limite_paiement = models.DateField()
     date_generation = models.DateTimeField(auto_now_add=True)
     pdf_path = models.TextField(blank=True, default="")
+    numero_mobile_money = models.CharField(max_length=20, blank=True, default="")
 
     class Meta:
         db_table = "factures"

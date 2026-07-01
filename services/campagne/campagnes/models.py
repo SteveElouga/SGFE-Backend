@@ -23,12 +23,14 @@ class Campagne(models.Model):
     nom = models.CharField(max_length=200)
     periode_mois = models.IntegerField()
     periode_annee = models.IntegerField()
-    statut = models.CharField(
-        max_length=20, choices=StatutCampagne.choices, default=StatutCampagne.PLANIFIEE
-    )
+    statut = models.CharField(max_length=20, choices=StatutCampagne.choices, default=StatutCampagne.PLANIFIEE)
     date_planifiee = models.DateField(null=True, blank=True)
     # ID de l'utilisateur Auth Service qui a créé la campagne (pour filtrage SUPERVISEUR)
     created_by = models.CharField(max_length=36)
+    numero_mobile_money = models.CharField(max_length=20, blank=True, default="")
+    # Comportements à la clôture — configurables à la création par le superviseur
+    generer_factures_auto = models.BooleanField(default=True)
+    envoyer_whatsapp_auto = models.BooleanField(default=True)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_cloture = models.DateTimeField(null=True, blank=True)
 
@@ -44,9 +46,7 @@ class CampagneAgent(models.Model):
     """Affectation d'un AGENT à une campagne — seuls les agents affectés voient et travaillent la campagne."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    campagne = models.ForeignKey(
-        Campagne, on_delete=models.CASCADE, related_name="agents_affectes"
-    )
+    campagne = models.ForeignKey(Campagne, on_delete=models.CASCADE, related_name="agents_affectes")
     # ID de l'agent dans Auth Service — pas de FK inter-service
     agent_id = models.CharField(max_length=36)
     date_affectation = models.DateTimeField(auto_now_add=True)
@@ -63,9 +63,7 @@ class Releve(models.Model):
     """Relevé d'index pour un abonné dans une campagne (docs/ARCHITECTURE.md §8.3)."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    campagne = models.ForeignKey(
-        Campagne, on_delete=models.CASCADE, related_name="releves"
-    )
+    campagne = models.ForeignKey(Campagne, on_delete=models.CASCADE, related_name="releves")
     # ID de l'abonné dans Abonné Service — pas de FK inter-service
     abonne_id = models.CharField(max_length=36)
     ancien_index = models.FloatField()
@@ -73,9 +71,7 @@ class Releve(models.Model):
     consommation = models.FloatField(null=True, blank=True)
     date_releve = models.DateTimeField(null=True, blank=True)
     observation = models.TextField(blank=True, default="")
-    statut = models.CharField(
-        max_length=20, choices=StatutReleve.choices, default=StatutReleve.A_RELEVER
-    )
+    statut = models.CharField(max_length=20, choices=StatutReleve.choices, default=StatutReleve.A_RELEVER)
     # ID de l'agent Auth Service qui a saisi le relevé
     agent_id = models.CharField(max_length=36, blank=True, default="")
 

@@ -16,6 +16,9 @@ class CampagneRepository:
         periode_annee: int,
         created_by: str,
         date_planifiee: Optional[str] = None,
+        numero_mobile_money: str = "",
+        generer_factures_auto: bool = True,
+        envoyer_whatsapp_auto: bool = True,
     ) -> Campagne:
         return Campagne.objects.create(
             nom=nom,
@@ -23,6 +26,9 @@ class CampagneRepository:
             periode_annee=periode_annee,
             created_by=created_by,
             date_planifiee=date_planifiee,
+            numero_mobile_money=numero_mobile_money,
+            generer_factures_auto=generer_factures_auto,
+            envoyer_whatsapp_auto=envoyer_whatsapp_auto,
             statut=StatutCampagne.PLANIFIEE,
         )
 
@@ -83,16 +89,10 @@ class ReleveRepository:
             raise ObjectDoesNotExist(f"Relevé introuvable : {releve_id}")
 
     def list_by_campagne(self, campagne_id: str) -> list[Releve]:
-        return list(
-            Releve.objects.filter(campagne_id=campagne_id).select_related("campagne")
-        )
+        return list(Releve.objects.filter(campagne_id=campagne_id).select_related("campagne"))
 
-    def get_by_campagne_abonne(
-        self, campagne_id: str, abonne_id: str
-    ) -> Optional[Releve]:
-        return Releve.objects.filter(
-            campagne_id=campagne_id, abonne_id=abonne_id
-        ).first()
+    def get_by_campagne_abonne(self, campagne_id: str, abonne_id: str) -> Optional[Releve]:
+        return Releve.objects.filter(campagne_id=campagne_id, abonne_id=abonne_id).first()
 
     def saisir_index(
         self,
@@ -135,11 +135,7 @@ class ReleveRepository:
         """Retourne le nombre de relevés par statut pour une campagne."""
         from django.db.models import Count
 
-        counts = (
-            Releve.objects.filter(campagne_id=campagne_id)
-            .values("statut")
-            .annotate(total=Count("id"))
-        )
+        counts = Releve.objects.filter(campagne_id=campagne_id).values("statut").annotate(total=Count("id"))
         result: dict[str, int] = {s: 0 for s in StatutReleve.values}
         for row in counts:
             result[row["statut"]] = row["total"]
@@ -158,6 +154,4 @@ class CampagneAgentRepository:
         return obj
 
     def est_affecte(self, campagne_id: str, agent_id: str) -> bool:
-        return CampagneAgent.objects.filter(
-            campagne_id=campagne_id, agent_id=agent_id
-        ).exists()
+        return CampagneAgent.objects.filter(campagne_id=campagne_id, agent_id=agent_id).exists()

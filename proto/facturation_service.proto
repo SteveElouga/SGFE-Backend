@@ -12,7 +12,11 @@ service FacturationService {
   rpc GetFacturesParCampagne (CampagneIdRequest) returns (ListFacturesResponse);
 }
 
-message GenererFacturesRequest { string campagne_id = 1; }
+message GenererFacturesRequest {
+  string campagne_id = 1;
+  string numero_mobile_money = 2;
+  bool envoyer_whatsapp_auto = 3;
+}
 
 message FactureIdRequest { string facture_id = 1; }
 message CampagneIdRequest { string campagne_id = 1; }
@@ -48,6 +52,7 @@ message FactureResponse {
   string date_limite_paiement = 12;
   string date_generation = 13;
   string pdf_path = 14;
+  string numero_mobile_money = 15;
 }
 
 message TarifResponse {
