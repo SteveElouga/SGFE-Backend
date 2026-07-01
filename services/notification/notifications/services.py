@@ -123,7 +123,10 @@ class EnvoiService:
             telephone=telephone,
         )
 
-        return self._tenter_envoi(envoi, telephone, message)
+        # Récupération du PDF depuis Facturation Service (dégradation gracieuse si KO)
+        pdf_bytes, pdf_filename = facturation_client.get_facture_pdf(facture_id)
+
+        return self._tenter_envoi(envoi, telephone, message, pdf_bytes=pdf_bytes, pdf_filename=pdf_filename)
 
     def renvoyer_facture(self, facture_id: str) -> Envoi:
         """Révoque l'ancien token, crée un nouveau, et renvoie la facture.
@@ -232,15 +235,25 @@ class EnvoiService:
         """Liste les envois filtrés par facture_id et/ou abonne_id."""
         return self._envois.list_by_facture_and_abonne(facture_id, abonne_id)
 
-    def _tenter_envoi(self, envoi: Envoi, telephone: str, message: str) -> Envoi:
+    def _tenter_envoi(
+        self,
+        envoi: Envoi,
+        telephone: str,
+        message: str,
+        pdf_bytes: bytes = b"",
+        pdf_filename: str = "",
+    ) -> Envoi:
         """Tente l'envoi WhatsApp et met à jour le statut de l'envoi.
 
-        En cas de WhatsAppDeliveryError, l'envoi est marqué ECHEC et sauvegardé
-        sans lever d'exception — dégradation gracieuse.
+        Si pdf_bytes est fourni, envoie le PDF en pièce jointe via /send-with-pdf.
+        En cas de WhatsAppDeliveryError, l'envoi est marqué ECHEC (dégradation gracieuse).
         """
         envoi.tentatives += 1
         try:
-            whatsapp_client.send(telephone, message)
+            if pdf_bytes:
+                whatsapp_client.send_with_pdf(telephone, message, pdf_bytes, pdf_filename or "facture.pdf")
+            else:
+                whatsapp_client.send(telephone, message)
             envoi.statut = StatutEnvoi.ENVOYE
             envoi.date_envoi = timezone.now()
             logger.info(

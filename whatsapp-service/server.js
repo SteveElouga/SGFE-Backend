@@ -176,6 +176,33 @@ app.post('/send', async (req, res) => {
     }
 });
 
+app.post('/send-with-pdf', async (req, res) => {
+    if (!isReady || !activeClient) {
+        return res.status(503).json({
+            success: false,
+            error: 'WhatsApp non connecté — scannez le QR code sur /qr',
+        });
+    }
+
+    const { phone, message, pdf_base64, filename } = req.body;
+
+    if (!phone || !pdf_base64) {
+        return res.status(400).json({ success: false, error: 'phone et pdf_base64 requis' });
+    }
+
+    try {
+        const { MessageMedia } = require('whatsapp-web.js');
+        const media = new MessageMedia('application/pdf', pdf_base64, filename || 'facture.pdf');
+        const chatId = phone.replace('+', '') + '@c.us';
+        await activeClient.sendMessage(chatId, media, { caption: message || '' });
+        console.log(`[WhatsApp] PDF envoyé à ${phone} (${filename || 'facture.pdf'})`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(`[WhatsApp] Erreur envoi PDF vers ${phone} :`, err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // ── Démarrage ─────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => {
