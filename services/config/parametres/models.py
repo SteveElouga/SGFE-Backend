@@ -45,11 +45,6 @@ CONFIG_DEFAULTS: dict[str, tuple[str, str]] = {
     "RELANCE_ETAPE_2_JOURS": ("3", "Délai J+X pour le rappel ferme (étape 2)"),
     "RELANCE_ETAPE_3_JOURS": ("7", "Délai J+X pour la mise en demeure (étape 3)"),
     "RELANCE_ETAPE_4_JOURS": ("14", "Délai J+X pour la suspension effective (étape 4)"),
-    "TELNYX_API_KEY": ("", "Clé API Telnyx pour l'envoi de messages WhatsApp"),
-    "WHATSAPP_NUMERO_BUSINESS": (
-        "",
-        "Numéro WhatsApp Business utilisé pour les envois",
-    ),
 }
 
 

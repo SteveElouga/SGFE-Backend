@@ -19,8 +19,7 @@ services/config/
 ## Spécificités
 
 - **InfosSociete** : singleton (pk=1). Créé automatiquement vide au premier accès.
-- **ConfigParam** : clé/valeur texte. Les 10 clés par défaut (`CONFIG_DEFAULTS` dans `models.py`) sont initialisées automatiquement au premier accès via `get_or_default()` / `list_all()`.
-- Les valeurs sensibles (`TELNYX_API_KEY`, `WHATSAPP_NUMERO_BUSINESS`) sont stockées en DB — pas en `.env` — pour pouvoir être modifiées à chaud sans redémarrer le service.
+- **ConfigParam** : clé/valeur texte. Les 8 clés par défaut (`CONFIG_DEFAULTS` dans `models.py`) sont initialisées automatiquement au premier accès via `get_or_default()` / `list_all()`.
 - Ce service n'appelle aucun autre service gRPC.
 
 ## Démarrage local
