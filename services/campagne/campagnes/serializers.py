@@ -12,6 +12,19 @@ import campagne_service_pb2 as pb
 from campagnes.models import Campagne, Releve
 
 
+def _to_iso(value) -> str:
+    """Convertit date/datetime/str en format ISO, ou '' si None/vide.
+
+    Après Campagne.objects.create(), Django peut retourner la valeur d'origine
+    (str) sans la convertir en date — cette fonction gère les deux cas.
+    """
+    if not value:
+        return ""
+    if isinstance(value, str):
+        return value
+    return value.isoformat()
+
+
 def campagne_to_proto(campagne: Campagne) -> pb.CampagneResponse:
     """Convertit un objet Campagne en message protobuf CampagneResponse."""
     return pb.CampagneResponse(
@@ -20,9 +33,9 @@ def campagne_to_proto(campagne: Campagne) -> pb.CampagneResponse:
         periode_mois=campagne.periode_mois,
         periode_annee=campagne.periode_annee,
         statut=campagne.statut,
-        date_planifiee=campagne.date_planifiee.isoformat() if campagne.date_planifiee else "",
-        date_creation=campagne.date_creation.isoformat() if campagne.date_creation else "",
-        date_cloture=campagne.date_cloture.isoformat() if campagne.date_cloture else "",
+        date_planifiee=_to_iso(campagne.date_planifiee),
+        date_creation=_to_iso(campagne.date_creation),
+        date_cloture=_to_iso(campagne.date_cloture),
         numero_mobile_money=campagne.numero_mobile_money,
         generer_factures_auto=campagne.generer_factures_auto,
         envoyer_whatsapp_auto=campagne.envoyer_whatsapp_auto,
