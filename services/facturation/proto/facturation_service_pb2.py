@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19\x66\x61\x63turation_service.proto\x12\x0b\x66\x61\x63turation\"J\n\x16GenererFacturesRequest\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\x12\x1b\n\x13numero_mobile_money\x18\x02 \x01(\t\"&\n\x10\x46\x61\x63tureIdRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\"(\n\x11\x43\x61mpagneIdRequest\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\"M\n\x13ListFacturesRequest\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x0e\n\x06statut\x18\x03 \x01(\t\"9\n\x13UpdateStatutRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x0e\n\x06statut\x18\x02 \x01(\t\"9\n\x12UpdateTarifRequest\x12\x0f\n\x07prix_m3\x18\x01 \x01(\x01\x12\x12\n\ndate_effet\x18\x02 \x01(\t\"\xd5\x02\n\x0f\x46\x61\x63tureResponse\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x16\n\x0enumero_facture\x18\x02 \x01(\t\x12\x11\n\tabonne_id\x18\x03 \x01(\t\x12\x13\n\x0b\x63\x61mpagne_id\x18\x04 \x01(\t\x12\x14\n\x0c\x61ncien_index\x18\x05 \x01(\x01\x12\x15\n\rnouveau_index\x18\x06 \x01(\x01\x12\x14\n\x0c\x63onsommation\x18\x07 \x01(\x01\x12\x0f\n\x07prix_m3\x18\x08 \x01(\x01\x12\x0f\n\x07montant\x18\t \x01(\x01\x12\x0e\n\x06statut\x18\n \x01(\t\x12\x13\n\x0b\x64\x61te_releve\x18\x0b \x01(\t\x12\x1c\n\x14\x64\x61te_limite_paiement\x18\x0c \x01(\t\x12\x17\n\x0f\x64\x61te_generation\x18\r \x01(\t\x12\x10\n\x08pdf_path\x18\x0e \x01(\t\x12\x1b\n\x13numero_mobile_money\x18\x0f \x01(\t\"Y\n\rTarifResponse\x12\x10\n\x08tarif_id\x18\x01 \x01(\t\x12\x0f\n\x07prix_m3\x18\x02 \x01(\x01\x12\x12\n\ndate_effet\x18\x03 \x01(\t\x12\x11\n\tis_active\x18\x04 \x01(\x08\"4\n\x0bPDFResponse\x12\x13\n\x0bpdf_content\x18\x01 \x01(\x0c\x12\x10\n\x08\x66ilename\x18\x02 \x01(\t\"I\n\x17GenererFacturesResponse\x12.\n\x08\x66\x61\x63tures\x18\x01 \x03(\x0b\x32\x1c.facturation.FactureResponse\"F\n\x14ListFacturesResponse\x12.\n\x08\x66\x61\x63tures\x18\x01 \x03(\x0b\x32\x1c.facturation.FactureResponse\"\x0e\n\x0c\x45mptyRequest2\xa5\x05\n\x12\x46\x61\x63turationService\x12\\\n\x0fGenererFactures\x12#.facturation.GenererFacturesRequest\x1a$.facturation.GenererFacturesResponse\x12I\n\nGetFacture\x12\x1d.facturation.FactureIdRequest\x1a\x1c.facturation.FactureResponse\x12S\n\x0cListFactures\x12 .facturation.ListFacturesRequest\x1a!.facturation.ListFacturesResponse\x12H\n\rGetFacturePDF\x12\x1d.facturation.FactureIdRequest\x1a\x18.facturation.PDFResponse\x12U\n\x13UpdateStatutFacture\x12 .facturation.UpdateStatutRequest\x1a\x1c.facturation.FactureResponse\x12G\n\x0eGetTarifActuel\x12\x19.facturation.EmptyRequest\x1a\x1a.facturation.TarifResponse\x12J\n\x0bUpdateTarif\x12\x1f.facturation.UpdateTarifRequest\x1a\x1a.facturation.TarifResponse\x12[\n\x16GetFacturesParCampagne\x12\x1e.facturation.CampagneIdRequest\x1a!.facturation.ListFacturesResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19\x66\x61\x63turation_service.proto\x12\x0b\x66\x61\x63turation\"i\n\x16GenererFacturesRequest\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\x12\x1b\n\x13numero_mobile_money\x18\x02 \x01(\t\x12\x1d\n\x15\x65nvoyer_whatsapp_auto\x18\x03 \x01(\x08\"&\n\x10\x46\x61\x63tureIdRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\"(\n\x11\x43\x61mpagneIdRequest\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\"M\n\x13ListFacturesRequest\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x0e\n\x06statut\x18\x03 \x01(\t\"9\n\x13UpdateStatutRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x0e\n\x06statut\x18\x02 \x01(\t\"9\n\x12UpdateTarifRequest\x12\x0f\n\x07prix_m3\x18\x01 \x01(\x01\x12\x12\n\ndate_effet\x18\x02 \x01(\t\"\xd5\x02\n\x0f\x46\x61\x63tureResponse\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x16\n\x0enumero_facture\x18\x02 \x01(\t\x12\x11\n\tabonne_id\x18\x03 \x01(\t\x12\x13\n\x0b\x63\x61mpagne_id\x18\x04 \x01(\t\x12\x14\n\x0c\x61ncien_index\x18\x05 \x01(\x01\x12\x15\n\rnouveau_index\x18\x06 \x01(\x01\x12\x14\n\x0c\x63onsommation\x18\x07 \x01(\x01\x12\x0f\n\x07prix_m3\x18\x08 \x01(\x01\x12\x0f\n\x07montant\x18\t \x01(\x01\x12\x0e\n\x06statut\x18\n \x01(\t\x12\x13\n\x0b\x64\x61te_releve\x18\x0b \x01(\t\x12\x1c\n\x14\x64\x61te_limite_paiement\x18\x0c \x01(\t\x12\x17\n\x0f\x64\x61te_generation\x18\r \x01(\t\x12\x10\n\x08pdf_path\x18\x0e \x01(\t\x12\x1b\n\x13numero_mobile_money\x18\x0f \x01(\t\"Y\n\rTarifResponse\x12\x10\n\x08tarif_id\x18\x01 \x01(\t\x12\x0f\n\x07prix_m3\x18\x02 \x01(\x01\x12\x12\n\ndate_effet\x18\x03 \x01(\t\x12\x11\n\tis_active\x18\x04 \x01(\x08\"4\n\x0bPDFResponse\x12\x13\n\x0bpdf_content\x18\x01 \x01(\x0c\x12\x10\n\x08\x66ilename\x18\x02 \x01(\t\"I\n\x17GenererFacturesResponse\x12.\n\x08\x66\x61\x63tures\x18\x01 \x03(\x0b\x32\x1c.facturation.FactureResponse\"F\n\x14ListFacturesResponse\x12.\n\x08\x66\x61\x63tures\x18\x01 \x03(\x0b\x32\x1c.facturation.FactureResponse\"\x0e\n\x0c\x45mptyRequest2\xa5\x05\n\x12\x46\x61\x63turationService\x12\\\n\x0fGenererFactures\x12#.facturation.GenererFacturesRequest\x1a$.facturation.GenererFacturesResponse\x12I\n\nGetFacture\x12\x1d.facturation.FactureIdRequest\x1a\x1c.facturation.FactureResponse\x12S\n\x0cListFactures\x12 .facturation.ListFacturesRequest\x1a!.facturation.ListFacturesResponse\x12H\n\rGetFacturePDF\x12\x1d.facturation.FactureIdRequest\x1a\x18.facturation.PDFResponse\x12U\n\x13UpdateStatutFacture\x12 .facturation.UpdateStatutRequest\x1a\x1c.facturation.FactureResponse\x12G\n\x0eGetTarifActuel\x12\x19.facturation.EmptyRequest\x1a\x1a.facturation.TarifResponse\x12J\n\x0bUpdateTarif\x12\x1f.facturation.UpdateTarifRequest\x1a\x1a.facturation.TarifResponse\x12[\n\x16GetFacturesParCampagne\x12\x1e.facturation.CampagneIdRequest\x1a!.facturation.ListFacturesResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,29 +32,29 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'facturation_service_pb2', _
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_GENERERFACTURESREQUEST']._serialized_start=42
-  _globals['_GENERERFACTURESREQUEST']._serialized_end=116
-  _globals['_FACTUREIDREQUEST']._serialized_start=118
-  _globals['_FACTUREIDREQUEST']._serialized_end=156
-  _globals['_CAMPAGNEIDREQUEST']._serialized_start=158
-  _globals['_CAMPAGNEIDREQUEST']._serialized_end=198
-  _globals['_LISTFACTURESREQUEST']._serialized_start=200
-  _globals['_LISTFACTURESREQUEST']._serialized_end=277
-  _globals['_UPDATESTATUTREQUEST']._serialized_start=279
-  _globals['_UPDATESTATUTREQUEST']._serialized_end=336
-  _globals['_UPDATETARIFREQUEST']._serialized_start=338
-  _globals['_UPDATETARIFREQUEST']._serialized_end=395
-  _globals['_FACTURERESPONSE']._serialized_start=398
-  _globals['_FACTURERESPONSE']._serialized_end=739
-  _globals['_TARIFRESPONSE']._serialized_start=741
-  _globals['_TARIFRESPONSE']._serialized_end=830
-  _globals['_PDFRESPONSE']._serialized_start=832
-  _globals['_PDFRESPONSE']._serialized_end=884
-  _globals['_GENERERFACTURESRESPONSE']._serialized_start=886
-  _globals['_GENERERFACTURESRESPONSE']._serialized_end=959
-  _globals['_LISTFACTURESRESPONSE']._serialized_start=961
-  _globals['_LISTFACTURESRESPONSE']._serialized_end=1031
-  _globals['_EMPTYREQUEST']._serialized_start=1033
-  _globals['_EMPTYREQUEST']._serialized_end=1047
-  _globals['_FACTURATIONSERVICE']._serialized_start=1050
-  _globals['_FACTURATIONSERVICE']._serialized_end=1727
+  _globals['_GENERERFACTURESREQUEST']._serialized_end=147
+  _globals['_FACTUREIDREQUEST']._serialized_start=149
+  _globals['_FACTUREIDREQUEST']._serialized_end=187
+  _globals['_CAMPAGNEIDREQUEST']._serialized_start=189
+  _globals['_CAMPAGNEIDREQUEST']._serialized_end=229
+  _globals['_LISTFACTURESREQUEST']._serialized_start=231
+  _globals['_LISTFACTURESREQUEST']._serialized_end=308
+  _globals['_UPDATESTATUTREQUEST']._serialized_start=310
+  _globals['_UPDATESTATUTREQUEST']._serialized_end=367
+  _globals['_UPDATETARIFREQUEST']._serialized_start=369
+  _globals['_UPDATETARIFREQUEST']._serialized_end=426
+  _globals['_FACTURERESPONSE']._serialized_start=429
+  _globals['_FACTURERESPONSE']._serialized_end=770
+  _globals['_TARIFRESPONSE']._serialized_start=772
+  _globals['_TARIFRESPONSE']._serialized_end=861
+  _globals['_PDFRESPONSE']._serialized_start=863
+  _globals['_PDFRESPONSE']._serialized_end=915
+  _globals['_GENERERFACTURESRESPONSE']._serialized_start=917
+  _globals['_GENERERFACTURESRESPONSE']._serialized_end=990
+  _globals['_LISTFACTURESRESPONSE']._serialized_start=992
+  _globals['_LISTFACTURESRESPONSE']._serialized_end=1062
+  _globals['_EMPTYREQUEST']._serialized_start=1064
+  _globals['_EMPTYREQUEST']._serialized_end=1078
+  _globals['_FACTURATIONSERVICE']._serialized_start=1081
+  _globals['_FACTURATIONSERVICE']._serialized_end=1758
 # @@protoc_insertion_point(module_scope)

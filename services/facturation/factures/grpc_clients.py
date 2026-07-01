@@ -32,9 +32,7 @@ class CampagneServiceClient:
     def list_releves(self, campagne_id: str) -> list[dict]:
         """Retourne la liste des relevés RELEVE (index saisi) pour une campagne."""
         try:
-            response = self._stub.ListReleves(
-                self._pb.CampagneIdRequest(campagne_id=campagne_id)
-            )
+            response = self._stub.ListReleves(self._pb.CampagneIdRequest(campagne_id=campagne_id))
             return [
                 {
                     "abonne_id": r.abonne_id,
@@ -78,9 +76,7 @@ class ConfigServiceClient:
         Retourne la valeur par défaut (5) si le service est inaccessible.
         """
         try:
-            response = self._stub.GetConfig(
-                self._pb.ConfigKeyRequest(cle="delai_paiement_jours")
-            )
+            response = self._stub.GetConfig(self._pb.ConfigKeyRequest(cle="delai_paiement_jours"))
             return int(response.valeur)
         except Exception:
             logger.warning(
@@ -96,14 +92,43 @@ class ConfigServiceClient:
         """
         try:
             r = self._stub.GetInfosSociete(self._pb.EmptyRequest())
-            return InfosSociete(
-                nom=r.nom or "SGFE", adresse=r.adresse, telephone=r.telephone
-            )
+            return InfosSociete(nom=r.nom or "SGFE", adresse=r.adresse, telephone=r.telephone)
         except Exception:
-            logger.warning(
-                "Config Service inaccessible — infos société par défaut pour PDF"
-            )
+            logger.warning("Config Service inaccessible — infos société par défaut pour PDF")
             return InfosSociete()
+
+
+class NotificationServiceClient:
+    """Client gRPC vers Notification Service (port 50056) — envoi WhatsApp facture."""
+
+    def __init__(self) -> None:
+        address = f"{settings.NOTIFICATION_GRPC_HOST}:{settings.NOTIFICATION_GRPC_PORT}"
+        self._channel = grpc.insecure_channel(address)
+
+        proto_path = str(Path(settings.BASE_DIR) / "proto")
+        if proto_path not in sys.path:
+            sys.path.insert(0, proto_path)
+
+        import notification_service_pb2 as pb
+        import notification_service_pb2_grpc as pb_grpc
+
+        self._stub = pb_grpc.NotificationServiceStub(self._channel)
+        self._pb = pb
+
+    def envoyer_facture(self, facture_id: str, abonne_id: str) -> bool:
+        """Déclenche l'envoi WhatsApp de la facture via Notification Service.
+
+        Retourne True si OK, False en cas d'erreur (dégradation gracieuse).
+        """
+        try:
+            self._stub.EnvoyerFacture(self._pb.EnvoyerFactureRequest(facture_id=facture_id, abonne_id=abonne_id))
+            return True
+        except Exception as exc:
+            logger.warning(
+                "Notification Service inaccessible — EnvoyerFacture ignoré",
+                extra={"facture_id": facture_id, "error": str(exc)},
+            )
+            return False
 
 
 class PaiementServiceClient:

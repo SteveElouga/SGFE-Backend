@@ -57,9 +57,10 @@ class FactureService:
         self._repo = FactureRepository()
         self._tarif_repo = TarifRepository()
         # Import tardif pour éviter la circularité au niveau module
-        from .grpc_clients import PaiementServiceClient
+        from .grpc_clients import NotificationServiceClient, PaiementServiceClient
 
         self._paiement_client = PaiementServiceClient()
+        self._notification_client = NotificationServiceClient()
 
     def generer_factures(
         self,
@@ -68,6 +69,7 @@ class FactureService:
         delai_paiement_jours: int,
         societe: InfosSociete,
         numero_mobile_money: str = "",
+        envoyer_whatsapp_auto: bool = True,
     ) -> list[Facture]:
         """Génère une facture pour chaque relevé RELEVE (index saisi).
 
@@ -121,6 +123,12 @@ class FactureService:
                 montant_total=float(facture.montant),
                 date_limite_paiement=date_limite.isoformat(),
             )
+            # Envoi WhatsApp si activé sur la campagne (dégradation gracieuse si KO)
+            if envoyer_whatsapp_auto:
+                self._notification_client.envoyer_facture(
+                    facture_id=str(facture.id),
+                    abonne_id=releve.abonne_id,
+                )
             factures.append(facture)
 
         logger.info(

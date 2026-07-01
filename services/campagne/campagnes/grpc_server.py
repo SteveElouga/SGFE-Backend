@@ -57,6 +57,8 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
                 created_by=request.created_by,
                 date_planifiee=request.date_planifiee or None,
                 numero_mobile_money=request.numero_mobile_money,
+                generer_factures_auto=request.generer_factures_auto,
+                envoyer_whatsapp_auto=request.envoyer_whatsapp_auto,
             )
             return campagne_to_proto(campagne)
         except ValidationError as exc:
@@ -120,10 +122,12 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         """Clôture une campagne EN_COURS et notifie Facturation Service."""
         try:
             campagne = self._campagne_svc.cloturer_campagne(request.campagne_id)
-            self._facturation_client.notifier_campagne_cloturee(
-                str(campagne.id),
-                numero_mobile_money=campagne.numero_mobile_money,
-            )
+            if campagne.generer_factures_auto:
+                self._facturation_client.notifier_campagne_cloturee(
+                    str(campagne.id),
+                    numero_mobile_money=campagne.numero_mobile_money,
+                    envoyer_whatsapp_auto=campagne.envoyer_whatsapp_auto,
+                )
             return campagne_to_proto(campagne)
         except ObjectDoesNotExist as exc:
             context.abort(grpc.StatusCode.NOT_FOUND, str(exc))

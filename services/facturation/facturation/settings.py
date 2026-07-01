@@ -40,9 +40,7 @@ TEMPLATES = [
 WSGI_APPLICATION = "facturation.wsgi.application"
 
 if TESTING:
-    DATABASES = {
-        "default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}
-    }
+    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
 else:
     DATABASES = {
         "default": {
@@ -75,6 +73,9 @@ CONFIG_GRPC_PORT = env.int("CONFIG_GRPC_PORT", default=50058)
 
 PAIEMENT_GRPC_HOST = env("PAIEMENT_GRPC_HOST", default="localhost")
 PAIEMENT_GRPC_PORT = env.int("PAIEMENT_GRPC_PORT", default=50055)
+
+NOTIFICATION_GRPC_HOST = env("NOTIFICATION_GRPC_HOST", default="localhost")
+NOTIFICATION_GRPC_PORT = env.int("NOTIFICATION_GRPC_PORT", default=50056)
 
 # --- JWT (validation interne) ---
 JWT_SECRET_KEY = env("JWT_SECRET_KEY", default="changeme")

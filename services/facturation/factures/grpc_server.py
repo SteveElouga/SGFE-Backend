@@ -114,6 +114,7 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
                 delai_paiement_jours=delai,
                 societe=societe,
                 numero_mobile_money=request.numero_mobile_money,
+                envoyer_whatsapp_auto=request.envoyer_whatsapp_auto,
             )
         except ValidationError as exc:
             context.abort(grpc.StatusCode.FAILED_PRECONDITION, str(exc))

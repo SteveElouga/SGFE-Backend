@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16\x63\x61mpagne_service.proto\x12\x08\x63\x61mpagne\"\x9a\x01\n\x15\x43reateCampagneRequest\x12\x0b\n\x03nom\x18\x01 \x01(\t\x12\x14\n\x0cperiode_mois\x18\x02 \x01(\x05\x12\x15\n\rperiode_annee\x18\x03 \x01(\x05\x12\x16\n\x0e\x64\x61te_planifiee\x18\x04 \x01(\t\x12\x12\n\ncreated_by\x18\x05 \x01(\t\x12\x1b\n\x13numero_mobile_money\x18\x06 \x01(\t\"z\n\x12SaisirIndexRequest\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x15\n\rnouveau_index\x18\x03 \x01(\x01\x12\x13\n\x0bobservation\x18\x04 \x01(\t\x12\x10\n\x08\x61gent_id\x18\x05 \x01(\t\"x\n\x17MarquerNonReleveRequest\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x0e\n\x06statut\x18\x03 \x01(\t\x12\x13\n\x0bobservation\x18\x04 \x01(\t\x12\x10\n\x08\x61gent_id\x18\x05 \x01(\t\"(\n\x11\x43\x61mpagneIdRequest\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\"$\n\x0fReleveIdRequest\x12\x11\n\treleve_id\x18\x01 \x01(\t\"$\n\x0f\x41\x62onneIdRequest\x12\x11\n\tabonne_id\x18\x01 \x01(\t\"\xd3\x01\n\x10\x43\x61mpagneResponse\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\x12\x0b\n\x03nom\x18\x02 \x01(\t\x12\x14\n\x0cperiode_mois\x18\x03 \x01(\x05\x12\x15\n\rperiode_annee\x18\x04 \x01(\x05\x12\x0e\n\x06statut\x18\x05 \x01(\t\x12\x16\n\x0e\x64\x61te_planifiee\x18\x06 \x01(\t\x12\x15\n\rdate_creation\x18\x07 \x01(\t\x12\x14\n\x0c\x64\x61te_cloture\x18\x08 \x01(\t\x12\x1b\n\x13numero_mobile_money\x18\t \x01(\t\"\xb3\x01\n\x0eReleveResponse\x12\x11\n\treleve_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x14\n\x0c\x61ncien_index\x18\x03 \x01(\x01\x12\x15\n\rnouveau_index\x18\x04 \x01(\x01\x12\x14\n\x0c\x63onsommation\x18\x05 \x01(\x01\x12\x13\n\x0b\x64\x61te_releve\x18\x06 \x01(\t\x12\x13\n\x0bobservation\x18\x07 \x01(\t\x12\x0e\n\x06statut\x18\x08 \x01(\t\"\x81\x01\n\x13ProgressionResponse\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\x12\x15\n\rtotal_abonnes\x18\x02 \x01(\x05\x12\x12\n\nnb_releves\x18\x03 \x01(\x05\x12\x15\n\rnb_en_attente\x18\x04 \x01(\x05\x12\x13\n\x0bpourcentage\x18\x05 \x01(\x01\"[\n\x14\x44\x65rnierIndexResponse\x12\x11\n\tabonne_id\x18\x01 \x01(\t\x12\x15\n\rdernier_index\x18\x02 \x01(\x01\x12\x19\n\x11\x65st_index_initial\x18\x03 \x01(\x08\"<\n\x14ListCampagnesRequest\x12\x12\n\ncreated_by\x18\x01 \x01(\t\x12\x10\n\x08\x61gent_id\x18\x02 \x01(\t\"=\n\x14\x41ssignerAgentRequest\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\x12\x10\n\x08\x61gent_id\x18\x02 \x01(\t\"F\n\x15ListCampagnesResponse\x12-\n\tcampagnes\x18\x01 \x03(\x0b\x32\x1a.campagne.CampagneResponse\"@\n\x13ListRelevesResponse\x12)\n\x07releves\x18\x01 \x03(\x0b\x32\x18.campagne.ReleveResponse\"\x0e\n\x0c\x45mptyRequest2\xd5\x06\n\x0f\x43\x61mpagneService\x12M\n\x0e\x43reateCampagne\x12\x1f.campagne.CreateCampagneRequest\x1a\x1a.campagne.CampagneResponse\x12\x46\n\x0bGetCampagne\x12\x1b.campagne.CampagneIdRequest\x1a\x1a.campagne.CampagneResponse\x12P\n\rListCampagnes\x12\x1e.campagne.ListCampagnesRequest\x1a\x1f.campagne.ListCampagnesResponse\x12K\n\rAssignerAgent\x12\x1e.campagne.AssignerAgentRequest\x1a\x1a.campagne.CampagneResponse\x12\x45\n\x0bSaisirIndex\x12\x1c.campagne.SaisirIndexRequest\x1a\x18.campagne.ReleveResponse\x12O\n\x10MarquerNonReleve\x12!.campagne.MarquerNonReleveRequest\x1a\x18.campagne.ReleveResponse\x12@\n\tGetReleve\x12\x19.campagne.ReleveIdRequest\x1a\x18.campagne.ReleveResponse\x12I\n\x0bListReleves\x12\x1b.campagne.CampagneIdRequest\x1a\x1d.campagne.ListRelevesResponse\x12L\n\x0eGetProgression\x12\x1b.campagne.CampagneIdRequest\x1a\x1d.campagne.ProgressionResponse\x12K\n\x10\x43loturerCampagne\x12\x1b.campagne.CampagneIdRequest\x1a\x1a.campagne.CampagneResponse\x12L\n\x0fGetDernierIndex\x12\x19.campagne.AbonneIdRequest\x1a\x1e.campagne.DernierIndexResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16\x63\x61mpagne_service.proto\x12\x08\x63\x61mpagne\"\xd8\x01\n\x15\x43reateCampagneRequest\x12\x0b\n\x03nom\x18\x01 \x01(\t\x12\x14\n\x0cperiode_mois\x18\x02 \x01(\x05\x12\x15\n\rperiode_annee\x18\x03 \x01(\x05\x12\x16\n\x0e\x64\x61te_planifiee\x18\x04 \x01(\t\x12\x12\n\ncreated_by\x18\x05 \x01(\t\x12\x1b\n\x13numero_mobile_money\x18\x06 \x01(\t\x12\x1d\n\x15generer_factures_auto\x18\x07 \x01(\x08\x12\x1d\n\x15\x65nvoyer_whatsapp_auto\x18\x08 \x01(\x08\"z\n\x12SaisirIndexRequest\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x15\n\rnouveau_index\x18\x03 \x01(\x01\x12\x13\n\x0bobservation\x18\x04 \x01(\t\x12\x10\n\x08\x61gent_id\x18\x05 \x01(\t\"x\n\x17MarquerNonReleveRequest\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x0e\n\x06statut\x18\x03 \x01(\t\x12\x13\n\x0bobservation\x18\x04 \x01(\t\x12\x10\n\x08\x61gent_id\x18\x05 \x01(\t\"(\n\x11\x43\x61mpagneIdRequest\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\"$\n\x0fReleveIdRequest\x12\x11\n\treleve_id\x18\x01 \x01(\t\"$\n\x0f\x41\x62onneIdRequest\x12\x11\n\tabonne_id\x18\x01 \x01(\t\"\x91\x02\n\x10\x43\x61mpagneResponse\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\x12\x0b\n\x03nom\x18\x02 \x01(\t\x12\x14\n\x0cperiode_mois\x18\x03 \x01(\x05\x12\x15\n\rperiode_annee\x18\x04 \x01(\x05\x12\x0e\n\x06statut\x18\x05 \x01(\t\x12\x16\n\x0e\x64\x61te_planifiee\x18\x06 \x01(\t\x12\x15\n\rdate_creation\x18\x07 \x01(\t\x12\x14\n\x0c\x64\x61te_cloture\x18\x08 \x01(\t\x12\x1b\n\x13numero_mobile_money\x18\t \x01(\t\x12\x1d\n\x15generer_factures_auto\x18\n \x01(\x08\x12\x1d\n\x15\x65nvoyer_whatsapp_auto\x18\x0b \x01(\x08\"\xb3\x01\n\x0eReleveResponse\x12\x11\n\treleve_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x14\n\x0c\x61ncien_index\x18\x03 \x01(\x01\x12\x15\n\rnouveau_index\x18\x04 \x01(\x01\x12\x14\n\x0c\x63onsommation\x18\x05 \x01(\x01\x12\x13\n\x0b\x64\x61te_releve\x18\x06 \x01(\t\x12\x13\n\x0bobservation\x18\x07 \x01(\t\x12\x0e\n\x06statut\x18\x08 \x01(\t\"\x81\x01\n\x13ProgressionResponse\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\x12\x15\n\rtotal_abonnes\x18\x02 \x01(\x05\x12\x12\n\nnb_releves\x18\x03 \x01(\x05\x12\x15\n\rnb_en_attente\x18\x04 \x01(\x05\x12\x13\n\x0bpourcentage\x18\x05 \x01(\x01\"[\n\x14\x44\x65rnierIndexResponse\x12\x11\n\tabonne_id\x18\x01 \x01(\t\x12\x15\n\rdernier_index\x18\x02 \x01(\x01\x12\x19\n\x11\x65st_index_initial\x18\x03 \x01(\x08\"<\n\x14ListCampagnesRequest\x12\x12\n\ncreated_by\x18\x01 \x01(\t\x12\x10\n\x08\x61gent_id\x18\x02 \x01(\t\"=\n\x14\x41ssignerAgentRequest\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\x12\x10\n\x08\x61gent_id\x18\x02 \x01(\t\"F\n\x15ListCampagnesResponse\x12-\n\tcampagnes\x18\x01 \x03(\x0b\x32\x1a.campagne.CampagneResponse\"@\n\x13ListRelevesResponse\x12)\n\x07releves\x18\x01 \x03(\x0b\x32\x18.campagne.ReleveResponse\"\x0e\n\x0c\x45mptyRequest2\xd5\x06\n\x0f\x43\x61mpagneService\x12M\n\x0e\x43reateCampagne\x12\x1f.campagne.CreateCampagneRequest\x1a\x1a.campagne.CampagneResponse\x12\x46\n\x0bGetCampagne\x12\x1b.campagne.CampagneIdRequest\x1a\x1a.campagne.CampagneResponse\x12P\n\rListCampagnes\x12\x1e.campagne.ListCampagnesRequest\x1a\x1f.campagne.ListCampagnesResponse\x12K\n\rAssignerAgent\x12\x1e.campagne.AssignerAgentRequest\x1a\x1a.campagne.CampagneResponse\x12\x45\n\x0bSaisirIndex\x12\x1c.campagne.SaisirIndexRequest\x1a\x18.campagne.ReleveResponse\x12O\n\x10MarquerNonReleve\x12!.campagne.MarquerNonReleveRequest\x1a\x18.campagne.ReleveResponse\x12@\n\tGetReleve\x12\x19.campagne.ReleveIdRequest\x1a\x18.campagne.ReleveResponse\x12I\n\x0bListReleves\x12\x1b.campagne.CampagneIdRequest\x1a\x1d.campagne.ListRelevesResponse\x12L\n\x0eGetProgression\x12\x1b.campagne.CampagneIdRequest\x1a\x1d.campagne.ProgressionResponse\x12K\n\x10\x43loturerCampagne\x12\x1b.campagne.CampagneIdRequest\x1a\x1a.campagne.CampagneResponse\x12L\n\x0fGetDernierIndex\x12\x19.campagne.AbonneIdRequest\x1a\x1e.campagne.DernierIndexResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,35 +32,35 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'campagne_service_pb2', _glo
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_CREATECAMPAGNEREQUEST']._serialized_start=37
-  _globals['_CREATECAMPAGNEREQUEST']._serialized_end=191
-  _globals['_SAISIRINDEXREQUEST']._serialized_start=193
-  _globals['_SAISIRINDEXREQUEST']._serialized_end=315
-  _globals['_MARQUERNONRELEVEREQUEST']._serialized_start=317
-  _globals['_MARQUERNONRELEVEREQUEST']._serialized_end=437
-  _globals['_CAMPAGNEIDREQUEST']._serialized_start=439
-  _globals['_CAMPAGNEIDREQUEST']._serialized_end=479
-  _globals['_RELEVEIDREQUEST']._serialized_start=481
-  _globals['_RELEVEIDREQUEST']._serialized_end=517
-  _globals['_ABONNEIDREQUEST']._serialized_start=519
-  _globals['_ABONNEIDREQUEST']._serialized_end=555
-  _globals['_CAMPAGNERESPONSE']._serialized_start=558
-  _globals['_CAMPAGNERESPONSE']._serialized_end=769
-  _globals['_RELEVERESPONSE']._serialized_start=772
-  _globals['_RELEVERESPONSE']._serialized_end=951
-  _globals['_PROGRESSIONRESPONSE']._serialized_start=954
-  _globals['_PROGRESSIONRESPONSE']._serialized_end=1083
-  _globals['_DERNIERINDEXRESPONSE']._serialized_start=1085
-  _globals['_DERNIERINDEXRESPONSE']._serialized_end=1176
-  _globals['_LISTCAMPAGNESREQUEST']._serialized_start=1178
-  _globals['_LISTCAMPAGNESREQUEST']._serialized_end=1238
-  _globals['_ASSIGNERAGENTREQUEST']._serialized_start=1240
-  _globals['_ASSIGNERAGENTREQUEST']._serialized_end=1301
-  _globals['_LISTCAMPAGNESRESPONSE']._serialized_start=1303
-  _globals['_LISTCAMPAGNESRESPONSE']._serialized_end=1373
-  _globals['_LISTRELEVESRESPONSE']._serialized_start=1375
-  _globals['_LISTRELEVESRESPONSE']._serialized_end=1439
-  _globals['_EMPTYREQUEST']._serialized_start=1441
-  _globals['_EMPTYREQUEST']._serialized_end=1455
-  _globals['_CAMPAGNESERVICE']._serialized_start=1458
-  _globals['_CAMPAGNESERVICE']._serialized_end=2311
+  _globals['_CREATECAMPAGNEREQUEST']._serialized_end=253
+  _globals['_SAISIRINDEXREQUEST']._serialized_start=255
+  _globals['_SAISIRINDEXREQUEST']._serialized_end=377
+  _globals['_MARQUERNONRELEVEREQUEST']._serialized_start=379
+  _globals['_MARQUERNONRELEVEREQUEST']._serialized_end=499
+  _globals['_CAMPAGNEIDREQUEST']._serialized_start=501
+  _globals['_CAMPAGNEIDREQUEST']._serialized_end=541
+  _globals['_RELEVEIDREQUEST']._serialized_start=543
+  _globals['_RELEVEIDREQUEST']._serialized_end=579
+  _globals['_ABONNEIDREQUEST']._serialized_start=581
+  _globals['_ABONNEIDREQUEST']._serialized_end=617
+  _globals['_CAMPAGNERESPONSE']._serialized_start=620
+  _globals['_CAMPAGNERESPONSE']._serialized_end=893
+  _globals['_RELEVERESPONSE']._serialized_start=896
+  _globals['_RELEVERESPONSE']._serialized_end=1075
+  _globals['_PROGRESSIONRESPONSE']._serialized_start=1078
+  _globals['_PROGRESSIONRESPONSE']._serialized_end=1207
+  _globals['_DERNIERINDEXRESPONSE']._serialized_start=1209
+  _globals['_DERNIERINDEXRESPONSE']._serialized_end=1300
+  _globals['_LISTCAMPAGNESREQUEST']._serialized_start=1302
+  _globals['_LISTCAMPAGNESREQUEST']._serialized_end=1362
+  _globals['_ASSIGNERAGENTREQUEST']._serialized_start=1364
+  _globals['_ASSIGNERAGENTREQUEST']._serialized_end=1425
+  _globals['_LISTCAMPAGNESRESPONSE']._serialized_start=1427
+  _globals['_LISTCAMPAGNESRESPONSE']._serialized_end=1497
+  _globals['_LISTRELEVESRESPONSE']._serialized_start=1499
+  _globals['_LISTRELEVESRESPONSE']._serialized_end=1563
+  _globals['_EMPTYREQUEST']._serialized_start=1565
+  _globals['_EMPTYREQUEST']._serialized_end=1579
+  _globals['_CAMPAGNESERVICE']._serialized_start=1582
+  _globals['_CAMPAGNESERVICE']._serialized_end=2435
 # @@protoc_insertion_point(module_scope)

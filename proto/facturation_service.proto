@@ -15,6 +15,7 @@ service FacturationService {
 message GenererFacturesRequest {
   string campagne_id = 1;
   string numero_mobile_money = 2;
+  bool envoyer_whatsapp_auto = 3;
 }
 
 message FactureIdRequest { string facture_id = 1; }

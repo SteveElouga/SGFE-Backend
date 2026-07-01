@@ -19,6 +19,9 @@ def _campagne_response(**kwargs) -> campagne_pb.CampagneResponse:
         date_planifiee="",
         date_creation="2026-07-01T00:00:00+00:00",
         date_cloture="",
+        numero_mobile_money="",
+        generer_factures_auto=True,
+        envoyer_whatsapp_auto=True,
     )
     return campagne_pb.CampagneResponse(**{**defaults, **kwargs})
 
@@ -135,6 +138,8 @@ class TestCampagneMutations(SimpleTestCase):
             date_planifiee="",
             created_by="user-001",
             numero_mobile_money="",
+            generer_factures_auto=True,
+            envoyer_whatsapp_auto=True,
         )
 
     @patch("schema.campagne_mutations.campagne_client")

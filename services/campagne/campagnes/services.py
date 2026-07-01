@@ -23,6 +23,8 @@ class CampagneService:
         created_by: str,
         date_planifiee: Optional[str] = None,
         numero_mobile_money: str = "",
+        generer_factures_auto: bool = True,
+        envoyer_whatsapp_auto: bool = True,
     ) -> Campagne:
         if not nom.strip():
             raise ValidationError("Le nom de la campagne est obligatoire.")
@@ -32,6 +34,8 @@ class CampagneService:
             raise ValidationError("L'année est invalide.")
         if not created_by:
             raise ValidationError("L'identifiant du créateur est obligatoire.")
+        if numero_mobile_money and (not numero_mobile_money.isdigit() or len(numero_mobile_money) != 9):
+            raise ValidationError("Le numéro Mobile Money doit contenir exactement 9 chiffres (ex: 658552294).")
         return self._repo.create(
             nom=nom,
             periode_mois=periode_mois,
@@ -39,6 +43,8 @@ class CampagneService:
             created_by=created_by,
             date_planifiee=date_planifiee,
             numero_mobile_money=numero_mobile_money,
+            generer_factures_auto=generer_factures_auto,
+            envoyer_whatsapp_auto=envoyer_whatsapp_auto,
         )
 
     def demarrer_campagne(self, campagne_id: str) -> Campagne:

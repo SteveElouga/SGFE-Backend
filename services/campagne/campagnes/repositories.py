@@ -17,6 +17,8 @@ class CampagneRepository:
         created_by: str,
         date_planifiee: Optional[str] = None,
         numero_mobile_money: str = "",
+        generer_factures_auto: bool = True,
+        envoyer_whatsapp_auto: bool = True,
     ) -> Campagne:
         return Campagne.objects.create(
             nom=nom,
@@ -25,6 +27,8 @@ class CampagneRepository:
             created_by=created_by,
             date_planifiee=date_planifiee,
             numero_mobile_money=numero_mobile_money,
+            generer_factures_auto=generer_factures_auto,
+            envoyer_whatsapp_auto=envoyer_whatsapp_auto,
             statut=StatutCampagne.PLANIFIEE,
         )
 

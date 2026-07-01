@@ -31,6 +31,8 @@ class CampagneMutations:
             date_planifiee=input.date_planifiee,
             created_by=user.user_id,
             numero_mobile_money=input.numero_mobile_money,
+            generer_factures_auto=input.generer_factures_auto,
+            envoyer_whatsapp_auto=input.envoyer_whatsapp_auto,
         )
         return campagne_from_grpc(response)
 

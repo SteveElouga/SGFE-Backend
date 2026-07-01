@@ -28,6 +28,9 @@ class Campagne(models.Model):
     # ID de l'utilisateur Auth Service qui a créé la campagne (pour filtrage SUPERVISEUR)
     created_by = models.CharField(max_length=36)
     numero_mobile_money = models.CharField(max_length=20, blank=True, default="")
+    # Comportements à la clôture — configurables à la création par le superviseur
+    generer_factures_auto = models.BooleanField(default=True)
+    envoyer_whatsapp_auto = models.BooleanField(default=True)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_cloture = models.DateTimeField(null=True, blank=True)
 

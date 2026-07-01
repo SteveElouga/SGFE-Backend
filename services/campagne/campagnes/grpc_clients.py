@@ -84,7 +84,12 @@ class FacturationServiceClient:
         self._stub = pb_grpc.FacturationServiceStub(self._channel)
         self._pb = pb
 
-    def notifier_campagne_cloturee(self, campagne_id: str, numero_mobile_money: str = "") -> bool:
+    def notifier_campagne_cloturee(
+        self,
+        campagne_id: str,
+        numero_mobile_money: str = "",
+        envoyer_whatsapp_auto: bool = True,
+    ) -> bool:
         """Déclenche la génération des factures après clôture d'une campagne.
 
         Retourne True si l'appel a réussi, False sinon (dégradation gracieuse).
@@ -94,6 +99,7 @@ class FacturationServiceClient:
                 self._pb.GenererFacturesRequest(
                     campagne_id=campagne_id,
                     numero_mobile_money=numero_mobile_money,
+                    envoyer_whatsapp_auto=envoyer_whatsapp_auto,
                 )
             )
             logger.info(

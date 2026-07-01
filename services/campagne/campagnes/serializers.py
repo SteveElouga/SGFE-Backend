@@ -24,6 +24,8 @@ def campagne_to_proto(campagne: Campagne) -> pb.CampagneResponse:
         date_creation=campagne.date_creation.isoformat() if campagne.date_creation else "",
         date_cloture=campagne.date_cloture.isoformat() if campagne.date_cloture else "",
         numero_mobile_money=campagne.numero_mobile_money,
+        generer_factures_auto=campagne.generer_factures_auto,
+        envoyer_whatsapp_auto=campagne.envoyer_whatsapp_auto,
     )
 
 
