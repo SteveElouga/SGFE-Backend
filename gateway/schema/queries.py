@@ -5,8 +5,16 @@ from schema.auth_queries import AuthQueries
 from schema.campagne_queries import CampagneQueries
 from schema.config_queries import ConfigQueries
 from schema.facturation_queries import FacturationQueries
+from schema.paiement_queries import PaiementQueries
 
 
 @strawberry.type
-class Query(AuthQueries, AbonneQueries, CampagneQueries, ConfigQueries, FacturationQueries):
+class Query(
+    AuthQueries,
+    AbonneQueries,
+    CampagneQueries,
+    ConfigQueries,
+    FacturationQueries,
+    PaiementQueries,
+):
     pass
