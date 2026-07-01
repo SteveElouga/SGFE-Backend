@@ -18,7 +18,9 @@ jobs:
       auth: ${{ steps.filter.outputs.auth }}
       gateway: ${{ steps.filter.outputs.gateway }}
       abonne: ${{ steps.filter.outputs.abonne }}
+      campagne: ${{ steps.filter.outputs.campagne }}
       facturation: ${{ steps.filter.outputs.facturation }}
+      paiement: ${{ steps.filter.outputs.paiement }}
       nginx: ${{ steps.filter.outputs.nginx }}
     steps:
       - uses: actions/checkout@v4
@@ -35,10 +37,22 @@ jobs:
             abonne:
               - 'services/abonne/**'
               - 'proto/abonne_service.proto'
+            campagne:
+              - 'services/campagne/**'
+              - 'proto/campagne_service.proto'
+              - 'proto/abonne_service.proto'
+              - 'proto/facturation_service.proto'
             facturation:
               - 'services/facturation/**'
               - 'proto/facturation_service.proto'
               - 'proto/campagne_service.proto'
+              - 'proto/config_service.proto'
+              - 'proto/paiement_service.proto'
+            paiement:
+              - 'services/paiement/**'
+              - 'proto/paiement_service.proto'
+              - 'proto/facturation_service.proto'
+              - 'proto/abonne_service.proto'
               - 'proto/config_service.proto'
             nginx:
               - 'nginx/**'
@@ -131,6 +145,32 @@ jobs:
           coverage run --source=abonnes manage.py test abonnes
           coverage report -m --fail-under=80
 
+  test-campagne:
+    needs: changes
+    if: needs.changes.outputs.campagne == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/campagne
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/campagne/requirements.txt
+      - run: pip install -r requirements.txt ruff coverage pip-audit bandit
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: Audit des dépendances (pip-audit)
+        run: pip-audit -r requirements.txt
+      - name: Analyse statique de sécurité (bandit)
+        run: bandit -r . --exclude ./proto,./campagnes/migrations -ll
+      - name: Tests + couverture
+        run: |
+          coverage run --source=campagnes manage.py test campagnes
+          coverage report -m --fail-under=80
+
   test-facturation:
     needs: changes
     if: needs.changes.outputs.facturation == 'true'
@@ -155,6 +195,32 @@ jobs:
       - name: Tests + couverture
         run: |
           coverage run --source=factures manage.py test factures
+          coverage report -m --fail-under=80
+
+  test-paiement:
+    needs: changes
+    if: needs.changes.outputs.paiement == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/paiement
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/paiement/requirements.txt
+      - run: pip install -r requirements.txt ruff coverage pip-audit bandit
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: Audit des dépendances (pip-audit)
+        run: pip-audit -r requirements.txt
+      - name: Analyse statique de sécurité (bandit)
+        run: bandit -r . --exclude ./proto,./paiements/migrations -ll
+      - name: Tests + couverture
+        run: |
+          coverage run --source=paiements manage.py test paiements
           coverage report -m --fail-under=80
 
   docker-build-auth:
@@ -205,6 +271,30 @@ jobs:
           context: services/facturation
           push: false
 
+  docker-build-campagne:
+    needs: changes
+    if: needs.changes.outputs.campagne == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/campagne
+          push: false
+
+  docker-build-paiement:
+    needs: changes
+    if: needs.changes.outputs.paiement == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/paiement
+          push: false
+
   docker-build-nginx:
     needs: changes
     if: needs.changes.outputs.nginx == 'true'
@@ -223,7 +313,7 @@ jobs:
   # bloquerait indéfiniment toute PR qui ne les déclenche pas.
   ci-status:
     if: always()
-    needs: [secrets-scan, test-auth, test-gateway, test-abonne, test-facturation]
+    needs: [secrets-scan, test-auth, test-gateway, test-abonne, test-campagne, test-facturation, test-paiement]
     runs-on: ubuntu-latest
     steps:
       - name: Vérifie qu'aucun job requis n'a échoué
@@ -334,6 +424,56 @@ jobs:
           tags: |
             ghcr.io/${{ env.REPO_LC }}/facturation-service:${{ github.ref_name }}
             ghcr.io/${{ env.REPO_LC }}/facturation-service:${{ github.sha }}
+
+  publish-campagne:
+    needs: [changes, test-campagne, secrets-scan]
+    if: needs.changes.outputs.campagne == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Mettre le nom du dépôt en minuscules
+        run: echo "REPO_LC=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/campagne
+          push: true
+          tags: |
+            ghcr.io/${{ env.REPO_LC }}/campagne-service:${{ github.ref_name }}
+            ghcr.io/${{ env.REPO_LC }}/campagne-service:${{ github.sha }}
+
+  publish-paiement:
+    needs: [changes, test-paiement, secrets-scan]
+    if: needs.changes.outputs.paiement == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Mettre le nom du dépôt en minuscules
+        run: echo "REPO_LC=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/paiement
+          push: true
+          tags: |
+            ghcr.io/${{ env.REPO_LC }}/paiement-service:${{ github.ref_name }}
+            ghcr.io/${{ env.REPO_LC }}/paiement-service:${{ github.sha }}
 
   publish-nginx:
     needs: [changes, secrets-scan]

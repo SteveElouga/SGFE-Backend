@@ -16,6 +16,8 @@ import config_service_pb2 as config_pb
 import config_service_pb2_grpc as config_pb_grpc
 import facturation_service_pb2 as facturation_pb
 import facturation_service_pb2_grpc as facturation_pb_grpc
+import paiement_service_pb2 as paiement_pb
+import paiement_service_pb2_grpc as paiement_pb_grpc
 
 
 class AuthServiceClient:
@@ -221,8 +223,52 @@ class FacturationServiceClient:
         return self._stub.UpdateStatutFacture(facturation_pb.UpdateStatutRequest(facture_id=facture_id, statut=statut))
 
 
+class PaiementServiceClient:
+    """Client gRPC vers paiement-service:50055 (voir proto/paiement_service.proto)."""
+
+    def __init__(self) -> None:
+        address = f"{settings.PAIEMENT_GRPC_HOST}:{settings.PAIEMENT_GRPC_PORT}"
+        self._channel = grpc.insecure_channel(address)
+        self._stub = paiement_pb_grpc.PaiementServiceStub(self._channel)
+
+    def get_solde(self, facture_id: str) -> paiement_pb.SoldeResponse:
+        return self._stub.GetSolde(paiement_pb.FactureIdRequest(facture_id=facture_id))
+
+    def list_paiements(self, facture_id: str = "", abonne_id: str = "") -> paiement_pb.ListPaiementsResponse:
+        return self._stub.ListPaiements(paiement_pb.ListPaiementsRequest(facture_id=facture_id, abonne_id=abonne_id))
+
+    def enregistrer_paiement(
+        self,
+        facture_id: str,
+        abonne_id: str,
+        montant: float,
+        date_paiement: str,
+        mode_paiement: str,
+        reference_transaction: str = "",
+        enregistre_par: str = "",
+    ) -> paiement_pb.PaiementResponse:
+        return self._stub.EnregistrerPaiement(
+            paiement_pb.EnregistrerPaiementRequest(
+                facture_id=facture_id,
+                abonne_id=abonne_id,
+                montant=montant,
+                date_paiement=date_paiement,
+                mode_paiement=mode_paiement,
+                reference_transaction=reference_transaction,
+                enregistre_par=enregistre_par,
+            )
+        )
+
+    def list_impayes(self) -> paiement_pb.ListImpayesResponse:
+        return self._stub.ListImpayes(paiement_pb.EmptyRequest())
+
+    def get_suivi_impaye(self, facture_id: str) -> paiement_pb.SuiviImpayeResponse:
+        return self._stub.GetSuiviImpaye(paiement_pb.FactureIdRequest(facture_id=facture_id))
+
+
 auth_client = AuthServiceClient()
 abonne_client = AbonneServiceClient()
 config_client = ConfigServiceClient()
 campagne_client = CampagneServiceClient()
 facturation_client = FacturationServiceClient()
+paiement_client = PaiementServiceClient()

@@ -140,6 +140,53 @@ services:
       - facturation_pdfs:/app/pdfs
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
+  paiement-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: paiement_db
+      POSTGRES_USER: paiement_user
+      POSTGRES_PASSWORD: devpassword
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paiement_user -d paiement_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - paiement_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5437:5432"
+
+  paiement-service:
+    build: ./services/paiement
+    depends_on:
+      paiement-postgres:
+        condition: service_healthy
+      facturation-service:
+        condition: service_started
+      abonne-service:
+        condition: service_started
+      config-service:
+        condition: service_started
+    environment:
+      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_DEBUG: "True"
+      PAIEMENT_DB_HOST: paiement-postgres
+      PAIEMENT_DB_PORT: "5432"
+      PAIEMENT_DB_NAME: paiement_db
+      PAIEMENT_DB_USER: paiement_user
+      PAIEMENT_DB_PASSWORD: devpassword
+      PAIEMENT_GRPC_PORT: "50055"
+      FACTURATION_GRPC_HOST: facturation-service
+      FACTURATION_GRPC_PORT: "50054"
+      ABONNE_GRPC_HOST: abonne-service
+      ABONNE_GRPC_PORT: "50052"
+      CONFIG_GRPC_HOST: config-service
+      CONFIG_GRPC_PORT: "50058"
+      JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
+    ports:
+      - "50055:50055"
+    command: sh -c "python manage.py migrate && python manage.py grpc_server"
+
   abonne-service:
     build: ./services/abonne
     depends_on:
@@ -225,6 +272,7 @@ services:
       - abonne-service
       - campagne-service
       - facturation-service
+      - paiement-service
       - config-service
       - redis
     environment:
@@ -239,6 +287,8 @@ services:
       CAMPAGNE_GRPC_PORT: "50053"
       FACTURATION_GRPC_HOST: facturation-service
       FACTURATION_GRPC_PORT: "50054"
+      PAIEMENT_GRPC_HOST: paiement-service
+      PAIEMENT_GRPC_PORT: "50055"
       CONFIG_GRPC_HOST: config-service
       CONFIG_GRPC_PORT: "50058"
       GATEWAY_HTTP_PORT: "8000"
@@ -260,6 +310,7 @@ volumes:
   campagne_postgres_data:
   facturation_postgres_data:
   facturation_pdfs:
+  paiement_postgres_data:
   config_postgres_data:
   whatsapp_session:
   redis_data:
