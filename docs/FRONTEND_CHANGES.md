@@ -294,34 +294,66 @@ Retourne le PDF en `application/pdf` avec `Content-Disposition: inline`.
 
 ## 5. Paiement
 
+### Types
+
+```graphql
+type SoldeFacture {
+  factureId: String!
+  montantTotal: Float!
+  montantPaye: Float!
+  soldeRestant: Float!
+  statut: String!     # "IMPAYEE" | "PARTIELLE" | "PAYEE"
+}
+
+type Paiement {
+  paiementId: String!
+  factureId: String!
+  montant: Float!
+  datePaiement: String!      # "YYYY-MM-DD"
+  modePaiement: String!      # "ESPECES" | "CHEQUE" | "MOBILE_MONEY" | "VIREMENT"
+  referenceTransaction: String!  # vide pour ESPECES et CHEQUE
+  createdAt: String!         # ISO datetime
+}
+
+type SuiviImpaye {
+  suiviId: String!
+  factureId: String!
+  abonneId: String!
+  dateDepassement: String!   # date à laquelle la limite a été dépassée
+  etapeActuelle: Int!        # 1 = 1ère relance, 2 = 2ème, 3 = suspension imminente, 4 = suspendu
+  resoluLe: String!          # date de résolution ou "" si toujours impayé
+}
+```
+
 ### Queries
 
 ```graphql
 # Solde d'une facture — ADMIN, COMPTABLE
 query {
   soldeFacture(factureId: "uuid") {
-    factureId abonneId montantTotal montantPaye soldeRestant dateLimitePaiement
+    factureId montantTotal montantPaye soldeRestant statut
   }
 }
 
-# Liste des paiements d'une facture ou d'un abonné — ADMIN, COMPTABLE
+# Liste des paiements — filtres optionnels — ADMIN, COMPTABLE
 query {
   paiements(factureId: "uuid", abonneId: "") {
-    paiementId factureId montant datePaiement modePaiement referenceTransaction
+    paiementId factureId montant datePaiement modePaiement referenceTransaction createdAt
   }
 }
 
 # Factures impayées (date limite dépassée) — ADMIN, COMPTABLE
+# Retourne une liste de SoldeFacture
 query {
   impayes {
-    factureId abonneId montantTotal soldeRestant dateLimitePaiement
+    factureId montantTotal montantPaye soldeRestant statut
   }
 }
 
 # Détail du suivi de relance d'un impayé — ADMIN, COMPTABLE
 query {
   suiviImpaye(factureId: "uuid") {
-    factureId etapeActuelle dateDerniereRelance
+    suiviId factureId abonneId dateDepassement etapeActuelle resoluLe
   }
 }
 ```
@@ -341,9 +373,25 @@ mutation {
     modePaiement: "MOBILE_MONEY"
     referenceTransaction: "TXN-ABC123"
   ) {
-    paiementId montant statut modePaiement
+    paiementId factureId montant datePaiement modePaiement referenceTransaction createdAt
   }
 }
+```
+
+### Comportements automatiques (cron — aucune action frontend)
+
+Le Paiement Service tourne un job à **08:00 chaque matin** qui :
+1. Détecte les factures dont `dateLimitePaiement` est dépassée
+2. Crée ou met à jour un `SuiviImpaye` et passe à l'étape suivante
+3. À chaque étape, envoie un message WhatsApp de relance à l'abonné
+4. À l'étape 4, suspend l'abonné (appel vers Abonné Service)
+
+| `etapeActuelle` | Signification |
+|---|---|
+| `1` | 1ère relance envoyée |
+| `2` | 2ème relance envoyée |
+| `3` | Dernier avertissement avant suspension |
+| `4` | Abonné suspendu — accès coupé |
 ```
 
 ---
