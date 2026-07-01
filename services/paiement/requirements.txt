@@ -1,8 +1,9 @@
 # Paiement Service — requirements autonome
 
 Django==5.2.15
-grpcio==1.64.1
-grpcio-tools==1.64.1
+grpcio==1.81.1
+grpcio-tools==1.81.1
+protobuf==6.33.6
 psycopg2-binary==2.9.9
 django-environ==0.11.2
 PyJWT==2.13.0
