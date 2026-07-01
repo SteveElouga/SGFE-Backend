@@ -35,7 +35,7 @@ import notification_service_pb2_grpc as pb_grpc  # type: ignore[import]  # noqa:
 
 from notifications.grpc_interceptors import ErrorHandlingInterceptor  # noqa: E402
 from notifications.serializers import envoi_to_proto, token_to_valider_response  # noqa: E402
-from notifications.services import EnvoiService, TokenService  # noqa: E402
+from notifications.services import EnvoiService, TokenService, notifier_admins  # noqa: E402
 
 
 class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
@@ -105,14 +105,24 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
             token = self._token_service.valider_token(token_str=request.token)
             return token_to_valider_response(token)
         except (ValueError, Exception):
-            return pb.ValiderTokenResponse(
-                is_valid=False, abonne_id="", date_expiration=""
-            )
+            return pb.ValiderTokenResponse(is_valid=False, abonne_id="", date_expiration="")
 
     def RevoquerToken(self, request, context):
         """Révoque un token d'accès. Lève NOT_FOUND si le token est introuvable."""
         self._token_service.revoquer_token(token_id=request.token_id)
         return pb.StatusResponse(success=True, message="Token révoqué avec succès")
+
+    def NotifierAdmins(self, request, context):
+        """Envoie une notification email aux administrateurs via Brevo.
+
+        Ne lève jamais d'erreur gRPC — dégradation gracieuse si Brevo est indisponible.
+        """
+        notifier_admins(
+            evenement=request.evenement,
+            detail=request.detail,
+            entite_id=request.entite_id,
+        )
+        return pb.StatusResponse(success=True, message="Notification admin traitée")
 
 
 def serve() -> None:
@@ -121,16 +131,12 @@ def serve() -> None:
         futures.ThreadPoolExecutor(max_workers=10),
         interceptors=[ErrorHandlingInterceptor()],
     )
-    pb_grpc.add_NotificationServiceServicer_to_server(
-        NotificationServiceServicer(), server
-    )
+    pb_grpc.add_NotificationServiceServicer_to_server(NotificationServiceServicer(), server)
     server.add_insecure_port(f"[::]:{settings.NOTIFICATION_GRPC_PORT}")
     server.start()
     logger.info(
         "Notification gRPC server démarré sur le port %d",
         settings.NOTIFICATION_GRPC_PORT,
     )
-    print(
-        f"Notification gRPC server démarré sur le port {settings.NOTIFICATION_GRPC_PORT}"
-    )
+    print(f"Notification gRPC server démarré sur le port {settings.NOTIFICATION_GRPC_PORT}")
     server.wait_for_termination()

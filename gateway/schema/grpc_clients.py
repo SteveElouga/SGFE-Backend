@@ -293,6 +293,9 @@ class NotificationServiceClient:
     def revoquer_token(self, token_id: str) -> notification_pb.StatusResponse:
         return self._stub.RevoquerToken(notification_pb.TokenIdRequest(token_id=token_id))
 
+    def valider_token(self, token: str) -> notification_pb.ValiderTokenResponse:
+        return self._stub.ValiderToken(notification_pb.ValiderTokenRequest(token=token))
+
 
 auth_client = AuthServiceClient()
 abonne_client = AbonneServiceClient()

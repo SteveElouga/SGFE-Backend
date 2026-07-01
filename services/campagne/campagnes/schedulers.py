@@ -19,15 +19,23 @@ def campagne_planifiee_job() -> None:
 
     django.setup()
 
+    from campagnes.grpc_clients import NotificationServiceClient
     from campagnes.services import CampagneService
 
     svc = CampagneService()
     demarrees = svc.demarrer_campagnes_planifiees_pour_aujourd_hui()
     if demarrees:
+        notif_client = NotificationServiceClient()
         for c in demarrees:
             logger.info(
                 "Campagne démarrée automatiquement",
                 extra={"campagne_id": str(c.id), "nom": c.nom},
+            )
+            # EF-NOTIF-005 — Notifier les admins du démarrage
+            notif_client.notifier_admins(
+                evenement="CAMPAGNE_PLANIFIEE",
+                detail=f"Campagne « {c.nom} » démarrée automatiquement",
+                entite_id=str(c.id),
             )
     else:
         logger.debug("Aucune campagne planifiée à démarrer aujourd'hui.")

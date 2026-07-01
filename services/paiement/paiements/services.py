@@ -81,9 +81,7 @@ class PaiementService:
         # Validation du mode et de la référence
         if mode_paiement in (ModePaiement.MOBILE_MONEY, ModePaiement.VIREMENT):
             if not reference_transaction or not reference_transaction.strip():
-                raise ValidationError(
-                    f"La référence de transaction est obligatoire pour le mode {mode_paiement}."
-                )
+                raise ValidationError(f"La référence de transaction est obligatoire pour le mode {mode_paiement}.")
 
         # Récupération du solde
         solde = self._solde_repo.get_by_facture_id(facture_id)
@@ -91,9 +89,7 @@ class PaiementService:
         # Vérification du surpaiement
         solde_restant = Decimal(str(solde.solde_restant))
         if montant_d > solde_restant:
-            raise ValidationError(
-                f"Le montant versé ({montant_d}) dépasse le solde restant ({solde_restant})."
-            )
+            raise ValidationError(f"Le montant versé ({montant_d}) dépasse le solde restant ({solde_restant}).")
 
         # Enregistrement du paiement
         paiement = self._paiement_repo.create(
@@ -115,9 +111,7 @@ class PaiementService:
         """Retourne le solde courant d'une facture."""
         return self._solde_repo.get_by_facture_id(facture_id)
 
-    def list_paiements(
-        self, facture_id: str = "", abonne_id: str = ""
-    ) -> list[Paiement]:
+    def list_paiements(self, facture_id: str = "", abonne_id: str = "") -> list[Paiement]:
         """Liste les paiements, filtrés par facture et/ou abonné."""
         return self._paiement_repo.list_by_facture_and_abonne(facture_id, abonne_id)
 
@@ -134,8 +128,8 @@ class PaiementService:
 
     def marquer_facture_payee_si_applicable(self, solde: SoldeFacture) -> None:
         """
-        Après paiement total : résout le SuiviImpaye si existant.
-        Appelle Notification Service (dégradation gracieuse).
+        Après paiement total : résout le SuiviImpaye si existant,
+        réactive l'abonné s'il était suspendu, envoie confirmation WhatsApp.
         """
         if solde.statut != StatutSolde.PAYEE:
             return
@@ -152,23 +146,19 @@ class PaiementService:
         except ObjectDoesNotExist:
             pass  # Pas de suivi impayé, c'est normal
 
-        # Notification de paiement complet (dégradation gracieuse)
-        try:
-            notif_client = NotificationServiceClient()
-            notif_client.envoyer_relance(
-                facture_id=solde.facture_id,
-                abonne_id=solde.abonne_id,
-                etape=0,  # étape 0 = confirmation de paiement
-            )
-        except Exception as exc:
-            logger.warning(
-                "Notification paiement complet échouée — dégradation gracieuse",
-                extra={"facture_id": solde.facture_id, "error": str(exc)},
-            )
+        # EF-IMP-005 — Réactivation de l'abonné suspendu (dégradation gracieuse)
+        AbonneServiceClient().reactiver_abonne(solde.abonne_id)
 
-    def suspendre_relances_si_partiel(
-        self, solde: SoldeFacture, jours_suspension: int = 5
-    ) -> None:
+        notif_client = NotificationServiceClient()
+
+        # Confirmation de paiement complet par WhatsApp (dégradation gracieuse)
+        notif_client.envoyer_relance(
+            facture_id=solde.facture_id,
+            abonne_id=solde.abonne_id,
+            etape=0,  # étape 0 = confirmation de paiement
+        )
+
+    def suspendre_relances_si_partiel(self, solde: SoldeFacture, jours_suspension: int = 5) -> None:
         """
         Après paiement partiel : suspend les relances pendant N jours.
         """
@@ -179,9 +169,7 @@ class PaiementService:
 
         try:
             suivi = self._suivi_repo.get_by_facture_id(solde.facture_id)
-            suivi.relances_suspendues_jusqu = date.today() + timedelta(
-                days=jours_suspension
-            )
+            suivi.relances_suspendues_jusqu = date.today() + timedelta(days=jours_suspension)
             self._suivi_repo.save_suivi(suivi)
             logger.info(
                 "Relances suspendues après paiement partiel",
@@ -244,20 +232,17 @@ class ImpayeService:
         suspension_relances: int,
     ) -> None:
         """Escalade une facture impayée selon son étape actuelle."""
-
         from django.utils import timezone
 
         today = date.today()
         jours_depasses = (today - solde.date_limite_paiement).days
 
-        # Récupération ou création du suivi
         suivi, _ = self._suivi_repo.get_or_create(
             facture_id=solde.facture_id,
             abonne_id=solde.abonne_id,
             date_depassement=solde.date_limite_paiement,
         )
 
-        # Vérification de la suspension des relances
         if suivi.relances_suspendues_jusqu and suivi.relances_suspendues_jusqu >= today:
             logger.debug(
                 "Relances suspendues jusqu'au %s pour facture %s",
@@ -269,97 +254,68 @@ class ImpayeService:
         notif_client = NotificationServiceClient()
         modifie = False
 
-        # Étape 1 — 1er rappel (J+delai_rappel_1)
-        if jours_depasses >= delai_rappel_1 and not suivi.rappel_1_envoye:
-            try:
-                notif_client.envoyer_relance(
-                    facture_id=solde.facture_id,
-                    abonne_id=solde.abonne_id,
-                    etape=1,
-                )
-                suivi.rappel_1_envoye = True
-                suivi.date_rappel_1 = timezone.now()
-                suivi.etape_actuelle = max(suivi.etape_actuelle, 1)
-                modifie = True
-                logger.info("Rappel 1 envoyé — facture %s", solde.facture_id)
-            except Exception as exc:
-                logger.warning(
-                    "Rappel 1 échoué — dégradation gracieuse",
-                    extra={"facture_id": solde.facture_id, "error": str(exc)},
-                )
+        modifie |= self._tenter_rappel(notif_client, solde, suivi, timezone, jours_depasses, delai_rappel_1, 1)
+        modifie |= self._tenter_rappel(notif_client, solde, suivi, timezone, jours_depasses, delai_rappel_2, 2)
+        modifie |= self._tenter_rappel(notif_client, solde, suivi, timezone, jours_depasses, delai_avertissement, 3)
 
-        # Étape 2 — 2ème rappel (J+delai_rappel_2)
-        if jours_depasses >= delai_rappel_2 and not suivi.rappel_2_envoye:
-            try:
-                notif_client.envoyer_relance(
-                    facture_id=solde.facture_id,
-                    abonne_id=solde.abonne_id,
-                    etape=2,
-                )
-                suivi.rappel_2_envoye = True
-                suivi.date_rappel_2 = timezone.now()
-                suivi.etape_actuelle = max(suivi.etape_actuelle, 2)
-                modifie = True
-                logger.info("Rappel 2 envoyé — facture %s", solde.facture_id)
-            except Exception as exc:
-                logger.warning(
-                    "Rappel 2 échoué — dégradation gracieuse",
-                    extra={"facture_id": solde.facture_id, "error": str(exc)},
-                )
-
-        # Étape 3 — Avertissement (J+delai_avertissement)
-        if jours_depasses >= delai_avertissement and not suivi.avertissement_envoye:
-            try:
-                notif_client.envoyer_relance(
-                    facture_id=solde.facture_id,
-                    abonne_id=solde.abonne_id,
-                    etape=3,
-                )
-                suivi.avertissement_envoye = True
-                suivi.date_avertissement = timezone.now()
-                suivi.etape_actuelle = max(suivi.etape_actuelle, 3)
-                modifie = True
-                logger.info("Avertissement envoyé — facture %s", solde.facture_id)
-            except Exception as exc:
-                logger.warning(
-                    "Avertissement échoué — dégradation gracieuse",
-                    extra={"facture_id": solde.facture_id, "error": str(exc)},
-                )
-
-        # Étape 4 — Suspension (J+delai_suspension)
-        if (
-            jours_depasses >= delai_suspension
-            and not suivi.suspension_effectuee
-            and suspension_auto
-        ):
-            abonne_client = AbonneServiceClient()
-            try:
-                abonne_client.suspendre_abonne(solde.abonne_id)
-            except Exception as exc:
-                logger.warning(
-                    "Suspension abonné échouée — dégradation gracieuse",
-                    extra={"abonne_id": solde.abonne_id, "error": str(exc)},
-                )
-            try:
-                notif_client.envoyer_relance(
-                    facture_id=solde.facture_id,
-                    abonne_id=solde.abonne_id,
-                    etape=4,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Notification suspension échouée — dégradation gracieuse",
-                    extra={"facture_id": solde.facture_id, "error": str(exc)},
-                )
-            suivi.suspension_effectuee = True
-            suivi.date_suspension = timezone.now()
-            suivi.etape_actuelle = max(suivi.etape_actuelle, 4)
-            modifie = True
-            logger.info(
-                "Suspension effectuée — facture %s, abonné %s",
-                solde.facture_id,
-                solde.abonne_id,
-            )
+        if jours_depasses >= delai_suspension and not suivi.suspension_effectuee and suspension_auto:
+            modifie |= self._effectuer_suspension(notif_client, solde, suivi, timezone)
 
         if modifie:
             self._suivi_repo.save_suivi(suivi)
+
+    def _tenter_rappel(
+        self,
+        notif_client: NotificationServiceClient,
+        solde: SoldeFacture,
+        suivi: SuiviImpaye,
+        timezone: object,
+        jours_depasses: int,
+        delai: int,
+        etape: int,
+    ) -> bool:
+        """Envoie la relance de l'étape donnée si le délai est atteint et non encore envoyée."""
+        _ETAPE_ATTRS: dict[int, tuple[str, str]] = {
+            1: ("rappel_1_envoye", "date_rappel_1"),
+            2: ("rappel_2_envoye", "date_rappel_2"),
+            3: ("avertissement_envoye", "date_avertissement"),
+        }
+        sent_attr, date_attr = _ETAPE_ATTRS[etape]
+        if jours_depasses < delai or getattr(suivi, sent_attr):
+            return False
+        notif_client.envoyer_relance(
+            facture_id=solde.facture_id,
+            abonne_id=solde.abonne_id,
+            etape=etape,
+        )
+        setattr(suivi, sent_attr, True)
+        setattr(suivi, date_attr, timezone.now())
+        suivi.etape_actuelle = max(suivi.etape_actuelle, etape)
+        logger.info("Relance étape %d envoyée — facture %s", etape, solde.facture_id)
+        return True
+
+    def _effectuer_suspension(
+        self,
+        notif_client: NotificationServiceClient,
+        solde: SoldeFacture,
+        suivi: SuiviImpaye,
+        timezone: object,
+    ) -> bool:
+        """Suspend l'abonné, envoie la relance étape 4 et notifie les admins."""
+        AbonneServiceClient().suspendre_abonne(solde.abonne_id)
+        notif_client.envoyer_relance(
+            facture_id=solde.facture_id,
+            abonne_id=solde.abonne_id,
+            etape=4,
+        )
+        # EF-NOTIF-005 — Notifier les admins de chaque suspension
+        notif_client.notifier_admins(
+            evenement="SUSPENSION",
+            detail=f"Abonné {solde.abonne_id} suspendu pour impayé (facture {solde.facture_id})",
+            entite_id=solde.abonne_id,
+        )
+        suivi.suspension_effectuee = True
+        suivi.date_suspension = timezone.now()
+        suivi.etape_actuelle = max(suivi.etape_actuelle, 4)
+        logger.info("Suspension effectuée — facture %s, abonné %s", solde.facture_id, solde.abonne_id)
+        return True

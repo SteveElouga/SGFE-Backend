@@ -42,9 +42,7 @@ class FacturationServiceClient:
         Dégradation gracieuse en cas d'erreur gRPC.
         """
         try:
-            self._stub.UpdateStatutFacture(
-                self._pb.UpdateStatutRequest(facture_id=facture_id, statut=statut)
-            )
+            self._stub.UpdateStatutFacture(self._pb.UpdateStatutRequest(facture_id=facture_id, statut=statut))
             logger.info(
                 "Statut facture mis à jour via Facturation Service",
                 extra={"facture_id": facture_id, "statut": statut},
@@ -69,6 +67,30 @@ class NotificationServiceClient:
 
         self._stub = pb_grpc.NotificationServiceStub(self._channel)
         self._pb = pb
+
+    def notifier_admins(self, evenement: str, detail: str, entite_id: str = "") -> None:
+        """
+        Envoie une notification aux administrateurs via Notification Service.
+        Dégradation gracieuse en cas d'erreur gRPC.
+        """
+        try:
+            self._stub.NotifierAdmins(
+                self._pb.NotifierAdminsRequest(
+                    evenement=evenement,
+                    detail=detail,
+                    entite_id=entite_id,
+                )
+            )
+            logger.info(
+                "Admins notifiés — événement %s",
+                evenement,
+                extra={"evenement": evenement, "entite_id": entite_id},
+            )
+        except Exception as exc:
+            logger.warning(
+                "NotifierAdmins échoué — dégradation gracieuse",
+                extra={"evenement": evenement, "error": str(exc)},
+            )
 
     def envoyer_relance(self, facture_id: str, abonne_id: str, etape: int) -> None:
         """
@@ -138,6 +160,28 @@ class AbonneServiceClient:
         except Exception as exc:
             logger.warning(
                 "SuspendreAbonne erreur inattendue — dégradation gracieuse",
+                extra={"abonne_id": abonne_id, "error": str(exc)},
+            )
+
+    def reactiver_abonne(self, abonne_id: str) -> None:
+        """
+        Réactive un abonné suspendu dans Abonné Service après paiement complet.
+        Dégradation gracieuse en cas d'erreur gRPC.
+        """
+        try:
+            self._stub.ReactiverAbonne(self._pb.AbonneIdRequest(abonne_id=abonne_id))
+            logger.info(
+                "Abonné réactivé via Abonné Service",
+                extra={"abonne_id": abonne_id},
+            )
+        except grpc.RpcError as exc:
+            logger.warning(
+                "ReactiverAbonne échoué — dégradation gracieuse",
+                extra={"abonne_id": abonne_id, "error": str(exc)},
+            )
+        except Exception as exc:
+            logger.warning(
+                "ReactiverAbonne erreur inattendue — dégradation gracieuse",
                 extra={"abonne_id": abonne_id, "error": str(exc)},
             )
 
