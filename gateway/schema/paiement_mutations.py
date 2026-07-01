@@ -3,7 +3,7 @@
 import strawberry
 import strawberry.types
 
-from .context import require_auth, require_role
+from .context import require_role
 from .grpc_clients import paiement_client
 from .paiement_types import Paiement, paiement_from_grpc
 
@@ -22,9 +22,7 @@ class PaiementMutations:
         reference_transaction: str = "",
     ) -> Paiement:
         """Enregistre un versement sur une facture — ADMIN, COMPTABLE."""
-        require_auth(info)
-        require_role(info, "ADMIN", "COMPTABLE")
-        user = info.context.user
+        user = require_role(info, "ADMIN", "COMPTABLE")
         return paiement_from_grpc(
             paiement_client.enregistrer_paiement(
                 facture_id=facture_id,

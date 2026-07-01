@@ -20,7 +20,7 @@ class WhatsAppWebClient:
     """
 
     def send(self, to_phone: str, message: str) -> None:
-        """Envoie un message WhatsApp via le service Node.js.
+        """Envoie un message WhatsApp texte via le service Node.js.
 
         Lève WhatsAppDeliveryError si l'envoi échoue.
         """
@@ -32,14 +32,34 @@ class WhatsAppWebClient:
             )
             data = response.json()
         except requests.RequestException as exc:
-            raise WhatsAppDeliveryError(
-                f"Service WhatsApp inaccessible : {exc}"
-            ) from exc
+            raise WhatsAppDeliveryError(f"Service WhatsApp inaccessible : {exc}") from exc
 
         if response.status_code == 503:
-            raise WhatsAppDeliveryError(
-                "WhatsApp non connecté — scannez le QR code sur /qr pour activer l'envoi"
+            raise WhatsAppDeliveryError("WhatsApp non connecté — scannez le QR code sur /qr pour activer l'envoi")
+
+        if not data.get("success"):
+            raise WhatsAppDeliveryError(data.get("error", "Erreur inconnue"))
+
+    def send_with_pdf(self, to_phone: str, message: str, pdf_bytes: bytes, filename: str) -> None:
+        """Envoie un PDF en pièce jointe WhatsApp avec un message en légende.
+
+        Lève WhatsAppDeliveryError si l'envoi échoue.
+        """
+        import base64
+
+        pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
+        try:
+            response = requests.post(
+                f"{settings.WHATSAPP_SERVICE_URL}/send-with-pdf",
+                json={"phone": to_phone, "message": message, "pdf_base64": pdf_base64, "filename": filename},
+                timeout=30,
             )
+            data = response.json()
+        except requests.RequestException as exc:
+            raise WhatsAppDeliveryError(f"Service WhatsApp inaccessible : {exc}") from exc
+
+        if response.status_code == 503:
+            raise WhatsAppDeliveryError("WhatsApp non connecté — scannez le QR code sur /qr pour activer l'envoi")
 
         if not data.get("success"):
             raise WhatsAppDeliveryError(data.get("error", "Erreur inconnue"))

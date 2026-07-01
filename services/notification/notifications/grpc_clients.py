@@ -46,6 +46,20 @@ class FacturationServiceClient:
         """
         return self._stub.GetFacture(self._pb.FactureIdRequest(facture_id=facture_id))
 
+    def get_facture_pdf(self, facture_id: str) -> tuple[bytes, str]:
+        """Récupère le PDF d'une facture depuis Facturation Service.
+
+        Returns:
+            Tuple (pdf_content: bytes, filename: str).
+            Retourne (b"", "") en cas d'erreur — dégradation gracieuse.
+        """
+        try:
+            response = self._stub.GetFacturePDF(self._pb.FactureIdRequest(facture_id=facture_id))
+            return response.pdf_content, response.filename
+        except grpc.RpcError as exc:
+            logger.warning("Impossible de récupérer le PDF facture %s : %s", facture_id, exc)
+            return b"", ""
+
 
 class AbonneServiceClient:
     """Client gRPC vers Abonné Service (port 50052)."""

@@ -6,10 +6,11 @@ from pathlib import Path
 import environ
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-TESTING = "test" in sys.argv
 
 env = environ.Env()
 environ.Env.read_env(BASE_DIR / ".env")
+
+TESTING = "test" in sys.argv or env.bool("USE_SQLITE", default=False)
 
 SECRET_KEY = env("DJANGO_SECRET_KEY", default="django-insecure-dev-key-change-me")
 DEBUG = env.bool("DJANGO_DEBUG", default=True)
@@ -40,9 +41,7 @@ TEMPLATES = [
 WSGI_APPLICATION = "paiement.wsgi.application"
 
 if TESTING:
-    DATABASES = {
-        "default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}
-    }
+    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "dev.sqlite3"}}
 else:
     DATABASES = {
         "default": {
@@ -89,6 +88,4 @@ DEFAULT_DELAI_RAPPEL_2 = 3  # Jours après date limite pour 2ème rappel
 DEFAULT_DELAI_AVERTISSEMENT = 7  # Jours après date limite pour avertissement
 DEFAULT_DELAI_SUSPENSION = 10  # Jours après date limite pour suspension
 DEFAULT_SUSPENSION_AUTO = True  # Activer la suspension automatique
-DEFAULT_SUSPENSION_RELANCES = (
-    5  # Jours de suspension des relances après paiement partiel
-)
+DEFAULT_SUSPENSION_RELANCES = 5  # Jours de suspension des relances après paiement partiel
