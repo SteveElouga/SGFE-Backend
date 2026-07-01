@@ -92,6 +92,54 @@ services:
     ports:
       - "5434:5432"
 
+  facturation-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: facturation_db
+      POSTGRES_USER: facturation_user
+      POSTGRES_PASSWORD: devpassword
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U facturation_user -d facturation_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - facturation_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+
+  facturation-service:
+    build: ./services/facturation
+    depends_on:
+      facturation-postgres:
+        condition: service_healthy
+      campagne-service:
+        condition: service_started
+      config-service:
+        condition: service_started
+    environment:
+      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_DEBUG: "True"
+      FACTURATION_DB_HOST: facturation-postgres
+      FACTURATION_DB_PORT: "5432"
+      FACTURATION_DB_NAME: facturation_db
+      FACTURATION_DB_USER: facturation_user
+      FACTURATION_DB_PASSWORD: devpassword
+      FACTURATION_GRPC_PORT: "50054"
+      CAMPAGNE_GRPC_HOST: campagne-service
+      CAMPAGNE_GRPC_PORT: "50053"
+      CONFIG_GRPC_HOST: config-service
+      CONFIG_GRPC_PORT: "50058"
+      PAIEMENT_GRPC_HOST: paiement-service
+      PAIEMENT_GRPC_PORT: "50055"
+      JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
+      PDF_STORAGE_DIR: /app/pdfs
+    ports:
+      - "50054:50054"
+    volumes:
+      - facturation_pdfs:/app/pdfs
+    command: sh -c "python manage.py migrate && python manage.py grpc_server"
+
   abonne-service:
     build: ./services/abonne
     depends_on:
@@ -176,6 +224,7 @@ services:
       - auth-service
       - abonne-service
       - campagne-service
+      - facturation-service
       - config-service
       - redis
     environment:
@@ -188,6 +237,8 @@ services:
       ABONNE_GRPC_PORT: "50052"
       CAMPAGNE_GRPC_HOST: campagne-service
       CAMPAGNE_GRPC_PORT: "50053"
+      FACTURATION_GRPC_HOST: facturation-service
+      FACTURATION_GRPC_PORT: "50054"
       CONFIG_GRPC_HOST: config-service
       CONFIG_GRPC_PORT: "50058"
       GATEWAY_HTTP_PORT: "8000"
@@ -207,6 +258,8 @@ volumes:
   auth_postgres_data:
   abonne_postgres_data:
   campagne_postgres_data:
+  facturation_postgres_data:
+  facturation_pdfs:
   config_postgres_data:
   whatsapp_session:
   redis_data:

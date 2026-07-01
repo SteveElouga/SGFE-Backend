@@ -1,12 +1,13 @@
-# Campagne Service — requirements autonome
+# Facturation Service — requirements autonome
 
 Django==5.2.15
-grpcio==1.64.1
-grpcio-tools==1.64.1
+grpcio==1.81.1
+grpcio-tools==1.81.1
+protobuf==6.33.6
 psycopg2-binary==2.9.9
 django-environ==0.11.2
 PyJWT==2.13.0
-APScheduler==3.10.4
+reportlab==4.2.2
 opentelemetry-api>=1.27.0
 opentelemetry-sdk>=1.27.0
 opentelemetry-instrumentation-django>=0.48b0
