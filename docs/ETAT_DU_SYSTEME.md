@@ -33,7 +33,7 @@
 | Brique                  | Statut                                             | Tests                   | Points d'attention majeurs                                                         |
 | ----------------------- | -------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------- |
 | Gateway (GraphQL)       | 🟢 Fonctionnel, riche                              | 84 — **1 échec actuel** | ANO-002 (IDOR PDF) corrigée — PR #19 ; subscription sans contrôle d'accès (ANO-015) |
-| Auth Service            | 🟢 Fonctionnel, solide                             | 88 ✅                    | Pas de rotation du refresh token (ANO-006)                                         |
+| Auth Service            | 🟢 Fonctionnel, solide                             | 89 ✅                    | RAS majeur — ANO-006 (rotation refresh token) corrigée, PR #22                     |
 | Abonné Service          | 🟢 Fonctionnel, propre                             | 49 ✅                    | ANO-003bis (événement AbonneCreated inexistant) — reste doc à corriger, non bloquant |
 | Campagne Service        | 🟢 Fonctionnel                                     | 65 ✅                    | ANO-003 (statut ACTIF) corrigée — PR #20 ; ANO-004 (test `demarrer_maintenant`) corrigée — PR #16 |
 | Facturation Service     | 🟢 Fonctionnel                                     | 28 ✅                    | Numérotation séquentielle non verrouillée (ANO-007)                                |
@@ -162,10 +162,11 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 - **Constat** : aucune clé API, aucun token, aucune restriction — protection uniquement par l'isolation réseau Docker/Kubernetes. En développement local, `docker-compose.yml` mappe `3000:3000` sur l'hôte, donc accessible sans contrôle depuis la machine locale (et potentiellement depuis le LAN).
 - **Correctif appliqué** : middleware `requireApiKey` (en-tête `X-Internal-Api-Key`, comparaison en temps constant) appliqué à `/qr`, `/send`, `/send-with-pdf` — `/health` reste public. `auth-service`/`notification-service` envoient désormais cet en-tête. Clé configurée via `WHATSAPP_INTERNAL_API_KEY` (docker-compose + `.env.example`). Si la clé n'est pas définie, dégradation en clair avec avertissement dans les logs (dev uniquement). Vérifié manuellement en démarrant le service réel (voir PR #21).
 
-**ANO-006 — Auth : pas de rotation du refresh token lors de** `RefreshToken`
+**ANO-006 — Auth : pas de rotation du refresh token lors de** `RefreshToken` — ✅ **RÉSOLU** (PR #22, branche `fix/ano-006-rotation-refresh-token`)
 
 - **Fichier** : `services/auth/comptes/services.py:87-101`.
 - **Constat** : un nouveau couple access+refresh est émis à chaque refresh, mais l'ancien refresh token n'est **pas** ajouté à `RevokedToken` — il reste valide jusqu'à expiration naturelle (7 jours), même après avoir servi. Un refresh token intercepté reste exploitable en parallèle du nouveau.
+- **Correctif appliqué** : l'ancien refresh token est désormais révoqué (ajouté à `RevokedToken`) juste après l'émission du nouveau couple, avec le même mécanisme que `logout()`. Test de régression ajouté.
 - **Correctif** : révoquer explicitement l'ancien refresh (son `jti`) au moment d'émettre le nouveau.
 
 **ANO-007 — Facturation : numérotation séquentielle des factures sans verrou transactionnel**

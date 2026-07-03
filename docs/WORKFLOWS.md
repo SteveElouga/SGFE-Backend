@@ -38,7 +38,7 @@
 1. `[Gateway]` Lit le cookie `refresh_token`.
 2. `[Gateway]` → `Auth.RefreshToken(refresh_token)`.
 3. `[Auth]` Vérifie que le token n'est pas dans `RevokedToken` (par `jti`), retrouve l'utilisateur, régénère un **nouveau couple complet** access + refresh.
-4. ⚠️ L'ancien refresh token n'est **pas** révoqué à ce stade — il reste valide jusqu'à expiration naturelle (voir `ANO-006`).
+4. ✅ `ANO-006` résolu (PR #22) — l'ancien refresh token est révoqué immédiatement après l'émission du nouveau couple (rotation).
 5. `[Gateway]` Repose le nouveau cookie refresh, retourne le nouvel access token.
 
 ### 1.3 Déconnexion (`logout`)
