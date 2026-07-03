@@ -70,10 +70,18 @@ class SoldeFactureRepository:
             date_limite_paiement=date_limite_paiement,
         )
 
-    def get_by_facture_id(self, facture_id: str) -> SoldeFacture:
-        """Récupère le solde d'une facture — lève ObjectDoesNotExist si introuvable."""
+    def get_by_facture_id(self, facture_id: str, for_update: bool = False) -> SoldeFacture:
+        """Récupère le solde d'une facture — lève ObjectDoesNotExist si introuvable.
+
+        Si `for_update=True`, verrouille la ligne (`SELECT ... FOR UPDATE`) afin
+        de sérialiser les versements concurrents sur une même facture ; doit
+        alors être appelé dans une transaction (`transaction.atomic`).
+        """
+        qs = SoldeFacture.objects.all()
+        if for_update:
+            qs = qs.select_for_update()
         try:
-            return SoldeFacture.objects.get(pk=facture_id)
+            return qs.get(pk=facture_id)
         except SoldeFacture.DoesNotExist:
             raise ObjectDoesNotExist(f"Solde introuvable pour la facture : {facture_id}")
 

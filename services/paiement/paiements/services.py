@@ -5,6 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.db import transaction
 
 from .grpc_clients import (
     AbonneServiceClient,
@@ -83,27 +84,34 @@ class PaiementService:
             if not reference_transaction or not reference_transaction.strip():
                 raise ValidationError(f"La référence de transaction est obligatoire pour le mode {mode_paiement}.")
 
-        # Récupération du solde
-        solde = self._solde_repo.get_by_facture_id(facture_id)
+        # Récupération du solde, contrôle anti-surpaiement, création du versement
+        # et recalcul du solde/statut dans une seule transaction : les deux
+        # écritures (Paiement + SoldeFacture) commitent ensemble ou pas du tout.
+        # Sans cela, un crash entre les deux laisse le SoldeFacture désynchronisé
+        # du journal des versements (statut IMPAYEE alors que la facture est soldée).
+        with transaction.atomic():
+            # Récupération du solde — verrouillé (SELECT ... FOR UPDATE) pour
+            # sérialiser les versements concurrents sur une même facture.
+            solde = self._solde_repo.get_by_facture_id(facture_id, for_update=True)
 
-        # Vérification du surpaiement
-        solde_restant = Decimal(str(solde.solde_restant))
-        if montant_d > solde_restant:
-            raise ValidationError(f"Le montant versé ({montant_d}) dépasse le solde restant ({solde_restant}).")
+            # Vérification du surpaiement
+            solde_restant = Decimal(str(solde.solde_restant))
+            if montant_d > solde_restant:
+                raise ValidationError(f"Le montant versé ({montant_d}) dépasse le solde restant ({solde_restant}).")
 
-        # Enregistrement du paiement
-        paiement = self._paiement_repo.create(
-            facture_id=facture_id,
-            abonne_id=abonne_id,
-            montant=montant_d,
-            date_paiement=date_paiement,
-            mode_paiement=mode_paiement,
-            reference_transaction=reference_transaction or "",
-            enregistre_par=enregistre_par,
-        )
+            # Enregistrement du paiement
+            paiement = self._paiement_repo.create(
+                facture_id=facture_id,
+                abonne_id=abonne_id,
+                montant=montant_d,
+                date_paiement=date_paiement,
+                mode_paiement=mode_paiement,
+                reference_transaction=reference_transaction or "",
+                enregistre_par=enregistre_par,
+            )
 
-        # Mise à jour du solde
-        solde = self._solde_repo.update_after_paiement(solde, montant_d)
+            # Mise à jour du solde
+            solde = self._solde_repo.update_after_paiement(solde, montant_d)
 
         return paiement, solde
 
