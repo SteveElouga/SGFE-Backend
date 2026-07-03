@@ -5,6 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.db import transaction
 
 from .grpc_clients import (
     AbonneServiceClient,
@@ -83,27 +84,34 @@ class PaiementService:
             if not reference_transaction or not reference_transaction.strip():
                 raise ValidationError(f"La référence de transaction est obligatoire pour le mode {mode_paiement}.")
 
-        # Récupération du solde
-        solde = self._solde_repo.get_by_facture_id(facture_id)
+        # Récupération du solde, contrôle anti-surpaiement, création du versement
+        # et recalcul du solde/statut dans une seule transaction : les deux
+        # écritures (Paiement + SoldeFacture) commitent ensemble ou pas du tout.
+        # Sans cela, un crash entre les deux laisse le SoldeFacture désynchronisé
+        # du journal des versements (statut IMPAYEE alors que la facture est soldée).
+        with transaction.atomic():
+            # Récupération du solde — verrouillé (SELECT ... FOR UPDATE) pour
+            # sérialiser les versements concurrents sur une même facture.
+            solde = self._solde_repo.get_by_facture_id(facture_id, for_update=True)
 
-        # Vérification du surpaiement
-        solde_restant = Decimal(str(solde.solde_restant))
-        if montant_d > solde_restant:
-            raise ValidationError(f"Le montant versé ({montant_d}) dépasse le solde restant ({solde_restant}).")
+            # Vérification du surpaiement
+            solde_restant = Decimal(str(solde.solde_restant))
+            if montant_d > solde_restant:
+                raise ValidationError(f"Le montant versé ({montant_d}) dépasse le solde restant ({solde_restant}).")
 
-        # Enregistrement du paiement
-        paiement = self._paiement_repo.create(
-            facture_id=facture_id,
-            abonne_id=abonne_id,
-            montant=montant_d,
-            date_paiement=date_paiement,
-            mode_paiement=mode_paiement,
-            reference_transaction=reference_transaction or "",
-            enregistre_par=enregistre_par,
-        )
+            # Enregistrement du paiement
+            paiement = self._paiement_repo.create(
+                facture_id=facture_id,
+                abonne_id=abonne_id,
+                montant=montant_d,
+                date_paiement=date_paiement,
+                mode_paiement=mode_paiement,
+                reference_transaction=reference_transaction or "",
+                enregistre_par=enregistre_par,
+            )
 
-        # Mise à jour du solde
-        solde = self._solde_repo.update_after_paiement(solde, montant_d)
+            # Mise à jour du solde
+            solde = self._solde_repo.update_after_paiement(solde, montant_d)
 
         return paiement, solde
 
@@ -158,14 +166,21 @@ class PaiementService:
             etape=0,  # étape 0 = confirmation de paiement
         )
 
-    def suspendre_relances_si_partiel(self, solde: SoldeFacture, jours_suspension: int = 5) -> None:
+    def suspendre_relances_si_partiel(self, solde: SoldeFacture, jours_suspension: int | None = None) -> None:
         """
         Après paiement partiel : suspend les relances pendant N jours.
+
+        `jours_suspension` est lu depuis Config Service (clé
+        `impaye_suspension_relances`) lorsqu'il n'est pas fourni explicitement,
+        avec repli sur la valeur par défaut si le service est indisponible.
         """
         from datetime import timedelta  # noqa: PLC0415 — timedelta déjà dans stdlib
 
         if solde.statut != StatutSolde.PARTIELLE:
             return
+
+        if jours_suspension is None:
+            jours_suspension = int(ConfigServiceClient().get_delais_impayes()["suspension_relances"])
 
         try:
             suivi = self._suivi_repo.get_by_facture_id(solde.facture_id)
@@ -205,7 +220,6 @@ class ImpayeService:
         delai_avertissement: int = delais.get("avertissement", 7)
         delai_suspension: int = delais.get("suspension", 10)
         suspension_auto: bool = delais.get("suspension_auto", True)
-        suspension_relances: int = delais.get("suspension_relances", 5)
 
         impayes = self._solde_repo.list_impayes()
         logger.info("ImpayeChecker : %d factures impayées à traiter", len(impayes))
@@ -218,7 +232,6 @@ class ImpayeService:
                 delai_avertissement=delai_avertissement,
                 delai_suspension=delai_suspension,
                 suspension_auto=suspension_auto,
-                suspension_relances=suspension_relances,
             )
 
     def _escalader_facture(
@@ -229,7 +242,6 @@ class ImpayeService:
         delai_avertissement: int,
         delai_suspension: int,
         suspension_auto: bool,
-        suspension_relances: int,
     ) -> None:
         """Escalade une facture impayée selon son étape actuelle."""
         from django.utils import timezone

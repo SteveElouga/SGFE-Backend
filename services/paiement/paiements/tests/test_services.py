@@ -414,6 +414,24 @@ class TestSuiviImpaye(TestCase):
         expected = date.today() + timedelta(days=5)
         self.assertEqual(self.suivi.relances_suspendues_jusqu, expected)
 
+    def test_suspendre_relances_lit_le_delai_depuis_config(self) -> None:
+        """Sans argument explicite, la pause est lue depuis Config Service (impaye_suspension_relances)."""
+        from datetime import timedelta
+
+        solde = SoldeFacture.objects.get(pk="facture-impayee")
+        solde.statut = StatutSolde.PARTIELLE
+        solde.save()
+
+        with patch("paiements.services.ConfigServiceClient") as mock_config_cls:
+            mock_config_cls.return_value.get_delais_impayes.return_value = {
+                "suspension_relances": 8,
+            }
+            self.svc.suspendre_relances_si_partiel(solde)
+
+        self.suivi.refresh_from_db()
+        expected = date.today() + timedelta(days=8)
+        self.assertEqual(self.suivi.relances_suspendues_jusqu, expected)
+
 
 class TestImpayeService(TestCase):
     """Tests du service d'escalade des impayés."""
@@ -424,9 +442,7 @@ class TestImpayeService(TestCase):
     @patch("paiements.services.NotificationServiceClient")
     @patch("paiements.services.AbonneServiceClient")
     @patch("paiements.services.ConfigServiceClient")
-    def test_verifier_et_escalader_envoie_rappel_1(
-        self, mock_config_cls, mock_abonne_cls, mock_notif_cls
-    ) -> None:
+    def test_verifier_et_escalader_envoie_rappel_1(self, mock_config_cls, mock_abonne_cls, mock_notif_cls) -> None:
         """Envoie le 1er rappel pour une facture dépassée depuis J+0."""
         mock_config_cls.return_value.get_delais_impayes.return_value = {
             "rappel_1": 0,
