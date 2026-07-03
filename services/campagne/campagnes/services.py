@@ -25,6 +25,7 @@ class CampagneService:
         numero_mobile_money: str = "",
         generer_factures_auto: bool = True,
         envoyer_whatsapp_auto: bool = True,
+        demarrer_maintenant: bool = False,
     ) -> Campagne:
         if not nom.strip():
             raise ValidationError("Le nom de la campagne est obligatoire.")
@@ -45,6 +46,7 @@ class CampagneService:
             numero_mobile_money=numero_mobile_money,
             generer_factures_auto=generer_factures_auto,
             envoyer_whatsapp_auto=envoyer_whatsapp_auto,
+            demarrer_maintenant=demarrer_maintenant,
         )
 
     def demarrer_campagne(self, campagne_id: str) -> Campagne:
