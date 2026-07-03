@@ -26,16 +26,26 @@ def envoi_from_grpc(r) -> Envoi:
 
 @strawberry.type
 class WhatsAppQr:
-    """Statut de connexion WhatsApp + QR de liaison, pour l'UI admin.
+    """Statut de connexion WhatsApp + QR de liaison + numéro appairé, pour l'UI admin.
 
     `qr` est une data-URL PNG à afficher directement (`<img src>`), vide si
     `ready` est vrai (déjà connecté) ou si le service est en cours d'init /
-    indisponible.
+    indisponible. `number` est le numéro du compte WhatsApp appairé (« N° du
+    compte dédié »), présent uniquement quand `ready` est vrai.
     """
 
     ready: bool
     qr: str
+    number: str
 
 
 def whatsapp_qr_from_grpc(r) -> WhatsAppQr:
-    return WhatsAppQr(ready=r.ready, qr=r.qr)
+    return WhatsAppQr(ready=r.ready, qr=r.qr, number=r.number)
+
+
+@strawberry.type
+class TestEnvoiResult:
+    """Résultat d'un test d'envoi WhatsApp : succès + motif en cas d'échec."""
+
+    success: bool
+    message: str

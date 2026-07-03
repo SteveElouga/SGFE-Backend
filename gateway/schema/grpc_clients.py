@@ -312,6 +312,12 @@ class NotificationServiceClient:
     def get_whatsapp_qr(self) -> notification_pb.WhatsAppQrResponse:
         return self._stub.GetWhatsAppQr(notification_pb.EmptyRequest())
 
+    def revoquer_tous_tokens(self) -> notification_pb.RevoquerTousTokensResponse:
+        return self._stub.RevoquerTousTokens(notification_pb.EmptyRequest())
+
+    def tester_envoi(self, phone_number: str) -> notification_pb.StatusResponse:
+        return self._stub.TesterEnvoi(notification_pb.TesterEnvoiRequest(phone_number=phone_number))
+
 
 auth_client = AuthServiceClient()
 abonne_client = AbonneServiceClient()

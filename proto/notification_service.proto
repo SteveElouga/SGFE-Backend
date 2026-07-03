@@ -9,8 +9,10 @@ service NotificationService {
   rpc ListEnvois (ListEnvoisRequest) returns (ListEnvoisResponse);
   rpc ValiderToken (ValiderTokenRequest) returns (ValiderTokenResponse);
   rpc RevoquerToken (TokenIdRequest) returns (StatusResponse);
+  rpc RevoquerTousTokens (EmptyRequest) returns (RevoquerTousTokensResponse);
   rpc NotifierAdmins (NotifierAdminsRequest) returns (StatusResponse);
   rpc GetWhatsAppQr (EmptyRequest) returns (WhatsAppQrResponse);
+  rpc TesterEnvoi (TesterEnvoiRequest) returns (StatusResponse);
 }
 
 message EnvoyerFactureRequest {
@@ -67,7 +69,18 @@ message EmptyRequest {}
 
 // Statut de connexion WhatsApp + QR code de liaison (destiné à l'UI admin).
 // qr : data-URL PNG à afficher (<img src>), vide si ready=true ou en cours d'init.
+// number : numéro du compte WhatsApp appairé, présent uniquement si ready=true.
 message WhatsAppQrResponse {
   bool ready = 1;
   string qr = 2;
+  string number = 3;
+}
+
+message RevoquerTousTokensResponse {
+  // Nombre de tokens actifs qui ont été révoqués.
+  int32 count = 1;
+}
+
+message TesterEnvoiRequest {
+  string phone_number = 1;
 }

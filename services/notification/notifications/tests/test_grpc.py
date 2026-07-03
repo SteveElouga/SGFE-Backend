@@ -234,6 +234,78 @@ class TestRevoquerTokenRPC(TestCase):
             servicer.RevoquerToken(request, context)
 
 
+class TestRevoquerTousTokensRPC(TestCase):
+    """Tests du RPC RevoquerTousTokens (révocation de masse)."""
+
+    def test_revoque_les_actifs_et_retourne_le_compte(self):
+        for _ in range(2):
+            TokenAcces.objects.create(
+                abonne_id=str(uuid.uuid4()),
+                facture_id=str(uuid.uuid4()),
+                date_expiration=date.today() + timedelta(days=20),
+            )
+        deja_revoque = TokenAcces.objects.create(
+            abonne_id=str(uuid.uuid4()),
+            facture_id=str(uuid.uuid4()),
+            date_expiration=date.today() + timedelta(days=20),
+            is_active=False,
+        )
+
+        servicer = NotificationServiceServicer()
+        response = servicer.RevoquerTousTokens(pb.EmptyRequest(), MagicMock())
+
+        self.assertEqual(response.count, 2)
+        self.assertEqual(TokenAcces.objects.filter(is_active=True).count(), 0)
+        deja_revoque.refresh_from_db()
+        self.assertFalse(deja_revoque.is_active)
+
+
+class TestGetWhatsAppQrRPC(TestCase):
+    """Tests du RPC GetWhatsAppQr (numéro appairé inclus)."""
+
+    @patch("notifications.services.whatsapp_client")
+    def test_connecte_expose_le_numero(self, mock_wa):
+        mock_wa.get_qr.return_value = (True, "", "237675799743")
+
+        servicer = NotificationServiceServicer()
+        response = servicer.GetWhatsAppQr(pb.EmptyRequest(), MagicMock())
+
+        self.assertTrue(response.ready)
+        self.assertEqual(response.number, "237675799743")
+
+
+class TestTesterEnvoiRPC(TestCase):
+    """Tests du RPC TesterEnvoi."""
+
+    @patch("notifications.services.whatsapp_client")
+    def test_tester_envoi_succes(self, mock_wa):
+        mock_wa.send.return_value = None
+
+        servicer = NotificationServiceServicer()
+        response = servicer.TesterEnvoi(pb.TesterEnvoiRequest(phone_number="+237699000001"), MagicMock())
+
+        self.assertTrue(response.success)
+        mock_wa.send.assert_called_once()
+
+    @patch("notifications.services.whatsapp_client")
+    def test_tester_envoi_echec_retourne_le_motif_reel(self, mock_wa):
+        """En cas d'échec, le motif exact est renvoyé (pas d'abort ni de message générique)."""
+        mock_wa.send.side_effect = WhatsAppDeliveryError("WhatsApp non connecté — scannez le QR code sur /qr")
+
+        servicer = NotificationServiceServicer()
+        context = MagicMock()
+        response = servicer.TesterEnvoi(pb.TesterEnvoiRequest(phone_number="+237699000001"), context)
+
+        self.assertFalse(response.success)
+        self.assertIn("non connecté", response.message)
+        context.abort.assert_not_called()
+
+    def test_tester_envoi_numero_vide_leve_value_error(self):
+        servicer = NotificationServiceServicer()
+        with self.assertRaises(ValueError):
+            servicer.TesterEnvoi(pb.TesterEnvoiRequest(phone_number=""), MagicMock())
+
+
 class TestGetEnvoiRPC(TestCase):
     """Tests du RPC GetEnvoi."""
 

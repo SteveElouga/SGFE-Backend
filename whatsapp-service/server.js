@@ -184,13 +184,18 @@ app.get('/qr', requireApiKey, async (_req, res) => {
 // prête à mettre dans un <img src>, vide si déjà connecté ou en cours d'init.
 app.get('/qr-data', requireApiKey, async (_req, res) => {
     if (isReady) {
-        return res.json({ ready: true, qr: '' });
+        // Numéro du compte WhatsApp appairé, pour affichage « N° du compte dédié ».
+        let number = '';
+        if (activeClient && activeClient.info && activeClient.info.wid) {
+            number = activeClient.info.wid.user || '';
+        }
+        return res.json({ ready: true, qr: '', number });
     }
     if (!currentQr) {
-        return res.json({ ready: false, qr: '' });
+        return res.json({ ready: false, qr: '', number: '' });
     }
     const qrImage = await QRCode.toDataURL(currentQr);
-    res.json({ ready: false, qr: qrImage });
+    res.json({ ready: false, qr: qrImage, number: '' });
 });
 
 app.post('/send', requireApiKey, async (req, res) => {
