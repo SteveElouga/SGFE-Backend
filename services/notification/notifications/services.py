@@ -80,18 +80,35 @@ class EnvoiService:
         self._envois = EnvoiRepository()
         self._tokens = TokenAccesRepository()
 
-    def get_whatsapp_qr(self) -> tuple[bool, str]:
-        """Retourne (ready, qr_data_url) pour l'affichage admin de la liaison WhatsApp.
+    def get_whatsapp_qr(self) -> tuple[bool, str, str]:
+        """Retourne (ready, qr_data_url, number) pour l'affichage admin de la liaison WhatsApp.
 
+        `number` est le numéro du compte appairé (vide si non connecté).
         Dégradation gracieuse : si le service whatsapp-web.js est inaccessible,
-        retourne (False, "") plutôt que de lever — l'UI admin affiche alors
+        retourne (False, "", "") plutôt que de lever — l'UI admin affiche alors
         « non connecté » sans erreur bloquante.
         """
         try:
             return whatsapp_client.get_qr()
         except WhatsAppDeliveryError as exc:
             logger.warning("QR WhatsApp indisponible : %s", exc)
-            return (False, "")
+            return (False, "", "")
+
+    def tester_envoi(self, phone_number: str) -> None:
+        """Envoie un message de test WhatsApp au numéro fourni (écran d'administration).
+
+        Raises:
+            ValueError: Si le numéro est vide.
+            WhatsAppDeliveryError: Si l'envoi échoue (WhatsApp non connecté,
+                numéro invalide, service injoignable).
+        """
+        if not phone_number:
+            raise ValueError("Le numéro de téléphone est obligatoire")
+        whatsapp_client.send(
+            phone_number,
+            "✅ Test SGFE : la connexion WhatsApp fonctionne. "
+            "Ce message confirme que l'envoi automatique est opérationnel.",
+        )
 
     def envoyer_facture(self, facture_id: str, abonne_id: str) -> Envoi:
         """Récupère les infos facture/abonné, génère un token, envoie le message WhatsApp.
@@ -375,3 +392,13 @@ class TokenService:
         token.is_active = False
         self._tokens.save(token)
         logger.info("Token révoqué", extra={"token_id": token_id})
+
+    def revoquer_tous_tokens(self) -> int:
+        """Révoque en masse tous les tokens d'accès abonné actifs.
+
+        Returns:
+            Le nombre de tokens qui étaient actifs et ont été révoqués.
+        """
+        count = self._tokens.revoquer_tous_actifs()
+        logger.info("Révocation de masse des tokens d'accès", extra={"count": count})
+        return count

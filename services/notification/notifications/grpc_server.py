@@ -36,6 +36,7 @@ import notification_service_pb2_grpc as pb_grpc  # type: ignore[import]  # noqa:
 from notifications.grpc_interceptors import ErrorHandlingInterceptor  # noqa: E402
 from notifications.serializers import envoi_to_proto, token_to_valider_response  # noqa: E402
 from notifications.services import EnvoiService, TokenService, notifier_admins  # noqa: E402
+from notifications.whatsapp_client import WhatsAppDeliveryError  # noqa: E402
 
 
 class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
@@ -125,14 +126,33 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
         return pb.StatusResponse(success=True, message="Notification admin traitée")
 
     def GetWhatsAppQr(self, request, context):
-        """Retourne le statut de connexion WhatsApp et le QR code de liaison.
+        """Retourne le statut de connexion WhatsApp, le QR de liaison et le numéro appairé.
 
         Destiné à l'affichage admin (via la Gateway). Ne lève jamais d'erreur
         gRPC — dégradation gracieuse si whatsapp-service est indisponible
-        (ready=False, qr="").
+        (ready=False, qr="", number="").
         """
-        ready, qr = self._envoi_service.get_whatsapp_qr()
-        return pb.WhatsAppQrResponse(ready=ready, qr=qr)
+        ready, qr, number = self._envoi_service.get_whatsapp_qr()
+        return pb.WhatsAppQrResponse(ready=ready, qr=qr, number=number)
+
+    def RevoquerTousTokens(self, request, context):
+        """Révoque en masse tous les tokens d'accès abonné actifs."""
+        count = self._token_service.revoquer_tous_tokens()
+        return pb.RevoquerTousTokensResponse(count=count)
+
+    def TesterEnvoi(self, request, context):
+        """Envoie un message de test WhatsApp.
+
+        Renvoie success=False + le motif réel en cas d'échec d'envoi (WhatsApp
+        non connecté, numéro invalide, service injoignable) plutôt que d'abort :
+        l'admin a besoin de la raison exacte, pas d'un message générique.
+        Un numéro vide lève ValueError -> INVALID_ARGUMENT via l'intercepteur.
+        """
+        try:
+            self._envoi_service.tester_envoi(request.phone_number)
+        except WhatsAppDeliveryError as exc:
+            return pb.StatusResponse(success=False, message=str(exc))
+        return pb.StatusResponse(success=True, message="Message de test envoyé")
 
 
 def serve() -> None:

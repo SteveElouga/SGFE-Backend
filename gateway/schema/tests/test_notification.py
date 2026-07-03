@@ -54,12 +54,23 @@ class TestNotificationQueries(SimpleTestCase):
     @patch("schema.notification_queries.require_role")
     def test_whatsapp_qr_admin(self, mock_role, mock_auth, mock_client) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN")
-        mock_client.get_whatsapp_qr.return_value = MagicMock(ready=False, qr="data:image/png;base64,AAA")
+        mock_client.get_whatsapp_qr.return_value = MagicMock(ready=False, qr="data:image/png;base64,AAA", number="")
         info = MagicMock()
         result = NotificationQueries().whatsapp_qr(info)
         self.assertFalse(result.ready)
         self.assertEqual(result.qr, "data:image/png;base64,AAA")
         mock_role.assert_called_once_with(info, "ADMIN")
+
+    @patch("schema.notification_queries.notification_client")
+    @patch("schema.notification_queries.require_auth")
+    @patch("schema.notification_queries.require_role")
+    def test_whatsapp_qr_connecte_expose_le_numero(self, mock_role, mock_auth, mock_client) -> None:
+        mock_auth.return_value = MagicMock(role="ADMIN")
+        mock_client.get_whatsapp_qr.return_value = MagicMock(ready=True, qr="", number="237675799743")
+        info = MagicMock()
+        result = NotificationQueries().whatsapp_qr(info)
+        self.assertTrue(result.ready)
+        self.assertEqual(result.number, "237675799743")
 
 
 class TestNotificationMutations(SimpleTestCase):
@@ -96,3 +107,38 @@ class TestNotificationMutations(SimpleTestCase):
         result = NotificationMutations().revoquer_token_abonne(info, token_id="token-001")
         self.assertTrue(result)
         mock_role.assert_called_once_with(info, "ADMIN")
+
+    @patch("schema.notification_mutations.notification_client")
+    @patch("schema.notification_mutations.require_auth")
+    @patch("schema.notification_mutations.require_role")
+    def test_revoquer_tous_tokens_abonnes(self, mock_role, mock_auth, mock_client) -> None:
+        mock_auth.return_value = MagicMock(role="ADMIN")
+        mock_client.revoquer_tous_tokens.return_value = MagicMock(count=3)
+        info = MagicMock()
+        result = NotificationMutations().revoquer_tous_tokens_abonnes(info)
+        self.assertEqual(result, 3)
+        mock_role.assert_called_once_with(info, "ADMIN")
+
+    @patch("schema.notification_mutations.notification_client")
+    @patch("schema.notification_mutations.require_auth")
+    @patch("schema.notification_mutations.require_role")
+    def test_tester_envoi_whatsapp_succes(self, mock_role, mock_auth, mock_client) -> None:
+        mock_auth.return_value = MagicMock(role="ADMIN")
+        mock_client.tester_envoi.return_value = MagicMock(success=True, message="Message de test envoyé")
+        info = MagicMock()
+        result = NotificationMutations().tester_envoi_whatsapp(info, phone_number="+237699000001")
+        self.assertTrue(result.success)
+        mock_client.tester_envoi.assert_called_once_with(phone_number="+237699000001")
+
+    @patch("schema.notification_mutations.notification_client")
+    @patch("schema.notification_mutations.require_auth")
+    @patch("schema.notification_mutations.require_role")
+    def test_tester_envoi_whatsapp_echec_remonte_le_motif(self, mock_role, mock_auth, mock_client) -> None:
+        mock_auth.return_value = MagicMock(role="ADMIN")
+        mock_client.tester_envoi.return_value = MagicMock(
+            success=False, message="WhatsApp non connecté — scannez le QR code sur /qr"
+        )
+        info = MagicMock()
+        result = NotificationMutations().tester_envoi_whatsapp(info, phone_number="+237699000001")
+        self.assertFalse(result.success)
+        self.assertIn("non connecté", result.message)

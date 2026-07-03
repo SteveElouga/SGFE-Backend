@@ -367,15 +367,56 @@ class TestEnvoiServiceGetWhatsAppQr(TestCase):
 
     @patch("notifications.services.whatsapp_client")
     def test_get_qr_relaye_le_client(self, mock_wa):
-        mock_wa.get_qr.return_value = (False, "data:image/png;base64,AAA")
-        ready, qr = EnvoiService().get_whatsapp_qr()
+        mock_wa.get_qr.return_value = (False, "data:image/png;base64,AAA", "")
+        ready, qr, number = EnvoiService().get_whatsapp_qr()
         self.assertFalse(ready)
         self.assertEqual(qr, "data:image/png;base64,AAA")
+        self.assertEqual(number, "")
+
+    @patch("notifications.services.whatsapp_client")
+    def test_get_qr_connecte_expose_le_numero(self, mock_wa):
+        mock_wa.get_qr.return_value = (True, "", "237675799743")
+        ready, qr, number = EnvoiService().get_whatsapp_qr()
+        self.assertTrue(ready)
+        self.assertEqual(number, "237675799743")
 
     @patch("notifications.services.whatsapp_client")
     def test_get_qr_service_indisponible_degrade(self, mock_wa):
-        """whatsapp-service inaccessible → (False, '') plutôt qu'une exception."""
+        """whatsapp-service inaccessible → (False, '', '') plutôt qu'une exception."""
         from notifications.whatsapp_client import WhatsAppDeliveryError
 
         mock_wa.get_qr.side_effect = WhatsAppDeliveryError("service KO")
-        self.assertEqual(EnvoiService().get_whatsapp_qr(), (False, ""))
+        self.assertEqual(EnvoiService().get_whatsapp_qr(), (False, "", ""))
+
+    @patch("notifications.services.whatsapp_client")
+    def test_tester_envoi_relaye_au_client(self, mock_wa):
+        EnvoiService().tester_envoi("+237699000001")
+        mock_wa.send.assert_called_once()
+        self.assertEqual(mock_wa.send.call_args.args[0], "+237699000001")
+
+    def test_tester_envoi_numero_vide_leve_value_error(self):
+        with self.assertRaises(ValueError):
+            EnvoiService().tester_envoi("")
+
+
+class TestTokenServiceRevoquerTousTokens(TestCase):
+    """Tests de TokenService.revoquer_tous_tokens (révocation de masse)."""
+
+    def test_revoque_seulement_les_actifs_et_compte(self):
+        for _ in range(2):
+            TokenAcces.objects.create(
+                abonne_id=str(uuid.uuid4()),
+                facture_id=str(uuid.uuid4()),
+                date_expiration=date.today() + timedelta(days=20),
+            )
+        TokenAcces.objects.create(
+            abonne_id=str(uuid.uuid4()),
+            facture_id=str(uuid.uuid4()),
+            date_expiration=date.today() + timedelta(days=20),
+            is_active=False,
+        )
+
+        count = TokenService().revoquer_tous_tokens()
+
+        self.assertEqual(count, 2)
+        self.assertEqual(TokenAcces.objects.filter(is_active=True).count(), 0)
