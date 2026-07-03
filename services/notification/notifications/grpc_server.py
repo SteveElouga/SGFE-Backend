@@ -124,6 +124,16 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
         )
         return pb.StatusResponse(success=True, message="Notification admin traitée")
 
+    def GetWhatsAppQr(self, request, context):
+        """Retourne le statut de connexion WhatsApp et le QR code de liaison.
+
+        Destiné à l'affichage admin (via la Gateway). Ne lève jamais d'erreur
+        gRPC — dégradation gracieuse si whatsapp-service est indisponible
+        (ready=False, qr="").
+        """
+        ready, qr = self._envoi_service.get_whatsapp_qr()
+        return pb.WhatsAppQrResponse(ready=ready, qr=qr)
+
 
 def serve() -> None:
     """Démarre le serveur gRPC du Notification Service."""

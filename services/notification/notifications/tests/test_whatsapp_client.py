@@ -51,3 +51,31 @@ class WhatsAppWebClientTests(SimpleTestCase):
         mock_post.return_value = Mock(status_code=500, json=Mock(side_effect=ValueError("not json")))
         with self.assertRaises(WhatsAppDeliveryError):
             self.client.send_with_pdf("+237690000000", "Bonjour", b"%PDF-1.4", "facture.pdf")
+
+    @patch("notifications.whatsapp_client.requests.get")
+    def test_get_qr_non_connecte_retourne_qr(self, mock_get):
+        mock_get.return_value = Mock(
+            status_code=200, json=Mock(return_value={"ready": False, "qr": "data:image/png;base64,AAA"})
+        )
+        ready, qr = self.client.get_qr()
+        self.assertFalse(ready)
+        self.assertEqual(qr, "data:image/png;base64,AAA")
+
+    @patch("notifications.whatsapp_client.requests.get")
+    def test_get_qr_connecte_pas_de_qr(self, mock_get):
+        mock_get.return_value = Mock(status_code=200, json=Mock(return_value={"ready": True, "qr": ""}))
+        ready, qr = self.client.get_qr()
+        self.assertTrue(ready)
+        self.assertEqual(qr, "")
+
+    @patch("notifications.whatsapp_client.requests.get")
+    def test_get_qr_network_error_raises_delivery_error(self, mock_get):
+        mock_get.side_effect = requests.ConnectionError("refused")
+        with self.assertRaises(WhatsAppDeliveryError):
+            self.client.get_qr()
+
+    @patch("notifications.whatsapp_client.requests.get")
+    def test_get_qr_non_json_body_raises_delivery_error(self, mock_get):
+        mock_get.return_value = Mock(status_code=502, json=Mock(side_effect=ValueError("not json")))
+        with self.assertRaises(WhatsAppDeliveryError):
+            self.client.get_qr()

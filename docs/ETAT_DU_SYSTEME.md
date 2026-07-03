@@ -39,7 +39,7 @@
 | Abonné Service          | 🟢 Fonctionnel, propre                             | 52 ✅                    | ANO-003bis (doc CLAUDE.md) — PR #25 ; ANO-017 (contrainte compteur actif) — PR #29            |
 | Campagne Service        | 🟢 Fonctionnel                                     | 71 ✅                    | ANO-003 — PR #20, ANO-004/`demarrer_maintenant` — PR #16, ANO-018 — PR #30, ANO-019 — PR #31 |
 | Facturation Service     | 🟢 Fonctionnel                                     | 45 ✅                    | ANO-007 — PR #23, ANO-008 — PR #24 ; refonte PDF WeasyPrint + identité abonné — PR #41 |
-| Paiement Service        | 🟢 Fonctionnel, bien testé                         | 59 ✅                    | RAS majeur — service le plus robuste de l'audit ; ANO-023 (code mort) — PR #34     |
+| Paiement Service        | 🟢 Fonctionnel, bien testé                         | 60 ✅                    | Service le plus robuste de l'audit ; ANO-023 (code mort) — PR #34, ANO-025 (délai de pause des relances no-op) — PR #45 |
 | Notification Service    | 🟢 Fonctionnel                                     | 46 ✅                    | ANO-013 (confirmation paiement WhatsApp jamais envoyée) — PR #26 ; ANO-014/024 — PR #27       |
 | Config Service          | 🟢 Fonctionnel                                     | 29 ✅                    | ANO-001 (casse des clés) corrigée — PR #18                                         |
 | Reporting Service       | ⚪ **N'existe pas**                                 | —                       | Seul le `.proto` existe ; dossier `services/reporting/` absent                     |
@@ -214,6 +214,8 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **ANO-016 — Reporting Service : absence totale (pas un bug, un chantier non démarré)** — `proto/reporting_service.proto` déclare 6 RPC (`GetDashboard`, `GetStatsCampagne`, `GetStatsGlobales`, `UpdateStatsCampagne`, `UpdateStatsFacturation`, `UpdateStatsPaiements`), aucun n'est implémenté. Facturation et Paiement ne tentent même pas de l'appeler (pas de risque de plantage, l'intégration n'a simplement jamais été commencée).
 
+**ANO-025 — Paiement : le délai de « pause des relances après versement partiel » (`impaye_suspension_relances`) était un no-op silencieux** — ✅ **RÉSOLU** (PR #45, branche `fix/ano-025-pause-relances-config`) — le paramètre exposé à l'ADMIN dans l'onglet Relances & Impayés était persisté (`updateConfig` réussissait, `getConfigs` renvoyait la nouvelle valeur) mais **jamais appliqué** : `suspendre_relances_si_partiel` était appelé sans argument depuis le `grpc_server` (repli sur le défaut codé en dur 5 j) et le `suspension_relances` lu par le cron `verifier_et_escalader` était un **paramètre mort** de `_escalader_facture`. Même classe qu'ANO-001 (config sans effet observable), instance distincte non couverte par PR #18. Corrigé : `suspendre_relances_si_partiel` lit `impaye_suspension_relances` depuis Config Service (repli gracieux) quand `jours_suspension` n'est pas fourni ; le paramètre mort est retiré. Test de non-régression ajouté (60 tests).
+
 ### ⚪ Faibles
 
 - **ANO-017** — ✅ **RÉSOLU** (PR #29) — Abonné : `StatutCompteur.DESACTIVE` était défini mais jamais utilisé ; utilisé désormais par `resilier_abonne()` (le compteur d'un abonné résilié passe à `DESACTIVE`). Contrainte `UniqueConstraint` partielle ajoutée sur `Compteur` (condition `statut=ACTIF`) pour garantir en base un seul compteur `ACTIF` par abonné (auparavant logique applicative seule).
@@ -241,7 +243,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **Surface GraphQL réelle** (voir aussi §6 de `docs/ARCHITECTURE.md`, corrigé — ANO-012 résolu, PR #25) :
 
-- **23 queries**, **31 mutations**, **1 subscription** (`abonneUpdated`, sur Redis pub/sub, exige ADMIN depuis ANO-015 résolu).
+- **25 queries**, **35 mutations**, **1 subscription** (`abonneUpdated`, sur Redis pub/sub, exige ADMIN depuis ANO-015 résolu). Dont `whatsappQr` (ADMIN, PR #46) : relaie le statut de connexion + QR de liaison WhatsApp depuis notification-service, pour l'affichage dans l'UI admin sans exposer la clé interne du whatsapp-service au navigateur.
 - Contrôle de rôle systématique via `require_role(info, *roles)` sur toutes les opérations sensibles, y compris désormais `abonneUpdated` (ANO-015). Seule exception volontaire : `infosSociete` (public — sert à alimenter les PDF).
 - Filtrage SUPERVISEUR/AGENT par propriété de campagne implémenté et testé (`campagne_queries.py:11-29`).
 - Espace abonné public tokenisé : 2 vues Django classiques (pas GraphQL), `GET /espace-abonne/<token>/` (liste des factures) et `GET /espace-abonne/<token>/facture/<id>/pdf/` (téléchargement — IDOR corrigé, ANO-002 résolu, PR #19).
@@ -315,9 +317,9 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **Délais de relance** : `impaye_delai_rappel_1/2`, `avertissement`, `suspension` sont désormais lus avec succès depuis Config Service (ANO-001 résolu, PR #18) — défauts internes (rappel_1=0, rappel_2=3, avertissement=7, suspension=10 jours) utilisés seulement si Config Service est indisponible.
 
-**RPC** : les 6 RPC du `.proto` sont tous implémentés. C'est le service jugé le plus robuste de l'audit (gestion d'erreur homogène, pas de bug fonctionnel identifié en dehors d'ANO-001 qui lui est externe et déjà corrigé sur PR #18) ; le seul code mort trouvé (`marquer_resolu`) a été supprimé — ANO-023 résolu, PR #34.
+**RPC** : les 6 RPC du `.proto` sont tous implémentés. C'est le service jugé le plus robuste de l'audit (gestion d'erreur homogène) ; deux anomalies corrigées depuis l'audit initial : le code mort `marquer_resolu` supprimé (ANO-023, PR #34) et le no-op silencieux du délai de pause des relances `impaye_suspension_relances` (ANO-025, PR #45). Le bug de config ANO-001 lui était externe (déjà corrigé, PR #18).
 
-**Tests** : 59 tests, tous verts (confirmé par exécution, 0.044s).
+**Tests** : 60 tests, tous verts (confirmé par exécution).
 
 ### 5.7 Notification Service (`services/notification/`) + whatsapp-service (Node.js)
 
@@ -327,7 +329,9 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **Modèle** : `Envoi` (`type_envoi` : `FACTURE`/`RELANCE_1`/`RELANCE_2`/`AVERTISSEMENT`/`SUSPENSION`/`RETABLISSEMENT` — ce dernier désormais produit à l'étape 0, ANO-013 résolu), `TokenAcces` (UUID, expiration configurable, ANO-001 résolu).
 
-**whatsapp-service (Node.js)** : `whatsapp-web.js` + Puppeteer/Chromium headless, session persistée sur volume Docker (`LocalAuth`), reconnexion avec backoff exponentiel sur déconnexion. Endpoints `GET /health`, `GET /qr` (QR code à scanner une fois), `POST /send`, `POST /send-with-pdf`. Authentification par clé partagée (en-tête `X-Internal-Api-Key`) désormais en place (ANO-005 résolu, PR #21). `ARCHITECTURE.md` §5.7 affirmait à tort un « Retry Handler — 3 tentatives » : **il n'y a en réalité aucune logique de retry**, ni côté Node ni côté Django (échec immédiatement marqué `ECHEC`, dégradation gracieuse sans nouvelle tentative) — documentation corrigée (ANO-009 résolu, PR #25).
+**whatsapp-service (Node.js)** : `whatsapp-web.js` + Puppeteer/Chromium headless, session persistée sur volume Docker (`LocalAuth`), reconnexion avec backoff exponentiel sur déconnexion. Endpoints `GET /health`, `GET /qr` (page HTML du QR), `GET /qr-data` (QR en JSON `{ready, qr}` pour relais UI admin, PR #46), `POST /send`, `POST /send-with-pdf`. Authentification par clé partagée (en-tête `X-Internal-Api-Key`) sur tous sauf `/health` (ANO-005 résolu, PR #21).
+
+**Liaison WhatsApp depuis l'UI admin (PR #46)** : le QR de connexion, autrefois seulement atteignable sur l'endpoint interne `/qr` (401 dans un navigateur faute d'en-tête), est désormais exposé à l'admin via la chaîne gRPC `Gateway (query ADMIN whatsappQr) → notification-service (GetWhatsAppQr) → whatsapp-service (/qr-data)`. La clé interne reste côté serveur ; le QR tournant, l'UI rafraîchit périodiquement tant que `ready` est faux. Dégradation gracieuse si whatsapp-service est indisponible (`ready=False, qr=""`). `ARCHITECTURE.md` §5.7 affirmait à tort un « Retry Handler — 3 tentatives » : **il n'y a en réalité aucune logique de retry**, ni côté Node ni côté Django (échec immédiatement marqué `ECHEC`, dégradation gracieuse sans nouvelle tentative) — documentation corrigée (ANO-009 résolu, PR #25).
 
 **Duplication de code** : `whatsapp_client.py` existe identique dans `auth` et `notification` — assumée et documentée (ANO-014, PR #27).
 

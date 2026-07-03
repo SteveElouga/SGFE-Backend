@@ -49,6 +49,18 @@ class TestNotificationQueries(SimpleTestCase):
         self.assertEqual(len(result), 2)
         mock_client.list_envois.assert_called_once_with(facture_id="facture-001", abonne_id="")
 
+    @patch("schema.notification_queries.notification_client")
+    @patch("schema.notification_queries.require_auth")
+    @patch("schema.notification_queries.require_role")
+    def test_whatsapp_qr_admin(self, mock_role, mock_auth, mock_client) -> None:
+        mock_auth.return_value = MagicMock(role="ADMIN")
+        mock_client.get_whatsapp_qr.return_value = MagicMock(ready=False, qr="data:image/png;base64,AAA")
+        info = MagicMock()
+        result = NotificationQueries().whatsapp_qr(info)
+        self.assertFalse(result.ready)
+        self.assertEqual(result.qr, "data:image/png;base64,AAA")
+        mock_role.assert_called_once_with(info, "ADMIN")
+
 
 class TestNotificationMutations(SimpleTestCase):
     @patch("schema.notification_mutations.notification_client")
