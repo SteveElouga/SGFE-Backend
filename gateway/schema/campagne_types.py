@@ -57,6 +57,7 @@ class CreateCampagneInput:
     numero_mobile_money: str = ""
     generer_factures_auto: bool = True
     envoyer_whatsapp_auto: bool = True
+    demarrer_maintenant: bool = False
 
 
 @strawberry.input

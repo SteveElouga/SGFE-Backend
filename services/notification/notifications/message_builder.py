@@ -157,3 +157,28 @@ def build_message_relance_4(
         f"Pour rétablir votre ligne d'eau, contactez notre\n"
         f"service au {telephone_societe}."
     )
+
+
+def build_message_retablissement(
+    prenom_nom: str,
+    montant: float,
+) -> str:
+    """Construit le message de confirmation de paiement / rétablissement (EF-NOTIF-004, EF-IMP-005).
+
+    Envoyé lorsqu'une facture passe au statut PAYÉE — y compris si la ligne
+    d'eau avait été suspendue pour impayé, auquel cas elle est rétablie.
+
+    Args:
+        prenom_nom: Prénom et NOM de l'abonné.
+        montant: Montant du paiement reçu en FCFA.
+
+    Returns:
+        Message WhatsApp formaté.
+    """
+    montant_str = f"{montant:.0f}" if montant == int(montant) else f"{montant}"
+
+    return (
+        f"Bonjour {prenom_nom},\n\n"
+        f"Votre paiement de {montant_str} FCFA a été reçu.\n"
+        f"Votre ligne d'eau est maintenant rétablie."
+    )
