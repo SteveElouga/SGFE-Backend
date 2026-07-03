@@ -297,8 +297,8 @@ class EnvoiService:
 def notifier_admins(evenement: str, detail: str, entite_id: str = "") -> None:
     """Envoie un email de notification aux administrateurs via Brevo.
 
-    Récupère l'email destinataire depuis Config Service (clé EMAIL_ADMIN_NOTIFICATIONS).
-    Respecte le toggle NOTIFICATIONS_ADMIN_ACTIVEES — si désactivé, ne fait rien.
+    Récupère l'email destinataire depuis Config Service (clé email_admin_notifications).
+    Respecte le toggle notifications_admin_activees — si désactivé, ne fait rien.
     Dégradation gracieuse : si Brevo ou Config Service est indisponible, on logue et on continue.
     """
     if not config_client.get_notifications_admin_activees():

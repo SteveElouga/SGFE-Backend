@@ -97,7 +97,12 @@ def espace_abonne(request: HttpRequest, token: str) -> JsonResponse:
 
 @require_GET
 def espace_abonne_pdf(request: HttpRequest, token: str, facture_id: str) -> FileResponse | JsonResponse:
-    """Retourne le PDF d'une facture pour un abonné authentifié par token."""
+    """Retourne le PDF d'une facture pour un abonné authentifié par token.
+
+    Le token n'identifie qu'un abonné, pas une facture précise : sans la
+    vérification ci-dessous, un abonné pourrait télécharger le PDF de
+    n'importe quel autre abonné en devinant/énumérant un facture_id (IDOR).
+    """
     try:
         token_resp = notification_client.valider_token(token)
     except grpc.RpcError:
@@ -105,6 +110,19 @@ def espace_abonne_pdf(request: HttpRequest, token: str, facture_id: str) -> File
 
     if not token_resp.is_valid:
         return _token_response_invalide()
+
+    try:
+        facture = facturation_client.get_facture(facture_id)
+    except grpc.RpcError as exc:
+        logger.error("GetFacture gRPC error", extra={"facture_id": facture_id, "error": str(exc)})
+        return JsonResponse({"erreur": "Facture introuvable."}, status=404)
+
+    if facture.abonne_id != token_resp.abonne_id:
+        logger.warning(
+            "Tentative d'accès à une facture d'un autre abonné via l'espace abonné",
+            extra={"facture_id": facture_id, "abonne_id_token": token_resp.abonne_id},
+        )
+        return JsonResponse({"erreur": "Facture introuvable."}, status=404)
 
     try:
         pdf_resp = facturation_client.get_facture_pdf(facture_id)

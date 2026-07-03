@@ -24,6 +24,7 @@ message CreateCampagneRequest {
   string numero_mobile_money = 6;
   bool generer_factures_auto = 7;
   bool envoyer_whatsapp_auto = 8;
+  bool demarrer_maintenant = 9;
 }
 
 message SaisirIndexRequest {
