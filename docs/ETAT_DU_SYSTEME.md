@@ -34,7 +34,7 @@
 
 | Brique                  | Statut                                             | Tests                   | Points d'attention majeurs                                                         |
 | ----------------------- | -------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------- |
-| Gateway (GraphQL)       | 🟢 Fonctionnel, riche                              | 112 ✅                   | ANO-002 (IDOR PDF), ANO-015 (subscription non protégée) et ANO-022 (trous de couverture facturation/paiement/notification) corrigées — PR #19, #28, #33 |
+| Gateway (GraphQL)       | 🟢 Fonctionnel, riche                              | 124 ✅                   | ANO-002 (IDOR PDF), ANO-015 (subscription non protégée), ANO-022 (couverture) corrigées — PR #19, #28, #33 ; ANO-026 (endpoint PDF back-office) — PR #48 |
 | Auth Service            | 🟢 Fonctionnel, solide                             | 94 ✅                    | ANO-006 (rotation refresh token) — PR #22 ; ANO-020 (Logout homogène) — PR #32 ; ANO-014/024 (duplication + parsing whatsapp_client) — PR #27 |
 | Abonné Service          | 🟢 Fonctionnel, propre                             | 52 ✅                    | ANO-003bis (doc CLAUDE.md) — PR #25 ; ANO-017 (contrainte compteur actif) — PR #29            |
 | Campagne Service        | 🟢 Fonctionnel                                     | 71 ✅                    | ANO-003 — PR #20, ANO-004/`demarrer_maintenant` — PR #16, ANO-018 — PR #30, ANO-019 — PR #31 |
@@ -185,6 +185,11 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 - **Constat** : Facturation fait confiance aux relevés reçus de Campagne Service (déjà validés en amont) sans revalider avant de calculer un montant. Si cette règle était un jour contournée en amont (bug, appel direct au repository Campagne), Facturation produirait une facture à montant négatif sans le détecter.
 - **Correctif appliqué** : `generer_factures()` ignore désormais (log `warning`) tout relevé dont `nouveau_index < ancien_index`, sans bloquer la facturation des autres abonnés valides du même lot.
 
+**ANO-026 — Gateway : aucun endpoint back-office pour télécharger le PDF d'une facture** — ✅ **RÉSOLU** (PR #48, branche `fix/ano-026-pdf-facture-back-office`)
+
+- **Constat** : le bouton « PDF » de la vue facture (ADMIN/COMPTABLE) appelait `GET /api/factures/<id>/pdf` → **404**. La Gateway ne câblait le RPC `GetFacturePDF` qu'à une seule route, `espace_abonne_pdf` (espace abonné public, token WhatsApp) ; aucune route authentifiée par JWT n'existait pour le back-office, et aucun champ GraphQL ne renvoie les octets du PDF (le type `Facture` n'expose que `pdf_path`, un chemin serveur inutilisable côté navigateur).
+- **Correctif appliqué** : nouvelle vue Django `facture_pdf` (`gateway/schema/facturation_views.py`) sur `GET /factures/<facture_id>/pdf/`, gardée par JWT + rôle ADMIN/COMPTABLE (`extract_token` + `auth_client.validate_token`, même contrat que le gating GraphQL des factures), relayant `GetFacturePDF`. Mapping d'erreurs : `NOT_FOUND` → 404, autre → 503. 7 tests ajoutés. **Contrat frontend** : appeler `/factures/<id>/pdf/` (au lieu de `/api/factures/<id>/pdf`).
+
 
 
 ### 🟡 Moyennes (dette technique / documentation obsolète)
@@ -242,8 +247,9 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 - Contrôle de rôle systématique via `require_role(info, *roles)` sur toutes les opérations sensibles, y compris désormais `abonneUpdated` (ANO-015). Seule exception volontaire : `infosSociete` (public — sert à alimenter les PDF).
 - Filtrage SUPERVISEUR/AGENT par propriété de campagne implémenté et testé (`campagne_queries.py:11-29`).
 - Espace abonné public tokenisé : 2 vues Django classiques (pas GraphQL), `GET /espace-abonne/<token>/` (liste des factures) et `GET /espace-abonne/<token>/facture/<id>/pdf/` (téléchargement — IDOR corrigé, ANO-002 résolu, PR #19).
+- PDF facture back-office : vue Django `GET /factures/<id>/pdf/` (JWT + rôle ADMIN/COMPTABLE), relaie `GetFacturePDF` — comble un 404 côté back-office (ANO-026 résolu, PR #48).
 
-**Tests** : 112 tests (`gateway/schema/tests/`), tous verts. Couverture complétée par PR #19 (`espace_abonne.py`, ANO-002, +6), PR #28 (`subscriptions.py`, ANO-015, +3) et PR #33 (facturation/paiement/notification, ANO-022, +19), toutes mergées.
+**Tests** : 124 tests (`gateway/schema/tests/`), tous verts. Couverture complétée par PR #19 (`espace_abonne.py`, ANO-002, +6), PR #28 (`subscriptions.py`, ANO-015, +3), PR #33 (facturation/paiement/notification, ANO-022, +19) et PR #48 (endpoint PDF back-office, ANO-026, +7).
 
 ### 5.2 Auth Service (`services/auth/`)
 
