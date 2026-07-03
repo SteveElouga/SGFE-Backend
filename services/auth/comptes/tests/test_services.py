@@ -247,6 +247,40 @@ class UserAdminServiceTests(TestCase):
 
         self.assertEqual(self.mock_whatsapp.call_count, before)
 
+    def test_update_user_admin_email_change_resend_activation_si_en_attente(self):
+        """Quand l'e-mail d'un ADMIN en attente d'activation change, un nouveau lien
+        d'activation est envoyé sur le nouvel e-mail (symétrique du renvoi d'OTP)."""
+        created = self.user_admin.create_user(
+            username="admin_pending_email",
+            email="wrong@example.com",
+            phone_number="+237690000060",
+            role=Role.ADMIN,
+        )
+        # create_user a déjà envoyé un premier lien d'activation.
+        before = self.mock_send.call_count
+
+        self.user_admin.update_user(str(created.id), email="right@example.com", role="")
+
+        self.assertEqual(self.mock_send.call_count, before + 1)
+        self.assertEqual(self.mock_send.call_args.kwargs["to_email"], "right@example.com")
+
+    def test_update_user_admin_email_change_ne_renvoie_rien_si_actif(self):
+        """Un ADMIN déjà activé n'est jamais impacté par un changement d'e-mail."""
+        created = self.user_admin.create_user(
+            username="admin_active_email",
+            email="admin_ae@example.com",
+            phone_number="+237690000061",
+            role=Role.ADMIN,
+        )
+        created.set_password("S3cr3t!")
+        created.is_active = True
+        created.save()
+        before = self.mock_send.call_count
+
+        self.user_admin.update_user(str(created.id), email="admin_ae2@example.com", role="")
+
+        self.assertEqual(self.mock_send.call_count, before)
+
     def test_deactivate_user(self):
         created = self.user_admin.create_user(username="agent7", phone_number="+237690000024", role=Role.AGENT)
         deactivated = self.user_admin.deactivate_user(str(created.id))
