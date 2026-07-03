@@ -32,7 +32,7 @@
 
 | Brique                  | Statut                                             | Tests                   | Points d'attention majeurs                                                         |
 | ----------------------- | -------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------- |
-| Gateway (GraphQL)       | 🟢 Fonctionnel, riche                              | 84 — **1 échec actuel** | IDOR espace abonné (ANO-002), subscription sans contrôle d'accès (ANO-015)         |
+| Gateway (GraphQL)       | 🟢 Fonctionnel, riche                              | 84 — **1 échec actuel** | ANO-002 (IDOR PDF) corrigée — PR #19 ; subscription sans contrôle d'accès (ANO-015) |
 | Auth Service            | 🟢 Fonctionnel, solide                             | 88 ✅                    | Pas de rotation du refresh token (ANO-006)                                         |
 | Abonné Service          | 🟢 Fonctionnel, propre                             | 49 ✅                    | Intégration Campagne incomplète (ANO-003)                                          |
 | Campagne Service        | 🟢 Fonctionnel                                     | 62 ✅                    | Vérification statut ACTIF absente (ANO-003), pas de test sur `demarrer_maintenant` |
@@ -80,8 +80,8 @@
 
 - **Les contrats techniques sont respectés** : les 8 microservices Python exposent exactement les RPC déclarés dans leurs `.proto` respectifs (aucun écart trouvé sur les 8 services audités), et la Gateway consomme ces contrats sans divergence de schéma protobuf.
 - **La dégradation gracieuse est un pattern largement appliqué** (Config, Reporting absent, PDF manquant, WhatsApp indisponible) mais **appliquée de façon inégale** d'un client à l'autre (voir §5.8, Config Service) — certains appels ne catchent rien et laisseraient une erreur gRPC remonter brute.
-- **Le système n'est pas intuitivement cohérent sur un point precis et important** : le paramétrage métier via `updateConfig` (délais, validité de token) donne l'illusion de fonctionner (la mutation GraphQL réussit, la valeur est bien écrite en base côté Config Service) mais **n'a aucun effet observable** côté Facturation/Paiement/Notification à cause d'ANO-001. C'est le type de bug qui trompe un utilisateur métier (l'ADMIN croit avoir changé le délai de paiement, rien ne change).
-- **Deux failles de sécurité concrètes** existent aujourd'hui : IDOR sur le PDF de l'espace abonné public (ANO-002) et absence totale d'authentification sur le service whatsapp-service (ANO-005).
+- **Le système n'était pas intuitivement cohérent sur un point précis et important** : le paramétrage métier via `updateConfig` (délais, validité de token) donnait l'illusion de fonctionner (la mutation GraphQL réussissait, la valeur était bien écrite en base côté Config Service) mais **n'avait aucun effet observable** côté Facturation/Paiement/Notification (ANO-001). ✅ Corrigé — PR #18.
+- **Deux failles de sécurité concrètes** ont été identifiées : IDOR sur le PDF de l'espace abonné public (ANO-002, ✅ corrigée — PR #19) et absence totale d'authentification sur le service whatsapp-service (ANO-005, en cours).
 
 ---
 
@@ -128,11 +128,11 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 - **Seules clés qui fonctionnent réellement** : `EMAIL_ADMIN_NOTIFICATIONS`, `NOTIFICATIONS_ADMIN_ACTIVEES` (appelées en MAJUSCULE par Notification, cohérentes avec `CONFIG_DEFAULTS`).
 - **Correctif appliqué** : toutes les clés de `CONFIG_DEFAULTS` renommées en minuscule pour correspondre exactement aux appels des 3 consommateurs ; les 6 clés `impaye_*` attendues par Paiement ajoutées côté Config (en remplacement de `RELANCE_ETAPE_1..4_JOURS`/`SUSPENSION_AUTO_ACTIVE`/`DELAI_SUSPENSION_APRES_VERSEMENT_JOURS`, jamais lues avec succès) ; délai de suspension corrigé à J+10 pour correspondre à `docs/SRS.md` EF-IMP-002. Voir PR #18 pour le détail et le plan de test.
 
-**ANO-002 — Gateway : IDOR sur le téléchargement de PDF de l'espace abonné public**
+**ANO-002 — Gateway : IDOR sur le téléchargement de PDF de l'espace abonné public** — ✅ **RÉSOLU** (PR #19, branche `fix/ano-002-idor-facture-pdf`)
 
 - **Fichier** : `gateway/schema/espace_abonne.py:99-123` (vue `espace_abonne_pdf`).
 - **Scénario concret** : un abonné authentifié par *son propre* token valide `GET /espace-abonne/<mon_token>/facture/<facture_id>/pdf/` avec un `facture_id` **appartenant à un autre abonné** (deviné ou énuméré, les ID sont des UUID mais rien n'empêche l'essai). La vue valide le token (donc l'identité de l'appelant) puis appelle directement `facturation_client.get_facture_pdf(facture_id)` **sans jamais vérifier que cette facture appartient à l'abonné du token**. Le PDF d'un tiers (nom, adresse, consommation, montant) fuit.
-- **Correctif** : après récupération du PDF (ou avant), vérifier `facture.abonne_id == token_resp.abonne_id`, sinon 403/404.
+- **Correctif appliqué** : `GetFacture` est désormais appelé avant `GetFacturePDF` pour vérifier `facture.abonne_id == token_resp.abonne_id` ; en cas de mismatch ou de facture introuvable, réponse `404` (pas `403`, pour ne pas confirmer l'existence d'une facture qui n'appartient pas à l'appelant). Tests de régression ajoutés (`gateway/schema/tests/test_espace_abonne.py`, inexistant auparavant). Voir PR #19.
 
 **ANO-003 — Vérification du statut ACTIF de l'abonné avant ajout en campagne : non implémentée**
 
@@ -387,8 +387,8 @@ Cet audit a mis en évidence des passages **obsolètes ou incohérents** dans le
 
 ## 9. Recommandations priorisées
 
-1. **Corriger ANO-001 en priorité absolue** — c'est le seul défaut qui rend une fonctionnalité *visible et utilisée par l'ADMIN* (paramétrage) silencieusement inopérante. Uniformiser la casse des clés Config sur les 4 services consommateurs + ajouter les clés `impaye_`* manquantes.
-2. **Corriger ANO-002 (IDOR PDF)** avant toute exposition publique de l'espace abonné — c'est une fuite de données personnelles/financières entre abonnés.
+1. ✅ **ANO-001 corrigée** (PR #18) — casse des clés Config uniformisée sur les 4 services consommateurs.
+2. ✅ **ANO-002 corrigée** (PR #19) — IDOR sur le PDF de l'espace abonné.
 3. **Réparer le test cassé (ANO-004)** avant tout merge de la branche `feature/campagne-demarrer-maintenant`.
 4. **Décider consciemment du sort d'ANO-003** (statut ACTIF non vérifié) — soit l'implémenter (probable, vu que c'est une règle métier explicitement obligatoire dans CLAUDE.md), soit documenter que c'est un choix assumé et retirer la règle de CLAUDE.md.
 5. **Ajouter une authentification basique à whatsapp-service (ANO-005)** avant tout déploiement au-delà du réseau Docker local.

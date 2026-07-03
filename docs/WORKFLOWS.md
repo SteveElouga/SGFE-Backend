@@ -267,7 +267,8 @@ Ne fait **pas** partie du cron — se produit **immédiatement** au moment du pa
 
 **Téléchargement PDF** — `GET /espace-abonne/<token>/facture/<facture_id>/pdf/` :
 1. `[Gateway]` → `Notification.ValiderToken(token)` (même validation).
-2. `[Gateway]` → `Facturation.GetFacturePDF(facture_id)` — ⚠️ **sans vérifier que `facture_id` appartient bien à l'`abonne_id` du token validé** (`ANO-002`, faille IDOR). Ce point doit être corrigé avant toute mise en production de l'espace abonné public.
+2. `[Gateway]` → `Facturation.GetFacture(facture_id)` puis vérifie `facture.abonne_id == token.abonne_id` (✅ `ANO-002` résolu, PR #19 — empêche qu'un abonné télécharge la facture d'un autre en devinant un `facture_id`). Mismatch ou facture introuvable → `404`.
+3. `[Gateway]` → `Facturation.GetFacturePDF(facture_id)` — sert le PDF.
 
 ### 7.5 Notification admin (`notifierAdmins` — automatique ou manuel)
 
