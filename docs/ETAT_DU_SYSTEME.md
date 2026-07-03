@@ -39,7 +39,7 @@
 | Abonné Service          | 🟢 Fonctionnel, propre                             | 52 ✅                    | ANO-003bis (doc CLAUDE.md) — PR #25 ; ANO-017 (contrainte compteur actif) — PR #29            |
 | Campagne Service        | 🟢 Fonctionnel                                     | 71 ✅                    | ANO-003 — PR #20, ANO-004/`demarrer_maintenant` — PR #16, ANO-018 — PR #30, ANO-019 — PR #31 |
 | Facturation Service     | 🟢 Fonctionnel                                     | 45 ✅                    | ANO-007 — PR #23, ANO-008 — PR #24 ; refonte PDF WeasyPrint + identité abonné — PR #41 |
-| Paiement Service        | 🟢 Fonctionnel, bien testé                         | 59 ✅                    | RAS majeur — service le plus robuste de l'audit ; ANO-023 (code mort) — PR #34     |
+| Paiement Service        | 🟢 Fonctionnel, bien testé                         | 60 ✅                    | Service le plus robuste de l'audit ; ANO-023 (code mort) — PR #34, ANO-025 (délai de pause des relances no-op) — PR #45 |
 | Notification Service    | 🟢 Fonctionnel                                     | 46 ✅                    | ANO-013 (confirmation paiement WhatsApp jamais envoyée) — PR #26 ; ANO-014/024 — PR #27       |
 | Config Service          | 🟢 Fonctionnel                                     | 29 ✅                    | ANO-001 (casse des clés) corrigée — PR #18                                         |
 | Reporting Service       | ⚪ **N'existe pas**                                 | —                       | Seul le `.proto` existe ; dossier `services/reporting/` absent                     |
@@ -209,6 +209,8 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **ANO-016 — Reporting Service : absence totale (pas un bug, un chantier non démarré)** — `proto/reporting_service.proto` déclare 6 RPC (`GetDashboard`, `GetStatsCampagne`, `GetStatsGlobales`, `UpdateStatsCampagne`, `UpdateStatsFacturation`, `UpdateStatsPaiements`), aucun n'est implémenté. Facturation et Paiement ne tentent même pas de l'appeler (pas de risque de plantage, l'intégration n'a simplement jamais été commencée).
 
+**ANO-025 — Paiement : le délai de « pause des relances après versement partiel » (`impaye_suspension_relances`) était un no-op silencieux** — ✅ **RÉSOLU** (PR #45, branche `fix/ano-025-pause-relances-config`) — le paramètre exposé à l'ADMIN dans l'onglet Relances & Impayés était persisté (`updateConfig` réussissait, `getConfigs` renvoyait la nouvelle valeur) mais **jamais appliqué** : `suspendre_relances_si_partiel` était appelé sans argument depuis le `grpc_server` (repli sur le défaut codé en dur 5 j) et le `suspension_relances` lu par le cron `verifier_et_escalader` était un **paramètre mort** de `_escalader_facture`. Même classe qu'ANO-001 (config sans effet observable), instance distincte non couverte par PR #18. Corrigé : `suspendre_relances_si_partiel` lit `impaye_suspension_relances` depuis Config Service (repli gracieux) quand `jours_suspension` n'est pas fourni ; le paramètre mort est retiré. Test de non-régression ajouté (60 tests).
+
 ### ⚪ Faibles
 
 - **ANO-017** — ✅ **RÉSOLU** (PR #29) — Abonné : `StatutCompteur.DESACTIVE` était défini mais jamais utilisé ; utilisé désormais par `resilier_abonne()` (le compteur d'un abonné résilié passe à `DESACTIVE`). Contrainte `UniqueConstraint` partielle ajoutée sur `Compteur` (condition `statut=ACTIF`) pour garantir en base un seul compteur `ACTIF` par abonné (auparavant logique applicative seule).
@@ -309,9 +311,9 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **Délais de relance** : `impaye_delai_rappel_1/2`, `avertissement`, `suspension` sont désormais lus avec succès depuis Config Service (ANO-001 résolu, PR #18) — défauts internes (rappel_1=0, rappel_2=3, avertissement=7, suspension=10 jours) utilisés seulement si Config Service est indisponible.
 
-**RPC** : les 6 RPC du `.proto` sont tous implémentés. C'est le service jugé le plus robuste de l'audit (gestion d'erreur homogène, pas de bug fonctionnel identifié en dehors d'ANO-001 qui lui est externe et déjà corrigé sur PR #18) ; le seul code mort trouvé (`marquer_resolu`) a été supprimé — ANO-023 résolu, PR #34.
+**RPC** : les 6 RPC du `.proto` sont tous implémentés. C'est le service jugé le plus robuste de l'audit (gestion d'erreur homogène) ; deux anomalies corrigées depuis l'audit initial : le code mort `marquer_resolu` supprimé (ANO-023, PR #34) et le no-op silencieux du délai de pause des relances `impaye_suspension_relances` (ANO-025, PR #45). Le bug de config ANO-001 lui était externe (déjà corrigé, PR #18).
 
-**Tests** : 59 tests, tous verts (confirmé par exécution, 0.044s).
+**Tests** : 60 tests, tous verts (confirmé par exécution).
 
 ### 5.7 Notification Service (`services/notification/`) + whatsapp-service (Node.js)
 
