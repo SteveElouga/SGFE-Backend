@@ -199,7 +199,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 - **Bug découvert en creusant** : Paiement Service appelait déjà systématiquement `envoyer_relance(etape=0)` après un paiement complet ("confirmation de paiement complet") — mais `envoyer_relance` rejetait explicitement `etape=0` (`ValidationError` → gRPC `INVALID_ARGUMENT` → capté par la dégradation gracieuse du client Paiement). **Aucun abonné n'a donc jamais reçu de confirmation de paiement par WhatsApp**, silencieusement, depuis toujours.
 - **Correctif appliqué** : `build_message_retablissement()` ajouté (conforme au template exact `docs/SRS.md` EF-NOTIF-004/EF-IMP-005), `_ETAPE_TO_TYPE` et la validation étendus à `[0, 4]`. Aucun changement côté Paiement Service (il appelait déjà correctement `etape=0`).
 
-**ANO-014 — Duplication assumée du client WhatsApp entre Auth et Notification** — `services/auth/comptes/whatsapp_client.py` et `services/notification/notifications/whatsapp_client.py` implémentent la même classe `WhatsAppWebClient`/`WhatsAppDeliveryError` en copier-coller (commenté comme tel dans le code). Tout bugfix (ex. nouveau code d'erreur du service Node) doit être répliqué manuellement dans les deux.
+**ANO-014 — Duplication assumée du client WhatsApp entre Auth et Notification** — ✅ **RÉSOLU (documenté explicitement)** (PR #27) — `services/auth/comptes/whatsapp_client.py` et `services/notification/notifications/whatsapp_client.py` implémentent la même classe `WhatsAppWebClient`/`WhatsAppDeliveryError` en copier-coller. La duplication reste assumée (chaque microservice reste indépendant, CLAUDE.md racine) mais est désormais documentée explicitement en tête des deux fichiers, avec un rappel que tout bugfix doit être répliqué manuellement dans les deux.
 
 **ANO-015 — Gateway : subscription** `abonneUpdated` **sans contrôle d'accès** — `gateway/schema/subscriptions.py` n'appelle ni `require_auth` ni `require_role`, alors que la query équivalente (`abonne`/`abonnes`) exige ADMIN. N'importe quel client WebSocket peut s'abonner aux mises à jour de n'importe quel abonné.
 
@@ -214,7 +214,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 - **ANO-021** — ✅ **RÉSOLU** (PR #25) — `services/config/CLAUDE.md` disait « 8 clés par défaut », corrigé à 10.
 - **ANO-022** — Gateway : aucun test pour `facturation_queries/mutations`, `paiement_queries/mutations`, `notification_queries/mutations`, `espace_abonne.py`, `subscriptions.py` — trou de couverture notable vu l'exigence CLAUDE.md (« couverture > 80 % »).
 - **ANO-023** — Paiement : `repositories.py::marquer_resolu` jamais appelé nulle part (code mort, l'admet dans son propre docstring).
-- **ANO-024** — Notification : `whatsapp_client.py::send()` appelle `response.json()` avant de vérifier le status code HTTP — un corps non-JSON sur une erreur 5xx romprait la dégradation gracieuse attendue (`JSONDecodeError` non catché par `except requests.RequestException`).
+- **ANO-024** — ✅ **RÉSOLU** (PR #27) — `whatsapp_client.py::send()`/`send_with_pdf()` (auth et notification) appelaient `response.json()` avant de vérifier le status code HTTP ; corrigé (vérification 503 d'abord, parsing JSON entouré d'un `try/except ValueError`). Tests dédiés ajoutés (le module n'en avait aucun).
 
 ---
 
@@ -317,7 +317,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **whatsapp-service (Node.js)** : `whatsapp-web.js` + Puppeteer/Chromium headless, session persistée sur volume Docker (`LocalAuth`), reconnexion avec backoff exponentiel sur déconnexion. Endpoints `GET /health`, `GET /qr` (QR code à scanner une fois), `POST /send`, `POST /send-with-pdf`. **Aucune authentification** sur ces endpoints (ANO-005). Contrairement à ce que documente `ARCHITECTURE.md` §5.7 (« Retry Handler — 3 tentatives »), **il n'y a aucune logique de retry**, ni côté Node ni côté Django — un échec est immédiatement marqué `ECHEC` (dégradation gracieuse, pas de nouvelle tentative automatique).
 
-**Duplication de code** : `whatsapp_client.py` existe identique dans `auth` et `notification` (ANO-014).
+**Duplication de code** : `whatsapp_client.py` existe identique dans `auth` et `notification` — assumée et documentée (ANO-014, PR #27).
 
 **RPC** : les 8 RPC du `.proto` sont tous implémentés, y compris les champs `type_envoi`/`abonne_id` ajoutés au dernier commit (`2500707`).
 
