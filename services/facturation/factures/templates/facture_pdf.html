@@ -1,0 +1,294 @@
+{% comment %}
+============================================================================
+TEMPLATE FACTURE PDF — AquaBill (WeasyPrint)
+----------------------------------------------------------------------------
+À rendre côté backend via render_to_string('facture_pdf.html', context) puis
+HTML(string=...).write_pdf(). Compatible WeasyPrint 69 :
+  - aucun JavaScript (layout 100% statique) ;
+  - flexbox + tables uniquement (pas de CSS Grid) ;
+  - police et logo embarqués localement (voir @font-face ci-dessous), le
+    logo est un SVG inline → aucune dépendance réseau à l'exécution.
+
+CONTRAT DE CONTEXTE attendu (toutes les valeurs numériques sont fournies
+DÉJÀ FORMATÉES en chaînes — séparateur de milliers = espace insécable, ex.
+"21 500 FCFA", "1 820" — pour éviter toute dépendance de locale WeasyPrint) :
+
+societe        .nom .adresse_ligne1 .telephone
+facture        .numero .date_releve .date_limite_paiement .designation
+               .ancien_index .nouveau_index .consommation .prix_unitaire
+               .montant .sous_total .frais_supplementaires .total
+               .date_generation
+abonne         .civilite (opt.) .nom .prenom .numero .quartier .camp .whatsapp
+compteur       .numero
+releve         .campagne_nom .agent_username .date .heure
+historique     liste de 6 mois, chacun : .label .conso .hauteur_px .is_actuel
+               (hauteur_px = round(conso / max_conso * 44), borne ~[4,44])
+espace         .url .date_expiration — bloc masqué si .url est vide (aucun
+               token d'accès n'existe encore au moment de la génération
+               initiale du PDF, voir docs/ETAT_DU_SYSTEME.md)
+============================================================================
+{% endcomment %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Facture {{ facture.numero }}</title>
+  <style>
+    /* Police embarquée localement — remplacer les chemins par les .woff2 servis
+       depuis le service facturation (ou base64). Si absente, fallback système. */
+    /*
+    @font-face { font-family: 'Montserrat'; font-weight: 400;
+      src: url('fonts/Montserrat-Regular.woff2') format('woff2'); }
+    @font-face { font-family: 'Montserrat'; font-weight: 500;
+      src: url('fonts/Montserrat-Medium.woff2') format('woff2'); }
+    @font-face { font-family: 'Montserrat'; font-weight: 600;
+      src: url('fonts/Montserrat-SemiBold.woff2') format('woff2'); }
+    @font-face { font-family: 'Montserrat'; font-weight: 700;
+      src: url('fonts/Montserrat-Bold.woff2') format('woff2'); }
+    @font-face { font-family: 'Montserrat'; font-weight: 800;
+      src: url('fonts/Montserrat-ExtraBold.woff2') format('woff2'); }
+    */
+
+    @page {
+      size: A4;
+      margin: 0.6in;
+      @bottom-center { content: element(pageFooter); }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: 'Montserrat', 'Helvetica Neue', Arial, sans-serif;
+      color: #0f172a;
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .muted { color: #64748b; }
+    .navy  { color: #0f1c3d; }
+
+    /* ── En-tête ─────────────────────────────────────────────────────────── */
+    .header { display: flex; justify-content: space-between; align-items: flex-start; }
+    .brand { display: flex; gap: 13px; align-items: center; }
+    .brand__name { font-size: 21px; font-weight: 800; color: #0f1c3d; }
+    .brand__meta { font-size: 11.5px; color: #64748b; margin-top: 4px; line-height: 1.6; }
+    .doc-title { font-size: 28px; font-weight: 800; color: #0f1c3d; letter-spacing: 1.5px; text-align: right; }
+    .doc-num { font-size: 13.5px; font-weight: 700; color: #1a56db; margin-top: 4px; text-align: right; }
+    .doc-dates { font-size: 11.5px; color: #64748b; margin-top: 8px; line-height: 1.7; text-align: right; }
+    .doc-dates b { color: #dc2626; }
+
+    .rule {
+      height: 4px; border-radius: 2px; margin: 18px 0 22px;
+      background: linear-gradient(90deg, #0f1c3d 0%, #1a56db 60%, #0e9f6e 100%);
+    }
+
+    /* ── Cartes abonné / compteur (flexbox, pas de grid) ─────────────────── */
+    .cards { display: flex; gap: 14px; }
+    .card { flex: 1; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 18px; }
+    .card__label {
+      font-size: 10px; font-weight: 700; color: #94a3b8;
+      letter-spacing: 1.4px; text-transform: uppercase; margin-bottom: 9px;
+    }
+    .card__title { font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+    .card__body { font-size: 12px; color: #64748b; line-height: 1.8; }
+
+    /* ── Table détail ────────────────────────────────────────────────────── */
+    .detail { width: 100%; border-collapse: collapse; margin-top: 22px; }
+    .detail th {
+      padding: 11px 12px; font-size: 10.5px; font-weight: 700; color: #fff;
+      letter-spacing: 1px; text-transform: uppercase; background: #0f1c3d; text-align: right;
+    }
+    .detail th:first-child { padding-left: 16px; text-align: left; }
+    .detail th:last-child  { padding-right: 16px; }
+    .detail td {
+      padding: 15px 12px; font-size: 13.5px; color: #0f172a;
+      border-bottom: 1px solid #e2e8f0; text-align: right;
+    }
+    .detail td:first-child { padding-left: 16px; text-align: left; font-size: 13px; font-weight: 500; }
+    .detail td:last-child  { padding-right: 16px; font-weight: 700; }
+    .detail .num-old  { font-weight: 500; color: #64748b; }
+    .detail .num-new  { font-weight: 600; }
+    .detail .num-conso{ font-weight: 700; }
+    .detail .num-pu   { font-weight: 500; color: #64748b; }
+
+    /* ── Totaux ──────────────────────────────────────────────────────────── */
+    .totals { display: flex; justify-content: flex-end; margin-top: 16px; }
+    .totals__box { width: 280px; }
+    .totals__row { display: flex; justify-content: space-between; padding: 8px 16px; font-size: 12.5px; }
+    .totals__row span:first-child { color: #64748b; }
+    .totals__row span:last-child { font-weight: 600; color: #0f172a; }
+    .totals__grand {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 13px 16px; background: #0f1c3d; border-radius: 10px; margin-top: 8px;
+    }
+    .totals__grand-label {
+      font-size: 11px; font-weight: 700; color: rgba(255,255,255,.75);
+      letter-spacing: 1px; text-transform: uppercase;
+    }
+    .totals__grand-value { font-size: 21px; font-weight: 800; color: #fff; }
+
+    /* ── Histogramme conso ───────────────────────────────────────────────── */
+    .hist { margin-top: 26px; }
+    .hist__label {
+      font-size: 10px; font-weight: 700; color: #94a3b8;
+      letter-spacing: 1.4px; text-transform: uppercase; margin-bottom: 12px;
+    }
+    .hist__bars {
+      display: flex; align-items: flex-end; gap: 12px; height: 74px;
+      border-bottom: 2px solid #e2e8f0; padding: 0 6px;
+    }
+    .hist__col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+    .hist__val { font-size: 10.5px; font-weight: 600; color: #94a3b8; }
+    .hist__val--current { font-weight: 700; color: #1a56db; }
+    /* Largeur fixe plutôt que 100% : un pourcentage sur un enfant flex dont
+       l'axe transversal n'est pas "stretch" (ici align-items: center) est mal
+       résolu par WeasyPrint (barres qui débordent et se chevauchent au lieu
+       de rester dans leur colonne). */
+    .hist__bar { width: 28px; background: #dbeafe; border-radius: 4px 4px 0 0; }
+    .hist__bar--current { background: linear-gradient(180deg, #1a56db, #3b82f6); }
+    .hist__months { display: flex; gap: 12px; padding: 5px 6px 0; }
+    .hist__month { flex: 1; text-align: center; font-size: 10px; color: #94a3b8; }
+    .hist__month--current { font-weight: 700; color: #1a56db; }
+
+    /* ── Modalités ───────────────────────────────────────────────────────── */
+    .terms {
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+      padding: 14px 18px; margin-top: 26px;
+    }
+    .terms__title { font-size: 12px; font-weight: 700; color: #0f172a; margin-bottom: 5px; }
+    .terms__body { font-size: 11.5px; color: #64748b; line-height: 1.8; }
+    .terms__link { color: #1a56db; text-decoration: underline; }
+
+    /* ── Pied de page répété ─────────────────────────────────────────────── */
+    .page-footer {
+      position: running(pageFooter);
+      display: flex; justify-content: space-between; align-items: center;
+      border-top: 2px solid #0f1c3d; padding-top: 9px; width: 100%;
+      font-size: 9.5px; color: #94a3b8;
+    }
+    .page-footer .page-num::after { content: "Page " counter(page) " / " counter(pages); }
+  </style>
+</head>
+<body>
+
+  <!-- En-tête -->
+  <div class="header">
+    <div class="brand">
+      <svg width="48" height="48" viewBox="0 0 38 38" fill="none">
+        <path d="M19 3C19 3 8 15.5 8 23C8 30.18 13.04 34 19 34C24.96 34 30 30.18 30 23C30 15.5 19 3 19 3Z" fill="#0f1c3d" fill-opacity=".95"/>
+        <path d="M19 16C19 16 14 21.5 14 25C14 27.76 16.24 30 19 30C21.76 30 24 27.76 24 25C24 21.5 19 16 19 16Z" fill="#0e9f6e" fill-opacity=".85"/>
+      </svg>
+      <div>
+        <div class="brand__name">{{ societe.nom }}</div>
+        <div class="brand__meta">{{ societe.adresse_ligne1 }}<br>{{ societe.telephone }}</div>
+      </div>
+    </div>
+    <div>
+      <div class="doc-title">FACTURE</div>
+      <div class="doc-num">{{ facture.numero }}</div>
+      <div class="doc-dates">
+        Date de relevé : {{ facture.date_releve }}<br>
+        Date limite de paiement : <b>{{ facture.date_limite_paiement }}</b>
+      </div>
+    </div>
+  </div>
+  <div class="rule"></div>
+
+  <!-- Abonné / Compteur -->
+  <div class="cards">
+    <div class="card">
+      <div class="card__label">Facturé à</div>
+      <div class="card__title">{{ abonne.civilite }} {{ abonne.nom }} {{ abonne.prenom }}</div>
+      <div class="card__body">
+        Abonné N° {{ abonne.numero }}<br>
+        {{ abonne.quartier }} · Camp {{ abonne.camp }}<br>
+        WhatsApp : {{ abonne.whatsapp }}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card__label">Compteur</div>
+      <div class="card__title">N° {{ compteur.numero }}</div>
+      <div class="card__body">
+        Période : {{ releve.campagne_nom }}<br>
+        Relevé par : {{ releve.agent_username }} (agent)<br>
+        Le {{ releve.date }} à {{ releve.heure }}
+      </div>
+    </div>
+  </div>
+
+  <!-- Détail -->
+  <table class="detail">
+    <thead>
+      <tr>
+        <th>Désignation</th>
+        <th>Ancien index</th>
+        <th>Nouvel index</th>
+        <th>Conso (m³)</th>
+        <th>Prix unitaire</th>
+        <th>Montant</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>{{ facture.designation }}</td>
+        <td class="num-old">{{ facture.ancien_index }}</td>
+        <td class="num-new">{{ facture.nouveau_index }}</td>
+        <td class="num-conso">{{ facture.consommation }}</td>
+        <td class="num-pu">{{ facture.prix_unitaire }}</td>
+        <td>{{ facture.montant }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Totaux -->
+  <div class="totals">
+    <div class="totals__box">
+      <div class="totals__row"><span>Sous-total HT</span><span>{{ facture.sous_total }}</span></div>
+      <div class="totals__row"><span>Frais supplémentaires</span><span>{{ facture.frais_supplementaires }}</span></div>
+      <div class="totals__grand">
+        <span class="totals__grand-label">Total à payer</span>
+        <span class="totals__grand-value">{{ facture.total }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Historique conso -->
+  <div class="hist">
+    <div class="hist__label">Votre consommation — 6 derniers mois</div>
+    <div class="hist__bars">
+      {% for mois in historique %}
+      <div class="hist__col">
+        <span class="hist__val {% if mois.is_actuel %}hist__val--current{% endif %}">{{ mois.conso }}</span>
+        <div class="hist__bar {% if mois.is_actuel %}hist__bar--current{% endif %}" style="height: {{ mois.hauteur_px }}px; margin-top: {{ mois.marge_haut_px }}px"></div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="hist__months">
+      {% for mois in historique %}
+      <span class="hist__month {% if mois.is_actuel %}hist__month--current{% endif %}">{{ mois.label }}</span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Modalités -->
+  <div class="terms">
+    <div class="terms__title">Modalités de paiement</div>
+    <div class="terms__body">
+      Règlement sous 5 jours : Espèces · Mobile Money · Virement — auprès de notre service comptable.<br>
+      {% if espace.url %}
+      Consultez votre historique en ligne :
+      <span class="terms__link">{{ espace.url }}</span>
+      <span class="muted">(lien valable jusqu'au {{ espace.date_expiration }})</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Pied de page répété sur chaque page -->
+  <div class="page-footer">
+    <span>{{ societe.nom }} — Système de facturation d'eau AquaBill</span>
+    <span>Facture générée automatiquement le {{ facture.date_generation }} — <span class="page-num"></span></span>
+  </div>
+
+</body>
+</html>

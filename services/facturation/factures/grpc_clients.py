@@ -113,6 +113,23 @@ class CampagneServiceClient:
             )
             raise
 
+    def get_campagne_nom(self, campagne_id: str) -> str:
+        """Retourne le nom de la campagne, ou "" si Campagne Service est inaccessible.
+
+        Dégradation gracieuse : purement informatif pour l'affichage sur le PDF
+        (période de relevé), la génération de facture ne doit jamais échouer
+        pour cette seule donnée.
+        """
+        try:
+            r = self._stub.GetCampagne(self._pb.CampagneIdRequest(campagne_id=campagne_id))
+            return r.nom
+        except grpc.RpcError as exc:
+            logger.warning(
+                "Impossible de récupérer le nom de la campagne — PDF généré sans",
+                extra={"campagne_id": campagne_id, "error": str(exc)},
+            )
+            return ""
+
 
 class ConfigServiceClient:
     """Client gRPC vers Config Service (port 50058) — paramètres système."""

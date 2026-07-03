@@ -114,3 +114,13 @@ class FactureRepository:
         facture.pdf_path = pdf_path
         facture.save(update_fields=["pdf_path"])
         return facture
+
+    def list_historique_consommation(self, abonne_id: str, limit: int = 6) -> list[Facture]:
+        """Retourne les `limit` dernières factures de l'abonné, triées chronologiquement.
+
+        Utilisé pour l'histogramme de consommation du PDF de facture (6 derniers
+        mois). Une facture par mois en usage normal — pas de déduplication par
+        mois nécessaire, chaque abonné n'a qu'un relevé par campagne mensuelle.
+        """
+        recentes = list(Facture.objects.filter(abonne_id=abonne_id).order_by("-date_releve")[:limit])
+        return list(reversed(recentes))
