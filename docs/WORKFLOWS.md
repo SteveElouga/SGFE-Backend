@@ -97,7 +97,7 @@ ACTIF ──suspendre──► SUSPENDU ──réactiver──► ACTIF
 - `suspendre` exige le statut `ACTIF` de départ.
 - `reactiver` exige le statut `SUSPENDU` de départ.
 - `resilier` refuse uniquement si déjà `RESILIE` — accessible depuis `ACTIF` ou `SUSPENDU`.
-- ⚠️ Aucune de ces transitions ne vérifie ni ne bloque une campagne en cours impliquant cet abonné (voir `ANO-003`).
+- ✅ Depuis la résolution d'`ANO-003` (PR #20), le statut ACTIF est vérifié au moment où un abonné est *ajouté* à une campagne (création du `Releve`). Limite résiduelle non couverte (hors périmètre d'ANO-003, non cataloguée séparément) : si un abonné est suspendu *après* que son `Releve` a déjà été créé dans une campagne en cours, la saisie ultérieure de son index (`SaisirIndex` sur un relevé existant) ne revérifie pas son statut à ce moment précis.
 
 ### 2.3 Remplacement de compteur (`remplacerCompteur`)
 
@@ -140,10 +140,9 @@ Associe un `CampagneAgent` (agent ↔ campagne), idempotent (pas de doublon).
 
 1. `[Gateway]` Vérifie l'accès (rôle + propriété/affectation) avant l'appel.
 2. `[Campagne]` → `SaisirIndex(campagne_id, abonne_id, nouveau_index)`.
-3. `[Campagne]` Si le `Releve` n'existe pas encore pour ce couple (campagne, abonné), il est **créé à la volée** : `ancien_index` = dernier index connu de cet abonné toutes campagnes confondues (ou `0.0` si premier relevé).
+3. `[Campagne]` Si le `Releve` n'existe pas encore pour ce couple (campagne, abonné), il est **créé à la volée** via `ajouter_abonne_campagne` : `ancien_index` = dernier index connu de cet abonné toutes campagnes confondues (ou `0.0` si premier relevé). ✅ `ANO-003` résolu (PR #20) — cette création vérifie désormais `Abonne.GetAbonne(abonne_id).statut == "ACTIF"` avant de créer le relevé, de façon bloquante (refus si non ACTIF ou si Abonné Service est inaccessible).
 4. `[Campagne]` Valide : la campagne doit être `EN_COURS`, le relevé ne doit pas déjà être `RELEVE`, et **`nouveau_index ≥ ancien_index`** (règle métier obligatoire, respectée ici).
 5. `[Campagne]` Calcule `consommation`, passe le relevé en statut `RELEVE`.
-6. ⚠️ **Aucune vérification du statut ACTIF de l'abonné** n'est faite à cette étape ni avant (`ANO-003`) — un abonné suspendu peut être relevé normalement.
 
 ### 3.5 Suivi de progression (`progression`)
 
