@@ -8,6 +8,7 @@ from django.conf import settings
 from strawberry.types import Info
 
 from schema.abonne_types import Abonne, abonne_from_grpc
+from schema.context import require_role
 from schema.grpc_clients import abonne_client
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,13 @@ class Subscription:
 
         Le frontend peut utiliser `subscribeToMore` d'Apollo Client pour
         fusionner automatiquement le résultat dans son cache local.
+
+        Réservé à ADMIN, comme les queries `abonne`/`abonnes` équivalentes
+        (voir ANO-015 dans docs/ETAT_DU_SYSTEME.md — cette subscription était
+        auparavant accessible à tout client WebSocket sans authentification).
         """
+        await asyncio.to_thread(require_role, info, "ADMIN")
+
         from redis.asyncio import Redis
 
         filter_id = str(abonne_id) if abonne_id and abonne_id is not strawberry.UNSET else None

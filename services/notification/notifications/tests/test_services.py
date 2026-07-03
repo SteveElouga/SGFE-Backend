@@ -217,16 +217,35 @@ class TestEnvoiServiceEnvoyerRelance(TestCase):
         self.assertIn("suspendue", args[1])
 
     def test_envoyer_relance_etape_invalide(self):
-        """Une étape hors de [1, 4] doit lever une ValidationError."""
+        """Une étape hors de [0, 4] doit lever une ValidationError."""
         service = EnvoiService()
         with self.assertRaises(ValidationError):
             service.envoyer_relance("facture-id", "abonne-id", etape=5)
 
-    def test_envoyer_relance_etape_zero_invalide(self):
-        """L'étape 0 est invalide et doit lever une ValidationError."""
+    @patch("notifications.services.whatsapp_client")
+    @patch("notifications.services.abonne_client")
+    @patch("notifications.services.facturation_client")
+    def test_envoyer_relance_etape_0_retablissement(self, mock_fact, mock_abonne, mock_wa):
+        """Régression ANO-013 : l'étape 0 (confirmation de paiement /
+        rétablissement, EF-IMP-005) doit envoyer un message RETABLISSEMENT
+        au lieu de lever une ValidationError — Paiement Service appelle
+        systématiquement envoyer_relance(etape=0) après un paiement complet
+        (services/paiement/paiements/services.py), ce qui échouait
+        silencieusement (dégradation gracieuse côté Paiement) avant ce fix."""
+        facture_id = str(uuid.uuid4())
+        abonne_id = str(uuid.uuid4())
+
+        mock_fact.get_facture.return_value = _make_facture_mock(facture_id=facture_id, abonne_id=abonne_id)
+        mock_abonne.get_abonne.return_value = _make_abonne_mock(abonne_id=abonne_id)
+        mock_wa.send.return_value = None
+
         service = EnvoiService()
-        with self.assertRaises(ValidationError):
-            service.envoyer_relance("facture-id", "abonne-id", etape=0)
+        envoi = service.envoyer_relance(facture_id, abonne_id, etape=0)
+
+        self.assertEqual(envoi.statut, StatutEnvoi.ENVOYE)
+        self.assertEqual(envoi.type_envoi, TypeEnvoi.RETABLISSEMENT)
+        args, _ = mock_wa.send.call_args
+        self.assertIn("rétablie", args[1])
 
 
 class TestEnvoiServiceRenvoyer(TestCase):
