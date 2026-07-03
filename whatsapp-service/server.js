@@ -179,6 +179,20 @@ app.get('/qr', requireApiKey, async (_req, res) => {
     `);
 });
 
+// Version machine du QR (JSON) destinée à être relayée par notification-service
+// vers la Gateway, pour affichage dans l'UI admin. `qr` est une data-URL PNG
+// prête à mettre dans un <img src>, vide si déjà connecté ou en cours d'init.
+app.get('/qr-data', requireApiKey, async (_req, res) => {
+    if (isReady) {
+        return res.json({ ready: true, qr: '' });
+    }
+    if (!currentQr) {
+        return res.json({ ready: false, qr: '' });
+    }
+    const qrImage = await QRCode.toDataURL(currentQr);
+    res.json({ ready: false, qr: qrImage });
+});
+
 app.post('/send', requireApiKey, async (req, res) => {
     if (!isReady || !activeClient) {
         return res.status(503).json({

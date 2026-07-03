@@ -309,6 +309,9 @@ class NotificationServiceClient:
     def valider_token(self, token: str) -> notification_pb.ValiderTokenResponse:
         return self._stub.ValiderToken(notification_pb.ValiderTokenRequest(token=token))
 
+    def get_whatsapp_qr(self) -> notification_pb.WhatsAppQrResponse:
+        return self._stub.GetWhatsAppQr(notification_pb.EmptyRequest())
+
 
 auth_client = AuthServiceClient()
 abonne_client = AbonneServiceClient()
