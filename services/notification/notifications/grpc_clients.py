@@ -137,23 +137,23 @@ class ConfigServiceClient:
             return settings.DEFAULT_TOKEN_VALIDITE_JOURS
 
     def get_email_admin_notifications(self) -> str:
-        """Récupère l'email de notification admin (clé : EMAIL_ADMIN_NOTIFICATIONS).
+        """Récupère l'email de notification admin (clé : email_admin_notifications).
 
         Retourne une chaîne vide si la clé est absente ou le service indisponible.
         """
         try:
-            response = self._stub.GetConfig(self._pb.ConfigKeyRequest(cle="EMAIL_ADMIN_NOTIFICATIONS"))
+            response = self._stub.GetConfig(self._pb.ConfigKeyRequest(cle="email_admin_notifications"))
             return response.valeur.strip()
         except (grpc.RpcError, ValueError):
             return ""
 
     def get_notifications_admin_activees(self) -> bool:
-        """Vérifie si les notifications admin sont activées (clé : NOTIFICATIONS_ADMIN_ACTIVEES).
+        """Vérifie si les notifications admin sont activées (clé : notifications_admin_activees).
 
         Retourne True par défaut si la clé est absente ou le service indisponible.
         """
         try:
-            response = self._stub.GetConfig(self._pb.ConfigKeyRequest(cle="NOTIFICATIONS_ADMIN_ACTIVEES"))
+            response = self._stub.GetConfig(self._pb.ConfigKeyRequest(cle="notifications_admin_activees"))
             return response.valeur.strip().lower() not in ("false", "0", "non", "no")
         except (grpc.RpcError, ValueError):
             return True

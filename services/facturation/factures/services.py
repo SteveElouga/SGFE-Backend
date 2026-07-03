@@ -112,9 +112,12 @@ class FactureService:
             annee = date_releve.year
             mois = date_releve.month
 
-            numero = self._repo.build_numero(annee, mois)
-
             with transaction.atomic():
+                # build_numero(for_update=True) verrouille la dernière facture
+                # du mois jusqu'au commit de cette transaction, pour éviter
+                # que deux générations concurrentes calculent le même numéro
+                # séquentiel (voir ANO-007).
+                numero = self._repo.build_numero(annee, mois, for_update=True)
                 facture = self._repo.create(
                     abonne_id=releve.abonne_id,
                     campagne_id=campagne_id,
