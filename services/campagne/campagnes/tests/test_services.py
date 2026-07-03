@@ -1,11 +1,29 @@
 """Tests unitaires du Campagne Service — logique métier."""
 
+from types import SimpleNamespace
+from unittest.mock import patch
+
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.test import TestCase
 
+from campagnes.grpc_clients import AbonneServiceClient
 from campagnes.models import Campagne, StatutCampagne, StatutReleve
 from campagnes.repositories import CampagneAgentRepository, CampagneRepository
 from campagnes.services import CampagneService, ReleveService
+
+# ajouter_abonne_campagne vérifie désormais le statut ACTIF de l'abonné
+# (ANO-003) via un appel gRPC réel à Abonné Service. On patche cet appel
+# pour tout le module afin que les tests existants (non liés à cette
+# vérification) n'aient pas besoin d'un Abonné Service en cours d'exécution.
+_abonne_patcher = patch.object(AbonneServiceClient, "get_abonne", return_value=SimpleNamespace(statut="ACTIF"))
+
+
+def setUpModule() -> None:
+    _abonne_patcher.start()
+
+
+def tearDownModule() -> None:
+    _abonne_patcher.stop()
 
 
 class TestCampagneService(TestCase):
@@ -157,6 +175,24 @@ class TestCampagneService(TestCase):
         self.svc.ajouter_abonne_campagne(str(c.id), "abonne-001", ancien_index=0.0)
         with self.assertRaises(ValidationError):
             self.svc.ajouter_abonne_campagne(str(c.id), "abonne-001", ancien_index=0.0)
+
+    def test_ajouter_abonne_suspendu_leve_erreur(self) -> None:
+        """Régression ANO-003 : un abonné non ACTIF ne peut pas être ajouté à une campagne."""
+        c = self._creer_campagne(StatutCampagne.EN_COURS)
+        with patch.object(AbonneServiceClient, "get_abonne", return_value=SimpleNamespace(statut="SUSPENDU")):
+            with self.assertRaises(ValidationError):
+                self.svc.ajouter_abonne_campagne(str(c.id), "abonne-suspendu", ancien_index=0.0)
+
+    def test_ajouter_abonne_service_indisponible_leve_erreur(self) -> None:
+        """Régression ANO-003 : la vérification est bloquante, pas dégradée — si
+        Abonné Service est injoignable, l'ajout doit échouer plutôt que de
+        passer outre la règle métier obligatoire."""
+        import grpc
+
+        c = self._creer_campagne(StatutCampagne.EN_COURS)
+        with patch.object(AbonneServiceClient, "get_abonne", side_effect=grpc.RpcError("indisponible")):
+            with self.assertRaises(ValidationError):
+                self.svc.ajouter_abonne_campagne(str(c.id), "abonne-001", ancien_index=0.0)
 
 
 class TestReleveService(TestCase):
