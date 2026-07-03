@@ -38,10 +38,10 @@
 | Campagne Service        | 🟢 Fonctionnel                                     | 65 ✅                    | ANO-003 (statut ACTIF) corrigée — PR #20 ; ANO-004 (test `demarrer_maintenant`) corrigée — PR #16 |
 | Facturation Service     | 🟢 Fonctionnel                                     | 28 ✅                    | Numérotation séquentielle non verrouillée (ANO-007)                                |
 | Paiement Service        | 🟢 Fonctionnel, bien testé                         | 59 ✅                    | RAS majeur — service le plus robuste de l'audit                                    |
-| Notification Service    | 🟢 Fonctionnel                                     | 40 ✅                    | Endpoints whatsapp-service non authentifiés (ANO-005)                              |
+| Notification Service    | 🟢 Fonctionnel                                     | 40 ✅                    | RAS majeur                                                                          |
 | Config Service          | 🟢 Fonctionnel                                     | 29 ✅                    | ANO-001 (casse des clés) corrigée — PR #18                                         |
 | Reporting Service       | ⚪ **N'existe pas**                                 | —                       | Seul le `.proto` existe ; dossier `services/reporting/` absent                     |
-| whatsapp-service (Node) | 🟢 Fonctionnel                                     | — (pas de tests)        | Aucune authentification sur ses endpoints (ANO-005)                                |
+| whatsapp-service (Node) | 🟢 Fonctionnel                                     | — (pas de tests)        | ANO-005 (auth endpoints) corrigée — PR #21                                         |
 
 
 **Total : 439 tests exécutés à travers les 8 briques Python** (chiffre au moment de l'audit initial — voir §7 pour l'état courant). ANO-004 (régression sur `demarrer_maintenant`, gateway) a été corrigée directement sur la PR #16.
@@ -81,7 +81,7 @@
 - **Les contrats techniques sont respectés** : les 8 microservices Python exposent exactement les RPC déclarés dans leurs `.proto` respectifs (aucun écart trouvé sur les 8 services audités), et la Gateway consomme ces contrats sans divergence de schéma protobuf.
 - **La dégradation gracieuse est un pattern largement appliqué** (Config, Reporting absent, PDF manquant, WhatsApp indisponible) mais **appliquée de façon inégale** d'un client à l'autre (voir §5.8, Config Service) — certains appels ne catchent rien et laisseraient une erreur gRPC remonter brute.
 - **Le système n'était pas intuitivement cohérent sur un point précis et important** : le paramétrage métier via `updateConfig` (délais, validité de token) donnait l'illusion de fonctionner (la mutation GraphQL réussissait, la valeur était bien écrite en base côté Config Service) mais **n'avait aucun effet observable** côté Facturation/Paiement/Notification (ANO-001). ✅ Corrigé — PR #18.
-- **Deux failles de sécurité concrètes** ont été identifiées : IDOR sur le PDF de l'espace abonné public (ANO-002, ✅ corrigée — PR #19) et absence totale d'authentification sur le service whatsapp-service (ANO-005, en cours).
+- **Deux failles de sécurité concrètes** ont été identifiées, toutes deux corrigées : IDOR sur le PDF de l'espace abonné public (ANO-002, ✅ PR #19) et absence totale d'authentification sur le service whatsapp-service (ANO-005, ✅ PR #21).
 
 ---
 
@@ -156,11 +156,11 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 - **Cause** : le mock `assert_called_once_with(...)` n'avait pas été mis à jour après l'ajout de `demarrer_maintenant` au commit `29e91c7`. Confirmé par exécution réelle : `python manage.py test schema` → **84 tests, 1 échec**.
 - **Correctif appliqué** : `demarrer_maintenant=False` ajouté à l'assertion ; tests manquants ajoutés côté campagne-service pour la fonctionnalité elle-même (`test_creer_campagne_demarrer_maintenant_statut_en_cours`, `test_creer_campagne_sans_demarrer_maintenant_reste_planifiee`). Suites vérifiées : campagnes 64/64, schema (gateway) 84/84.
 
-**ANO-005 — whatsapp-service : endpoints HTTP sans authentification**
+**ANO-005 — whatsapp-service : endpoints HTTP sans authentification** — ✅ **RÉSOLU** (PR #21, branche `fix/ano-005-authentifier-whatsapp-service`)
 
 - **Fichier** : `whatsapp-service/server.js` (`/send`, `/send-with-pdf`, `/qr`, `/health`).
 - **Constat** : aucune clé API, aucun token, aucune restriction — protection uniquement par l'isolation réseau Docker/Kubernetes. En développement local, `docker-compose.yml` mappe `3000:3000` sur l'hôte, donc accessible sans contrôle depuis la machine locale (et potentiellement depuis le LAN).
-- **Correctif recommandé** : ajouter un header d'API-key partagé entre `notification-service`/`auth-service` et `whatsapp-service`, vérifié par un middleware Express.
+- **Correctif appliqué** : middleware `requireApiKey` (en-tête `X-Internal-Api-Key`, comparaison en temps constant) appliqué à `/qr`, `/send`, `/send-with-pdf` — `/health` reste public. `auth-service`/`notification-service` envoient désormais cet en-tête. Clé configurée via `WHATSAPP_INTERNAL_API_KEY` (docker-compose + `.env.example`). Si la clé n'est pas définie, dégradation en clair avec avertissement dans les logs (dev uniquement). Vérifié manuellement en démarrant le service réel (voir PR #21).
 
 **ANO-006 — Auth : pas de rotation du refresh token lors de** `RefreshToken`
 
@@ -393,6 +393,6 @@ Cet audit a mis en évidence des passages **obsolètes ou incohérents** dans le
 2. ✅ **ANO-002 corrigée** (PR #19) — IDOR sur le PDF de l'espace abonné.
 3. ✅ **ANO-004 corrigée** — poussé directement sur la PR #16 (`feature/campagne-demarrer-maintenant`).
 4. ✅ **ANO-003 corrigée** (PR #20) — vérification du statut ACTIF avant ajout en campagne, bloquante.
-5. **Ajouter une authentification basique à whatsapp-service (ANO-005)** avant tout déploiement au-delà du réseau Docker local.
+5. ✅ **ANO-005 corrigée** (PR #21) — authentification par clé partagée sur whatsapp-service.
 6. Planifier la mise à jour des documents obsolètes (§8) — en particulier `ARCHITECTURE.md` qui se contredit elle-même sur un point technique central (canal WhatsApp).
 7. Combler les trous de couverture de tests identifiés (ANO-022 et tests manquants sur `demarrer_maintenant`) avant que ces zones grossissent.
