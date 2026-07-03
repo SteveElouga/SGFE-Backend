@@ -57,10 +57,11 @@ class FactureService:
         self._repo = FactureRepository()
         self._tarif_repo = TarifRepository()
         # Import tardif pour éviter la circularité au niveau module
-        from .grpc_clients import NotificationServiceClient, PaiementServiceClient
+        from .grpc_clients import AbonneServiceClient, NotificationServiceClient, PaiementServiceClient
 
         self._paiement_client = PaiementServiceClient()
         self._notification_client = NotificationServiceClient()
+        self._abonne_client = AbonneServiceClient()
 
     def generer_factures(
         self,
@@ -159,6 +160,10 @@ class FactureService:
     def _generer_et_sauver_pdf(self, facture: Facture, societe: InfosSociete) -> str:
         """Génère le PDF et retourne son chemin. En cas d'erreur, log et retourne ''."""
         try:
+            # Identité de l'abonné pour l'affichage nominatif (dégradation
+            # gracieuse : None si Abonné Service est inaccessible → repli sur
+            # l'identifiant technique dans le gabarit).
+            identite = self._abonne_client.get_abonne(str(facture.abonne_id))
             donnees = DonneesFacture(
                 numero_facture=facture.numero_facture,
                 abonne_id=str(facture.abonne_id),
@@ -172,6 +177,15 @@ class FactureService:
                 date_releve=facture.date_releve.isoformat(),
                 date_limite_paiement=facture.date_limite_paiement.isoformat(),
                 date_generation=facture.date_generation.strftime("%d/%m/%Y %H:%M"),
+                numero_mobile_money=facture.numero_mobile_money,
+                numero_abonne=identite.numero_abonne if identite else "",
+                abonne_nom=identite.nom if identite else "",
+                abonne_prenom=identite.prenom if identite else "",
+                abonne_whatsapp=identite.telephone_whatsapp if identite else "",
+                abonne_adresse=identite.adresse if identite else "",
+                numero_compteur=identite.numero_compteur if identite else "",
+                quartier=identite.quartier if identite else "",
+                camp=identite.camp if identite else "",
             )
             return generer_pdf(donnees, societe, settings.PDF_STORAGE_DIR)
         except Exception:

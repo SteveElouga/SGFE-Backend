@@ -120,6 +120,8 @@ services:
         condition: service_started
       config-service:
         condition: service_started
+      abonne-service:
+        condition: service_started
     environment:
       DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
       DJANGO_DEBUG: "True"
@@ -135,6 +137,8 @@ services:
       CONFIG_GRPC_PORT: "50058"
       PAIEMENT_GRPC_HOST: paiement-service
       PAIEMENT_GRPC_PORT: "50055"
+      ABONNE_GRPC_HOST: abonne-service
+      ABONNE_GRPC_PORT: "50052"
       JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
       PDF_STORAGE_DIR: /app/pdfs
     ports:

@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends gcc libpq-dev \
+    && apt-get install -y --no-install-recommends gcc libpq-dev libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -20,6 +20,22 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH=/home/appuser/.local/bin:$PATH
 
 WORKDIR /app
+
+# Bibliothèques natives requises par WeasyPrint à l'exécution (Pango/Cairo/
+# GDK-PixBuf) + polices pour que le texte du PDF soit rendu (Liberation Sans
+# donne un rendu proche de la maquette, DejaVu couvre les glyphes manquants).
+# apt-get upgrade applique aussi les correctifs de sécurité publiés depuis la
+# construction de l'image de base (cohérent avec les autres services).
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libpangocairo-1.0-0 \
+    libcairo2 \
+    libgdk-pixbuf-2.0-0 \
+    libffi8 \
+    fonts-dejavu-core \
+    fonts-liberation2 \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --uid 1000 appuser
 
