@@ -10,7 +10,7 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import transaction
 
 from .models import Facture, StatutFacture, Tarif
-from .pdf_generator import DonneesFacture, InfosSociete, generer_pdf, lire_pdf
+from .pdf_generator import DonneesFacture, InfosSociete, build_historique, generer_pdf, lire_pdf
 from .repositories import FactureRepository, TarifRepository
 
 logger = logging.getLogger(__name__)
@@ -57,11 +57,17 @@ class FactureService:
         self._repo = FactureRepository()
         self._tarif_repo = TarifRepository()
         # Import tardif pour éviter la circularité au niveau module
-        from .grpc_clients import AbonneServiceClient, NotificationServiceClient, PaiementServiceClient
+        from .grpc_clients import (
+            AbonneServiceClient,
+            CampagneServiceClient,
+            NotificationServiceClient,
+            PaiementServiceClient,
+        )
 
         self._paiement_client = PaiementServiceClient()
         self._notification_client = NotificationServiceClient()
         self._abonne_client = AbonneServiceClient()
+        self._campagne_client = CampagneServiceClient()
 
     def generer_factures(
         self,
@@ -81,6 +87,10 @@ class FactureService:
             tarif = self._tarif_repo.get_actif()
         except ObjectDoesNotExist as exc:
             raise ValidationError("Aucun tarif actif — configurez un tarif avant de générer des factures.") from exc
+
+        # Récupéré une seule fois pour toute la campagne (dégradation gracieuse
+        # vers "" si Campagne Service est inaccessible — purement informatif).
+        campagne_nom = self._campagne_client.get_campagne_nom(campagne_id)
 
         factures: list[Facture] = []
 
@@ -132,7 +142,7 @@ class FactureService:
                     numero_facture=numero,
                     numero_mobile_money=numero_mobile_money,
                 )
-                pdf_path = self._generer_et_sauver_pdf(facture, societe)
+                pdf_path = self._generer_et_sauver_pdf(facture, societe, campagne_nom=campagne_nom)
                 self._repo.update_pdf_path(facture, pdf_path)
                 facture.pdf_path = pdf_path
 
@@ -157,7 +167,7 @@ class FactureService:
         )
         return factures
 
-    def _generer_et_sauver_pdf(self, facture: Facture, societe: InfosSociete) -> str:
+    def _generer_et_sauver_pdf(self, facture: Facture, societe: InfosSociete, campagne_nom: str = "") -> str:
         """Génère le PDF et retourne son chemin. En cas d'erreur, log et retourne ''."""
         try:
             # Identité de l'abonné pour l'affichage nominatif (dégradation
@@ -186,8 +196,15 @@ class FactureService:
                 numero_compteur=identite.numero_compteur if identite else "",
                 quartier=identite.quartier if identite else "",
                 camp=identite.camp if identite else "",
+                campagne_nom=campagne_nom,
             )
-            return generer_pdf(donnees, societe, settings.PDF_STORAGE_DIR)
+            historique = build_historique(
+                [
+                    (f.date_releve.isoformat(), f.consommation, f.id == facture.id)
+                    for f in self._repo.list_historique_consommation(str(facture.abonne_id))
+                ]
+            )
+            return generer_pdf(donnees, societe, settings.PDF_STORAGE_DIR, historique=historique)
         except Exception:
             logger.exception(
                 "Erreur lors de la génération PDF",
@@ -231,7 +248,8 @@ class FactureService:
 
         client = ConfigServiceClient()
         societe = client.get_infos_societe()
-        pdf_path = self._generer_et_sauver_pdf(facture, societe)
+        campagne_nom = self._campagne_client.get_campagne_nom(str(facture.campagne_id))
+        pdf_path = self._generer_et_sauver_pdf(facture, societe, campagne_nom=campagne_nom)
         if pdf_path:
             self._repo.update_pdf_path(facture, pdf_path)
 
