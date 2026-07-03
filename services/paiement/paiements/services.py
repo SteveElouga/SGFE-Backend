@@ -158,14 +158,21 @@ class PaiementService:
             etape=0,  # étape 0 = confirmation de paiement
         )
 
-    def suspendre_relances_si_partiel(self, solde: SoldeFacture, jours_suspension: int = 5) -> None:
+    def suspendre_relances_si_partiel(self, solde: SoldeFacture, jours_suspension: int | None = None) -> None:
         """
         Après paiement partiel : suspend les relances pendant N jours.
+
+        `jours_suspension` est lu depuis Config Service (clé
+        `impaye_suspension_relances`) lorsqu'il n'est pas fourni explicitement,
+        avec repli sur la valeur par défaut si le service est indisponible.
         """
         from datetime import timedelta  # noqa: PLC0415 — timedelta déjà dans stdlib
 
         if solde.statut != StatutSolde.PARTIELLE:
             return
+
+        if jours_suspension is None:
+            jours_suspension = int(ConfigServiceClient().get_delais_impayes()["suspension_relances"])
 
         try:
             suivi = self._suivi_repo.get_by_facture_id(solde.facture_id)
@@ -205,7 +212,6 @@ class ImpayeService:
         delai_avertissement: int = delais.get("avertissement", 7)
         delai_suspension: int = delais.get("suspension", 10)
         suspension_auto: bool = delais.get("suspension_auto", True)
-        suspension_relances: int = delais.get("suspension_relances", 5)
 
         impayes = self._solde_repo.list_impayes()
         logger.info("ImpayeChecker : %d factures impayées à traiter", len(impayes))
@@ -218,7 +224,6 @@ class ImpayeService:
                 delai_avertissement=delai_avertissement,
                 delai_suspension=delai_suspension,
                 suspension_auto=suspension_auto,
-                suspension_relances=suspension_relances,
             )
 
     def _escalader_facture(
@@ -229,7 +234,6 @@ class ImpayeService:
         delai_avertissement: int,
         delai_suspension: int,
         suspension_auto: bool,
-        suspension_relances: int,
     ) -> None:
         """Escalade une facture impayée selon son étape actuelle."""
         from django.utils import timezone
