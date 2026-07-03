@@ -31,7 +31,7 @@ facturation-eau/
 │   ├── campagne/               # Campagne Service — campagnes + relevés
 │   ├── facturation/            # Facturation Service — factures + PDF + tarifs
 │   ├── paiement/               # Paiement Service — paiements + impayés
-│   ├── notification/           # Notification Service — WhatsApp Telnyx + tokens
+│   ├── notification/           # Notification Service — WhatsApp (whatsapp-web.js) + tokens
 │   ├── reporting/              # Reporting Service — agrégateur read-only
 │   └── config/                 # Config Service — paramètres système
 │
@@ -97,7 +97,7 @@ gRPC             grpcio + grpcio-tools + grpc-stubs
 GraphQL          Strawberry (gateway) + Apollo Client (frontend)
 Base de données  PostgreSQL 16 (1 instance par service)
 PDF              ReportLab
-WhatsApp         Telnyx API
+WhatsApp         whatsapp-web.js (service Node.js auto-hébergé, compte dédié, zéro coût)
 E-mail           Brevo API (activation de compte, réinitialisation de mot de passe — 300/jour gratuits)
 Orchestration    Kubernetes + Minikube
 Conteneurs       Docker
@@ -268,9 +268,14 @@ SuspensionRequise (Paiement → Abonné + Notification)
     → Abonné Service (suspend l'abonné)
     → Notification Service (envoie WhatsApp étape 4)
 
-AbonneCreated (Abonné → Campagne)
-  Abonné Service notifie :
-    → Campagne Service (ajoute à la campagne en cours si existante)
+Vérification du statut abonné (Campagne → Abonné)
+  Au moment de la saisie d'un index (ajout d'un abonné à une campagne),
+  Campagne Service interroge synchroniquement Abonné Service
+  (GetAbonne) pour vérifier que l'abonné est ACTIF avant de créer le
+  relevé — appel gRPC à la demande, pas un événement poussé par Abonné
+  Service. Abonné Service publie par ailleurs ABONNE_CREATED/ABONNE_UPDATED
+  sur Redis pub/sub, mais ce canal n'est consommé que par la Gateway
+  (subscriptions GraphQL temps réel), jamais par Campagne Service.
 ```
 
 ---
@@ -414,10 +419,10 @@ le même domaine.
 | Modifier les paramètres | ✅ | ❌ | ❌ | ❌ |
 
 `SUPERVISEUR` ne voit/gère jamais les campagnes créées par un autre
-utilisateur (filtrage par `campagne.created_by`) — à appliquer au niveau
-des resolvers/repositories de `campagne-service` lors de son implémentation
-(le filtrage par propriétaire n'existe pas encore tant que ce service n'est
-pas construit).
+utilisateur (filtrage par `campagne.created_by`) — implémenté côté
+Gateway (`gateway/schema/campagne_queries.py`, `_verifier_acces_campagne`)
+et relayé via le paramètre `created_by` de `ListCampagnesRequest` côté
+`campagne-service` (`campagnes/repositories.py::list_all`).
 
 ---
 

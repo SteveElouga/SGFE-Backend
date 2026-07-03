@@ -1,4 +1,5 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
+const crypto = require('crypto');
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -10,6 +11,33 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 const SESSION_PATH = process.env.SESSION_PATH || '/app/session';
+const INTERNAL_API_KEY = process.env.WHATSAPP_INTERNAL_API_KEY || '';
+
+if (!INTERNAL_API_KEY) {
+    console.warn(
+        '[WhatsApp] WHATSAPP_INTERNAL_API_KEY non définie — /qr, /send et /send-with-pdf ' +
+        'sont accessibles sans authentification. À définir avant tout déploiement au-delà ' +
+        'du réseau Docker local (voir ANO-005).'
+    );
+}
+
+/**
+ * Protège les endpoints sensibles (QR code, envoi de messages) avec une clé
+ * partagée entre ce service et ses appelants (auth-service, notification-service).
+ * Comparaison en temps constant pour éviter les attaques par timing.
+ */
+function requireApiKey(req, res, next) {
+    if (!INTERNAL_API_KEY) return next(); // non configurée — dégradation dev uniquement
+
+    const provided = Buffer.from(req.get('X-Internal-Api-Key') || '');
+    const expected = Buffer.from(INTERNAL_API_KEY);
+    const valid = provided.length === expected.length && crypto.timingSafeEqual(provided, expected);
+
+    if (!valid) {
+        return res.status(401).json({ success: false, error: 'Clé API interne invalide ou manquante' });
+    }
+    next();
+}
 
 // Répertoire Chromium créé par LocalAuth (sans clientId → nom "session")
 const CHROMIUM_USER_DATA_DIR = path.join(SESSION_PATH, 'session');
@@ -128,7 +156,7 @@ app.get('/health', (_req, res) => {
     res.json({ ready: isReady });
 });
 
-app.get('/qr', async (_req, res) => {
+app.get('/qr', requireApiKey, async (_req, res) => {
     if (isReady) {
         return res.send('<p style="font-family:sans-serif;color:green">✓ WhatsApp connecté</p>');
     }
@@ -151,7 +179,7 @@ app.get('/qr', async (_req, res) => {
     `);
 });
 
-app.post('/send', async (req, res) => {
+app.post('/send', requireApiKey, async (req, res) => {
     if (!isReady || !activeClient) {
         return res.status(503).json({
             success: false,
@@ -176,7 +204,7 @@ app.post('/send', async (req, res) => {
     }
 });
 
-app.post('/send-with-pdf', async (req, res) => {
+app.post('/send-with-pdf', requireApiKey, async (req, res) => {
     if (!isReady || !activeClient) {
         return res.status(503).json({
             success: false,
