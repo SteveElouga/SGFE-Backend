@@ -19,6 +19,7 @@ from notifications.message_builder import (
     build_message_relance_2,
     build_message_relance_3,
     build_message_relance_4,
+    build_message_retablissement,
 )
 from notifications.models import Envoi, StatutEnvoi, TokenAcces, TypeEnvoi
 from notifications.repositories import EnvoiRepository, TokenAccesRepository
@@ -27,7 +28,10 @@ from notifications.whatsapp_client import WhatsAppDeliveryError, whatsapp_client
 logger = logging.getLogger(__name__)
 
 # Correspondance étape → TypeEnvoi
+# Étape 0 = confirmation de paiement / rétablissement (EF-IMP-005), envoyée
+# par Paiement Service lorsqu'une facture passe au statut PAYÉE.
 _ETAPE_TO_TYPE: dict[int, str] = {
+    0: TypeEnvoi.RETABLISSEMENT,
     1: TypeEnvoi.RELANCE_1,
     2: TypeEnvoi.RELANCE_2,
     3: TypeEnvoi.AVERTISSEMENT,
@@ -147,19 +151,19 @@ class EnvoiService:
         return self.envoyer_facture(facture_id, abonne_id)
 
     def envoyer_relance(self, facture_id: str, abonne_id: str, etape: int) -> Envoi:
-        """Envoie le message de relance correspondant à l'étape (1 à 4).
+        """Envoie le message de relance (ou de rétablissement) correspondant à l'étape (0 à 4).
 
         Args:
-            facture_id: Identifiant de la facture impayée.
+            facture_id: Identifiant de la facture.
             abonne_id: Identifiant de l'abonné.
-            etape: Étape de relance (1 = rappel doux, 2 = rappel ferme,
-                   3 = avertissement, 4 = suspension).
+            etape: Étape de relance (0 = confirmation de paiement / rétablissement,
+                   1 = rappel doux, 2 = rappel ferme, 3 = avertissement, 4 = suspension).
 
         Raises:
-            ValidationError: Si l'étape est hors de la plage [1, 4].
+            ValidationError: Si l'étape est hors de la plage [0, 4].
         """
         if etape not in _ETAPE_TO_TYPE:
-            raise ValidationError(f"Étape de relance invalide : {etape}. Les étapes valides sont 1, 2, 3 et 4.")
+            raise ValidationError(f"Étape de relance invalide : {etape}. Les étapes valides sont 0, 1, 2, 3 et 4.")
 
         facture = facturation_client.get_facture(facture_id)
         abonne = abonne_client.get_abonne(abonne_id)
@@ -168,7 +172,12 @@ class EnvoiService:
         telephone = abonne.telephone_whatsapp
         periode = _periode_from_date(facture.date_releve)
 
-        if etape == 1:
+        if etape == 0:
+            message = build_message_retablissement(
+                prenom_nom=prenom_nom,
+                montant=facture.montant,
+            )
+        elif etape == 1:
             # Pour la relance 1, on inclut le lien de l'espace abonné
             tokens_actifs = self._tokens.list_active_by_facture(facture_id)
             if tokens_actifs:
