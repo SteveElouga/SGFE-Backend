@@ -59,6 +59,7 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
                 numero_mobile_money=request.numero_mobile_money,
                 generer_factures_auto=request.generer_factures_auto,
                 envoyer_whatsapp_auto=request.envoyer_whatsapp_auto,
+                demarrer_maintenant=request.demarrer_maintenant,
             )
             return campagne_to_proto(campagne)
         except ValidationError as exc:

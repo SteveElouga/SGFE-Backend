@@ -16,9 +16,7 @@ class InfosSocieteServiceTests(TestCase):
         self.assertEqual(infos.nom, "")
 
     def test_get_returns_existing_singleton(self):
-        InfosSociete.objects.create(
-            pk=1, nom="SGFE", adresse="Yaoundé", telephone="+237"
-        )
+        InfosSociete.objects.create(pk=1, nom="SGFE", adresse="Yaoundé", telephone="+237")
         infos = self.service.get()
         self.assertEqual(infos.nom, "SGFE")
 
@@ -55,25 +53,25 @@ class ConfigServiceTests(TestCase):
         self.service = ConfigService()
 
     def test_get_known_key_returns_default_if_absent(self):
-        param = self.service.get("DELAI_PAIEMENT_JOURS")
-        self.assertEqual(param.cle, "DELAI_PAIEMENT_JOURS")
+        param = self.service.get("delai_paiement_jours")
+        self.assertEqual(param.cle, "delai_paiement_jours")
         self.assertEqual(param.valeur, "5")
 
     def test_get_creates_record_in_db(self):
-        self.service.get("TOKEN_VALIDITE_JOURS")
-        self.assertTrue(ConfigParam.objects.filter(cle="TOKEN_VALIDITE_JOURS").exists())
+        self.service.get("token_validite_jours")
+        self.assertTrue(ConfigParam.objects.filter(cle="token_validite_jours").exists())
 
     def test_get_unknown_key_raises(self):
         with self.assertRaises(ObjectDoesNotExist):
             self.service.get("CLE_INCONNUE")
 
     def test_update_known_key_changes_value(self):
-        param = self.service.update("DELAI_PAIEMENT_JOURS", "10")
+        param = self.service.update("delai_paiement_jours", "10")
         self.assertEqual(param.valeur, "10")
 
     def test_update_persists_to_db(self):
-        self.service.update("DELAI_PAIEMENT_JOURS", "7")
-        param = ConfigParam.objects.get(cle="DELAI_PAIEMENT_JOURS")
+        self.service.update("delai_paiement_jours", "7")
+        param = ConfigParam.objects.get(cle="delai_paiement_jours")
         self.assertEqual(param.valeur, "7")
 
     def test_update_unknown_key_raises(self):
@@ -97,15 +95,17 @@ class ConfigServiceTests(TestCase):
         self.assertEqual(ConfigParam.objects.count(), len(CONFIG_DEFAULTS))
 
     def test_suspension_auto_default_is_true(self):
-        param = self.service.get("SUSPENSION_AUTO_ACTIVE")
+        param = self.service.get("impaye_suspension_auto")
         self.assertEqual(param.valeur, "true")
 
     def test_relance_etapes_defaults(self):
+        # Alignées sur docs/SRS.md EF-IMP-002 (J+0/J+3/J+7/J+10) et sur les
+        # noms de clés attendus par Paiement Service (grpc_clients.py).
         expected = {
-            "RELANCE_ETAPE_1_JOURS": "0",
-            "RELANCE_ETAPE_2_JOURS": "3",
-            "RELANCE_ETAPE_3_JOURS": "7",
-            "RELANCE_ETAPE_4_JOURS": "14",
+            "impaye_delai_rappel_1": "0",
+            "impaye_delai_rappel_2": "3",
+            "impaye_delai_avertissement": "7",
+            "impaye_delai_suspension": "10",
         }
         for cle, valeur_attendue in expected.items():
             self.assertEqual(self.service.get(cle).valeur, valeur_attendue)

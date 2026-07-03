@@ -140,6 +140,7 @@ class TestCampagneMutations(SimpleTestCase):
             numero_mobile_money="",
             generer_factures_auto=True,
             envoyer_whatsapp_auto=True,
+            demarrer_maintenant=False,
         )
 
     @patch("schema.campagne_mutations.campagne_client")

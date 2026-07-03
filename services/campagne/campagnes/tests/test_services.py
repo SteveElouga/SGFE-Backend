@@ -60,6 +60,26 @@ class TestCampagneService(TestCase):
         self.assertEqual(c.periode_mois, 3)
         self.assertEqual(c.created_by, self.created_by)
 
+    def test_creer_campagne_demarrer_maintenant_statut_en_cours(self) -> None:
+        c = self.svc.creer_campagne(
+            nom="Campagne Immédiate",
+            periode_mois=7,
+            periode_annee=2026,
+            created_by=self.created_by,
+            demarrer_maintenant=True,
+        )
+        self.assertEqual(c.statut, StatutCampagne.EN_COURS)
+
+    def test_creer_campagne_sans_demarrer_maintenant_reste_planifiee(self) -> None:
+        c = self.svc.creer_campagne(
+            nom="Campagne Planifiée",
+            periode_mois=7,
+            periode_annee=2026,
+            created_by=self.created_by,
+            demarrer_maintenant=False,
+        )
+        self.assertEqual(c.statut, StatutCampagne.PLANIFIEE)
+
     def test_creer_campagne_nom_vide_leve_erreur(self) -> None:
         with self.assertRaises(ValidationError):
             self.svc.creer_campagne(
