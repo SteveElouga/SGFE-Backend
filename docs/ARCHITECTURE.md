@@ -104,9 +104,9 @@ Ce niveau montre le système dans son environnement : qui l'utilise et avec quel
             │               │               │
             ▼               ▼               ▼
     ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-    │   TELNYX     │ │    ngrok     │ │   MacBook    │
-    │  WhatsApp    │ │  (tunnel     │ │  (serveur    │
-    │    API       │ │   HTTPS)     │ │   physique)  │
+    │  WhatsApp    │ │    ngrok     │ │   MacBook    │
+    │  Web (compte │ │  (tunnel     │ │  (serveur    │
+    │  dédié)      │ │   HTTPS)     │ │   physique)  │
     └──────────────┘ └──────────────┘ └──────────────┘
 ```
 
@@ -152,7 +152,8 @@ Ce niveau montre la décomposition technique du système en services déployable
 │ SERVICE      │ │ SERVICE      │ │ SERVICE      │ │ SERVICE      │
 │              │ │              │ │              │ │              │
 │ Django+gRPC  │ │ Django+gRPC  │ │ Django+gRPC  │ │ Django+gRPC  │
-│ + cron jobs  │ │ + Telnyx API │ │ Read-only    │ │              │
+│ + cron jobs  │ │ + whatsapp-  │ │ Read-only    │ │              │
+│              │ │   web.js     │ │              │ │              │
 │ PostgreSQL   │ │ PostgreSQL   │ │ PostgreSQL   │ │ PostgreSQL   │
 └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘
 ```
@@ -298,17 +299,20 @@ Paiement Service
 ```
 Notification Service
 ├── gRPC Server
-│     └── Implémente NotificationServiceServicer
+│     └── Implémente NotificationServiceServicer (EnvoyerFacture, EnvoyerRelance,
+│         ReenvoyerFacture, ValiderToken, RevoquerToken, NotifierAdmins, ...)
 ├── Domain Layer
-│     ├── EnvoiManager (orchestration des envois)
-│     ├── TokenManager (génération, validation, révocation UUID)
+│     ├── EnvoiService (orchestration des envois)
+│     ├── TokenService (génération, validation, révocation UUID)
 │     └── MessageBuilder (construction des messages WhatsApp)
-├── Telnyx Adapter
-│     └── TelnyxClient (envoi message texte + PDF)
-├── Retry Handler
-│     └── 3 tentatives automatiques en cas d'échec
-├── Event Consumer
-│     └── Consomme FactureGeneree, RelanceRequise, CampagnePlanifieeJ1, CampagnePlanifieeJ, SuspensionRequise
+├── WhatsApp Client
+│     └── WhatsAppWebClient — client HTTP vers whatsapp-service (Node.js,
+│         whatsapp-web.js), pas d'API tierce payante
+├── Appelants synchrones (pas de bus d'événements)
+│     └── Chaque déclenchement (facture générée, relance impayé, campagne
+│         démarrée, abonné suspendu) est un appel gRPC direct émis par le
+│         service concerné (Facturation, Paiement, Campagne) — il n'existe
+│         pas de file d'attente/event consumer intermédiaire
 └── Repository Layer
       ├── EnvoiRepository
       └── TokenAccesRepository
@@ -590,7 +594,7 @@ MACBOOK PRO (serveur physique)
 │     └── Secrets (données sensibles)
 │           ├── postgres-credentials
 │           ├── jwt-secret
-│           └── telnyx-api-key
+│           └── whatsapp-internal-api-key
 │
 └── ngrok
       └── Tunnel HTTPS → api-gateway-service:8000
@@ -904,7 +908,7 @@ CREATE TABLE envois (
     statut              VARCHAR(20) NOT NULL DEFAULT 'EN_ATTENTE'
                         CHECK (statut IN ('EN_ATTENTE', 'ENVOYE', 'ECHEC')),
     date_envoi          TIMESTAMP WITH TIME ZONE,
-    telnyx_message_id   VARCHAR(100),
+    telnyx_message_id   VARCHAR(100),  -- champ legacy hérité d'une conception Telnyx antérieure, jamais renseigné (le canal réel est whatsapp-web.js)
     erreur              TEXT,
     tentatives          INTEGER DEFAULT 0,
     created_at          TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -990,8 +994,6 @@ CREATE TABLE config_app (
 );
 
 -- Valeurs par défaut insérées au démarrage :
--- telnyx_api_key            → (à configurer)
--- whatsapp_numero           → (à configurer)
 -- delai_paiement_jours      → 5
 -- token_validite_jours      → 20
 -- impaye_delai_rappel_1     → 0
@@ -1636,6 +1638,13 @@ message ListConfigsResponse { repeated ConfigResponse configs = 1; }
 
 ## 10. Schéma GraphQL
 
+> **Note de fraîcheur (ANO-012, voir `docs/ETAT_DU_SYSTEME.md`) :** ce schéma est
+> maintenu manuellement et peut diverger du code réel (`gateway/schema/*.py`)
+> au fil des évolutions. Les divergences connues au 2026-07-03 ont été
+> corrigées ci-dessous ; en cas de doute, le code reste la source de vérité —
+> chaque opération correspond à une méthode `@strawberry.field`/`@strawberry.mutation`
+> dans le fichier `*_queries.py`/`*_mutations.py` du domaine concerné.
+
 ```graphql
 # ===================== TYPES =====================
 
@@ -1763,9 +1772,11 @@ type Paiement {
   createdAt: String!
 }
 
-enum ModePaiement { ESPECES MOBILE_MONEY VIREMENT }
+# ModePaiement n'est pas un enum GraphQL côté schéma réel — modePaiement est
+# une simple chaîne ("ESPECES" / "MOBILE_MONEY" / "VIREMENT") côté mutation
+# enregistrerPaiement.
 
-type Solde {
+type SoldeFacture {
   factureId: ID!
   montantTotal: Float!
   montantPaye: Float!
@@ -1776,10 +1787,12 @@ type Solde {
 type Envoi {
   id: ID!
   factureId: ID!
+  abonneId: ID!
   typeEnvoi: String!
   statut: StatutEnvoi!
   dateEnvoi: String
   erreur: String
+  telnyxMessageId: String  # champ legacy hérité d'une conception Telnyx antérieure, jamais renseigné (le canal réel est whatsapp-web.js)
 }
 
 enum StatutEnvoi { EN_ATTENTE ENVOYE ECHEC }
@@ -1864,6 +1877,9 @@ input CreateCampagneInput {
   periodeMois: Int!
   periodeAnnee: Int!
   datePlanifiee: String
+  numeroMobileMoney: String
+  genererFacturesAuto: Boolean  # défaut true
+  envoyerWhatsappAuto: Boolean  # défaut true
 }
 
 input SaisirIndexInput {
@@ -1880,13 +1896,9 @@ input MarquerNonReleveInput {
   observation: String!
 }
 
-input PaiementInput {
-  factureId: ID!
-  montant: Float!
-  datePaiement: String!
-  modePaiement: ModePaiement!
-  referenceTransaction: String
-}
+# Remarque : enregistrerPaiement (ci-dessous) prend ces champs en arguments
+# scalaires directs, pas via un input type groupé — modePaiement y est une
+# simple chaîne (pas d'enum ModePaiement côté schéma réel).
 
 input UpdateCompteurInput {
   quartier: String
@@ -1927,9 +1939,9 @@ type Query {
   tarifActuel: Tarif
 
   # Paiements
-  solde(factureId: ID!): Solde
+  soldeFacture(factureId: ID!): SoldeFacture
   paiements(factureId: ID!): [Paiement!]!
-  impayes: [Solde!]!
+  impayes: [SoldeFacture!]!
 
   # Notifications
   envois(factureId: ID): [Envoi!]!
@@ -1979,20 +1991,28 @@ type Mutation {
   remplacerCompteur(abonneId: ID!, input: RemplacerCompteurInput!): Compteur!
 
   # Campagnes
-  createCampagne(input: CreateCampagneInput!): Campagne!
+  creerCampagne(input: CreateCampagneInput!): Campagne!
+  affecterAgent(campagneId: ID!, agentId: ID!): Campagne!
   saisirIndex(input: SaisirIndexInput!): Releve!
   marquerNonReleve(input: MarquerNonReleveInput!): Releve!
-  cloturerCampagne(id: ID!): Campagne!
+  cloturerCampagne(campagneId: ID!): Campagne!
 
   # Facturation
-  updateTarif(prixM3: Float!): Tarif!
+  updateTarif(prixM3: Float!, dateEffet: String!): Tarif!
 
   # Paiements
-  enregistrerPaiement(input: PaiementInput!): Paiement!
+  enregistrerPaiement(
+    factureId: ID!
+    abonneId: ID!
+    montant: Float!
+    datePaiement: String!
+    modePaiement: String!
+    referenceTransaction: String
+  ): Paiement!
 
   # Notifications
-  envoyerFacture(factureId: ID!): Envoi!
-  reenvoyerFacture(factureId: ID!): Envoi!
+  envoyerFactureWhatsapp(factureId: ID!, abonneId: ID!): Envoi!
+  renvoyerFactureWhatsapp(factureId: ID!): Envoi!
 
   # Configuration (ADMIN uniquement)
   updateInfosSociete(input: InfosSocieteInput!): InfosSociete!
@@ -2127,7 +2147,7 @@ fermeture de la connexion WebSocket.
 **Secrets :**
 - Stockés dans des Kubernetes Secrets (base64 encodé)
 - Jamais dans le code source ni dans les ConfigMaps
-- Clé JWT, credentials PostgreSQL, clé API Telnyx
+- Clé JWT, credentials PostgreSQL, clé interne whatsapp-service (`WHATSAPP_INTERNAL_API_KEY`)
 
 ### 11.2 Logging
 
@@ -2478,16 +2498,17 @@ kubectl port-forward svc/prometheus-service 9090:9090
 
 Étape 2 — Grafana Logs (Loki)
   → Filtre : {service="notification-service"} |= "ERROR" | timestamp >= 14h32
-  → Log trouvé : "Telnyx API timeout after 3 retries"
+  → Log trouvé : "WhatsAppDeliveryError: Service WhatsApp inaccessible"
   → trace_id extrait : "def456ghi789"
 
 Étape 3 — Jaeger Traces
   → Recherche par trace_id : def456ghi789
-  → Trace complète : api-gateway → facturation-service → notification-service
-  → notification-service : 15 secondes (timeout Telnyx)
-  → Cause identifiée : latence réseau vers l'API Telnyx
+  → Trace complète : api-gateway → facturation-service → notification-service → whatsapp-service
+  → notification-service → whatsapp-service : timeout à 15s (POST /send)
+  → Cause identifiée : whatsapp-service indisponible ou session WhatsApp Web déconnectée
 
-Résolution : Ajuster le timeout Telnyx dans la configuration
+Résolution : Vérifier /health sur whatsapp-service, re-scanner le QR code
+             sur /qr si la session s'est déconnectée
              Vérifier la connectivité réseau du MacBook
 ```
 
@@ -2501,7 +2522,7 @@ Résolution : Ajuster le timeout Telnyx dans la configuration
 |---|---|---|---|---|
 | R-001 | MacBook éteint = application inaccessible | Haute | Haute | Procédure de redémarrage documentée, ngrok en autostart |
 | R-002 | URL ngrok change à chaque redémarrage (tier gratuit) | Haute | Moyenne | Upgrader ngrok ou fixer le domaine (ngrok payant) |
-| R-003 | Blocage du compte Telnyx (abus) | Faible | Haute | Limiter les envois, monitor les échecs |
+| R-003 | Bannissement/déconnexion du compte WhatsApp Web dédié (détection automatisation ou abus) | Faible | Haute | Limiter les envois, monitorer les échecs, ré-authentification par QR code |
 | R-004 | Corruption d'une base PostgreSQL | Faible | Haute | Sauvegardes automatiques quotidiennes |
 | R-005 | Complexité gRPC + Kubernetes sur MacBook | Haute | Moyenne | Documentation détaillée, Docker Compose en fallback |
 

@@ -69,9 +69,9 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
         return envoi_to_proto(envoi)
 
     def EnvoyerRelance(self, request, context):
-        """Envoie un message de relance (étapes 1 à 4).
+        """Envoie un message de relance ou de rétablissement (étapes 0 à 4).
 
-        Lève INVALID_ARGUMENT si l'étape est hors de la plage [1, 4].
+        Lève INVALID_ARGUMENT si l'étape est hors de la plage [0, 4].
         En cas d'échec WhatsApp, retourne un EnvoiResponse ECHEC.
         """
         envoi = self._envoi_service.envoyer_relance(
