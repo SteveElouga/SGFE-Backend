@@ -32,19 +32,19 @@
 
 | Brique                  | Statut                                             | Tests                   | Points d'attention majeurs                                                         |
 | ----------------------- | -------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------- |
-| Gateway (GraphQL)       | 🟢 Fonctionnel, riche                              | 103 ✅                   | ANO-002 (IDOR PDF), ANO-015 (subscription non protégée) et ANO-022 (trous de couverture facturation/paiement/notification) corrigées — PR #19, #28, #33 |
-| Auth Service            | 🟢 Fonctionnel, solide                             | 89 ✅                    | RAS majeur — ANO-006 (rotation refresh token) corrigée, PR #22                     |
-| Abonné Service          | 🟢 Fonctionnel, propre                             | 49 ✅                    | RAS majeur — ANO-003bis (doc CLAUDE.md) corrigée, PR #25            |
-| Campagne Service        | 🟢 Fonctionnel                                     | 65 ✅                    | ANO-003 (statut ACTIF) corrigée — PR #20 ; ANO-004 (test `demarrer_maintenant`) corrigée — PR #16 |
-| Facturation Service     | 🟢 Fonctionnel                                     | 33 ✅                    | RAS majeur — ANO-007 et ANO-008 corrigées (PR #23, #24)                            |
-| Paiement Service        | 🟢 Fonctionnel, bien testé                         | 59 ✅                    | RAS majeur — service le plus robuste de l'audit                                    |
-| Notification Service    | 🟢 Fonctionnel                                     | 40 ✅                    | RAS majeur                                                                          |
+| Gateway (GraphQL)       | 🟢 Fonctionnel, riche                              | 84 → 112 une fois mergé  | ANO-002 (IDOR PDF), ANO-015 (subscription non protégée) et ANO-022 (trous de couverture facturation/paiement/notification) corrigées — PR #19 (+6), #28 (+3), #33 (+19) |
+| Auth Service            | 🟢 Fonctionnel, solide                             | 88 → 94 une fois mergé   | ANO-006 (rotation refresh token) corrigée — PR #22 (+1) ; ANO-020 (Logout homogène) — PR #32 ; ANO-014/024 (duplication + parsing whatsapp_client) — PR #27 (+5) |
+| Abonné Service          | 🟢 Fonctionnel, propre                             | 49 → 52 une fois mergé   | ANO-003bis (doc CLAUDE.md) — PR #25 ; ANO-017 (contrainte compteur actif) — PR #29 (+3)            |
+| Campagne Service        | 🟢 Fonctionnel                                     | 62 → 69 une fois mergé   | ANO-003 — PR #20 (+3), ANO-018 — PR #30 (+3), ANO-019 — PR #31 (+1) ; ANO-004 (test `demarrer_maintenant`) corrigée directement sur PR #16 (branche indépendante, hors périmètre `develop`, 64 tests) |
+| Facturation Service     | 🟢 Fonctionnel                                     | 28 → 33 une fois mergé   | ANO-007 — PR #23 (+4), ANO-008 — PR #24 (+1)                                       |
+| Paiement Service        | 🟢 Fonctionnel, bien testé                         | 59 ✅                    | RAS majeur — service le plus robuste de l'audit ; ANO-023 (code mort) — PR #34     |
+| Notification Service    | 🟢 Fonctionnel                                     | 40 → 46 une fois mergé   | ANO-013 (confirmation paiement WhatsApp jamais envoyée) — PR #26 ; ANO-014/024 — PR #27 (+6)       |
 | Config Service          | 🟢 Fonctionnel                                     | 29 ✅                    | ANO-001 (casse des clés) corrigée — PR #18                                         |
 | Reporting Service       | ⚪ **N'existe pas**                                 | —                       | Seul le `.proto` existe ; dossier `services/reporting/` absent                     |
 | whatsapp-service (Node) | 🟢 Fonctionnel                                     | — (pas de tests)        | ANO-005 (auth endpoints) corrigée — PR #21                                         |
 
 
-**Total : 439 tests exécutés à travers les 8 briques Python** (chiffre au moment de l'audit initial — voir §7 pour l'état courant). ANO-004 (régression sur `demarrer_maintenant`, gateway) a été corrigée directement sur la PR #16.
+**Total : 439 tests exécutés à travers les 8 briques Python** (chiffre au moment de l'audit initial, sur `develop`). Toutes les PR de correctifs ouvertes lors de la campagne de résolution (§4) restent **non mergées** (décision explicite : PR laissées ouvertes pour revue humaine) — les colonnes « Tests » ci-dessus indiquent donc `develop` → total projeté une fois ces PR mergées. Voir §7 pour le détail des suites vérifiées par exécution réelle.
 
 **Le point le plus important de cet audit** : le système *semble* cohérent en surface (contrats gRPC respectés à 100 %, dégradation gracieuse quasi partout, bonne couverture de tests), mais un bug de configuration silencieux (**ANO-001**) fait qu'une partie du paramétrage métier exposé à l'ADMIN (délais de paiement, validité des tokens, délais de relance impayés) **n'a aucun effet réel** — le système tourne en permanence sur des valeurs par défaut codées en dur, jamais sur les valeurs configurées. C'est le genre d'incohérence qu'aucun test unitaire par service ne peut détecter, car chaque service se teste avec son propre mock du Config Service.
 
@@ -230,14 +230,14 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **Authentification** : le token JWT n'est **jamais décodé localement** — chaque requête protégée déclenche un appel gRPC `ValidateToken` vers Auth Service (`schema/context.py:49-54`), qui reste l'unique source de vérité sur l'identité et le rôle. Le refresh token vit dans un cookie `HttpOnly + Secure(si prod) + SameSite=Strict` (`schema/context.py:34-42`), jamais renvoyé dans le corps GraphQL.
 
-**Surface GraphQL réelle** (voir aussi §6 de `docs/ARCHITECTURE.md`, à corriger — ANO-012) :
+**Surface GraphQL réelle** (voir aussi §6 de `docs/ARCHITECTURE.md`, corrigé — ANO-012 résolu, PR #25, en attente de merge) :
 
 - **23 queries**, **31 mutations**, **1 subscription** (`abonneUpdated`, sur Redis pub/sub, exige ADMIN depuis ANO-015 résolu).
 - Contrôle de rôle systématique via `require_role(info, *roles)` sur toutes les opérations sensibles, y compris désormais `abonneUpdated` (ANO-015). Seule exception volontaire : `infosSociete` (public — sert à alimenter les PDF).
 - Filtrage SUPERVISEUR/AGENT par propriété de campagne implémenté et testé (`campagne_queries.py:11-29`).
-- Espace abonné public tokenisé : 2 vues Django classiques (pas GraphQL), `GET /espace-abonne/<token>/` (liste des factures) et `GET /espace-abonne/<token>/facture/<id>/pdf/` (téléchargement — **IDOR, ANO-002**).
+- Espace abonné public tokenisé : 2 vues Django classiques (pas GraphQL), `GET /espace-abonne/<token>/` (liste des factures) et `GET /espace-abonne/<token>/facture/<id>/pdf/` (téléchargement — IDOR corrigé, ANO-002 résolu, PR #19, en attente de merge).
 
-**Tests** : 103 tests (`gateway/schema/tests/`), tous verts sur `develop`. Bonne couverture sur auth/abonne/campagne/config/facturation/paiement/notification (ANO-022 résolu, PR #33) ; `espace_abonne.py` et `subscriptions.py` restent sans test sur `develop` tant que les PR #19 et #28 ne sont pas mergées.
+**Tests** : 84 tests (`gateway/schema/tests/`) sur `develop`, tous verts. Trois PR ouvertes ajoutent chacune leur propre couverture, non encore mergée : PR #19 porte `espace_abonne.py` (ANO-002, +6 tests), PR #28 porte `subscriptions.py` (ANO-015, +3 tests), PR #33 porte facturation/paiement/notification (ANO-022, +19 tests) — 112 tests au total une fois les trois mergées.
 
 ### 5.2 Auth Service (`services/auth/`)
 
@@ -255,7 +255,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **Rôle** : gestion des abonnés (numérotation auto `AB-XXXX`) et de leurs compteurs (avec historique de remplacement).
 
-**Modèle** : `Abonne` (statut `ACTIF`/`SUSPENDU`/`RESILIE` — pas de retour possible depuis `RESILIE`), `Compteur` (statut `ACTIF`/`REMPLACE`/`DESACTIVE`, ce dernier jamais utilisé), `HistoriqueCompteur`.
+**Modèle** : `Abonne` (statut `ACTIF`/`SUSPENDU`/`RESILIE` — pas de retour possible depuis `RESILIE`), `Compteur` (statut `ACTIF`/`REMPLACE`/`DESACTIVE`, ce dernier désormais posé par `resilier_abonne()` — ANO-017 résolu, PR #29, en attente de merge), `HistoriqueCompteur`.
 
 **RPC** : les 12 RPC du `.proto` sont tous implémentés, correspondance exacte. Publication d'événements `ABONNE_CREATED`/`ABONNE_UPDATED` sur Redis pub/sub — **consommée uniquement par la Gateway** (subscriptions GraphQL), jamais par Campagne Service (ANO-003bis).
 
@@ -267,7 +267,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **Modèle** : `Campagne` (`created_by`, `numero_mobile_money`, toggles `generer_factures_auto`/`envoyer_whatsapp_auto`), `CampagneAgent` (affectation), `Releve` (`unique_together` campagne+abonné, statuts `A_RELEVER`/`RELEVE`/`NON_RELEVE`/`ESTIME`).
 
-**Fonctionnalité en cours sur cette branche** — `demarrer_maintenant` (commit `29e91c7`) : la création d'une campagne peut désormais démarrer directement `EN_COURS` au lieu de `PLANIFIEE`. Câblage propre bout-en-bout (proto → service → repository → grpc_server), mais **zéro test ajouté** pour cette fonctionnalité, et le test `gateway` existant est cassé par son absence de mise à jour (ANO-004).
+**Fonctionnalité** `demarrer_maintenant` (commit `29e91c7`, sur la PR #16 — pas encore mergée dans `develop`, qui ne connaît donc pas encore cette fonctionnalité) : la création d'une campagne peut désormais démarrer directement `EN_COURS` au lieu de `PLANIFIEE`. Câblage propre bout-en-bout (proto → service → repository → grpc_server). Le test `gateway` cassé par l'ajout de ce paramètre et l'absence de tests dédiés ont été corrigés directement sur cette même PR (ANO-004 résolu — voir §4) ; la branche PR #16 compte 64 tests côté campagne-service (62 de base + 2 pour `demarrer_maintenant`) et 84 côté gateway, tous verts.
 
 **Scheduler 7h00** : démarre toutes les campagnes `PLANIFIEE` dont `date_planifiee` est aujourd'hui **ou hier** (rattrapage) — ANO-019 résolu, PR #31.
 
@@ -275,7 +275,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **RPC** : les 11 RPC du `.proto` sont tous implémentés. Filtrage SUPERVISEUR par `created_by` **implémenté et testé** (contrairement à la note obsolète de CLAUDE.md racine — ANO-010).
 
-**Tests** : 62 tests, tous verts (confirmé par exécution). Lacunes : `demarrer_maintenant`, rattrapage J-1 du scheduler, `numero_mobile_money` invalide.
+**Tests** : 62 tests sur `develop`, tous verts. PR #20 (ANO-003) ajoute 3 tests (65 sur cette branche) ; PR #16 (`demarrer_maintenant` + ANO-004, branche indépendante) en compte 64. Lacunes restantes : rattrapage J-1 du scheduler, `numero_mobile_money` invalide.
 
 ### 5.5 Facturation Service (`services/facturation/`)
 
@@ -301,9 +301,9 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **Workflow impayés (cron 8h00)** : pour chaque facture en retard, tente successivement rappel 1 / rappel 2 / avertissement (étapes indépendantes, peuvent se déclencher en cascade le même jour si le cron a été interrompu plusieurs jours), puis suspension automatique (si activée en config) avec notification admin. Un `SuiviImpaye.relances_suspendues_jusqu` (posé sur paiement partiel) met en pause **toutes** les relances, y compris la suspension, jusqu'à une date donnée.
 
-**⚠️ Rappel important** : les délais utilisés par ce cron (`impaye_delai_rappel_1/2`, `avertissement`, `suspension`) **ne sont jamais lus avec succès depuis Config Service** (ANO-001) — le service tourne systématiquement sur ses valeurs par défaut internes (rappel_1=0, rappel_2=3, avertissement=7, suspension=10 jours).
+**⚠️ Rappel important (état de `develop`)** : les délais utilisés par ce cron (`impaye_delai_rappel_1/2`, `avertissement`, `suspension`) **ne sont jamais lus avec succès depuis Config Service** (ANO-001) — le service tourne systématiquement sur ses valeurs par défaut internes (rappel_1=0, rappel_2=3, avertissement=7, suspension=10 jours). Corrigé sur PR #18, en attente de merge — voir §4.
 
-**RPC** : les 6 RPC du `.proto` sont tous implémentés. C'est le service jugé le plus robuste de l'audit (gestion d'erreur homogène, pas de bug fonctionnel identifié en dehors d'ANO-001 qui lui est externe).
+**RPC** : les 6 RPC du `.proto` sont tous implémentés. C'est le service jugé le plus robuste de l'audit (gestion d'erreur homogène, pas de bug fonctionnel identifié en dehors d'ANO-001 qui lui est externe et déjà corrigé sur PR #18) ; le seul code mort trouvé (`marquer_resolu`) a été supprimé — ANO-023 résolu, PR #34.
 
 **Tests** : 59 tests, tous verts (confirmé par exécution, 0.044s).
 
@@ -315,19 +315,19 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **Modèle** : `Envoi` (`type_envoi` : `FACTURE`/`RELANCE_1`/`RELANCE_2`/`AVERTISSEMENT`/`SUSPENSION`/`RETABLISSEMENT` — ce dernier désormais produit à l'étape 0, ANO-013 résolu), `TokenAcces` (UUID, expiration configurable, ANO-001 résolu).
 
-**whatsapp-service (Node.js)** : `whatsapp-web.js` + Puppeteer/Chromium headless, session persistée sur volume Docker (`LocalAuth`), reconnexion avec backoff exponentiel sur déconnexion. Endpoints `GET /health`, `GET /qr` (QR code à scanner une fois), `POST /send`, `POST /send-with-pdf`. **Aucune authentification** sur ces endpoints (ANO-005). Contrairement à ce que documente `ARCHITECTURE.md` §5.7 (« Retry Handler — 3 tentatives »), **il n'y a aucune logique de retry**, ni côté Node ni côté Django — un échec est immédiatement marqué `ECHEC` (dégradation gracieuse, pas de nouvelle tentative automatique).
+**whatsapp-service (Node.js)** : `whatsapp-web.js` + Puppeteer/Chromium headless, session persistée sur volume Docker (`LocalAuth`), reconnexion avec backoff exponentiel sur déconnexion. Endpoints `GET /health`, `GET /qr` (QR code à scanner une fois), `POST /send`, `POST /send-with-pdf`. Authentification par clé partagée ajoutée sur PR #21 (ANO-005 résolu, en attente de merge — `develop` reste sans authentification sur ces endpoints en l'état). `ARCHITECTURE.md` §5.7 affirmait à tort un « Retry Handler — 3 tentatives » : **il n'y a en réalité aucune logique de retry**, ni côté Node ni côté Django (échec immédiatement marqué `ECHEC`, dégradation gracieuse sans nouvelle tentative) — documentation corrigée sur PR #25 (ANO-009, en attente de merge).
 
 **Duplication de code** : `whatsapp_client.py` existe identique dans `auth` et `notification` — assumée et documentée (ANO-014, PR #27).
 
 **RPC** : les 8 RPC du `.proto` sont tous implémentés, y compris les champs `type_envoi`/`abonne_id` ajoutés au dernier commit (`2500707`).
 
-**Tests** : 40 tests, tous verts (confirmé par exécution). `message_builder.py` (templates de messages) et `whatsapp_client.py` n'ont pas de test direct dédié.
+**Tests** : 40 tests sur `develop`, tous verts. `message_builder.py` (templates de messages) reste sans test direct dédié ; `whatsapp_client.py` en gagne un sur PR #27 (ANO-014/ANO-024, en attente de merge).
 
 ### 5.8 Config Service (`services/config/`)
 
 **Rôle** : paramètres système clé/valeur génériques (`ConfigParam`) + informations société typées (`InfosSociete`, singleton, alimente les PDF de facture).
 
-**⚠️ Voir ANO-001** — c'est le service à l'origine du bug le plus impactant de cet audit, bien que le bug se manifeste chez ses *consommateurs*. `CONFIG_DEFAULTS` (10 clés, toutes en MAJUSCULES) ne couvre déjà pas les clés attendues par Paiement (`impaye_`*), et la casse ne correspond à aucun des appels effectués par Facturation/Notification.
+**⚠️ Voir ANO-001 (état de `develop`)** — c'est le service à l'origine du bug le plus impactant de cet audit, bien que le bug se manifeste chez ses *consommateurs*. `CONFIG_DEFAULTS` (10 clés, toutes en MAJUSCULES) ne couvre déjà pas les clés attendues par Paiement (`impaye_`*), et la casse ne correspond à aucun des appels effectués par Facturation/Notification. Corrigé sur PR #18 (clés renommées en minuscule, 6 clés `impaye_*` ajoutées), en attente de merge.
 
 **RPC** : les 5 RPC du `.proto` sont tous implémentés (`GetConfig`/`UpdateConfig` génériques par clé, pas un RPC par paramètre). Aucun contrôle de rôle **dans ce service** — entièrement délégué à la Gateway (`require_role(info, "ADMIN")` sur `updateConfig`/`updateInfosSociete`/`config`/`configs`).
 
@@ -360,21 +360,21 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 ## 7. Couverture de tests
 
+Chiffres vérifiés par exécution réelle sur `develop` (aucun correctif de la campagne de résolution — §4 — n'y est mergé ; toutes les PR listées restent ouvertes pour revue humaine). Voir §1 pour le total projeté une fois ces PR mergées.
 
-| Service      | Tests exécutés | Résultat         | Méthode de vérification                                   |
-| ------------ | -------------- | ---------------- | --------------------------------------------------------- |
-| Auth         | 88             | ✅ OK             | Exécution réelle (`manage.py test comptes`)               |
-| Abonné       | 49             | ✅ OK             | Rapporté par l'agent d'audit (exécution confirmée)        |
-| Campagne     | 62             | ✅ OK             | Exécution réelle (`manage.py test campagnes`)             |
-| Facturation  | 28             | ✅ OK             | Rapporté par l'agent d'audit (exécution confirmée)        |
-| Paiement     | 59             | ✅ OK             | Rapporté par l'agent d'audit (exécution confirmée)        |
-| Notification | 40             | ✅ OK             | Exécution réelle (`manage.py test notifications`)         |
-| Config       | 29             | ✅ OK             | Rapporté par l'agent d'audit (exécution confirmée)        |
-| Gateway      | 103            | 🟢 OK (ANO-004 corrigée sur PR #16 ; ANO-022 corrigée sur PR #33) | Exécution réelle (`manage.py test schema`) |
-| **Total**    | **458**        | **458 ✅**        |                                                           |
+| Service      | Tests exécutés (`develop`) | Résultat | Méthode de vérification                             |
+| ------------ | --------------------------- | -------- | ----------------------------------------------------- |
+| Auth         | 88                           | ✅ OK    | Exécution réelle (`manage.py test comptes`)            |
+| Abonné       | 49                           | ✅ OK    | Rapporté par l'agent d'audit (exécution confirmée)     |
+| Campagne     | 62                           | ✅ OK    | Exécution réelle (`manage.py test campagnes`)          |
+| Facturation  | 28                           | ✅ OK    | Rapporté par l'agent d'audit (exécution confirmée)     |
+| Paiement     | 59                           | ✅ OK    | Rapporté par l'agent d'audit (exécution confirmée)     |
+| Notification | 40                           | ✅ OK    | Exécution réelle (`manage.py test notifications`)      |
+| Config       | 29                           | ✅ OK    | Rapporté par l'agent d'audit (exécution confirmée)     |
+| Gateway      | 84                           | ✅ OK    | Exécution réelle (`manage.py test schema`)             |
+| **Total**    | **439**                      | **439 ✅** |                                                       |
 
-
-Trous de couverture restants : absence de tests pour `demarrer_maintenant` (Campagne), absence de tests pour `event_publisher.py` (Abonné), absence de tests pour `schedulers.py` en tant que tel (Campagne, Paiement — la logique métier interne est testée, pas le déclenchement APScheduler).
+Trous de couverture restants (au-delà de ce que couvrent déjà les PR ouvertes du §4) : absence de tests pour `event_publisher.py` (Abonné), absence de tests pour `schedulers.py` en tant que tel (Campagne, Paiement — la logique métier interne est testée, pas le déclenchement APScheduler), `message_builder.py` (Notification) sans test direct dédié.
 
 ---
 
@@ -401,5 +401,6 @@ Cet audit a mis en évidence des passages **obsolètes ou incohérents** dans le
 3. ✅ **ANO-004 corrigée** — poussé directement sur la PR #16 (`feature/campagne-demarrer-maintenant`).
 4. ✅ **ANO-003 corrigée** (PR #20) — vérification du statut ACTIF avant ajout en campagne, bloquante.
 5. ✅ **ANO-005 corrigée** (PR #21) — authentification par clé partagée sur whatsapp-service.
-6. Planifier la mise à jour des documents obsolètes (§8) — en particulier `ARCHITECTURE.md` qui se contredit elle-même sur un point technique central (canal WhatsApp).
-7. ✅ **ANO-022 corrigée** (PR #33) — couverture ajoutée pour facturation/paiement/notification côté Gateway. Reste : tests manquants sur `demarrer_maintenant` (Campagne), `event_publisher.py` (Abonné).
+6. ✅ **ANO-009/010/011/012/021 corrigées** (PR #25, documentation uniquement) — `CLAUDE.md`, `docs/ARCHITECTURE.md`, `gateway/CLAUDE.md`, `services/config/CLAUDE.md` mis à jour, dont la contradiction sur le canal WhatsApp (Telnyx vs whatsapp-web.js). Voir §8.
+7. ✅ **ANO-022 corrigée** (PR #33) — couverture ajoutée pour facturation/paiement/notification côté Gateway. Reste : tests manquants sur `event_publisher.py` (Abonné), `message_builder.py` (Notification).
+8. ✅ **ANO-023 corrigée** (PR #34) — suppression du code mort `marquer_resolu` côté Paiement.

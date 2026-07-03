@@ -45,6 +45,7 @@
 
 1. `[Gateway]` → `Auth.Logout(access_token)`.
 2. `[Auth]` Ajoute le `jti` de l'access token courant à `RevokedToken`. Le refresh token du cookie n'est pas explicitement révoqué par cette mutation.
+3. Si le token fourni est déjà invalide/expiré : lève désormais `UNAUTHENTICATED`, comme les 12 autres RPC (✅ `ANO-020` résolu, PR #32 — auparavant seul `Logout` gérait ce cas localement et renvoyait un `StatusResponse(success=False)` au lieu de laisser `ErrorHandlingInterceptor` centraliser la conversion en code gRPC).
 
 ### 1.4 Création de compte (`createUser`, ADMIN uniquement)
 
