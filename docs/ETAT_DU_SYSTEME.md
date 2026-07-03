@@ -193,7 +193,11 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **ANO-012 —** `docs/ARCHITECTURE.md` **§10 (schéma GraphQL) en retard sur le schéma réel** — ✅ **RÉSOLU** (PR #25) — noms d'opérations corrigés (`creerCampagne`, `envoyerFactureWhatsapp`/`renvoyerFactureWhatsapp`, `soldeFacture`/`SoldeFacture`), `affecterAgent` ajoutée (mutation manquante), arguments manquants ajoutés (`numeroMobileMoney`, `genererFacturesAuto`, `envoyerWhatsappAuto` sur `creerCampagne` ; `dateEffet` sur `updateTarif`), `enregistrerPaiement` corrigée en arguments scalaires, type `Envoi` complété (`abonneId`, `telnyxMessageId`). Note de fraîcheur ajoutée pointant vers le code comme source de vérité.
 
-**ANO-013 — Notification :** `TypeEnvoi.RETABLISSEMENT` **défini mais jamais produit** — aucun `build_message_retablissement`, aucune étape 5 dans `_ETAPE_TO_TYPE`. À clarifier : oubli fonctionnel (un abonné suspendu réactivé après paiement ne reçoit aucun message de confirmation dédié) ou état simplement réservé pour plus tard.
+**ANO-013 — Notification :** `TypeEnvoi.RETABLISSEMENT` **défini mais jamais produit** — ✅ **RÉSOLU** (PR #26, branche `feat/ano-013-message-retablissement`)
+
+- **Constat initial** : aucun `build_message_retablissement`, aucune étape 5 dans `_ETAPE_TO_TYPE`.
+- **Bug découvert en creusant** : Paiement Service appelait déjà systématiquement `envoyer_relance(etape=0)` après un paiement complet ("confirmation de paiement complet") — mais `envoyer_relance` rejetait explicitement `etape=0` (`ValidationError` → gRPC `INVALID_ARGUMENT` → capté par la dégradation gracieuse du client Paiement). **Aucun abonné n'a donc jamais reçu de confirmation de paiement par WhatsApp**, silencieusement, depuis toujours.
+- **Correctif appliqué** : `build_message_retablissement()` ajouté (conforme au template exact `docs/SRS.md` EF-NOTIF-004/EF-IMP-005), `_ETAPE_TO_TYPE` et la validation étendus à `[0, 4]`. Aucun changement côté Paiement Service (il appelait déjà correctement `etape=0`).
 
 **ANO-014 — Duplication assumée du client WhatsApp entre Auth et Notification** — `services/auth/comptes/whatsapp_client.py` et `services/notification/notifications/whatsapp_client.py` implémentent la même classe `WhatsAppWebClient`/`WhatsAppDeliveryError` en copier-coller (commenté comme tel dans le code). Tout bugfix (ex. nouveau code d'erreur du service Node) doit être répliqué manuellement dans les deux.
 
@@ -309,7 +313,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **⚠️ Canal réel : whatsapp-web.js, pas Telnyx** (voir ANO-009). Le champ `telnyx_message_id` du modèle `Envoi` et du `.proto` est un vestige mort, jamais renseigné.
 
-**Modèle** : `Envoi` (`type_envoi` : `FACTURE`/`RELANCE_1`/`RELANCE_2`/`AVERTISSEMENT`/`SUSPENSION`/`RETABLISSEMENT` — ce dernier jamais produit, ANO-013), `TokenAcces` (UUID, expiration configurable — mais toujours sur le défaut 20j à cause d'ANO-001).
+**Modèle** : `Envoi` (`type_envoi` : `FACTURE`/`RELANCE_1`/`RELANCE_2`/`AVERTISSEMENT`/`SUSPENSION`/`RETABLISSEMENT` — ce dernier désormais produit à l'étape 0, ANO-013 résolu), `TokenAcces` (UUID, expiration configurable, ANO-001 résolu).
 
 **whatsapp-service (Node.js)** : `whatsapp-web.js` + Puppeteer/Chromium headless, session persistée sur volume Docker (`LocalAuth`), reconnexion avec backoff exponentiel sur déconnexion. Endpoints `GET /health`, `GET /qr` (QR code à scanner une fois), `POST /send`, `POST /send-with-pdf`. **Aucune authentification** sur ces endpoints (ANO-005). Contrairement à ce que documente `ARCHITECTURE.md` §5.7 (« Retry Handler — 3 tentatives »), **il n'y a aucune logique de retry**, ni côté Node ni côté Django — un échec est immédiatement marqué `ECHEC` (dégradation gracieuse, pas de nouvelle tentative automatique).
 

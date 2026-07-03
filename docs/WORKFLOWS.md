@@ -255,7 +255,7 @@ Ne fait **pas** partie du cron — se produit **immédiatement** au moment du pa
 - Étapes 2 et 3 : message sans lien (rappel/avertissement textuel).
 - Étape 4 (suspension) : récupère le numéro de téléphone de la société via `Config.GetInfosSociete` (dégradation gracieuse par `except Exception` générique) et l'inclut dans le message.
 
-⚠️ Il n'existe **pas** d'étape 5 « rétablissement » (`TypeEnvoi.RETABLISSEMENT` défini en base mais jamais produit — `ANO-013`). La confirmation de paiement complet passe par `EnvoyerRelance(etape=0)` (voir §5.1 étape 7), pas par un message dédié au rétablissement après suspension.
+- Étape 0 (confirmation de paiement / rétablissement) : envoyée par `Paiement.EnregistrerPaiement` dès qu'une facture passe au statut `PAYEE` (voir §5.1 étape 7). ✅ `ANO-013` résolu (PR #26) — envoie désormais réellement un message `TypeEnvoi.RETABLISSEMENT` (« Votre paiement de [X] FCFA a été reçu. Votre ligne d'eau est maintenant rétablie. »). Avant ce correctif, cet appel échouait silencieusement à chaque paiement complet (dégradation gracieuse côté Paiement masquant une `ValidationError` côté Notification) : aucune confirmation n'a jamais été envoyée.
 
 ### 7.4 Espace abonné public (accès tokenisé, sans authentification JWT)
 
