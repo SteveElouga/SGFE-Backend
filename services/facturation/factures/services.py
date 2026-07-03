@@ -88,6 +88,22 @@ class FactureService:
             if releve.nouveau_index is None:
                 continue
 
+            # Revalidation défensive : Campagne Service valide déjà
+            # nouveau_index >= ancien_index à la saisie, mais Facturation ne
+            # doit pas faire une confiance aveugle aux données reçues pour
+            # une règle métier obligatoire (voir ANO-008) — un montant
+            # négatif ne doit jamais pouvoir être facturé.
+            if releve.nouveau_index < releve.ancien_index:
+                logger.warning(
+                    "Relevé ignoré : nouveau_index < ancien_index",
+                    extra={
+                        "abonne_id": releve.abonne_id,
+                        "ancien_index": releve.ancien_index,
+                        "nouveau_index": releve.nouveau_index,
+                    },
+                )
+                continue
+
             date_releve = datetime.date.fromisoformat(releve.date_releve)
             date_limite = date_releve + datetime.timedelta(days=delai_paiement_jours)
 
