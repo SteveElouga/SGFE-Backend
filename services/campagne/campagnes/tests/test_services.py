@@ -349,6 +349,29 @@ class TestScheduler(TestCase):
         campagne.refresh_from_db()
         self.assertEqual(campagne.statut, StatutCampagne.EN_COURS)
 
+    def test_demarrage_plusieurs_campagnes_meme_date_planifiee(self) -> None:
+        """Régression ANO-019 : si plusieurs campagnes partagent la même
+        date_planifiee, elles doivent TOUTES démarrer (auparavant .first()
+        n'en démarrait qu'une seule, les autres restaient bloquées PLANIFIEE
+        indéfiniment)."""
+        from datetime import date
+
+        aujourdhui = str(date.today())
+        c1 = self.svc.creer_campagne(
+            nom="Campagne A", periode_mois=6, periode_annee=2026, created_by="user-A", date_planifiee=aujourdhui
+        )
+        c2 = self.svc.creer_campagne(
+            nom="Campagne B", periode_mois=6, periode_annee=2026, created_by="user-B", date_planifiee=aujourdhui
+        )
+
+        demarrees = self.svc.demarrer_campagnes_planifiees_pour_aujourd_hui()
+
+        self.assertEqual({c.id for c in demarrees}, {c1.id, c2.id})
+        c1.refresh_from_db()
+        c2.refresh_from_db()
+        self.assertEqual(c1.statut, StatutCampagne.EN_COURS)
+        self.assertEqual(c2.statut, StatutCampagne.EN_COURS)
+
     def test_aucune_campagne_planifiee_ne_change_rien(self) -> None:
         from datetime import date, timedelta
         from campagnes.schedulers import campagne_planifiee_job
