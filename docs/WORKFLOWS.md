@@ -124,9 +124,8 @@ Retourne uniquement l'historique des **remplacements de compteur** (pas les rele
 
 ### 3.2 Démarrage planifié (scheduler quotidien 7h00)
 
-1. `[Campagne]` (APScheduler, cron 7h00) `campagne_planifiee_job` cherche une campagne `PLANIFIEE` dont `date_planifiee` = aujourd'hui **ou hier** (rattrapage si le job a été manqué), passe la première trouvée (`.first()`) à `EN_COURS`.
-2. `[Campagne]` → `Notification.NotifierAdmins(evenement="CAMPAGNE_DEMARREE", ...)` (dégradation gracieuse si Notification est indisponible).
-3. ⚠️ Si deux campagnes partagent la même `date_planifiee`, une seule démarre par exécution (`ANO-019`).
+1. `[Campagne]` (APScheduler, cron 7h00) `campagne_planifiee_job` cherche **toutes** les campagnes `PLANIFIEE` dont `date_planifiee` = aujourd'hui **ou hier** (rattrapage si le job a été manqué), et les passe **toutes** à `EN_COURS` (✅ `ANO-019` résolu, PR #31 — auparavant seule la première trouvée démarrait).
+2. `[Campagne]` → `Notification.NotifierAdmins(evenement="CAMPAGNE_DEMARREE", ...)` pour chacune (dégradation gracieuse si Notification est indisponible).
 
 ### 3.3 Affectation d'agents (`affecterAgent`)
 

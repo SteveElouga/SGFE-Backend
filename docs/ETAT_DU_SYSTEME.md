@@ -209,7 +209,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 - **ANO-017** — ✅ **RÉSOLU** (PR #29) — Abonné : `StatutCompteur.DESACTIVE` était défini mais jamais utilisé ; utilisé désormais par `resilier_abonne()` (le compteur d'un abonné résilié passe à `DESACTIVE`). Contrainte `UniqueConstraint` partielle ajoutée sur `Compteur` (condition `statut=ACTIF`) pour garantir en base un seul compteur `ACTIF` par abonné (auparavant logique applicative seule).
 - **ANO-018** — ✅ **RÉSOLU** (PR #30) — Campagne : `serializers.py::releve_to_proto` utilise désormais le même helper `_to_iso` que `campagne_to_proto` (introduit par le commit `d54133a`). Tests de sérialisation ajoutés (aucun n'existait pour ce module).
-- **ANO-019** — Campagne : `find_planifiee_pour_date` (`repositories.py:64-68`) utilise `.first()` — si deux campagnes partagent la même `date_planifiee`, une seule démarre par exécution du cron 7h, les autres restent bloquées `PLANIFIEE` sans alerte.
+- **ANO-019** — ✅ **RÉSOLU** (PR #31) — Campagne : `find_planifiee_pour_date` utilisait `.first()`. Remplacé par `list_planifiees_pour_date` : toutes les campagnes partageant une même `date_planifiee` démarrent désormais au même passage du cron 7h.
 - **ANO-020** — Auth : `Logout` (`grpc_server.py:42-47`) gère ses erreurs différemment des 12 autres RPC (catch local au lieu de déléguer à l'intercepteur) — pas un bug, mais un pattern à ne pas reproduire.
 - **ANO-021** — ✅ **RÉSOLU** (PR #25) — `services/config/CLAUDE.md` disait « 8 clés par défaut », corrigé à 10.
 - **ANO-022** — Gateway : aucun test pour `facturation_queries/mutations`, `paiement_queries/mutations`, `notification_queries/mutations`, `espace_abonne.py`, `subscriptions.py` — trou de couverture notable vu l'exigence CLAUDE.md (« couverture > 80 % »).
@@ -269,7 +269,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **Fonctionnalité en cours sur cette branche** — `demarrer_maintenant` (commit `29e91c7`) : la création d'une campagne peut désormais démarrer directement `EN_COURS` au lieu de `PLANIFIEE`. Câblage propre bout-en-bout (proto → service → repository → grpc_server), mais **zéro test ajouté** pour cette fonctionnalité, et le test `gateway` existant est cassé par son absence de mise à jour (ANO-004).
 
-**Scheduler 7h00** : démarre les campagnes `PLANIFIEE` dont `date_planifiee` est aujourd'hui **ou hier** (rattrapage), une seule par jour cible (ANO-019).
+**Scheduler 7h00** : démarre toutes les campagnes `PLANIFIEE` dont `date_planifiee` est aujourd'hui **ou hier** (rattrapage) — ANO-019 résolu, PR #31.
 
 **Clôture → Facturation** : appel gRPC direct et synchrone (`CampagneServicer.CloturerCampagne` → `FacturationServiceClient.notifier_campagne_cloturee`), dégradation gracieuse si Facturation est indisponible — mais alors **aucune facture n'est jamais générée** pour cette campagne, sans retry ni alerte.
 
