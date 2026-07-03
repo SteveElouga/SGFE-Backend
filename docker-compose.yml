@@ -27,6 +27,8 @@ services:
 
   whatsapp-service:
     build: ./whatsapp-service
+    environment:
+      WHATSAPP_INTERNAL_API_KEY: ${WHATSAPP_INTERNAL_API_KEY:-whatsapp-dev-placeholder-do-not-use-in-production}
     ports:
       - "3000:3000"
     volumes:
@@ -55,6 +57,7 @@ services:
       BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-no-reply@sgfe.example.com}
       FRONTEND_URL: http://localhost:4200
       WHATSAPP_SERVICE_URL: http://whatsapp-service:3000
+      WHATSAPP_INTERNAL_API_KEY: ${WHATSAPP_INTERNAL_API_KEY:-whatsapp-dev-placeholder-do-not-use-in-production}
       PHONE_OTP_VALIDITY_MINUTES: "10"
     ports:
       - "50051:50051"
@@ -236,6 +239,7 @@ services:
       CONFIG_GRPC_HOST: config-service
       CONFIG_GRPC_PORT: "50058"
       WHATSAPP_SERVICE_URL: http://whatsapp-service:3000
+      WHATSAPP_INTERNAL_API_KEY: ${WHATSAPP_INTERNAL_API_KEY:-whatsapp-dev-placeholder-do-not-use-in-production}
       FRONTEND_URL: http://localhost:4200
     ports:
       - "50056:50056"
