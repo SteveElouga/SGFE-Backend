@@ -19,6 +19,7 @@ class WhatsAppWebClient:
             response = requests.post(
                 f"{settings.WHATSAPP_SERVICE_URL}/send",
                 json={"phone": to_phone, "message": message},
+                headers={"X-Internal-Api-Key": settings.WHATSAPP_INTERNAL_API_KEY},
                 timeout=15,
             )
             data = response.json()
