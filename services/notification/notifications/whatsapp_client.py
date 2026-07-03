@@ -84,11 +84,12 @@ class WhatsAppWebClient:
         if not data.get("success"):
             raise WhatsAppDeliveryError(data.get("error", "Erreur inconnue"))
 
-    def get_qr(self) -> tuple[bool, str]:
-        """Retourne (ready, qr_data_url) depuis le service Node.js.
+    def get_qr(self) -> tuple[bool, str, str]:
+        """Retourne (ready, qr_data_url, number) depuis le service Node.js.
 
         `ready` indique si WhatsApp est déjà connecté ; `qr` est une data-URL
-        PNG à afficher (vide si connecté ou en cours d'initialisation).
+        PNG à afficher (vide si connecté ou en cours d'initialisation) ;
+        `number` est le numéro du compte appairé (présent uniquement si ready).
         Lève WhatsAppDeliveryError si le service est inaccessible ou renvoie
         une réponse invalide.
         """
@@ -106,7 +107,7 @@ class WhatsAppWebClient:
         except ValueError as exc:
             raise WhatsAppDeliveryError(f"Réponse invalide du service WhatsApp (HTTP {response.status_code})") from exc
 
-        return bool(data.get("ready", False)), data.get("qr", "") or ""
+        return bool(data.get("ready", False)), data.get("qr", "") or "", data.get("number", "") or ""
 
 
 whatsapp_client = WhatsAppWebClient()

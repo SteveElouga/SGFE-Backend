@@ -69,6 +69,11 @@ class NotificationServiceStub:
                 request_serializer=notification__service__pb2.TokenIdRequest.SerializeToString,
                 response_deserializer=notification__service__pb2.StatusResponse.FromString,
                 _registered_method=True)
+        self.RevoquerTousTokens = channel.unary_unary(
+                '/notification.NotificationService/RevoquerTousTokens',
+                request_serializer=notification__service__pb2.EmptyRequest.SerializeToString,
+                response_deserializer=notification__service__pb2.RevoquerTousTokensResponse.FromString,
+                _registered_method=True)
         self.NotifierAdmins = channel.unary_unary(
                 '/notification.NotificationService/NotifierAdmins',
                 request_serializer=notification__service__pb2.NotifierAdminsRequest.SerializeToString,
@@ -78,6 +83,11 @@ class NotificationServiceStub:
                 '/notification.NotificationService/GetWhatsAppQr',
                 request_serializer=notification__service__pb2.EmptyRequest.SerializeToString,
                 response_deserializer=notification__service__pb2.WhatsAppQrResponse.FromString,
+                _registered_method=True)
+        self.TesterEnvoi = channel.unary_unary(
+                '/notification.NotificationService/TesterEnvoi',
+                request_serializer=notification__service__pb2.TesterEnvoiRequest.SerializeToString,
+                response_deserializer=notification__service__pb2.StatusResponse.FromString,
                 _registered_method=True)
 
 
@@ -126,6 +136,12 @@ class NotificationServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def RevoquerTousTokens(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def NotifierAdmins(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -133,6 +149,12 @@ class NotificationServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def GetWhatsAppQr(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def TesterEnvoi(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -176,6 +198,11 @@ def add_NotificationServiceServicer_to_server(servicer, server):
                     request_deserializer=notification__service__pb2.TokenIdRequest.FromString,
                     response_serializer=notification__service__pb2.StatusResponse.SerializeToString,
             ),
+            'RevoquerTousTokens': grpc.unary_unary_rpc_method_handler(
+                    servicer.RevoquerTousTokens,
+                    request_deserializer=notification__service__pb2.EmptyRequest.FromString,
+                    response_serializer=notification__service__pb2.RevoquerTousTokensResponse.SerializeToString,
+            ),
             'NotifierAdmins': grpc.unary_unary_rpc_method_handler(
                     servicer.NotifierAdmins,
                     request_deserializer=notification__service__pb2.NotifierAdminsRequest.FromString,
@@ -185,6 +212,11 @@ def add_NotificationServiceServicer_to_server(servicer, server):
                     servicer.GetWhatsAppQr,
                     request_deserializer=notification__service__pb2.EmptyRequest.FromString,
                     response_serializer=notification__service__pb2.WhatsAppQrResponse.SerializeToString,
+            ),
+            'TesterEnvoi': grpc.unary_unary_rpc_method_handler(
+                    servicer.TesterEnvoi,
+                    request_deserializer=notification__service__pb2.TesterEnvoiRequest.FromString,
+                    response_serializer=notification__service__pb2.StatusResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -387,6 +419,33 @@ class NotificationService:
             _registered_method=True)
 
     @staticmethod
+    def RevoquerTousTokens(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/notification.NotificationService/RevoquerTousTokens',
+            notification__service__pb2.EmptyRequest.SerializeToString,
+            notification__service__pb2.RevoquerTousTokensResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def NotifierAdmins(request,
             target,
             options=(),
@@ -430,6 +489,33 @@ class NotificationService:
             '/notification.NotificationService/GetWhatsAppQr',
             notification__service__pb2.EmptyRequest.SerializeToString,
             notification__service__pb2.WhatsAppQrResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def TesterEnvoi(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/notification.NotificationService/TesterEnvoi',
+            notification__service__pb2.TesterEnvoiRequest.SerializeToString,
+            notification__service__pb2.StatusResponse.FromString,
             options,
             channel_credentials,
             insecure,

@@ -37,9 +37,7 @@ class EnvoiRepository:
         """Liste tous les envois d'un abonné, du plus récent au plus ancien."""
         return list(Envoi.objects.filter(abonne_id=abonne_id).order_by("-created_at"))
 
-    def list_by_facture_and_abonne(
-        self, facture_id: str, abonne_id: str
-    ) -> list[Envoi]:
+    def list_by_facture_and_abonne(self, facture_id: str, abonne_id: str) -> list[Envoi]:
         """Liste les envois filtrés par facture et/ou abonné."""
         qs = Envoi.objects.all()
         if facture_id:
@@ -81,6 +79,10 @@ class TokenAccesRepository:
     def list_active_by_facture(self, facture_id: str) -> list[TokenAcces]:
         """Liste les tokens actifs d'une facture."""
         return list(TokenAcces.objects.filter(facture_id=facture_id, is_active=True))
+
+    def revoquer_tous_actifs(self) -> int:
+        """Révoque en masse tous les tokens actifs. Retourne le nombre révoqué."""
+        return TokenAcces.objects.filter(is_active=True).update(is_active=False)
 
     def save(self, token: TokenAcces) -> TokenAcces:
         """Persiste les modifications d'un token."""

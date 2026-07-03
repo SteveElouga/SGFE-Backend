@@ -55,18 +55,22 @@ class WhatsAppWebClientTests(SimpleTestCase):
     @patch("notifications.whatsapp_client.requests.get")
     def test_get_qr_non_connecte_retourne_qr(self, mock_get):
         mock_get.return_value = Mock(
-            status_code=200, json=Mock(return_value={"ready": False, "qr": "data:image/png;base64,AAA"})
+            status_code=200, json=Mock(return_value={"ready": False, "qr": "data:image/png;base64,AAA", "number": ""})
         )
-        ready, qr = self.client.get_qr()
+        ready, qr, number = self.client.get_qr()
         self.assertFalse(ready)
         self.assertEqual(qr, "data:image/png;base64,AAA")
+        self.assertEqual(number, "")
 
     @patch("notifications.whatsapp_client.requests.get")
-    def test_get_qr_connecte_pas_de_qr(self, mock_get):
-        mock_get.return_value = Mock(status_code=200, json=Mock(return_value={"ready": True, "qr": ""}))
-        ready, qr = self.client.get_qr()
+    def test_get_qr_connecte_expose_le_numero(self, mock_get):
+        mock_get.return_value = Mock(
+            status_code=200, json=Mock(return_value={"ready": True, "qr": "", "number": "237675799743"})
+        )
+        ready, qr, number = self.client.get_qr()
         self.assertTrue(ready)
         self.assertEqual(qr, "")
+        self.assertEqual(number, "237675799743")
 
     @patch("notifications.whatsapp_client.requests.get")
     def test_get_qr_network_error_raises_delivery_error(self, mock_get):

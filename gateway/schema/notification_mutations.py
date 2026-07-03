@@ -5,7 +5,7 @@ import strawberry.types
 
 from .context import require_auth, require_role
 from .grpc_clients import notification_client
-from .notification_types import Envoi, envoi_from_grpc
+from .notification_types import Envoi, TestEnvoiResult, envoi_from_grpc
 
 
 @strawberry.type
@@ -31,3 +31,25 @@ class NotificationMutations:
         require_role(info, "ADMIN")
         response = notification_client.revoquer_token(token_id=token_id)
         return response.success
+
+    @strawberry.mutation
+    def revoquer_tous_tokens_abonnes(self, info: strawberry.types.Info) -> int:
+        """Révoque tous les tokens d'accès abonné actifs — ADMIN.
+
+        Retourne le nombre de tokens révoqués.
+        """
+        require_auth(info)
+        require_role(info, "ADMIN")
+        return notification_client.revoquer_tous_tokens().count
+
+    @strawberry.mutation
+    def tester_envoi_whatsapp(self, info: strawberry.types.Info, phone_number: str) -> TestEnvoiResult:
+        """Envoie un message de test WhatsApp au numéro fourni — ADMIN.
+
+        Retourne `success=false` avec le motif exact si l'envoi échoue
+        (WhatsApp non connecté, numéro invalide, service injoignable).
+        """
+        require_auth(info)
+        require_role(info, "ADMIN")
+        response = notification_client.tester_envoi(phone_number=phone_number)
+        return TestEnvoiResult(success=response.success, message=response.message)
