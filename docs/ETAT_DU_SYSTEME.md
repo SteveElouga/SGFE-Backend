@@ -208,7 +208,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 ### ⚪ Faibles
 
 - **ANO-017** — ✅ **RÉSOLU** (PR #29) — Abonné : `StatutCompteur.DESACTIVE` était défini mais jamais utilisé ; utilisé désormais par `resilier_abonne()` (le compteur d'un abonné résilié passe à `DESACTIVE`). Contrainte `UniqueConstraint` partielle ajoutée sur `Compteur` (condition `statut=ACTIF`) pour garantir en base un seul compteur `ACTIF` par abonné (auparavant logique applicative seule).
-- **ANO-018** — Campagne : `serializers.py:53` (`releve_to_proto`) n'utilise pas le helper `_to_iso` introduit par le commit `d54133a` pour corriger exactement ce type de bug côté `Campagne` — pattern incohérent, risque latent si le flux de création d'un `Releve` change.
+- **ANO-018** — ✅ **RÉSOLU** (PR #30) — Campagne : `serializers.py::releve_to_proto` utilise désormais le même helper `_to_iso` que `campagne_to_proto` (introduit par le commit `d54133a`). Tests de sérialisation ajoutés (aucun n'existait pour ce module).
 - **ANO-019** — Campagne : `find_planifiee_pour_date` (`repositories.py:64-68`) utilise `.first()` — si deux campagnes partagent la même `date_planifiee`, une seule démarre par exécution du cron 7h, les autres restent bloquées `PLANIFIEE` sans alerte.
 - **ANO-020** — Auth : `Logout` (`grpc_server.py:42-47`) gère ses erreurs différemment des 12 autres RPC (catch local au lieu de déléguer à l'intercepteur) — pas un bug, mais un pattern à ne pas reproduire.
 - **ANO-021** — ✅ **RÉSOLU** (PR #25) — `services/config/CLAUDE.md` disait « 8 clés par défaut », corrigé à 10.
