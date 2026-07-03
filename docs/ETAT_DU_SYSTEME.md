@@ -32,7 +32,7 @@
 
 | Brique                  | Statut                                             | Tests                   | Points d'attention majeurs                                                         |
 | ----------------------- | -------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------- |
-| Gateway (GraphQL)       | 🟢 Fonctionnel, riche                              | 84 — **1 échec actuel** | ANO-002 (IDOR PDF) et ANO-015 (subscription non protégée) corrigées — PR #19, #28 |
+| Gateway (GraphQL)       | 🟢 Fonctionnel, riche                              | 103 ✅                   | ANO-002 (IDOR PDF), ANO-015 (subscription non protégée) et ANO-022 (trous de couverture facturation/paiement/notification) corrigées — PR #19, #28, #33 |
 | Auth Service            | 🟢 Fonctionnel, solide                             | 89 ✅                    | RAS majeur — ANO-006 (rotation refresh token) corrigée, PR #22                     |
 | Abonné Service          | 🟢 Fonctionnel, propre                             | 49 ✅                    | RAS majeur — ANO-003bis (doc CLAUDE.md) corrigée, PR #25            |
 | Campagne Service        | 🟢 Fonctionnel                                     | 65 ✅                    | ANO-003 (statut ACTIF) corrigée — PR #20 ; ANO-004 (test `demarrer_maintenant`) corrigée — PR #16 |
@@ -212,7 +212,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 - **ANO-019** — ✅ **RÉSOLU** (PR #31) — Campagne : `find_planifiee_pour_date` utilisait `.first()`. Remplacé par `list_planifiees_pour_date` : toutes les campagnes partageant une même `date_planifiee` démarrent désormais au même passage du cron 7h.
 - **ANO-020** — ✅ **RÉSOLU** (PR #32) — Auth : `Logout` gérait ses erreurs différemment des 12 autres RPC (catch local au lieu de déléguer à l'intercepteur). Try/except supprimé — un token invalide lève désormais `UNAUTHENTICATED` comme partout ailleurs. Aucun changement nécessaire côté Gateway (`GrpcErrorExtension` déjà générique).
 - **ANO-021** — ✅ **RÉSOLU** (PR #25) — `services/config/CLAUDE.md` disait « 8 clés par défaut », corrigé à 10.
-- **ANO-022** — Gateway : aucun test pour `facturation_queries/mutations`, `paiement_queries/mutations`, `notification_queries/mutations`, `espace_abonne.py`, `subscriptions.py` — trou de couverture notable vu l'exigence CLAUDE.md (« couverture > 80 % »).
+- **ANO-022** — ✅ **RÉSOLU** (PR #33) — Gateway : aucun test pour `facturation_queries/mutations`, `paiement_queries/mutations`, `notification_queries/mutations` — trou de couverture notable vu l'exigence CLAUDE.md (« couverture > 80 % »). Ajout de `test_facturation.py`, `test_paiement.py`, `test_notification.py` (19 tests) suivant le même patron que `test_campagne.py`/`test_abonne.py`. Note : `espace_abonne.py` et `subscriptions.py` restent sans test sur `develop` tant que les PR #19 et #28 (qui les couvrent) ne sont pas mergées — hors périmètre de ce correctif.
 - **ANO-023** — Paiement : `repositories.py::marquer_resolu` jamais appelé nulle part (code mort, l'admet dans son propre docstring).
 - **ANO-024** — ✅ **RÉSOLU** (PR #27) — `whatsapp_client.py::send()`/`send_with_pdf()` (auth et notification) appelaient `response.json()` avant de vérifier le status code HTTP ; corrigé (vérification 503 d'abord, parsing JSON entouré d'un `try/except ValueError`). Tests dédiés ajoutés (le module n'en avait aucun).
 
@@ -237,7 +237,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 - Filtrage SUPERVISEUR/AGENT par propriété de campagne implémenté et testé (`campagne_queries.py:11-29`).
 - Espace abonné public tokenisé : 2 vues Django classiques (pas GraphQL), `GET /espace-abonne/<token>/` (liste des factures) et `GET /espace-abonne/<token>/facture/<id>/pdf/` (téléchargement — **IDOR, ANO-002**).
 
-**Tests** : 84 tests (`gateway/schema/tests/`), **1 échec actuel** (ANO-004). Bonne couverture sur auth/abonne/campagne/config ; **aucun test** sur facturation, paiement, notification, espace_abonne, subscriptions (ANO-022).
+**Tests** : 103 tests (`gateway/schema/tests/`), tous verts sur `develop`. Bonne couverture sur auth/abonne/campagne/config/facturation/paiement/notification (ANO-022 résolu, PR #33) ; `espace_abonne.py` et `subscriptions.py` restent sans test sur `develop` tant que les PR #19 et #28 ne sont pas mergées.
 
 ### 5.2 Auth Service (`services/auth/`)
 
@@ -370,11 +370,11 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 | Paiement     | 59             | ✅ OK             | Rapporté par l'agent d'audit (exécution confirmée)        |
 | Notification | 40             | ✅ OK             | Exécution réelle (`manage.py test notifications`)         |
 | Config       | 29             | ✅ OK             | Rapporté par l'agent d'audit (exécution confirmée)        |
-| Gateway      | 84 → 90 après ANO-002 | 🟢 OK (ANO-004 corrigée sur PR #16) | Exécution réelle (`manage.py test schema`) |
-| **Total**    | **439**        | **438 ✅ / 1 🔴** |                                                           |
+| Gateway      | 103            | 🟢 OK (ANO-004 corrigée sur PR #16 ; ANO-022 corrigée sur PR #33) | Exécution réelle (`manage.py test schema`) |
+| **Total**    | **458**        | **458 ✅**        |                                                           |
 
 
-Trous de couverture identifiés : voir ANO-022 (Gateway), absence de tests pour `demarrer_maintenant` (Campagne), absence de tests pour `event_publisher.py` (Abonné), absence de tests pour `schedulers.py` en tant que tel (Campagne, Paiement — la logique métier interne est testée, pas le déclenchement APScheduler).
+Trous de couverture restants : absence de tests pour `demarrer_maintenant` (Campagne), absence de tests pour `event_publisher.py` (Abonné), absence de tests pour `schedulers.py` en tant que tel (Campagne, Paiement — la logique métier interne est testée, pas le déclenchement APScheduler).
 
 ---
 
@@ -402,4 +402,4 @@ Cet audit a mis en évidence des passages **obsolètes ou incohérents** dans le
 4. ✅ **ANO-003 corrigée** (PR #20) — vérification du statut ACTIF avant ajout en campagne, bloquante.
 5. ✅ **ANO-005 corrigée** (PR #21) — authentification par clé partagée sur whatsapp-service.
 6. Planifier la mise à jour des documents obsolètes (§8) — en particulier `ARCHITECTURE.md` qui se contredit elle-même sur un point technique central (canal WhatsApp).
-7. Combler les trous de couverture de tests identifiés (ANO-022 et tests manquants sur `demarrer_maintenant`) avant que ces zones grossissent.
+7. ✅ **ANO-022 corrigée** (PR #33) — couverture ajoutée pour facturation/paiement/notification côté Gateway. Reste : tests manquants sur `demarrer_maintenant` (Campagne), `event_publisher.py` (Abonné).
