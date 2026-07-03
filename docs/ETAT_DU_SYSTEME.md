@@ -38,7 +38,7 @@
 | Auth Service            | 🟢 Fonctionnel, solide                             | 94 ✅                    | ANO-006 (rotation refresh token) — PR #22 ; ANO-020 (Logout homogène) — PR #32 ; ANO-014/024 (duplication + parsing whatsapp_client) — PR #27 |
 | Abonné Service          | 🟢 Fonctionnel, propre                             | 52 ✅                    | ANO-003bis (doc CLAUDE.md) — PR #25 ; ANO-017 (contrainte compteur actif) — PR #29            |
 | Campagne Service        | 🟢 Fonctionnel                                     | 71 ✅                    | ANO-003 — PR #20, ANO-004/`demarrer_maintenant` — PR #16, ANO-018 — PR #30, ANO-019 — PR #31 |
-| Facturation Service     | 🟢 Fonctionnel                                     | 33 ✅                    | ANO-007 — PR #23, ANO-008 — PR #24                                       |
+| Facturation Service     | 🟢 Fonctionnel                                     | 45 ✅                    | ANO-007 — PR #23, ANO-008 — PR #24 ; refonte PDF WeasyPrint + identité abonné — PR #41 |
 | Paiement Service        | 🟢 Fonctionnel, bien testé                         | 59 ✅                    | RAS majeur — service le plus robuste de l'audit ; ANO-023 (code mort) — PR #34     |
 | Notification Service    | 🟢 Fonctionnel                                     | 46 ✅                    | ANO-013 (confirmation paiement WhatsApp jamais envoyée) — PR #26 ; ANO-014/024 — PR #27       |
 | Config Service          | 🟢 Fonctionnel                                     | 29 ✅                    | ANO-001 (casse des clés) corrigée — PR #18                                         |
@@ -46,7 +46,7 @@
 | whatsapp-service (Node) | 🟢 Fonctionnel                                     | — (pas de tests)        | ANO-005 (auth endpoints) corrigée — PR #21                                         |
 
 
-**Total : 496 tests exécutés à travers les 8 briques Python** (`develop`, vérifié par exécution réelle après le merge des 18 PR de correctifs — voir §4 et §7). Chiffre initial de l'audit avant tout correctif : 439 tests (dont 1 échec, gateway — voir ANO-004).
+**Total : 508 tests exécutés à travers les 8 briques Python** (`develop`, vérifié par exécution réelle après le merge des 18 PR de correctifs puis de la refonte PDF facturation — voir §4, §5.5 et §7). Chiffre initial de l'audit avant tout correctif : 439 tests (dont 1 échec, gateway — voir ANO-004).
 
 **Infrastructure (Dockerfiles + pipeline CI/CD) également auditée et corrigée — voir §10** : build multi-stage, non-root en lecture seule, `HEALTHCHECK`, digests pinnés, cache Docker en CI, scan de vulnérabilités (Trivy) bloquant, SBOM + provenance + signature cosign sur les images publiées, versions de dépendances alignées entre services, Dependabot configuré.
 
@@ -100,7 +100,7 @@ gateway/              ✅ Django + Strawberry GraphQL, ASGI, aucune BD (dummy ba
 services/auth/        ✅ Django + gRPC :50051 — app "comptes"
 services/abonne/      ✅ Django + gRPC :50052 — app "abonnes"
 services/campagne/    ✅ Django + gRPC :50053 — app "campagnes" (+ scheduler 7h00)
-services/facturation/ ✅ Django + gRPC :50054 — app "factures" (+ génération PDF ReportLab)
+services/facturation/ ✅ Django + gRPC :50054 — app "factures" (+ génération PDF HTML→WeasyPrint)
 services/paiement/    ✅ Django + gRPC :50055 — app "paiements" (+ scheduler 8h00)
 services/notification/✅ Django + gRPC :50056 — app "notifications"
 services/config/      ✅ Django + gRPC :50058 — app "parametres"
@@ -283,7 +283,9 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 ### 5.5 Facturation Service (`services/facturation/`)
 
-**Rôle** : génération des factures à la clôture d'une campagne, calcul du montant, génération PDF (ReportLab), gestion du tarif actif.
+**Rôle** : génération des factures à la clôture d'une campagne, calcul du montant, génération PDF (gabarit HTML/CSS → PDF via **WeasyPrint**, PR #41), gestion du tarif actif.
+
+**PDF de facture (PR #41)** : rendu HTML/CSS reproduisant la maquette client (en-tête société, cartes « Facturé à » / « Compteur », tableau de consommation, total, modalités de paiement). L'identité de l'abonné (nom, N° abonné, quartier/camp, WhatsApp, N° compteur) est récupérée via un nouveau client gRPC **Facturation → Abonné** (`AbonneServiceClient.get_abonne`) au lieu d'afficher les UUID techniques. Dégradation gracieuse : si Abonné Service est indisponible, le PDF est tout de même produit (repli sur l'identifiant tronqué). `generer_pdf` importe WeasyPrint paresseusement — l'absence des bibliothèques natives (pango/cairo) en environnement de test n'empêche pas l'import du module. Hors périmètre volontaire (pour ne pas afficher de données non disponibles) : graphique de consommation 6 mois, agent/heure du relevé, lien espace abonné sur le PDF.
 
 **Modèle** : `Tarif` (`prix_m3`, `is_active` — un seul actif à la fois, garanti applicativement, pas par contrainte DB), `Facture` (`prix_m3` **copié**, `statut`, `numero_facture` séquentiel `FACT-AAAA-MM-XXXX`, `pdf_path`, `numero_mobile_money` ajouté au commit `701fe0b`).
 
@@ -293,7 +295,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **Absence de Reporting** : aucun appel, aucune trace — cohérent avec ANO-016.
 
-**Tests** : 33 tests, tous verts (confirmé par exécution). Les tests de service/gRPC déclenchent de vrais appels réseau vers Paiement/Notification (non mockés) qui échouent proprement en local (`ConnectionRefused` capté par la dégradation gracieuse) — fonctionne mais n'est pas une pratique de test unitaire isolée idéale.
+**Tests** : 45 tests, tous verts (confirmé par exécution ; +12 sur PR #41 pour le gabarit HTML `_build_html`, les helpers de formatage et le client Abonné). Le rendu PDF réel (WeasyPrint) est vérifié séparément par un smoke-test dans l'image Docker (`%PDF-`), car il dépend de bibliothèques natives absentes de l'environnement de CI. Les tests de service/gRPC déclenchent de vrais appels réseau vers Paiement/Notification/Abonné (non mockés) qui échouent proprement en local (`ConnectionRefused` capté par la dégradation gracieuse) — fonctionne mais n'est pas une pratique de test unitaire isolée idéale.
 
 ### 5.6 Paiement Service (`services/paiement/`)
 
@@ -371,12 +373,12 @@ Chiffres vérifiés par exécution réelle sur `develop`, après le merge des 18
 | Auth         | 94              | ✅ OK    | Exécution réelle (`manage.py test comptes`)            |
 | Abonné       | 52              | ✅ OK    | Exécution réelle (`manage.py test abonnes`)            |
 | Campagne     | 71              | ✅ OK    | Exécution réelle (`manage.py test campagnes`)          |
-| Facturation  | 33              | ✅ OK    | Exécution réelle (`manage.py test factures`)           |
+| Facturation  | 45              | ✅ OK    | Exécution réelle (`manage.py test factures`)           |
 | Paiement     | 59              | ✅ OK    | Exécution réelle (`manage.py test paiements`)          |
 | Notification | 46              | ✅ OK    | Exécution réelle (`manage.py test notifications`)      |
 | Config       | 29              | ✅ OK    | Exécution réelle (`manage.py test parametres`)         |
 | Gateway      | 112             | ✅ OK    | Exécution réelle (`manage.py test schema`)             |
-| **Total**    | **496**         | **496 ✅** |                                                       |
+| **Total**    | **508**         | **508 ✅** |                                                       |
 
 Trous de couverture restants : absence de tests pour `event_publisher.py` (Abonné), absence de tests pour `schedulers.py` en tant que tel (Campagne, Paiement — la logique métier interne est testée, pas le déclenchement APScheduler), `message_builder.py` (Notification) sans test direct dédié.
 
