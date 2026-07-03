@@ -238,7 +238,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **Surface GraphQL réelle** (voir aussi §6 de `docs/ARCHITECTURE.md`, corrigé — ANO-012 résolu, PR #25) :
 
-- **23 queries**, **31 mutations**, **1 subscription** (`abonneUpdated`, sur Redis pub/sub, exige ADMIN depuis ANO-015 résolu).
+- **25 queries**, **35 mutations**, **1 subscription** (`abonneUpdated`, sur Redis pub/sub, exige ADMIN depuis ANO-015 résolu). Dont `whatsappQr` (ADMIN, PR #46) : relaie le statut de connexion + QR de liaison WhatsApp depuis notification-service, pour l'affichage dans l'UI admin sans exposer la clé interne du whatsapp-service au navigateur.
 - Contrôle de rôle systématique via `require_role(info, *roles)` sur toutes les opérations sensibles, y compris désormais `abonneUpdated` (ANO-015). Seule exception volontaire : `infosSociete` (public — sert à alimenter les PDF).
 - Filtrage SUPERVISEUR/AGENT par propriété de campagne implémenté et testé (`campagne_queries.py:11-29`).
 - Espace abonné public tokenisé : 2 vues Django classiques (pas GraphQL), `GET /espace-abonne/<token>/` (liste des factures) et `GET /espace-abonne/<token>/facture/<id>/pdf/` (téléchargement — IDOR corrigé, ANO-002 résolu, PR #19).
@@ -323,7 +323,9 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **Modèle** : `Envoi` (`type_envoi` : `FACTURE`/`RELANCE_1`/`RELANCE_2`/`AVERTISSEMENT`/`SUSPENSION`/`RETABLISSEMENT` — ce dernier désormais produit à l'étape 0, ANO-013 résolu), `TokenAcces` (UUID, expiration configurable, ANO-001 résolu).
 
-**whatsapp-service (Node.js)** : `whatsapp-web.js` + Puppeteer/Chromium headless, session persistée sur volume Docker (`LocalAuth`), reconnexion avec backoff exponentiel sur déconnexion. Endpoints `GET /health`, `GET /qr` (QR code à scanner une fois), `POST /send`, `POST /send-with-pdf`. Authentification par clé partagée (en-tête `X-Internal-Api-Key`) désormais en place (ANO-005 résolu, PR #21). `ARCHITECTURE.md` §5.7 affirmait à tort un « Retry Handler — 3 tentatives » : **il n'y a en réalité aucune logique de retry**, ni côté Node ni côté Django (échec immédiatement marqué `ECHEC`, dégradation gracieuse sans nouvelle tentative) — documentation corrigée (ANO-009 résolu, PR #25).
+**whatsapp-service (Node.js)** : `whatsapp-web.js` + Puppeteer/Chromium headless, session persistée sur volume Docker (`LocalAuth`), reconnexion avec backoff exponentiel sur déconnexion. Endpoints `GET /health`, `GET /qr` (page HTML du QR), `GET /qr-data` (QR en JSON `{ready, qr}` pour relais UI admin, PR #46), `POST /send`, `POST /send-with-pdf`. Authentification par clé partagée (en-tête `X-Internal-Api-Key`) sur tous sauf `/health` (ANO-005 résolu, PR #21).
+
+**Liaison WhatsApp depuis l'UI admin (PR #46)** : le QR de connexion, autrefois seulement atteignable sur l'endpoint interne `/qr` (401 dans un navigateur faute d'en-tête), est désormais exposé à l'admin via la chaîne gRPC `Gateway (query ADMIN whatsappQr) → notification-service (GetWhatsAppQr) → whatsapp-service (/qr-data)`. La clé interne reste côté serveur ; le QR tournant, l'UI rafraîchit périodiquement tant que `ready` est faux. Dégradation gracieuse si whatsapp-service est indisponible (`ready=False, qr=""`). `ARCHITECTURE.md` §5.7 affirmait à tort un « Retry Handler — 3 tentatives » : **il n'y a en réalité aucune logique de retry**, ni côté Node ni côté Django (échec immédiatement marqué `ECHEC`, dégradation gracieuse sans nouvelle tentative) — documentation corrigée (ANO-009 résolu, PR #25).
 
 **Duplication de code** : `whatsapp_client.py` existe identique dans `auth` et `notification` — assumée et documentée (ANO-014, PR #27).
 

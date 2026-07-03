@@ -5,10 +5,8 @@ import warnings
 
 import notification_service_pb2 as notification__service__pb2
 
-GRPC_GENERATED_VERSION = '1.64.1'
+GRPC_GENERATED_VERSION = '1.81.1'
 GRPC_VERSION = grpc.__version__
-EXPECTED_ERROR_RELEASE = '1.65.0'
-SCHEDULED_RELEASE_DATE = 'June 25, 2024'
 _version_not_supported = False
 
 try:
@@ -18,19 +16,16 @@ except ImportError:
     _version_not_supported = True
 
 if _version_not_supported:
-    warnings.warn(
+    raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in notification_service_pb2_grpc.py depends on'
+        + ' but the generated code in notification_service_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
-        + f' This warning will become an error in {EXPECTED_ERROR_RELEASE},'
-        + f' scheduled for release on {SCHEDULED_RELEASE_DATE}.',
-        RuntimeWarning
     )
 
 
-class NotificationServiceStub(object):
+class NotificationServiceStub:
     """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
@@ -79,9 +74,14 @@ class NotificationServiceStub(object):
                 request_serializer=notification__service__pb2.NotifierAdminsRequest.SerializeToString,
                 response_deserializer=notification__service__pb2.StatusResponse.FromString,
                 _registered_method=True)
+        self.GetWhatsAppQr = channel.unary_unary(
+                '/notification.NotificationService/GetWhatsAppQr',
+                request_serializer=notification__service__pb2.EmptyRequest.SerializeToString,
+                response_deserializer=notification__service__pb2.WhatsAppQrResponse.FromString,
+                _registered_method=True)
 
 
-class NotificationServiceServicer(object):
+class NotificationServiceServicer:
     """Missing associated documentation comment in .proto file."""
 
     def EnvoyerFacture(self, request, context):
@@ -132,6 +132,12 @@ class NotificationServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetWhatsAppQr(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_NotificationServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -175,6 +181,11 @@ def add_NotificationServiceServicer_to_server(servicer, server):
                     request_deserializer=notification__service__pb2.NotifierAdminsRequest.FromString,
                     response_serializer=notification__service__pb2.StatusResponse.SerializeToString,
             ),
+            'GetWhatsAppQr': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetWhatsAppQr,
+                    request_deserializer=notification__service__pb2.EmptyRequest.FromString,
+                    response_serializer=notification__service__pb2.WhatsAppQrResponse.SerializeToString,
+            ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
             'notification.NotificationService', rpc_method_handlers)
@@ -183,7 +194,7 @@ def add_NotificationServiceServicer_to_server(servicer, server):
 
 
  # This class is part of an EXPERIMENTAL API.
-class NotificationService(object):
+class NotificationService:
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
@@ -392,6 +403,33 @@ class NotificationService(object):
             '/notification.NotificationService/NotifierAdmins',
             notification__service__pb2.NotifierAdminsRequest.SerializeToString,
             notification__service__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetWhatsAppQr(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/notification.NotificationService/GetWhatsAppQr',
+            notification__service__pb2.EmptyRequest.SerializeToString,
+            notification__service__pb2.WhatsAppQrResponse.FromString,
             options,
             channel_credentials,
             insecure,

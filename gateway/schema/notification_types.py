@@ -22,3 +22,20 @@ def envoi_from_grpc(r) -> Envoi:
         telnyx_message_id=r.telnyx_message_id,
         erreur=r.erreur,
     )
+
+
+@strawberry.type
+class WhatsAppQr:
+    """Statut de connexion WhatsApp + QR de liaison, pour l'UI admin.
+
+    `qr` est une data-URL PNG à afficher directement (`<img src>`), vide si
+    `ready` est vrai (déjà connecté) ou si le service est en cours d'init /
+    indisponible.
+    """
+
+    ready: bool
+    qr: str
+
+
+def whatsapp_qr_from_grpc(r) -> WhatsAppQr:
+    return WhatsAppQr(ready=r.ready, qr=r.qr)
