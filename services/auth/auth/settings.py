@@ -125,5 +125,7 @@ PASSWORD_SETUP_TOKEN_VALIDITY_HOURS = env.int("PASSWORD_SETUP_TOKEN_VALIDITY_HOU
 # --- WhatsApp OTP (whatsapp-web.js service) ---
 # URL du service Node.js whatsapp-service (voir whatsapp-service/server.js)
 WHATSAPP_SERVICE_URL = env("WHATSAPP_SERVICE_URL", default="http://whatsapp-service:3000")
+# Clé partagée envoyée en en-tête X-Internal-Api-Key vers whatsapp-service.
+WHATSAPP_INTERNAL_API_KEY = env("WHATSAPP_INTERNAL_API_KEY", default="")
 # Durée de validité du code OTP en minutes
 PHONE_OTP_VALIDITY_MINUTES = env.int("PHONE_OTP_VALIDITY_MINUTES", default=10)

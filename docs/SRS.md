@@ -211,7 +211,8 @@ L'application vise à digitaliser et automatiser l'intégralité de ce processus
 - Le système doit permettre de renouveler un token arrivant à expiration sans demander les identifiants.
 
 #### EF-AUTH-004 — Gestion des utilisateurs (Admin uniquement)
-- L'admin peut créer un utilisateur avec : nom d'utilisateur, email, mot de passe temporaire, rôle.
+- L'admin peut créer un utilisateur avec : nom d'utilisateur, email (ADMIN) ou téléphone (autres rôles), rôle. Le compte est créé inactif, sans mot de passe temporaire.
+- Activation du compte : lien de définition de mot de passe envoyé par e-mail (rôle ADMIN) ou code OTP envoyé par WhatsApp (autres rôles) — l'utilisateur définit lui-même son mot de passe lors de l'activation.
 - L'admin peut modifier un utilisateur (email, rôle).
 - L'admin peut désactiver un utilisateur.
 - Un utilisateur désactivé ne peut pas être supprimé (traçabilité).
