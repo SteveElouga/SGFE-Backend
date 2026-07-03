@@ -39,9 +39,7 @@ class PaiementRepository:
         """Liste tous les paiements d'un abonné."""
         return list(Paiement.objects.filter(abonne_id=abonne_id))
 
-    def list_by_facture_and_abonne(
-        self, facture_id: str, abonne_id: str
-    ) -> list[Paiement]:
+    def list_by_facture_and_abonne(self, facture_id: str, abonne_id: str) -> list[Paiement]:
         """Liste les paiements filtrés par facture et/ou abonné."""
         qs = Paiement.objects.all()
         if facture_id:
@@ -77,13 +75,9 @@ class SoldeFactureRepository:
         try:
             return SoldeFacture.objects.get(pk=facture_id)
         except SoldeFacture.DoesNotExist:
-            raise ObjectDoesNotExist(
-                f"Solde introuvable pour la facture : {facture_id}"
-            )
+            raise ObjectDoesNotExist(f"Solde introuvable pour la facture : {facture_id}")
 
-    def update_after_paiement(
-        self, solde: SoldeFacture, montant_verse: object
-    ) -> SoldeFacture:
+    def update_after_paiement(self, solde: SoldeFacture, montant_verse: object) -> SoldeFacture:
         """Met à jour le solde après un versement et recalcule le statut."""
         from decimal import Decimal
 
@@ -99,9 +93,7 @@ class SoldeFactureRepository:
         else:
             solde.statut = StatutSolde.PARTIELLE
 
-        solde.save(
-            update_fields=["montant_paye", "solde_restant", "statut", "updated_at"]
-        )
+        solde.save(update_fields=["montant_paye", "solde_restant", "statut", "updated_at"])
         return solde
 
     def list_impayes(self) -> list[SoldeFacture]:
@@ -112,21 +104,11 @@ class SoldeFactureRepository:
             ).exclude(statut=StatutSolde.PAYEE)
         )
 
-    def marquer_resolu(
-        self, solde: SoldeFacture, date_resolution: date
-    ) -> SoldeFacture:
-        """Marque le solde comme PAYEE (utilisé pour cohérence, la logique est dans update_after_paiement)."""
-        solde.statut = StatutSolde.PAYEE
-        solde.save(update_fields=["statut", "updated_at"])
-        return solde
-
 
 class SuiviImpayeRepository:
     """Accès base de données pour le suivi des impayés."""
 
-    def get_or_create(
-        self, facture_id: str, abonne_id: str, date_depassement: date
-    ) -> tuple[SuiviImpaye, bool]:
+    def get_or_create(self, facture_id: str, abonne_id: str, date_depassement: date) -> tuple[SuiviImpaye, bool]:
         """Retourne le suivi existant ou en crée un nouveau."""
         return SuiviImpaye.objects.get_or_create(
             facture_id=facture_id,
@@ -142,9 +124,7 @@ class SuiviImpayeRepository:
         try:
             return SuiviImpaye.objects.get(facture_id=facture_id)
         except SuiviImpaye.DoesNotExist:
-            raise ObjectDoesNotExist(
-                f"Suivi impayé introuvable pour la facture : {facture_id}"
-            )
+            raise ObjectDoesNotExist(f"Suivi impayé introuvable pour la facture : {facture_id}")
 
     def save_suivi(self, suivi: SuiviImpaye) -> SuiviImpaye:
         """Persiste les modifications d'un suivi."""
