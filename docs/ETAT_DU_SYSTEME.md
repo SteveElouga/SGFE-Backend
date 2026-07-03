@@ -32,7 +32,7 @@
 
 | Brique                  | Statut                                             | Tests                   | Points d'attention majeurs                                                         |
 | ----------------------- | -------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------- |
-| Gateway (GraphQL)       | 🟢 Fonctionnel, riche                              | 84 — **1 échec actuel** | ANO-002 (IDOR PDF) corrigée — PR #19 ; subscription sans contrôle d'accès (ANO-015) |
+| Gateway (GraphQL)       | 🟢 Fonctionnel, riche                              | 84 — **1 échec actuel** | ANO-002 (IDOR PDF) et ANO-015 (subscription non protégée) corrigées — PR #19, #28 |
 | Auth Service            | 🟢 Fonctionnel, solide                             | 89 ✅                    | RAS majeur — ANO-006 (rotation refresh token) corrigée, PR #22                     |
 | Abonné Service          | 🟢 Fonctionnel, propre                             | 49 ✅                    | RAS majeur — ANO-003bis (doc CLAUDE.md) corrigée, PR #25            |
 | Campagne Service        | 🟢 Fonctionnel                                     | 65 ✅                    | ANO-003 (statut ACTIF) corrigée — PR #20 ; ANO-004 (test `demarrer_maintenant`) corrigée — PR #16 |
@@ -70,7 +70,7 @@
 | `nouveau_index ≥ ancien_index` avant sauvegarde d'un relevé              | 🟡 Partiel                      | Vérifié côté Campagne uniquement (voir ci-dessus).                                                                                                                                                                                                                                                                                                       |
 | Statut ACTIF de l'abonné vérifié avant ajout en campagne                 | 🟢 Conforme (corrigé)           | ANO-003 résolu (PR #20) — vérification bloquante via `AbonneServiceClient.get_abonne()` avant tout ajout en campagne.                                                                                                                                                                                                                     |
 | `prix_m3` copié dans la facture, jamais en FK                            | 🟢 Conforme                     | `services/facturation/factures/models.py:36-73` — champ `Decimal`, pas de `ForeignKey` vers `Tarif`.                                                                                                                                                                                                                                                     |
-| Rôle vérifié avant toute action sensible                                 | 🟡 Majoritairement conforme     | `require_role()` systématique côté Gateway sur les mutations. Deux trous : la subscription `abonneUpdated` (ANO-015) et l'absence de tout contrôle de rôle **au niveau gRPC lui-même** dans chaque microservice (délégué entièrement à la Gateway — cohérent avec l'architecture mais sans défense en profondeur si un service interne était compromis). |
+| Rôle vérifié avant toute action sensible                                 | 🟢 Conforme                     | `require_role()` systématique côté Gateway sur les mutations et désormais aussi sur la subscription `abonneUpdated` (ANO-015 résolu, PR #28). Reste : l'absence de tout contrôle de rôle **au niveau gRPC lui-même** dans chaque microservice (délégué entièrement à la Gateway — cohérent avec l'architecture mais sans défense en profondeur si un service interne était compromis, non cataloguée comme anomalie distincte). |
 | `reference_transaction` obligatoire pour MOBILE_MONEY/VIREMENT           | 🟢 Conforme (au niveau service) | `services/paiement/paiements/services.py:82-84`. Non dupliqué en contrainte DB — un accès direct au repository la contournerait, mais ce n'est pas un chemin accessible via l'API publique actuelle.                                                                                                                                                     |
 
 
@@ -201,7 +201,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **ANO-014 — Duplication assumée du client WhatsApp entre Auth et Notification** — ✅ **RÉSOLU (documenté explicitement)** (PR #27) — `services/auth/comptes/whatsapp_client.py` et `services/notification/notifications/whatsapp_client.py` implémentent la même classe `WhatsAppWebClient`/`WhatsAppDeliveryError` en copier-coller. La duplication reste assumée (chaque microservice reste indépendant, CLAUDE.md racine) mais est désormais documentée explicitement en tête des deux fichiers, avec un rappel que tout bugfix doit être répliqué manuellement dans les deux.
 
-**ANO-015 — Gateway : subscription** `abonneUpdated` **sans contrôle d'accès** — `gateway/schema/subscriptions.py` n'appelle ni `require_auth` ni `require_role`, alors que la query équivalente (`abonne`/`abonnes`) exige ADMIN. N'importe quel client WebSocket peut s'abonner aux mises à jour de n'importe quel abonné.
+**ANO-015 — Gateway : subscription** `abonneUpdated` **sans contrôle d'accès** — ✅ **RÉSOLU** (PR #28, branche `fix/ano-015-proteger-subscription`) — `gateway/schema/subscriptions.py` n'appelait ni `require_auth` ni `require_role`, alors que la query équivalente (`abonne`/`abonnes`) exige ADMIN. Corrigé : `require_role(info, "ADMIN")` appelé en tout début du générateur, avant toute connexion Redis. Tests ajoutés (aucun n'existait auparavant pour ce fichier).
 
 **ANO-016 — Reporting Service : absence totale (pas un bug, un chantier non démarré)** — `proto/reporting_service.proto` déclare 6 RPC (`GetDashboard`, `GetStatsCampagne`, `GetStatsGlobales`, `UpdateStatsCampagne`, `UpdateStatsFacturation`, `UpdateStatsPaiements`), aucun n'est implémenté. Facturation et Paiement ne tentent même pas de l'appeler (pas de risque de plantage, l'intégration n'a simplement jamais été commencée).
 
@@ -232,8 +232,8 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 **Surface GraphQL réelle** (voir aussi §6 de `docs/ARCHITECTURE.md`, à corriger — ANO-012) :
 
-- **23 queries**, **31 mutations**, **1 subscription** (`abonneUpdated`, sur Redis pub/sub, sans contrôle d'accès — ANO-015).
-- Contrôle de rôle systématique via `require_role(info, *roles)` sur toutes les opérations sensibles, à deux exceptions près : `infosSociete` (public, volontaire — sert à alimenter les PDF) et `abonneUpdated` (non volontaire — ANO-015).
+- **23 queries**, **31 mutations**, **1 subscription** (`abonneUpdated`, sur Redis pub/sub, exige ADMIN depuis ANO-015 résolu).
+- Contrôle de rôle systématique via `require_role(info, *roles)` sur toutes les opérations sensibles, y compris désormais `abonneUpdated` (ANO-015). Seule exception volontaire : `infosSociete` (public — sert à alimenter les PDF).
 - Filtrage SUPERVISEUR/AGENT par propriété de campagne implémenté et testé (`campagne_queries.py:11-29`).
 - Espace abonné public tokenisé : 2 vues Django classiques (pas GraphQL), `GET /espace-abonne/<token>/` (liste des factures) et `GET /espace-abonne/<token>/facture/<id>/pdf/` (téléchargement — **IDOR, ANO-002**).
 
