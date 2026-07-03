@@ -213,7 +213,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 - **ANO-020** — ✅ **RÉSOLU** (PR #32) — Auth : `Logout` gérait ses erreurs différemment des 12 autres RPC (catch local au lieu de déléguer à l'intercepteur). Try/except supprimé — un token invalide lève désormais `UNAUTHENTICATED` comme partout ailleurs. Aucun changement nécessaire côté Gateway (`GrpcErrorExtension` déjà générique).
 - **ANO-021** — ✅ **RÉSOLU** (PR #25) — `services/config/CLAUDE.md` disait « 8 clés par défaut », corrigé à 10.
 - **ANO-022** — ✅ **RÉSOLU** (PR #33) — Gateway : aucun test pour `facturation_queries/mutations`, `paiement_queries/mutations`, `notification_queries/mutations` — trou de couverture notable vu l'exigence CLAUDE.md (« couverture > 80 % »). Ajout de `test_facturation.py`, `test_paiement.py`, `test_notification.py` (19 tests) suivant le même patron que `test_campagne.py`/`test_abonne.py`. Note : `espace_abonne.py` et `subscriptions.py` restent sans test sur `develop` tant que les PR #19 et #28 (qui les couvrent) ne sont pas mergées — hors périmètre de ce correctif.
-- **ANO-023** — Paiement : `repositories.py::marquer_resolu` jamais appelé nulle part (code mort, l'admet dans son propre docstring).
+- **ANO-023** — ✅ **RÉSOLU** (PR #34) — Paiement : `repositories.py::marquer_resolu` jamais appelé nulle part (code mort, l'admet dans son propre docstring). Supprimée.
 - **ANO-024** — ✅ **RÉSOLU** (PR #27) — `whatsapp_client.py::send()`/`send_with_pdf()` (auth et notification) appelaient `response.json()` avant de vérifier le status code HTTP ; corrigé (vérification 503 d'abord, parsing JSON entouré d'un `try/except ValueError`). Tests dédiés ajoutés (le module n'en avait aucun).
 
 ---
