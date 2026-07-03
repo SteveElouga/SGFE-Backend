@@ -23,6 +23,7 @@
 7. [Couverture de tests](#7-couverture-de-tests)
 8. [Documentation existante à corriger](#8-documentation-existante-à-corriger)
 9. [Recommandations priorisées](#9-recommandations-priorisées)
+10. [Pipeline CI/CD et Dockerfiles](#10-pipeline-cicd-et-dockerfiles)
 
 ---
 
@@ -46,6 +47,8 @@
 
 
 **Total : 496 tests exécutés à travers les 8 briques Python** (`develop`, vérifié par exécution réelle après le merge des 18 PR de correctifs — voir §4 et §7). Chiffre initial de l'audit avant tout correctif : 439 tests (dont 1 échec, gateway — voir ANO-004).
+
+**Infrastructure (Dockerfiles + pipeline CI/CD) également auditée et corrigée — voir §10** : build multi-stage, non-root en lecture seule, `HEALTHCHECK`, digests pinnés, cache Docker en CI, scan de vulnérabilités (Trivy) bloquant, SBOM + provenance + signature cosign sur les images publiées, versions de dépendances alignées entre services, Dependabot configuré.
 
 **Le point le plus important de cet audit** : le système *semble* cohérent en surface (contrats gRPC respectés à 100 %, dégradation gracieuse quasi partout, bonne couverture de tests), mais un bug de configuration silencieux (**ANO-001**) fait qu'une partie du paramétrage métier exposé à l'ADMIN (délais de paiement, validité des tokens, délais de relance impayés) **n'a aucun effet réel** — le système tourne en permanence sur des valeurs par défaut codées en dur, jamais sur les valeurs configurées. C'est le genre d'incohérence qu'aucun test unitaire par service ne peut détecter, car chaque service se teste avec son propre mock du Config Service.
 
@@ -405,3 +408,48 @@ Cet audit a mis en évidence des passages **obsolètes ou incohérents** dans le
 6. ✅ **ANO-009/010/011/012/021 corrigées** (PR #25, documentation uniquement) — `CLAUDE.md`, `docs/ARCHITECTURE.md`, `gateway/CLAUDE.md`, `services/config/CLAUDE.md` mis à jour, dont la contradiction sur le canal WhatsApp (Telnyx vs whatsapp-web.js). Voir §8.
 7. ✅ **ANO-022 corrigée** (PR #33) — couverture ajoutée pour facturation/paiement/notification côté Gateway. Reste : tests manquants sur `event_publisher.py` (Abonné), `message_builder.py` (Notification).
 8. ✅ **ANO-023 corrigée** (PR #34) — suppression du code mort `marquer_resolu` côté Paiement.
+
+---
+
+
+
+## 10. Pipeline CI/CD et Dockerfiles
+
+**Date de l'audit :** 2026-07-03. Portée : les 10 `Dockerfile` du monorepo (gateway, 7 services Python, nginx, whatsapp-service) et `.github/workflows/ci.yml`. Contrairement au reste de ce document (audit du code applicatif), cette section couvre l'infrastructure de build/déploiement — non cataloguée en `ANO-XXX` (registre réservé aux anomalies applicatives) mais suit le même principe : corrigé directement dans `develop`, sans anomalie ouverte en suspens.
+
+### 10.1 Constat initial
+
+- **Dockerfiles** : image finale gonflée par les outils de build (`gcc`/`libpq-dev` jamais retirés, un seul stage), `.dockerignore` absent sur 7 services sur 10, aucun `HEALTHCHECK`, base images non reproductibles (tag flottant sans digest).
+- **Pipeline CI** : chaque image buildée deux fois sans jamais être mise en cache (`docker-build-*` en PR, `publish-*` en push), aucun scan de vulnérabilités d'image, aucun SBOM ni attestation de provenance, aucune signature, actions tierces référencées par tag mutable plutôt que par SHA de commit, `whatsapp-service` absent du pipeline (Dockerfile existant mais aucune build/test/scan/publish).
+- **Dépendances** : `grpcio`/`grpcio-tools` divergeaient silencieusement entre services censés suivre la même stack (`1.64.1` vs `1.81.1`) ; les 4 paquets `opentelemetry-*` étaient les seules dépendances en `>=` de tout le monorepo (tout le reste en `==`).
+
+### 10.2 Corrections apportées
+
+**Dockerfiles — PR #35** (mergée) :
+- Build multi-stage sur les 8 services Python : `gcc`/`libpq-dev` isolés dans un stage `builder`, dépendances installées en `--user` puis copiées dans l'image finale. ~40-45 % de réduction de taille (ex. auth : 603 Mo → 347 Mo).
+- Durcissement lecture seule : code et dépendances restent `root:root`, lisibles mais non modifiables par `appuser` à l'exécution (exception : `/app/pdfs` sur facturation, seul répertoire réellement écrit — génération PDF).
+- `HEALTHCHECK` sur les 10 images (TCP pour les services gRPC, HTTP pour gateway/whatsapp-service/nginx — `/healthz` dédié sur nginx, indépendant de la disponibilité de la gateway en aval).
+- `.dockerignore` ajouté sur les 7 services qui n'en avaient pas.
+- Base images pinnées par digest en plus du tag (`python:3.12-slim@sha256:...`, `node:18-slim@sha256:...`, `nginx:1.27-alpine@sha256:...`).
+
+**Pipeline CI — PR #36** (mergée) :
+- Cache Docker via le backend GHA (`cache-from`/`cache-to: type=gha`), partagé par scope entre `docker-build-*` (PR) et `publish-*` (push) du même service — la publication réutilise le cache du build.
+- Scan Trivy (CRITICAL/HIGH, bloquant) sur chaque image dans `docker-build-*`, scope `scanners: vuln` (le scan de secrets ferait doublon avec gitleaks déjà sur le code source, et générait un faux positif sur une clé de test embarquée dans le paquet tiers `autobahn`).
+- SBOM + attestation de provenance + signature keyless (cosign, identité OIDC GitHub Actions) sur chaque image publiée sur GHCR.
+- `whatsapp-service` ajouté au filtre de chemins et aux jobs `docker-build-*`/`publish-*`.
+- Toutes les actions tierces épinglées par SHA de commit plutôt que par tag mutable.
+- **Corrections découvertes en testant le nouveau gate Trivy localement avant de l'activer** (sinon la CI aurait cassé dès le premier merge) : nginx `1.27-alpine` → `1.29-alpine` + `apk upgrade` au build (33 CVE CRITICAL/HIGH → 0) ; whatsapp-service `node:18-slim` (EOL) → `node:22-slim` (LTS actif) + `apt-get upgrade` au build + suppression de npm/npx/corepack après `npm install` (jamais utilisés à l'exécution) — 14 CVE CRITICAL/HIGH → 0.
+
+**Dépendances — PR #37** (mergée) :
+- `grpcio`/`grpcio-tools` alignés à `1.81.1` sur les 8 services Python, avec `protobuf==6.33.6` explicite.
+- `opentelemetry-api`/`-sdk`/`-instrumentation-django`/`-exporter-otlp` pinnés à la version qui résolvait déjà (`1.43.0` / `0.64b0`) sur les 7 services qui les utilisent.
+- 496/496 tests relancés après le bump (aucune régression), `pip-audit` sans vulnérabilité connue.
+
+**Dependabot — PR #38** (mergée) :
+- `.github/dependabot.yml` : un job `docker` par service (10), un job `pip` par service Python (8), un job `npm` (whatsapp-service), un job `github-actions` — cadence hebdomadaire, PR ciblées sur `develop`. Complète le pinning par digest/SHA : sans lui, un digest ou un SHA pinné se périme silencieusement (c'est exactement ce que le Trivy gate a débusqué sur nginx et whatsapp-service lors de sa mise en place).
+
+### 10.3 Points d'attention restants
+
+- **Rétention GHCR** : aucune politique de rétention/nettoyage des images publiées n'est configurée — ce n'est pas un réglage qui se fait dans le code du dépôt (paramètre d'organisation GitHub), à traiter séparément si le volume d'images devient un problème.
+- **nginx tourne en root** (comportement par défaut de l'image officielle `nginx:alpine`, le process maître doit binder le port 80) — non modifié, cohérent avec l'image amont, pas une régression introduite ici.
+- **whatsapp-service** reste en single-stage (Puppeteer/Chromium doit rester dans l'image finale, rien à extraire dans un stage `builder` séparé) — c'est aussi la plus grosse image du monorepo (~1,5 Go), inhérent à Chromium, pas optimisable sans changer d'approche (ex. navigateur distant).
