@@ -1,8 +1,11 @@
 # syntax=docker/dockerfile:1
-FROM node:18-slim@sha256:f9ab18e354e6855ae56ef2b290dd225c1e51a564f87584b9bd21dd651838830e
+FROM node:22-slim@sha256:813a7480f28fdadac1f7f5c824bcdad435b5bc1322a5968bbbdef8d058f9dff4
 
-# Chromium et ses dépendances pour Puppeteer
-RUN apt-get update && apt-get install -y \
+# apt-get upgrade en plus du digest pinné : applique les correctifs de
+# sécurité publiés par Debian depuis la construction de cette image de
+# base, sans attendre qu'un nouveau digest amont soit disponible.
+# Chromium et ses dépendances pour Puppeteer.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     chromium \
     fonts-freefont-ttf \
     --no-install-recommends \
@@ -15,7 +18,11 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm install --omit=dev \
+    # npm/npx/corepack ne servent qu'à l'installation ; les retirer réduit
+    # la surface d'attaque (dépendances tierces embarquées par npm lui-même,
+    # ex. picomatch) sans affecter l'exécution (CMD n'appelle que "node").
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 
 COPY server.js .
 
@@ -24,7 +31,7 @@ COPY server.js .
 # session, caches — donc pas de durcissement en lecture seule ici).
 RUN mkdir -p /app/session && chown -R node:node /app
 
-# Basculer vers l'utilisateur non-root pré-existant dans l'image node:18-slim
+# Basculer vers l'utilisateur non-root pré-existant dans l'image node:22-slim
 USER node
 
 # Volume pour persister la session WhatsApp entre les redémarrages
