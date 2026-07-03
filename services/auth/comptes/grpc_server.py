@@ -65,7 +65,15 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):
         return pb.UserResponse(**user_to_response(user))
 
     def DeactivateUser(self, request, context):
-        user = self.user_admin_service.deactivate_user(request.user_id)
+        user = self.user_admin_service.deactivate_user(request.user_id, caller_id=request.caller_id)
+        return pb.UserResponse(**user_to_response(user))
+
+    def ReactivateUser(self, request, context):
+        user = self.user_admin_service.reactivate_user(request.user_id)
+        return pb.UserResponse(**user_to_response(user))
+
+    def ResetUserPassword(self, request, context):
+        user = self.user_admin_service.resend_credentials(request.user_id)
         return pb.UserResponse(**user_to_response(user))
 
     def ListUsers(self, request, context):

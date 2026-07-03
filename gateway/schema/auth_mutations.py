@@ -100,8 +100,28 @@ class AuthMutations:
 
     @strawberry.mutation
     def deactivate_user(self, info: strawberry.types.Info, id: strawberry.ID) -> User:
+        caller = require_role(info, "ADMIN")
+        user_response = auth_client.deactivate_user(str(id), caller_id=caller.user_id)
+        return user_from_grpc(user_response)
+
+    @strawberry.mutation(description="Réactive un compte précédemment désactivé — ADMIN uniquement.")
+    def reactivate_user(self, info: strawberry.types.Info, id: strawberry.ID) -> User:
         require_role(info, "ADMIN")
-        user_response = auth_client.deactivate_user(str(id))
+        user_response = auth_client.reactivate_user(str(id))
+        return user_from_grpc(user_response)
+
+    @strawberry.mutation(
+        description=(
+            "Renvoie les identifiants d'accès à un utilisateur — ADMIN uniquement. "
+            "Sert à la fois de « Renvoyer le lien d'activation » (compte encore en attente) "
+            "et de « Réinitialiser le mot de passe » (compte déjà activé) : le canal "
+            "(e-mail ou OTP WhatsApp) et le type de lien sont choisis selon le rôle et "
+            "l'état du compte, sans mot de passe temporaire."
+        )
+    )
+    def reset_user_password(self, info: strawberry.types.Info, id: strawberry.ID) -> User:
+        require_role(info, "ADMIN")
+        user_response = auth_client.reset_user_password(str(id))
         return user_from_grpc(user_response)
 
     @strawberry.mutation(description="Reset de mot de passe par e-mail — ADMIN uniquement.")

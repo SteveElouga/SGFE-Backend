@@ -54,8 +54,14 @@ class AuthServiceClient:
             auth_pb.UpdateUserRequest(user_id=user_id, email=email, role=role, phone_number=phone_number)
         )
 
-    def deactivate_user(self, user_id: str) -> auth_pb.UserResponse:
-        return self._stub.DeactivateUser(auth_pb.UserIdRequest(user_id=user_id))
+    def deactivate_user(self, user_id: str, caller_id: str = "") -> auth_pb.UserResponse:
+        return self._stub.DeactivateUser(auth_pb.DeactivateUserRequest(user_id=user_id, caller_id=caller_id))
+
+    def reactivate_user(self, user_id: str) -> auth_pb.UserResponse:
+        return self._stub.ReactivateUser(auth_pb.UserIdRequest(user_id=user_id))
+
+    def reset_user_password(self, user_id: str) -> auth_pb.UserResponse:
+        return self._stub.ResetUserPassword(auth_pb.UserIdRequest(user_id=user_id))
 
     def get_user(self, user_id: str) -> auth_pb.UserResponse:
         return self._stub.GetUser(auth_pb.UserIdRequest(user_id=user_id))

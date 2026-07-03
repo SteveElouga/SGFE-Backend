@@ -252,6 +252,97 @@ class UserAdminServiceTests(TestCase):
         deactivated = self.user_admin.deactivate_user(str(created.id))
         self.assertFalse(deactivated.is_active)
 
+    def test_reactivate_user(self):
+        created = self.user_admin.create_user(username="agent7d", phone_number="+237690000027", role=Role.AGENT)
+        self.user_admin.deactivate_user(str(created.id))
+        reactivated = self.user_admin.reactivate_user(str(created.id))
+        self.assertTrue(reactivated.is_active)
+
+    def test_deactivate_own_account_raises(self):
+        admin = User.objects.create_user(
+            username="admin_self",
+            email="admin_self@example.com",
+            password="S3cr3t!",
+            role=Role.ADMIN,
+            phone_number="+237690000050",
+        )
+        # Un second admin actif pour isoler le contrôle d'auto-désactivation.
+        User.objects.create_user(
+            username="admin_other",
+            email="admin_other@example.com",
+            password="S3cr3t!",
+            role=Role.ADMIN,
+            phone_number="+237690000051",
+        )
+        with self.assertRaisesMessage(ValueError, "votre propre compte"):
+            self.user_admin.deactivate_user(str(admin.id), caller_id=str(admin.id))
+
+    def test_deactivate_last_active_admin_raises(self):
+        admin = User.objects.create_user(
+            username="admin_last",
+            email="admin_last@example.com",
+            password="S3cr3t!",
+            role=Role.ADMIN,
+            phone_number="+237690000052",
+        )
+        with self.assertRaisesMessage(ValueError, "dernier administrateur actif"):
+            self.user_admin.deactivate_user(str(admin.id))
+
+    def test_deactivate_admin_ok_when_another_active_admin_exists(self):
+        admin1 = User.objects.create_user(
+            username="admin_a",
+            email="admin_a@example.com",
+            password="S3cr3t!",
+            role=Role.ADMIN,
+            phone_number="+237690000053",
+        )
+        User.objects.create_user(
+            username="admin_b",
+            email="admin_b@example.com",
+            password="S3cr3t!",
+            role=Role.ADMIN,
+            phone_number="+237690000054",
+        )
+        result = self.user_admin.deactivate_user(str(admin1.id))
+        self.assertFalse(result.is_active)
+
+    def test_resend_credentials_non_admin_sends_otp(self):
+        created = self.user_admin.create_user(username="agent7e", phone_number="+237690000028", role=Role.AGENT)
+        before = self.mock_whatsapp.call_count
+        self.user_admin.resend_credentials(str(created.id))
+        self.assertEqual(self.mock_whatsapp.call_count, before + 1)
+        self.mock_send.assert_not_called()
+
+    def test_resend_credentials_admin_pending_sends_activation_email(self):
+        created = self.user_admin.create_user(
+            username="admin_pending",
+            email="admin_pending@example.com",
+            phone_number="+237690000029",
+            role=Role.ADMIN,
+        )
+        # create_user a déjà envoyé un e-mail d'activation ; on repart de ce compteur.
+        before = self.mock_send.call_count
+        self.user_admin.resend_credentials(str(created.id))
+        self.assertEqual(self.mock_send.call_count, before + 1)
+        subject = self.mock_send.call_args.kwargs["subject"]
+        self.assertIn("Activez", subject)
+
+    def test_resend_credentials_admin_activated_sends_reset_email(self):
+        created = self.user_admin.create_user(
+            username="admin_activated",
+            email="admin_activated@example.com",
+            phone_number="+237690000039",
+            role=Role.ADMIN,
+        )
+        created.set_password("S3cr3t!")
+        created.is_active = True
+        created.save()
+        before = self.mock_send.call_count
+        self.user_admin.resend_credentials(str(created.id))
+        self.assertEqual(self.mock_send.call_count, before + 1)
+        subject = self.mock_send.call_args.kwargs["subject"]
+        self.assertIn("Réinitialisation", subject)
+
     def test_list_users(self):
         self.user_admin.create_user(username="agent8", phone_number="+237690000025", role=Role.AGENT)
         self.user_admin.create_user(username="agent9", phone_number="+237690000026", role=Role.AGENT)

@@ -174,10 +174,45 @@ class UserAdminService:
 
         return saved_user
 
-    def deactivate_user(self, user_id: str) -> User:
+    def deactivate_user(self, user_id: str, caller_id: str | None = None) -> User:
+        """Désactive un compte, sauf s'il s'agit du propre compte de l'appelant
+        ou du dernier administrateur actif du système (protège contre le
+        verrouillage total de l'administration)."""
         user = self.users.get_by_id(user_id)
+
+        if caller_id and str(user.id) == str(caller_id):
+            raise ValueError("Vous ne pouvez pas désactiver votre propre compte")
+
+        if user.role == "ADMIN" and user.is_active and self.users.count_active_admins(exclude_id=user.id) == 0:
+            raise ValueError("Impossible de désactiver le dernier administrateur actif")
+
         user.is_active = False
         return self.users.save(user)
+
+    def reactivate_user(self, user_id: str) -> User:
+        user = self.users.get_by_id(user_id)
+        user.is_active = True
+        return self.users.save(user)
+
+    def resend_credentials(self, user_id: str) -> User:
+        """Renvoi manuel (déclenché par un admin) des identifiants d'accès.
+
+        Envoie un lien d'activation si le compte est encore en attente (jamais
+        de mot de passe défini), sinon un lien/OTP de réinitialisation — sert
+        aussi bien pour « Renvoyer le lien d'activation » que pour
+        « Réinitialiser le mot de passe » côté frontend, ces deux actions
+        partageant le même mécanisme sous-jacent (voir PasswordSetupService).
+        """
+        user = self.users.get_by_id(user_id)
+        pending_activation = not user.has_usable_password()
+        if user.role == "ADMIN":
+            if pending_activation:
+                self.password_setup.send_activation_email(user)
+            else:
+                self.password_setup.send_password_reset_email(user)
+        else:
+            self.phone_otp.send_otp(user)
+        return user
 
     def get_user(self, user_id: str) -> User:
         return self.users.get_by_id(user_id)
@@ -217,6 +252,13 @@ class PasswordSetupService:
             intro_html=f"<p>Bonjour {user.username},</p><p>Votre compte a été créé. Définissez votre mot de passe :</p>",
         )
 
+    def send_password_reset_email(self, user: User) -> None:
+        self._create_token_and_send(
+            user,
+            subject="Réinitialisation de votre mot de passe SGFE",
+            intro_html=f"<p>Bonjour {user.username},</p><p>Cliquez sur le lien pour définir un nouveau mot de passe :</p>",
+        )
+
     def request_password_reset(self, email: str) -> None:
         # Ne jamais révéler si l'e-mail existe ou non : succès silencieux dans les deux cas.
         try:
@@ -226,11 +268,7 @@ class PasswordSetupService:
         # Seul l'ADMIN peut réinitialiser par e-mail
         if user.role != "ADMIN":
             return
-        self._create_token_and_send(
-            user,
-            subject="Réinitialisation de votre mot de passe SGFE",
-            intro_html=f"<p>Bonjour {user.username},</p><p>Cliquez sur le lien pour définir un nouveau mot de passe :</p>",
-        )
+        self.send_password_reset_email(user)
 
     def set_password_with_token(self, token: str, new_password: str) -> None:
         try:
