@@ -44,7 +44,7 @@
 | whatsapp-service (Node) | 🟢 Fonctionnel                                     | — (pas de tests)        | Aucune authentification sur ses endpoints (ANO-005)                                |
 
 
-**Total : 439 tests exécutés à travers les 8 briques Python, 438 verts, 1 échec** (gateway, régression sur `demarrer_maintenant`, voir ANO-004).
+**Total : 439 tests exécutés à travers les 8 briques Python** (chiffre au moment de l'audit initial — voir §7 pour l'état courant). ANO-004 (régression sur `demarrer_maintenant`, gateway) a été corrigée directement sur la PR #16.
 
 **Le point le plus important de cet audit** : le système *semble* cohérent en surface (contrats gRPC respectés à 100 %, dégradation gracieuse quasi partout, bonne couverture de tests), mais un bug de configuration silencieux (**ANO-001**) fait qu'une partie du paramétrage métier exposé à l'ADMIN (délais de paiement, validité des tokens, délais de relance impayés) **n'a aucun effet réel** — le système tourne en permanence sur des valeurs par défaut codées en dur, jamais sur les valeurs configurées. C'est le genre d'incohérence qu'aucun test unitaire par service ne peut détecter, car chaque service se teste avec son propre mock du Config Service.
 
@@ -148,11 +148,11 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 ### 🟠 Élevées
 
-**ANO-004 — Test cassé actuellement sur la branche** `feature/campagne-demarrer-maintenant`
+**ANO-004 — Test cassé sur la branche** `feature/campagne-demarrer-maintenant` — ✅ **RÉSOLU** (poussé directement sur la PR #16 existante, commit `7f7fb75` — pas de nouvelle PR : le bug n'existait que sur cette branche, `develop` n'ayant pas encore la fonctionnalité `demarrer_maintenant`)
 
 - **Fichier** : `gateway/schema/tests/test_campagne.py::TestCampagneMutations::test_creer_campagne_admin` (ligne ~134).
-- **Cause** : le mock `assert_called_once_with(...)` n'a pas été mis à jour après l'ajout de `demarrer_maintenant` au commit `29e91c7`. Confirmé par exécution réelle : `python manage.py test schema` → **84 tests, 1 échec**.
-- **Correctif** : ajouter `demarrer_maintenant=False` à l'assertion.
+- **Cause** : le mock `assert_called_once_with(...)` n'avait pas été mis à jour après l'ajout de `demarrer_maintenant` au commit `29e91c7`. Confirmé par exécution réelle : `python manage.py test schema` → **84 tests, 1 échec**.
+- **Correctif appliqué** : `demarrer_maintenant=False` ajouté à l'assertion ; tests manquants ajoutés côté campagne-service pour la fonctionnalité elle-même (`test_creer_campagne_demarrer_maintenant_statut_en_cours`, `test_creer_campagne_sans_demarrer_maintenant_reste_planifiee`). Suites vérifiées : campagnes 64/64, schema (gateway) 84/84.
 
 **ANO-005 — whatsapp-service : endpoints HTTP sans authentification**
 
@@ -361,7 +361,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 | Paiement     | 59             | ✅ OK             | Rapporté par l'agent d'audit (exécution confirmée)        |
 | Notification | 40             | ✅ OK             | Exécution réelle (`manage.py test notifications`)         |
 | Config       | 29             | ✅ OK             | Rapporté par l'agent d'audit (exécution confirmée)        |
-| Gateway      | 84             | 🔴 1 échec       | Exécution réelle (`manage.py test schema`) — voir ANO-004 |
+| Gateway      | 84 → 90 après ANO-002 | 🟢 OK (ANO-004 corrigée sur PR #16) | Exécution réelle (`manage.py test schema`) |
 | **Total**    | **439**        | **438 ✅ / 1 🔴** |                                                           |
 
 
@@ -389,7 +389,7 @@ Cet audit a mis en évidence des passages **obsolètes ou incohérents** dans le
 
 1. ✅ **ANO-001 corrigée** (PR #18) — casse des clés Config uniformisée sur les 4 services consommateurs.
 2. ✅ **ANO-002 corrigée** (PR #19) — IDOR sur le PDF de l'espace abonné.
-3. **Réparer le test cassé (ANO-004)** avant tout merge de la branche `feature/campagne-demarrer-maintenant`.
+3. ✅ **ANO-004 corrigée** — poussé directement sur la PR #16 (`feature/campagne-demarrer-maintenant`).
 4. **Décider consciemment du sort d'ANO-003** (statut ACTIF non vérifié) — soit l'implémenter (probable, vu que c'est une règle métier explicitement obligatoire dans CLAUDE.md), soit documenter que c'est un choix assumé et retirer la règle de CLAUDE.md.
 5. **Ajouter une authentification basique à whatsapp-service (ANO-005)** avant tout déploiement au-delà du réseau Docker local.
 6. Planifier la mise à jour des documents obsolètes (§8) — en particulier `ARCHITECTURE.md` qui se contredit elle-même sur un point technique central (canal WhatsApp).
