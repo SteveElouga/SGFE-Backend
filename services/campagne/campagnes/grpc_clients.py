@@ -16,10 +16,17 @@ class AbonneServiceClient:
     def __init__(self) -> None:
         address = f"{settings.ABONNE_GRPC_HOST}:{settings.ABONNE_GRPC_PORT}"
         self._channel = grpc.insecure_channel(address)
-        # Import tardif : les stubs ne sont pas encore générés pour abonne_service
-        # dans ce service, on utilise grpc.unary_unary si nécessaire.
-        # Pour l'instant, l'intégration sera faite via le grpc_server.py.
         self._address = address
+
+        proto_path = str(Path(settings.BASE_DIR) / "proto")
+        if proto_path not in sys.path:
+            sys.path.insert(0, proto_path)
+
+        import abonne_service_pb2 as pb
+        import abonne_service_pb2_grpc as pb_grpc
+
+        self._stub = pb_grpc.AbonneServiceStub(self._channel)
+        self._pb = pb
 
     def ping(self) -> bool:
         """Vérifie si le service est joignable."""
@@ -28,6 +35,17 @@ class AbonneServiceClient:
             return True
         except grpc.FutureTimeoutError:
             return False
+
+    def get_abonne(self, abonne_id: str):
+        """Récupère les informations d'un abonné depuis Abonné Service.
+
+        Returns:
+            AbonneResponse protobuf (contient notamment `statut`).
+
+        Raises:
+            grpc.RpcError: Si le service est inaccessible ou l'abonné introuvable.
+        """
+        return self._stub.GetAbonne(self._pb.AbonneIdRequest(abonne_id=abonne_id))
 
 
 class NotificationServiceClient:

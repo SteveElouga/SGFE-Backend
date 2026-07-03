@@ -2,8 +2,10 @@
 
 from typing import Optional
 
+import grpc
 from django.core.exceptions import ValidationError
 
+from .grpc_clients import AbonneServiceClient
 from .models import Campagne, Releve, StatutCampagne, StatutReleve
 from .repositories import CampagneRepository, ReleveRepository
 
@@ -14,6 +16,30 @@ class CampagneService:
     def __init__(self) -> None:
         self._repo = CampagneRepository()
         self._releve_repo = ReleveRepository()
+        self._abonne_client = AbonneServiceClient()
+
+    def _verifier_abonne_actif(self, abonne_id: str) -> None:
+        """Vérifie que l'abonné est ACTIF avant tout ajout en campagne.
+
+        Règle métier obligatoire (CLAUDE.md racine) : un abonné suspendu ou
+        résilié ne peut pas être relevé. On échoue de façon volontairement
+        bloquante (pas de dégradation gracieuse) si Abonné Service est
+        inaccessible : c'est une validation métier obligatoire, pas un enrichissement
+        optionnel — il vaut mieux refuser l'opération que de la laisser
+        passer sans avoir pu vérifier le statut.
+        """
+        try:
+            abonne = self._abonne_client.get_abonne(abonne_id)
+        except grpc.RpcError as exc:
+            raise ValidationError(
+                f"Impossible de vérifier le statut de l'abonné {abonne_id} "
+                f"(Abonné Service inaccessible) : {exc.details() if hasattr(exc, 'details') else exc}"
+            ) from exc
+        if abonne.statut != "ACTIF":
+            raise ValidationError(
+                f"L'abonné {abonne_id} n'est pas ACTIF (statut actuel : {abonne.statut}) — "
+                "un abonné suspendu ou résilié ne peut pas être relevé."
+            )
 
     def creer_campagne(
         self,
@@ -25,6 +51,7 @@ class CampagneService:
         numero_mobile_money: str = "",
         generer_factures_auto: bool = True,
         envoyer_whatsapp_auto: bool = True,
+        demarrer_maintenant: bool = False,
     ) -> Campagne:
         if not nom.strip():
             raise ValidationError("Le nom de la campagne est obligatoire.")
@@ -45,6 +72,7 @@ class CampagneService:
             numero_mobile_money=numero_mobile_money,
             generer_factures_auto=generer_factures_auto,
             envoyer_whatsapp_auto=envoyer_whatsapp_auto,
+            demarrer_maintenant=demarrer_maintenant,
         )
 
     def demarrer_campagne(self, campagne_id: str) -> Campagne:
@@ -79,6 +107,7 @@ class CampagneService:
         campagne = self._repo.get_by_id(campagne_id)
         if campagne.statut not in (StatutCampagne.PLANIFIEE, StatutCampagne.EN_COURS):
             raise ValidationError("Impossible d'ajouter un abonné à une campagne clôturée.")
+        self._verifier_abonne_actif(abonne_id)
         existant = self._releve_repo.get_by_campagne_abonne(campagne_id, abonne_id)
         if existant:
             raise ValidationError(f"L'abonné {abonne_id} est déjà inscrit à la campagne {campagne_id}.")

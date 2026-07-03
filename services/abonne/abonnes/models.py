@@ -53,6 +53,16 @@ class Compteur(models.Model):
     class Meta:
         db_table = "compteurs"
         indexes = [models.Index(fields=["abonne"])]
+        constraints = [
+            # Un seul compteur ACTIF par abonné à la fois (EF-ABO-005) —
+            # jusqu'ici garanti uniquement par la logique applicative
+            # (remplacer_compteur/resilier_abonne), voir ANO-017.
+            models.UniqueConstraint(
+                fields=["abonne"],
+                condition=models.Q(statut=StatutCompteur.ACTIF),
+                name="unique_compteur_actif_par_abonne",
+            )
+        ]
 
     def __str__(self) -> str:
         return f"Compteur {self.numero_compteur} ({self.abonne.numero_abonne})"

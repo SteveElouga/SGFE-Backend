@@ -1,7 +1,7 @@
 from django.db import IntegrityError
 from django.test import TestCase
 
-from abonnes.models import Abonne, StatutAbonne, StatutCompteur
+from abonnes.models import Abonne, Compteur, StatutAbonne, StatutCompteur
 from abonnes.services import AbonneService, CompteurService, NumerotationService, ValidationError
 
 
@@ -79,6 +79,15 @@ class AbonneServiceTests(TestCase):
         abonne = _create_abonne(self.service)
         resilie = self.service.resilier_abonne(str(abonne.id))
         self.assertEqual(resilie.statut, StatutAbonne.RESILIE)
+
+    def test_resilier_abonne_desactive_le_compteur_actif(self):
+        """Régression ANO-017 : le compteur actif doit passer à DESACTIVE
+        lors de la résiliation de l'abonné (il n'est ni remplacé, ni
+        toujours en service)."""
+        abonne = _create_abonne(self.service)
+        self.service.resilier_abonne(str(abonne.id))
+        compteur = Compteur.objects.get(abonne_id=abonne.id)
+        self.assertEqual(compteur.statut, StatutCompteur.DESACTIVE)
 
     def test_resilier_abonne_deja_resilie_raises(self):
         abonne = _create_abonne(self.service)
