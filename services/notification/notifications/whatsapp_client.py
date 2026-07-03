@@ -28,6 +28,7 @@ class WhatsAppWebClient:
             response = requests.post(
                 f"{settings.WHATSAPP_SERVICE_URL}/send",
                 json={"phone": to_phone, "message": message},
+                headers={"X-Internal-Api-Key": settings.WHATSAPP_INTERNAL_API_KEY},
                 timeout=15,
             )
             data = response.json()
@@ -52,6 +53,7 @@ class WhatsAppWebClient:
             response = requests.post(
                 f"{settings.WHATSAPP_SERVICE_URL}/send-with-pdf",
                 json={"phone": to_phone, "message": message, "pdf_base64": pdf_base64, "filename": filename},
+                headers={"X-Internal-Api-Key": settings.WHATSAPP_INTERNAL_API_KEY},
                 timeout=30,
             )
             data = response.json()
