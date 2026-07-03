@@ -59,6 +59,7 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
                 numero_mobile_money=request.numero_mobile_money,
                 generer_factures_auto=request.generer_factures_auto,
                 envoyer_whatsapp_auto=request.envoyer_whatsapp_auto,
+                demarrer_maintenant=request.demarrer_maintenant,
             )
             return campagne_to_proto(campagne)
         except ValidationError as exc:
@@ -182,9 +183,11 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
             releve = self._releve_repo.get_by_campagne_abonne(request.campagne_id, request.abonne_id)
             if releve is None:
                 dernier_index = self._get_dernier_index_value(request.abonne_id)
-                campagne = self._campagne_repo.get_by_id(request.campagne_id)
-                releve = self._releve_repo.create(
-                    campagne=campagne,
+                # Passe par ajouter_abonne_campagne (et non un create() direct)
+                # pour bénéficier de la vérification du statut ACTIF de
+                # l'abonné, obligatoire avant tout ajout en campagne.
+                releve = self._campagne_svc.ajouter_abonne_campagne(
+                    campagne_id=request.campagne_id,
                     abonne_id=request.abonne_id,
                     ancien_index=dernier_index,
                 )
