@@ -94,6 +94,14 @@ class AuthServiceTests(TestCase):
         self.assertTrue(new_refresh)
         self.assertGreater(expires_in, 0)
 
+    def test_refresh_token_revoque_lancien_refresh_token(self):
+        """Régression ANO-006 : après un refresh, l'ancien refresh token ne
+        doit plus pouvoir être réutilisé (rotation)."""
+        _, refresh, _ = self.auth.login("comptable1", "secret123")
+        self.auth.refresh_token(refresh)
+        with self.assertRaises(AuthenticationError):
+            self.auth.refresh_token(refresh)
+
     def test_refresh_token_invalid_raises(self):
         with self.assertRaises(AuthenticationError):
             self.auth.refresh_token("token-invalide")
