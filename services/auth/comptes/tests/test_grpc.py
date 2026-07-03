@@ -74,9 +74,12 @@ class AuthServiceServicerTests(TestCase):
         response = self.servicer.Logout(pb.TokenRequest(token=login.access_token), self.context)
         self.assertTrue(response.success)
 
-    def test_logout_failure_returns_unsuccessful_status(self):
-        response = self.servicer.Logout(pb.TokenRequest(token="invalide"), self.context)
-        self.assertFalse(response.success)
+    def test_logout_failure_raises_authentication_error(self):
+        """Régression ANO-020 : Logout doit désormais lever AuthenticationError
+        (géré par ErrorHandlingInterceptor -> UNAUTHENTICATED) comme les
+        autres RPC de ce servicer, au lieu de retourner success=False."""
+        with self.assertRaises(AuthenticationError):
+            self.servicer.Logout(pb.TokenRequest(token="invalide"), self.context)
 
     def test_create_admin_sends_activation_email(self):
         response = self.servicer.CreateUser(

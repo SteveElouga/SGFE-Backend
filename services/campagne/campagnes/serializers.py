@@ -50,7 +50,7 @@ def releve_to_proto(releve: Releve) -> pb.ReleveResponse:
         ancien_index=releve.ancien_index,
         nouveau_index=releve.nouveau_index if releve.nouveau_index is not None else 0.0,
         consommation=releve.consommation if releve.consommation is not None else 0.0,
-        date_releve=releve.date_releve.isoformat() if releve.date_releve else "",
+        date_releve=_to_iso(releve.date_releve),
         observation=releve.observation,
         statut=releve.statut,
     )

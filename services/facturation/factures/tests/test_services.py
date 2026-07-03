@@ -57,13 +57,9 @@ class FactureServiceTests(TestCase):
         self.svc = FactureService()
         self.tarif_svc = TarifService()
         self.tarif_svc.update_tarif(Decimal("500.00"), datetime.date(2025, 7, 1))
-        self.societe = InfosSociete(
-            nom="SGFE Test", adresse="Yaoundé", telephone="+237000000000"
-        )
+        self.societe = InfosSociete(nom="SGFE Test", adresse="Yaoundé", telephone="+237000000000")
 
-    def _make_releve(
-        self, abonne_id: str = "abo-001", ancien: float = 100.0, nouveau: float = 115.0
-    ) -> ReleveData:
+    def _make_releve(self, abonne_id: str = "abo-001", ancien: float = 100.0, nouveau: float = 115.0) -> ReleveData:
         return ReleveData(
             abonne_id=abonne_id,
             ancien_index=ancien,
@@ -92,6 +88,29 @@ class FactureServiceTests(TestCase):
         self.assertEqual(len(factures), 2)
         self.assertEqual(factures[0].statut, StatutFacture.IMPAYEE)
         self.assertEqual(factures[0].prix_m3, Decimal("500.00"))
+
+    def test_generer_factures_ignore_index_decroissant(self):
+        """Régression ANO-008 : Facturation doit revalider nouveau_index >=
+        ancien_index et ne jamais générer de facture à montant négatif,
+        même si un relevé corrompu franchit la validation de Campagne."""
+        releves = [
+            self._make_releve("abo-001"),  # valide
+            self._make_releve("abo-002", ancien=200.0, nouveau=190.0),  # invalide
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("factures.services.settings") as mock_settings:
+                mock_settings.PDF_STORAGE_DIR = tmpdir
+                mock_settings.DEFAULT_DELAI_PAIEMENT_JOURS = 5
+                factures = self.svc.generer_factures(
+                    campagne_id="camp-index-decroissant",
+                    releves=releves,
+                    delai_paiement_jours=5,
+                    societe=self.societe,
+                )
+
+        self.assertEqual(len(factures), 1)
+        self.assertEqual(factures[0].abonne_id, "abo-001")
 
     def test_generer_factures_calcul_montant(self):
         releve = self._make_releve("abo-001", 100.0, 110.0)

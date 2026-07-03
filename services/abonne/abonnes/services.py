@@ -105,8 +105,19 @@ class AbonneService:
         abonne = self.abonnes.get_by_id(abonne_id)
         if abonne.statut == StatutAbonne.RESILIE:
             raise ValidationError("Cet abonné est déjà résilié")
-        abonne.statut = StatutAbonne.RESILIE
-        return self.abonnes.save(abonne)
+        with transaction.atomic():
+            abonne.statut = StatutAbonne.RESILIE
+            self.abonnes.save(abonne)
+            # Le compteur actif est désactivé avec la résiliation : il n'est
+            # ni remplacé (REMPLACE) ni encore en service, juste hors service
+            # tant que la ligne d'eau reste résiliée (ANO-017).
+            try:
+                compteur = self.compteurs.get_actif(abonne_id)
+                compteur.statut = StatutCompteur.DESACTIVE
+                self.compteurs.save(compteur)
+            except Compteur.DoesNotExist:
+                pass
+        return abonne
 
 
 class CompteurService:

@@ -56,9 +56,7 @@ TEMPLATES = [
 WSGI_APPLICATION = "notification.wsgi.application"
 
 if TESTING:
-    DATABASES = {
-        "default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}
-    }
+    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
 else:
     DATABASES = {
         "default": {
@@ -72,9 +70,7 @@ else:
     }
 
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
-    },
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
@@ -103,6 +99,8 @@ CONFIG_GRPC_PORT = env.int("CONFIG_GRPC_PORT", default=50058)
 
 # --- WhatsApp (whatsapp-web.js service) ---
 WHATSAPP_SERVICE_URL = env("WHATSAPP_SERVICE_URL", default="http://localhost:3000")
+# Clé partagée envoyée en en-tête X-Internal-Api-Key vers whatsapp-service.
+WHATSAPP_INTERNAL_API_KEY = env("WHATSAPP_INTERNAL_API_KEY", default="")
 
 # --- Frontend (pour les liens tokenisés) ---
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:4200")

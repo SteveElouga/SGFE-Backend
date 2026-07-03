@@ -33,6 +33,7 @@ class CampagneMutations:
             numero_mobile_money=input.numero_mobile_money,
             generer_factures_auto=input.generer_factures_auto,
             envoyer_whatsapp_auto=input.envoyer_whatsapp_auto,
+            demarrer_maintenant=input.demarrer_maintenant,
         )
         return campagne_from_grpc(response)
 
