@@ -2,6 +2,7 @@
 
 import logging
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import grpc
@@ -10,6 +11,66 @@ from django.conf import settings
 from .pdf_generator import InfosSociete
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class AbonneIdentite:
+    """Identité de l'abonné affichée sur le PDF de facture (source : Abonné Service)."""
+
+    numero_abonne: str = ""
+    nom: str = ""
+    prenom: str = ""
+    telephone_whatsapp: str = ""
+    adresse: str = ""
+    numero_compteur: str = ""
+    quartier: str = ""
+    camp: str = ""
+
+
+class AbonneServiceClient:
+    """Client gRPC vers Abonné Service (port 50052) — identité de l'abonné."""
+
+    def __init__(self) -> None:
+        address = f"{settings.ABONNE_GRPC_HOST}:{settings.ABONNE_GRPC_PORT}"
+        self._channel = grpc.insecure_channel(address)
+
+        proto_path = str(Path(settings.BASE_DIR) / "proto")
+        if proto_path not in sys.path:
+            sys.path.insert(0, proto_path)
+
+        import abonne_service_pb2 as pb
+        import abonne_service_pb2_grpc as pb_grpc
+
+        self._stub = pb_grpc.AbonneServiceStub(self._channel)
+        self._pb = pb
+
+    def get_abonne(self, abonne_id: str) -> AbonneIdentite | None:
+        """Retourne l'identité de l'abonné, ou None si Abonné Service est inaccessible.
+
+        Dégradation gracieuse : un PDF reste généré même sans ces données (le
+        gabarit affiche alors l'identifiant technique en repli), la facture ne
+        doit jamais échouer parce que l'affichage nominatif n'est pas disponible.
+        """
+        try:
+            r = self._stub.GetAbonne(self._pb.AbonneIdRequest(abonne_id=abonne_id))
+            compteur = getattr(r, "compteur", None)
+            numero_compteur = f"{compteur.numero_compteur:04d}" if compteur and compteur.numero_compteur else ""
+            return AbonneIdentite(
+                numero_abonne=r.numero_abonne,
+                nom=r.nom,
+                prenom=r.prenom,
+                telephone_whatsapp=r.telephone_whatsapp,
+                adresse=r.adresse,
+                numero_compteur=numero_compteur,
+                quartier=compteur.quartier if compteur else "",
+                camp=str(compteur.camp) if compteur and compteur.camp else "",
+            )
+        except Exception as exc:
+            logger.warning(
+                "Abonné Service inaccessible — PDF généré sans identité nominative",
+                extra={"abonne_id": abonne_id, "error": str(exc)},
+            )
+            return None
 
 
 class CampagneServiceClient:
