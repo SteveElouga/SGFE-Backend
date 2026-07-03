@@ -19,7 +19,7 @@ services/config/
 ## Spécificités
 
 - **InfosSociete** : singleton (pk=1). Créé automatiquement vide au premier accès.
-- **ConfigParam** : clé/valeur texte. Les 8 clés par défaut (`CONFIG_DEFAULTS` dans `models.py`) sont initialisées automatiquement au premier accès via `get_or_default()` / `list_all()`.
+- **ConfigParam** : clé/valeur texte. Les 10 clés par défaut (`CONFIG_DEFAULTS` dans `models.py`, toutes en minuscule) sont initialisées automatiquement au premier accès via `get_or_default()` / `list_all()`. Les noms de clés doivent correspondre exactement (même casse) à ceux attendus par les `ConfigServiceClient` des services consommateurs — un écart fait échouer `GetConfig` en `NOT_FOUND` et retombe silencieusement sur la valeur par défaut codée en dur côté consommateur (voir ANO-001 dans `docs/ETAT_DU_SYSTEME.md`).
 - Ce service n'appelle aucun autre service gRPC.
 
 ## Démarrage local
