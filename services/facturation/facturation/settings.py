@@ -78,6 +78,11 @@ PAIEMENT_GRPC_PORT = env.int("PAIEMENT_GRPC_PORT", default=50055)
 NOTIFICATION_GRPC_HOST = env("NOTIFICATION_GRPC_HOST", default="localhost")
 NOTIFICATION_GRPC_PORT = env.int("NOTIFICATION_GRPC_PORT", default=50056)
 
+# Abonné Service — lecture de l'identité de l'abonné (nom, adresse, WhatsApp,
+# n° compteur) pour l'affichage sur le PDF de facture.
+ABONNE_GRPC_HOST = env("ABONNE_GRPC_HOST", default="localhost")
+ABONNE_GRPC_PORT = env.int("ABONNE_GRPC_PORT", default=50052)
+
 # --- JWT (validation interne) ---
 JWT_SECRET_KEY = env("JWT_SECRET_KEY", default="changeme")
 JWT_ALGORITHM = env("JWT_ALGORITHM", default="HS256")

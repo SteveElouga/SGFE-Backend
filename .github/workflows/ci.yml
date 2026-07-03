@@ -50,6 +50,7 @@ jobs:
               - 'proto/campagne_service.proto'
               - 'proto/config_service.proto'
               - 'proto/paiement_service.proto'
+              - 'proto/abonne_service.proto'
             paiement:
               - 'services/paiement/**'
               - 'proto/paiement_service.proto'

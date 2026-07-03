@@ -7,7 +7,7 @@ protobuf==6.33.6
 psycopg2-binary==2.9.9
 django-environ==0.11.2
 PyJWT==2.13.0
-reportlab==4.2.2
+weasyprint==69.0
 opentelemetry-api==1.43.0
 opentelemetry-sdk==1.43.0
 opentelemetry-instrumentation-django==0.64b0
