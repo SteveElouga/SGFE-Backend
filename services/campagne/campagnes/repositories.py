@@ -59,11 +59,16 @@ class CampagneRepository:
         campagne.save(update_fields=["statut", "date_cloture"])
         return campagne
 
-    def find_planifiee_pour_date(self, date_planifiee) -> Optional[Campagne]:
-        return Campagne.objects.filter(
-            statut=StatutCampagne.PLANIFIEE,
-            date_planifiee=date_planifiee,
-        ).first()
+    def list_planifiees_pour_date(self, date_planifiee) -> list[Campagne]:
+        """Retourne TOUTES les campagnes PLANIFIEE pour cette date (voir ANO-019 —
+        `.first()` ne démarrait auparavant qu'une seule campagne par jour cible,
+        même si plusieurs partageaient la même date_planifiee)."""
+        return list(
+            Campagne.objects.filter(
+                statut=StatutCampagne.PLANIFIEE,
+                date_planifiee=date_planifiee,
+            )
+        )
 
 
 class ReleveRepository:

@@ -90,14 +90,18 @@ class CampagneService:
         return en_cours[0] if en_cours else None
 
     def demarrer_campagnes_planifiees_pour_aujourd_hui(self) -> list[Campagne]:
-        """Cron 7h00 : démarre les campagnes planifiées pour aujourd'hui ou J-1."""
+        """Cron 7h00 : démarre TOUTES les campagnes planifiées pour aujourd'hui ou J-1.
+
+        Avant ANO-019, seule la première campagne PLANIFIEE trouvée pour une
+        date donnée démarrait (.first()) — les autres campagnes partageant la
+        même date_planifiee restaient bloquées indéfiniment sans alerte.
+        """
         from datetime import date, timedelta
 
         demarrees: list[Campagne] = []
         for delta in (0, -1):
             cible = date.today() + timedelta(days=delta)
-            campagne = self._repo.find_planifiee_pour_date(cible)
-            if campagne:
+            for campagne in self._repo.list_planifiees_pour_date(cible):
                 try:
                     updated = self._repo.update_statut(campagne, StatutCampagne.EN_COURS)
                     demarrees.append(updated)
