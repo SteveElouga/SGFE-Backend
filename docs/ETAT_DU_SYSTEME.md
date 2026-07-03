@@ -34,7 +34,7 @@
 | ----------------------- | -------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------- |
 | Gateway (GraphQL)       | 🟢 Fonctionnel, riche                              | 84 — **1 échec actuel** | ANO-002 (IDOR PDF) corrigée — PR #19 ; subscription sans contrôle d'accès (ANO-015) |
 | Auth Service            | 🟢 Fonctionnel, solide                             | 89 ✅                    | RAS majeur — ANO-006 (rotation refresh token) corrigée, PR #22                     |
-| Abonné Service          | 🟢 Fonctionnel, propre                             | 49 ✅                    | ANO-003bis (événement AbonneCreated inexistant) — reste doc à corriger, non bloquant |
+| Abonné Service          | 🟢 Fonctionnel, propre                             | 49 ✅                    | RAS majeur — ANO-003bis (doc CLAUDE.md) corrigée, PR #25            |
 | Campagne Service        | 🟢 Fonctionnel                                     | 65 ✅                    | ANO-003 (statut ACTIF) corrigée — PR #20 ; ANO-004 (test `demarrer_maintenant`) corrigée — PR #16 |
 | Facturation Service     | 🟢 Fonctionnel                                     | 33 ✅                    | RAS majeur — ANO-007 et ANO-008 corrigées (PR #23, #24)                            |
 | Paiement Service        | 🟢 Fonctionnel, bien testé                         | 59 ✅                    | RAS majeur — service le plus robuste de l'audit                                    |
@@ -141,9 +141,9 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 - **Correctif appliqué** : `AbonneServiceClient.get_abonne()` implémenté (stubs `abonne_service_pb2*.py` générés pour campagne-service, absents auparavant) ; `ajouter_abonne_campagne()` vérifie `statut == "ACTIF"` avant de créer le `Releve`, de façon **bloquante** (pas de dégradation gracieuse — c'est une règle métier obligatoire). `SaisirIndex` route désormais sa création à la volée via cette méthode au lieu d'un accès direct au repository. Tests de régression ajoutés.
 - **Non résolu par cette PR — reste ouvert en ANO-003bis** : l'intégration reste un appel gRPC synchrone (Campagne interroge Abonné à la demande), pas l'événement `AbonneCreated` décrit dans CLAUDE.md racine. Voir ci-dessous.
 
-**ANO-003bis — L'événement** `AbonneCreated` **(Abonné → Campagne) documenté dans CLAUDE.md n'existe pas**
+**ANO-003bis — L'événement** `AbonneCreated` **(Abonné → Campagne) documenté dans CLAUDE.md n'existe pas** — ✅ **RÉSOLU** (PR #25, documentation uniquement)
 
-- **Statut** : ⚪ non résolu — distinct d'ANO-003 (qui portait sur la vérification du statut, maintenant faite via un appel gRPC synchrone `GetAbonne`, pas via un événement). Traité comme une correction de documentation (CLAUDE.md racine décrit un flux événementiel qui n'a jamais existé) plutôt que comme un chantier d'implémentation — voir §8.
+- **Statut** : traité comme une correction de documentation (CLAUDE.md racine décrivait un flux événementiel qui n'a jamais existé) plutôt que comme un chantier d'implémentation — distinct d'ANO-003 (qui portait sur la vérification du statut, désormais faite via un appel gRPC synchrone `GetAbonne`, pas via un événement). CLAUDE.md racine reformulé pour décrire le mécanisme réel.
 - **Réalité** : Abonné Service publie `ABONNE_CREATED`/`ABONNE_UPDATED` uniquement sur **Redis pub/sub** (`services/abonne/abonnes/event_publisher.py:6-25`, canal `abonne:events`), consommé **uniquement par la Gateway** pour les subscriptions GraphQL temps réel. Campagne Service ne s'y abonne jamais. L'intégration event-driven décrite dans CLAUDE.md racine (§ « Événements inter-services ») n'existe donc pas pour ce flux précis — et n'est plus nécessaire pour la vérification de statut, désormais faite en synchrone au moment de la saisie (ANO-003).
 
 
@@ -185,13 +185,13 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 ### 🟡 Moyennes (dette technique / documentation obsolète)
 
-**ANO-009 — CLAUDE.md racine +** `docs/ARCHITECTURE.md` **(§3, §5.7) référencent encore Telnyx** — voir §8.
+**ANO-009 — CLAUDE.md racine +** `docs/ARCHITECTURE.md` **(§3, §5.7) référencent encore Telnyx** — ✅ **RÉSOLU** (PR #25). Voir §8.
 
-**ANO-010 — CLAUDE.md racine : note sur le filtrage SUPERVISEUR obsolète** — le texte affirme que le filtrage par `created_by` « n'existe pas encore » côté campagne-service ; en réalité il est déjà implémenté, mais **côté Gateway** (`gateway/schema/campagne_queries.py:11-29`, `_verifier_acces_campagne`) plutôt que côté `campagne-service` comme le suggérait la note. Fonctionnellement couvert, mais l'emplacement diffère de ce qui est écrit.
+**ANO-010 — CLAUDE.md racine : note sur le filtrage SUPERVISEUR obsolète** — ✅ **RÉSOLU** (PR #25) — le texte affirmait que le filtrage par `created_by` « n'existe pas encore » côté campagne-service ; corrigé pour refléter l'implémentation réelle **côté Gateway** (`gateway/schema/campagne_queries.py:11-29`, `_verifier_acces_campagne`).
 
-**ANO-011 —** `gateway/CLAUDE.md` **obsolète** — affirme que seul `auth_service` est branché ; en réalité 6 des 7 services métier (tout sauf reporting) sont câblés côté Gateway (queries, mutations, et 3 services consommés directement dans `espace_abonne.py`).
+**ANO-011 —** `gateway/CLAUDE.md` **obsolète** — ✅ **RÉSOLU** (PR #25) — affirmait que seul `auth_service` était branché ; corrigé (6 des 7 services métier, tout sauf reporting, sont câblés côté Gateway).
 
-**ANO-012 —** `docs/ARCHITECTURE.md` **§10 (schéma GraphQL) en retard sur le schéma réel** — noms d'opérations divergents (ex. `creerCampagne` réel vs `createCampagne` documenté, `envoyerFactureWhatsapp`/`renvoyerFactureWhatsapp` réels vs `envoyerFacture`/`reenvoyerFacture` documentés, `soldeFacture` réel vs `solde` documenté), arguments manquants dans la doc (`demarrerMaintenant`, `numeroMobileMoney`, `genererFacturesAuto`, `envoyerWhatsappAuto` sur `creerCampagne` ; `dateEffet` sur `updateTarif`), structure `enregistrerPaiement` en arguments scalaires dans le code vs `input: PaiementInput!` groupé dans la doc, type `Envoi` documenté incomplet (`abonneId`, `telnyxMessageId` manquants).
+**ANO-012 —** `docs/ARCHITECTURE.md` **§10 (schéma GraphQL) en retard sur le schéma réel** — ✅ **RÉSOLU** (PR #25) — noms d'opérations corrigés (`creerCampagne`, `envoyerFactureWhatsapp`/`renvoyerFactureWhatsapp`, `soldeFacture`/`SoldeFacture`), `affecterAgent` ajoutée (mutation manquante), arguments manquants ajoutés (`numeroMobileMoney`, `genererFacturesAuto`, `envoyerWhatsappAuto` sur `creerCampagne` ; `dateEffet` sur `updateTarif`), `enregistrerPaiement` corrigée en arguments scalaires, type `Envoi` complété (`abonneId`, `telnyxMessageId`). Note de fraîcheur ajoutée pointant vers le code comme source de vérité.
 
 **ANO-013 — Notification :** `TypeEnvoi.RETABLISSEMENT` **défini mais jamais produit** — aucun `build_message_retablissement`, aucune étape 5 dans `_ETAPE_TO_TYPE`. À clarifier : oubli fonctionnel (un abonné suspendu réactivé après paiement ne reçoit aucun message de confirmation dédié) ou état simplement réservé pour plus tard.
 
@@ -207,7 +207,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 - **ANO-018** — Campagne : `serializers.py:53` (`releve_to_proto`) n'utilise pas le helper `_to_iso` introduit par le commit `d54133a` pour corriger exactement ce type de bug côté `Campagne` — pattern incohérent, risque latent si le flux de création d'un `Releve` change.
 - **ANO-019** — Campagne : `find_planifiee_pour_date` (`repositories.py:64-68`) utilise `.first()` — si deux campagnes partagent la même `date_planifiee`, une seule démarre par exécution du cron 7h, les autres restent bloquées `PLANIFIEE` sans alerte.
 - **ANO-020** — Auth : `Logout` (`grpc_server.py:42-47`) gère ses erreurs différemment des 12 autres RPC (catch local au lieu de déléguer à l'intercepteur) — pas un bug, mais un pattern à ne pas reproduire.
-- **ANO-021** — `services/config/CLAUDE.md` dit « 8 clés par défaut », il y en a 10 désormais (`RELANCE_ETAPE_1..4_JOURS` ajoutées après rédaction).
+- **ANO-021** — ✅ **RÉSOLU** (PR #25) — `services/config/CLAUDE.md` disait « 8 clés par défaut », corrigé à 10.
 - **ANO-022** — Gateway : aucun test pour `facturation_queries/mutations`, `paiement_queries/mutations`, `notification_queries/mutations`, `espace_abonne.py`, `subscriptions.py` — trou de couverture notable vu l'exigence CLAUDE.md (« couverture > 80 % »).
 - **ANO-023** — Paiement : `repositories.py::marquer_resolu` jamais appelé nulle part (code mort, l'admet dans son propre docstring).
 - **ANO-024** — Notification : `whatsapp_client.py::send()` appelle `response.json()` avant de vérifier le status code HTTP — un corps non-JSON sur une erreur 5xx romprait la dégradation gracieuse attendue (`JSONDecodeError` non catché par `except requests.RequestException`).
@@ -378,13 +378,13 @@ Trous de couverture identifiés : voir ANO-022 (Gateway), absence de tests pour 
 
 ## 8. Documentation existante à corriger
 
-Cet audit a mis en évidence des passages **obsolètes ou incohérents** dans les documents déjà présents dans `docs/`. Ils n'ont pas été modifiés dans le cadre de cet audit (portée : lecture seule) — à corriger dans une tâche dédiée si souhaité :
+Cet audit a mis en évidence des passages **obsolètes ou incohérents** dans les documents déjà présents dans `docs/`. **Tous corrigés — PR #25** (`docs/corriger-references-obsoletes`), sauf mention contraire :
 
-- `CLAUDE.md` **(racine)** : « WhatsApp Telnyx + tokens » et « WhatsApp Telnyx API » (stack technologique) → à remplacer par whatsapp-web.js. Note sur le filtrage SUPERVISEUR « n'existe pas encore » → déjà implémenté (côté Gateway).
-- `docs/ARCHITECTURE.md` : incohérente en interne — §2.2 mentionne correctement whatsapp-web.js, mais le diagramme C4 §3 et le détail des composants §5.7 décrivent encore un « Telnyx Adapter » avec un « Retry Handler — 3 tentatives automatiques » qui n'existe nulle part dans le code. Le scénario de troubleshooting (~ligne 2481) référence un timeout Telnyx impossible à produire. Le schéma GraphQL §10 est significativement en retard sur le schéma réel (ANO-012).
-- `gateway/CLAUDE.md` : affirme que seul `auth_service` est branché — obsolète (ANO-011).
-- `services/config/CLAUDE.md` : « 8 clés par défaut » → 10 désormais.
-- `docs/SRS.md` EF-AUTH-004 : mentionne un « mot de passe temporaire » qui n'existe pas dans l'implémentation réelle (activation par lien/OTP uniquement).
+- `CLAUDE.md` **(racine)** : ✅ « WhatsApp Telnyx + tokens » et « WhatsApp Telnyx API » (stack technologique) remplacés par whatsapp-web.js. ✅ Note sur le filtrage SUPERVISEUR corrigée (déjà implémenté côté Gateway). ✅ Description de l'événement `AbonneCreated` reformulée pour refléter le mécanisme réel (appel gRPC synchrone).
+- `docs/ARCHITECTURE.md` : ✅ Corrigée — §2.2 mentionnait déjà correctement whatsapp-web.js ; le diagramme C4 §3 et le détail des composants §5.7 décrivaient encore un « Telnyx Adapter » avec un « Retry Handler — 3 tentatives automatiques » et un « Event Consumer » qui n'existent nulle part dans le code (reformulés pour refléter les appels gRPC synchrones réels). Le scénario de troubleshooting (~ligne 2481) référençait un timeout Telnyx impossible à produire — remplacé par un scénario whatsapp-service réaliste. Le schéma GraphQL §10 corrigé (ANO-012) avec une note de fraîcheur pointant vers le code.
+- `gateway/CLAUDE.md` : ✅ Corrigée — n'affirme plus que seul `auth_service` est branché (ANO-011).
+- `services/config/CLAUDE.md` : ✅ « 8 clés par défaut » → 10.
+- `docs/SRS.md` EF-AUTH-004 : ✅ « mot de passe temporaire » (qui n'existe pas dans l'implémentation réelle) remplacé par une description du flux d'activation réel (lien e-mail ADMIN / OTP WhatsApp autres rôles).
 
 ---
 
