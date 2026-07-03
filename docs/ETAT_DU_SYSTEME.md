@@ -36,7 +36,7 @@
 | Auth Service            | 🟢 Fonctionnel, solide                             | 89 ✅                    | RAS majeur — ANO-006 (rotation refresh token) corrigée, PR #22                     |
 | Abonné Service          | 🟢 Fonctionnel, propre                             | 49 ✅                    | ANO-003bis (événement AbonneCreated inexistant) — reste doc à corriger, non bloquant |
 | Campagne Service        | 🟢 Fonctionnel                                     | 65 ✅                    | ANO-003 (statut ACTIF) corrigée — PR #20 ; ANO-004 (test `demarrer_maintenant`) corrigée — PR #16 |
-| Facturation Service     | 🟢 Fonctionnel                                     | 28 ✅                    | Numérotation séquentielle non verrouillée (ANO-007)                                |
+| Facturation Service     | 🟢 Fonctionnel                                     | 32 ✅                    | ANO-007 (numérotation) corrigée — PR #23 ; ANO-008 (revalidation index) ouverte    |
 | Paiement Service        | 🟢 Fonctionnel, bien testé                         | 59 ✅                    | RAS majeur — service le plus robuste de l'audit                                    |
 | Notification Service    | 🟢 Fonctionnel                                     | 40 ✅                    | RAS majeur                                                                          |
 | Config Service          | 🟢 Fonctionnel                                     | 29 ✅                    | ANO-001 (casse des clés) corrigée — PR #18                                         |
@@ -169,10 +169,11 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 - **Correctif appliqué** : l'ancien refresh token est désormais révoqué (ajouté à `RevokedToken`) juste après l'émission du nouveau couple, avec le même mécanisme que `logout()`. Test de régression ajouté.
 - **Correctif** : révoquer explicitement l'ancien refresh (son `jti`) au moment d'émettre le nouveau.
 
-**ANO-007 — Facturation : numérotation séquentielle des factures sans verrou transactionnel**
+**ANO-007 — Facturation : numérotation séquentielle des factures sans verrou transactionnel** — ✅ **RÉSOLU** (PR #23, branche `fix/ano-007-verrouiller-numerotation-facture`)
 
 - **Fichier** : `services/facturation/factures/repositories.py:34-38` (`build_numero`, pattern `count()+1`).
 - **Constat** : sous génération concurrente de factures pour le même mois (deux `GenererFactures` simultanés, ex. deux clôtures de campagnes le même mois), deux threads peuvent calculer le même numéro séquentiel → collision sur la contrainte `unique=True` de `numero_facture`, non catchée spécifiquement (remonte en `INTERNAL` générique).
+- **Correctif appliqué** : `next_sequence`/`build_numero` se basent désormais sur le dernier numéro existant du mois (+1, plus robuste qu'un `COUNT()` en cas de suppression intermédiaire) avec `SELECT ... FOR UPDATE` (même pattern que `AbonneRepository.last_numero`), appelé à l'intérieur du bloc `transaction.atomic()` qui crée la facture.
 - **Correctif** : `select_for_update()` sur le dernier numéro du mois, ou séquence PostgreSQL dédiée.
 
 **ANO-008 — Facturation ne revalide pas** `nouveau_index ≥ ancien_index`
