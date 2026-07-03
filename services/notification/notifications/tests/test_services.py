@@ -360,3 +360,22 @@ class TestTokenService(TestCase):
 
         token.refresh_from_db()
         self.assertIsNotNone(token.date_derniere_visite)
+
+
+class TestEnvoiServiceGetWhatsAppQr(TestCase):
+    """Tests de EnvoiService.get_whatsapp_qr (statut/QR de liaison WhatsApp)."""
+
+    @patch("notifications.services.whatsapp_client")
+    def test_get_qr_relaye_le_client(self, mock_wa):
+        mock_wa.get_qr.return_value = (False, "data:image/png;base64,AAA")
+        ready, qr = EnvoiService().get_whatsapp_qr()
+        self.assertFalse(ready)
+        self.assertEqual(qr, "data:image/png;base64,AAA")
+
+    @patch("notifications.services.whatsapp_client")
+    def test_get_qr_service_indisponible_degrade(self, mock_wa):
+        """whatsapp-service inaccessible → (False, '') plutôt qu'une exception."""
+        from notifications.whatsapp_client import WhatsAppDeliveryError
+
+        mock_wa.get_qr.side_effect = WhatsAppDeliveryError("service KO")
+        self.assertEqual(EnvoiService().get_whatsapp_qr(), (False, ""))
