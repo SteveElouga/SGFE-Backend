@@ -31,15 +31,30 @@ class TarifRepository:
 class FactureRepository:
     """Accès base de données pour les factures."""
 
-    def next_sequence(self, year: int, month: int) -> int:
-        """Retourne le prochain numéro de séquence pour l'année/mois."""
-        prefix = f"FACT-{year:04d}-{month:02d}-"
-        count = Facture.objects.filter(numero_facture__startswith=prefix).count()
-        return count + 1
+    def next_sequence(self, year: int, month: int, for_update: bool = False) -> int:
+        """Retourne le prochain numéro de séquence pour l'année/mois.
 
-    def build_numero(self, year: int, month: int) -> str:
+        `for_update=True` verrouille la dernière facture du mois (SELECT ...
+        FOR UPDATE) pour sérialiser la génération entre transactions
+        concurrentes — doit être appelé à l'intérieur du même bloc
+        `transaction.atomic()` que la création de la facture (même pattern
+        que `abonnes.repositories.AbonneRepository.last_numero`).
+        """
+        prefix = f"FACT-{year:04d}-{month:02d}-"
+        qs = Facture.objects.select_for_update() if for_update else Facture.objects.all()
+        last_numero = (
+            qs.filter(numero_facture__startswith=prefix)
+            .order_by("-numero_facture")
+            .values_list("numero_facture", flat=True)
+            .first()
+        )
+        if not last_numero:
+            return 1
+        return int(last_numero.rsplit("-", 1)[-1]) + 1
+
+    def build_numero(self, year: int, month: int, for_update: bool = False) -> str:
         """Construit le prochain numéro de facture au format FACT-AAAA-MM-XXXX."""
-        seq = self.next_sequence(year, month)
+        seq = self.next_sequence(year, month, for_update=for_update)
         return f"FACT-{year:04d}-{month:02d}-{seq:04d}"
 
     def create(
