@@ -80,6 +80,19 @@ class EnvoiService:
         self._envois = EnvoiRepository()
         self._tokens = TokenAccesRepository()
 
+    def get_whatsapp_qr(self) -> tuple[bool, str]:
+        """Retourne (ready, qr_data_url) pour l'affichage admin de la liaison WhatsApp.
+
+        Dégradation gracieuse : si le service whatsapp-web.js est inaccessible,
+        retourne (False, "") plutôt que de lever — l'UI admin affiche alors
+        « non connecté » sans erreur bloquante.
+        """
+        try:
+            return whatsapp_client.get_qr()
+        except WhatsAppDeliveryError as exc:
+            logger.warning("QR WhatsApp indisponible : %s", exc)
+            return (False, "")
+
     def envoyer_facture(self, facture_id: str, abonne_id: str) -> Envoi:
         """Récupère les infos facture/abonné, génère un token, envoie le message WhatsApp.
 
