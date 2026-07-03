@@ -164,7 +164,7 @@ Agrège les compteurs de relevés par statut (`A_RELEVER`/`RELEVE`/`NON_RELEVE`/
 ### 4.1 Génération automatique (déclenchée par 3.6, ou appelable manuellement via `genererFactures`)
 
 1. `[Facturation]` → `Campagne.ListReleves(campagne_id)`, filtre côté client les relevés `statut == "RELEVE"` (les `NON_RELEVE`/`ESTIME` sont exclus — aucune facture générée pour eux). Échec bloquant si Campagne est indisponible (pas de dégradation ici, volontairement).
-2. `[Facturation]` → `Config.GetConfig("delai_paiement_jours")` — ⚠️ échoue systématiquement à cause d'`ANO-001` (incohérence de casse), retombe toujours sur le défaut local (5 jours). → `Config.GetInfosSociete()` pour les informations à afficher sur le PDF.
+2. `[Facturation]` → `Config.GetConfig("delai_paiement_jours")` — ✅ `ANO-001` résolu (PR #18) : la valeur configurée par l'ADMIN est désormais bien lue (défaut 5 jours si Config Service indisponible). → `Config.GetInfosSociete()` pour les informations à afficher sur le PDF.
 3. Pour chaque relevé : `montant = consommation × prix_m3` (tarif actif au moment de la génération, **copié**, jamais en FK), `date_limite = date_releve + delai_paiement_jours`, numéro séquentiel `FACT-AAAA-MM-XXXX`.
 4. Transaction atomique : création de la `Facture` (statut `IMPAYEE`) puis génération et sauvegarde du PDF (ReportLab). Si la génération PDF échoue, la facture reste créée avec `pdf_path=""` (régénérable à la demande via `GetFacturePDF`).
 5. Hors transaction, avec dégradation gracieuse : `[Facturation]` → `Paiement.InitialiserSolde(facture_id, montant_total, date_limite)`, puis si `envoyer_whatsapp_auto=True` → `Notification.EnvoyerFacture(facture_id)`.
@@ -211,7 +211,7 @@ Chaque appel `enregistrerPaiement` relit le solde courant en base et recalcule �
 
 `[Paiement]` (APScheduler) `impaye_checker_job` → `ImpayeService.verifier_et_escalader()` :
 
-1. Récupère les délais de relance depuis Config Service (⚠️ échoue systématiquement — `ANO-001` — utilise donc toujours les défauts internes : rappel_1=0j, rappel_2=3j, avertissement=7j, suspension=10j, suspension_auto=True).
+1. Récupère les délais de relance depuis Config Service (✅ `ANO-001` résolu, PR #18 — les valeurs configurées par l'ADMIN sont désormais bien lues ; défauts si Config Service indisponible : rappel_1=0j, rappel_2=3j, avertissement=7j, suspension=10j, suspension_auto=True).
 2. Récupère toutes les factures dont `date_limite_paiement < aujourd'hui` et `statut ≠ PAYEE` (inclut `IMPAYEE` et `PARTIELLE`).
 3. Pour chaque facture :
    - `jours_depasses = aujourd'hui - date_limite_paiement`.
@@ -237,7 +237,7 @@ Ne fait **pas** partie du cron — se produit **immédiatement** au moment du pa
 
 ### 7.1 Envoi de facture (`envoyerFactureWhatsapp`, ou automatique à la génération si `envoyer_whatsapp_auto=True`)
 
-1. `[Notification]` → `Facturation.GetFacture` + `Abonne.GetAbonne` + `Config.GetConfig("token_validite_jours")` (⚠️ échoue toujours à cause d'`ANO-001`, retombe sur le défaut 20 jours).
+1. `[Notification]` → `Facturation.GetFacture` + `Abonne.GetAbonne` + `Config.GetConfig("token_validite_jours")` (✅ `ANO-001` résolu, PR #18 — défaut 20 jours utilisé seulement si Config Service est indisponible).
 2. `[Notification]` Crée un `TokenAcces` (UUID, `date_expiration = aujourd'hui + token_validite_jours`).
 3. `[Notification]` Construit le message (texte + lien `{FRONTEND_URL}/espace/{token}`) via `message_builder.build_message_facture`.
 4. `[Notification]` Crée l'`Envoi` (statut `EN_ATTENTE`), récupère le PDF via `Facturation.GetFacturePDF` (dégradé : `(b"", "")` si erreur — l'envoi se fait alors sans pièce jointe).
@@ -282,13 +282,13 @@ Déclenché automatiquement sur `ECHEC_WHATSAPP`, `SUSPENSION`, `CAMPAGNE_DEMARR
 1. Le service consommateur (Facturation, Paiement ou Notification) instancie un `ConfigServiceClient` local et appelle `GetConfig(cle)`.
 2. `[Config]` Vérifie que `cle` fait partie de `CONFIG_DEFAULTS` (dictionnaire figé en code) ; si oui, `get_or_create` en base avec la valeur par défaut si absente ; si la clé est **inconnue du dictionnaire**, lève `NOT_FOUND`, quelle que soit la casse utilisée par l'appelant.
 3. Le client consommateur catch cette erreur (dégradation gracieuse, à des degrés d'homogénéité variables selon le service — voir `ETAT_DU_SYSTEME.md` §5.8) et retombe sur une valeur par défaut codée en dur localement dans son propre `settings.py`.
-4. ⚠️ **Constat central de cet audit (`ANO-001`)** : `CONFIG_DEFAULTS` est défini en MAJUSCULES, mais Facturation/Notification appellent en minuscule et Paiement appelle des clés qui n'ont jamais existé côté Config — la lecture échoue donc **systématiquement** pour `delai_paiement_jours`, `token_validite_jours`, et tous les `impaye_delai_*`/`impaye_suspension_*`. Seules `EMAIL_ADMIN_NOTIFICATIONS` et `NOTIFICATIONS_ADMIN_ACTIVEES` (appelées en majuscule) fonctionnent réellement.
+4. ✅ **`ANO-001` résolu (PR #18)** : `CONFIG_DEFAULTS` utilise désormais exactement les mêmes noms de clés (minuscule) que ceux appelés par Facturation/Paiement/Notification — `delai_paiement_jours`, `token_validite_jours`, tous les `impaye_delai_*`/`impaye_suspension_*`, `email_admin_notifications` et `notifications_admin_activees` sont toutes lues avec succès.
 
 ### 8.2 Modification par un ADMIN (`updateConfig`, `updateInfosSociete`)
 
 1. `[Gateway]` `require_role(info, "ADMIN")` → `Config.UpdateConfig(cle, valeur)`.
 2. `[Config]` Écrit la nouvelle valeur en base **si la clé existe dans `CONFIG_DEFAULTS`** (sinon `NOT_FOUND`).
-3. ⚠️ La mutation GraphQL réussit et la valeur est bien persistée — mais si la clé modifiée est l'une de celles touchées par `ANO-001`, **aucun service consommateur ne la relira jamais avec cette casse**. L'ADMIN a l'illusion d'avoir changé un comportement métier ; en réalité rien ne change en production tant qu'`ANO-001` n'est pas corrigé.
+3. Depuis la résolution d'`ANO-001` (PR #18), la valeur modifiée est effectivement relue par le service consommateur concerné au prochain appel `GetConfig` — le paramétrage ADMIN a désormais un effet réel.
 
 ### 8.3 Informations société (`infosSociete`)
 
