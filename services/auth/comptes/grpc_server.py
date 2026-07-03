@@ -12,7 +12,7 @@ import auth_service_pb2_grpc as pb_grpc
 
 from comptes.grpc_interceptors import ErrorHandlingInterceptor
 from comptes.serializers import user_to_payload, user_to_response
-from comptes.services import AuthenticationError, AuthService, PasswordSetupService, PhoneOtpService, UserAdminService
+from comptes.services import AuthService, PasswordSetupService, PhoneOtpService, UserAdminService
 
 
 class AuthServiceServicer(pb_grpc.AuthServiceServicer):
@@ -40,10 +40,10 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):
         return pb.TokenResponse(access_token=access, refresh_token=refresh, expires_in=expires_in)
 
     def Logout(self, request, context):
-        try:
-            self.auth_service.logout(request.token)
-        except AuthenticationError as exc:
-            return pb.StatusResponse(success=False, message=str(exc))
+        # Un token invalide/expiré lève AuthenticationError, gérée par
+        # ErrorHandlingInterceptor (-> UNAUTHENTICATED) comme les 12 autres
+        # RPC de ce servicer (voir ANO-020) — pas de catch local ici.
+        self.auth_service.logout(request.token)
         return pb.StatusResponse(success=True, message="Déconnexion réussie")
 
     def CreateUser(self, request, context):
