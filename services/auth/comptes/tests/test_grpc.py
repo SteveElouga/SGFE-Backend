@@ -123,8 +123,50 @@ class AuthServiceServicerTests(TestCase):
         self.assertEqual(response.role, Role.ADMIN)
 
     def test_deactivate_user(self):
-        response = self.servicer.DeactivateUser(pb.UserIdRequest(user_id=str(self.user.id)), self.context)
+        response = self.servicer.DeactivateUser(pb.DeactivateUserRequest(user_id=str(self.user.id)), self.context)
         self.assertFalse(response.is_active)
+
+    def test_deactivate_own_account_raises(self):
+        admin = User.objects.create_user(
+            username="admin_grpc_self",
+            email="admin_grpc_self@example.com",
+            password="secret123",
+            role=Role.ADMIN,
+            phone_number="+237690000096",
+        )
+        with self.assertRaises(ValueError):
+            self.servicer.DeactivateUser(
+                pb.DeactivateUserRequest(user_id=str(admin.id), caller_id=str(admin.id)), self.context
+            )
+
+    def test_reactivate_user(self):
+        self.servicer.DeactivateUser(pb.DeactivateUserRequest(user_id=str(self.user.id)), self.context)
+        response = self.servicer.ReactivateUser(pb.UserIdRequest(user_id=str(self.user.id)), self.context)
+        self.assertTrue(response.is_active)
+
+    def test_reset_user_password_admin_activated_sends_email(self):
+        admin = User.objects.create_user(
+            username="admin_grpc_reset",
+            email="admin_grpc_reset@example.com",
+            password="secret123",
+            role=Role.ADMIN,
+            phone_number="+237690000098",
+        )
+        response = self.servicer.ResetUserPassword(pb.UserIdRequest(user_id=str(admin.id)), self.context)
+        self.assertEqual(response.username, "admin_grpc_reset")
+        self.mock_send.assert_called_once()
+
+    def test_reset_user_password_non_admin_sends_whatsapp(self):
+        agent = User.objects.create_user(
+            username="agent_grpc_reset",
+            role=Role.AGENT,
+            phone_number="+237690000097",
+            is_active=False,
+        )
+        with patch("comptes.services.whatsapp_client.send") as mock_wa:
+            response = self.servicer.ResetUserPassword(pb.UserIdRequest(user_id=str(agent.id)), self.context)
+        self.assertEqual(response.username, "agent_grpc_reset")
+        mock_wa.assert_called_once()
 
     def test_list_users(self):
         response = self.servicer.ListUsers(pb.EmptyRequest(), self.context)

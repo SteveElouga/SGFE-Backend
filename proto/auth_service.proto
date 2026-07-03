@@ -9,12 +9,17 @@ service AuthService {
   rpc Logout (TokenRequest) returns (StatusResponse);
   rpc CreateUser (CreateUserRequest) returns (UserResponse);
   rpc UpdateUser (UpdateUserRequest) returns (UserResponse);
-  rpc DeactivateUser (UserIdRequest) returns (UserResponse);
+  rpc DeactivateUser (DeactivateUserRequest) returns (UserResponse);
+  rpc ReactivateUser (UserIdRequest) returns (UserResponse);
   rpc ListUsers (EmptyRequest) returns (ListUsersResponse);
   rpc GetUser (UserIdRequest) returns (UserResponse);
   // Reset mot de passe ADMIN uniquement (lien e-mail)
   rpc RequestPasswordReset (EmailRequest) returns (StatusResponse);
   rpc SetPasswordWithToken (SetPasswordRequest) returns (StatusResponse);
+  // Renvoi manuel (déclenché par un admin) des identifiants d'accès à un
+  // utilisateur donné : lien d'activation si le compte est encore en attente,
+  // sinon lien/OTP de réinitialisation — selon le rôle et l'état du compte.
+  rpc ResetUserPassword (UserIdRequest) returns (UserResponse);
   // Activation et reset par OTP WhatsApp (tous les rôles)
   rpc RequestPhoneOtp (PhoneRequest) returns (StatusResponse);
   rpc VerifyOtpAndSetPassword (VerifyOtpRequest) returns (StatusResponse);
@@ -86,6 +91,13 @@ message UpdateUserRequest {
 
 message UserIdRequest {
   string user_id = 1;
+}
+
+message DeactivateUserRequest {
+  string user_id = 1;
+  // Identité de l'appelant (résolue depuis son JWT côté Gateway) : sert à
+  // interdire l'auto-désactivation d'un admin.
+  string caller_id = 2;
 }
 
 message UserResponse {

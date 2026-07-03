@@ -239,9 +239,80 @@ class UserAdminMutationTests(SimpleTestCase):
                 'mutation { deactivateUser(id: "user-2") { username isActive } }',
                 context_value=context(token="access-1"),
             )
+            # L'identité de l'appelant (issue de son JWT) est propagée pour le
+            # contrôle d'auto-désactivation côté auth-service.
+            auth_client.deactivate_user.assert_called_once_with("user-2", caller_id="admin-1")
 
         self.assertIsNone(result.errors)
         self.assertFalse(result.data["deactivateUser"]["isActive"])
+
+    def test_deactivate_own_account_returns_error(self):
+        with patch.multiple(
+            auth_client,
+            validate_token=Mock(return_value=Mock(user_id="admin-1", role="ADMIN")),
+            deactivate_user=Mock(
+                side_effect=FakeRpcError(
+                    "Vous ne pouvez pas désactiver votre propre compte",
+                    grpc.StatusCode.INVALID_ARGUMENT,
+                )
+            ),
+        ):
+            result = schema.execute_sync(
+                'mutation { deactivateUser(id: "admin-1") { username } }',
+                context_value=context(token="access-1"),
+            )
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("votre propre compte", str(result.errors))
+
+    def test_reactivate_user_requires_admin_role(self):
+        with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="COMPTABLE")):
+            result = schema.execute_sync(
+                'mutation { reactivateUser(id: "user-2") { username } }',
+                context_value=context(token="access-1"),
+            )
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("Accès non autorisé", str(result.errors))
+
+    def test_reactivate_user_success_as_admin(self):
+        with patch.multiple(
+            auth_client,
+            validate_token=Mock(return_value=Mock(user_id="admin-1", role="ADMIN")),
+            reactivate_user=Mock(return_value=make_user_response(username="agent2", is_active=True)),
+        ):
+            result = schema.execute_sync(
+                'mutation { reactivateUser(id: "user-2") { username isActive } }',
+                context_value=context(token="access-1"),
+            )
+
+        self.assertIsNone(result.errors)
+        self.assertTrue(result.data["reactivateUser"]["isActive"])
+
+    def test_reset_user_password_requires_admin_role(self):
+        with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="COMPTABLE")):
+            result = schema.execute_sync(
+                'mutation { resetUserPassword(id: "user-2") { username } }',
+                context_value=context(token="access-1"),
+            )
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("Accès non autorisé", str(result.errors))
+
+    def test_reset_user_password_success_as_admin(self):
+        with patch.multiple(
+            auth_client,
+            validate_token=Mock(return_value=Mock(user_id="admin-1", role="ADMIN")),
+            reset_user_password=Mock(return_value=make_user_response(username="agent2")),
+        ):
+            result = schema.execute_sync(
+                'mutation { resetUserPassword(id: "user-2") { username } }',
+                context_value=context(token="access-1"),
+            )
+            auth_client.reset_user_password.assert_called_once_with("user-2")
+
+        self.assertIsNone(result.errors)
+        self.assertEqual(result.data["resetUserPassword"]["username"], "agent2")
 
     def test_create_user_with_invalid_token_raises(self):
         with patch.object(auth_client, "validate_token", side_effect=FakeRpcError("Token invalide ou expiré")):

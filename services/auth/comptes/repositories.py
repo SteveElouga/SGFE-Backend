@@ -25,6 +25,13 @@ class UserRepository:
     def list_all(self) -> list[User]:
         return list(User.objects.all().order_by("-created_at"))
 
+    def count_active_admins(self, exclude_id: str | None = None) -> int:
+        """Compte les administrateurs actifs, en excluant éventuellement un utilisateur."""
+        qs = User.objects.filter(role="ADMIN", is_active=True)
+        if exclude_id is not None:
+            qs = qs.exclude(id=exclude_id)
+        return qs.count()
+
     def create(self, username: str, phone_number: str, role: str, email: str | None = None) -> User:
         # is_active=False : le compte n'est activé qu'après définition du mot de passe
         # (via lien email pour ADMIN, ou OTP WhatsApp pour les autres rôles).

@@ -5,10 +5,8 @@ import warnings
 
 import auth_service_pb2 as auth__service__pb2
 
-GRPC_GENERATED_VERSION = '1.64.1'
+GRPC_GENERATED_VERSION = '1.81.1'
 GRPC_VERSION = grpc.__version__
-EXPECTED_ERROR_RELEASE = '1.65.0'
-SCHEDULED_RELEASE_DATE = 'June 25, 2024'
 _version_not_supported = False
 
 try:
@@ -18,19 +16,16 @@ except ImportError:
     _version_not_supported = True
 
 if _version_not_supported:
-    warnings.warn(
+    raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in auth_service_pb2_grpc.py depends on'
+        + ' but the generated code in auth_service_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
-        + f' This warning will become an error in {EXPECTED_ERROR_RELEASE},'
-        + f' scheduled for release on {SCHEDULED_RELEASE_DATE}.',
-        RuntimeWarning
     )
 
 
-class AuthServiceStub(object):
+class AuthServiceStub:
     """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
@@ -71,6 +66,11 @@ class AuthServiceStub(object):
                 _registered_method=True)
         self.DeactivateUser = channel.unary_unary(
                 '/auth.AuthService/DeactivateUser',
+                request_serializer=auth__service__pb2.DeactivateUserRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.UserResponse.FromString,
+                _registered_method=True)
+        self.ReactivateUser = channel.unary_unary(
+                '/auth.AuthService/ReactivateUser',
                 request_serializer=auth__service__pb2.UserIdRequest.SerializeToString,
                 response_deserializer=auth__service__pb2.UserResponse.FromString,
                 _registered_method=True)
@@ -94,6 +94,11 @@ class AuthServiceStub(object):
                 request_serializer=auth__service__pb2.SetPasswordRequest.SerializeToString,
                 response_deserializer=auth__service__pb2.StatusResponse.FromString,
                 _registered_method=True)
+        self.ResetUserPassword = channel.unary_unary(
+                '/auth.AuthService/ResetUserPassword',
+                request_serializer=auth__service__pb2.UserIdRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.UserResponse.FromString,
+                _registered_method=True)
         self.RequestPhoneOtp = channel.unary_unary(
                 '/auth.AuthService/RequestPhoneOtp',
                 request_serializer=auth__service__pb2.PhoneRequest.SerializeToString,
@@ -106,7 +111,7 @@ class AuthServiceStub(object):
                 _registered_method=True)
 
 
-class AuthServiceServicer(object):
+class AuthServiceServicer:
     """Missing associated documentation comment in .proto file."""
 
     def Login(self, request, context):
@@ -152,6 +157,12 @@ class AuthServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ReactivateUser(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def ListUsers(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -173,6 +184,15 @@ class AuthServiceServicer(object):
 
     def SetPasswordWithToken(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ResetUserPassword(self, request, context):
+        """Renvoi manuel (déclenché par un admin) des identifiants d'accès à un
+        utilisateur donné : lien d'activation si le compte est encore en attente,
+        sinon lien/OTP de réinitialisation — selon le rôle et l'état du compte.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -225,6 +245,11 @@ def add_AuthServiceServicer_to_server(servicer, server):
             ),
             'DeactivateUser': grpc.unary_unary_rpc_method_handler(
                     servicer.DeactivateUser,
+                    request_deserializer=auth__service__pb2.DeactivateUserRequest.FromString,
+                    response_serializer=auth__service__pb2.UserResponse.SerializeToString,
+            ),
+            'ReactivateUser': grpc.unary_unary_rpc_method_handler(
+                    servicer.ReactivateUser,
                     request_deserializer=auth__service__pb2.UserIdRequest.FromString,
                     response_serializer=auth__service__pb2.UserResponse.SerializeToString,
             ),
@@ -248,6 +273,11 @@ def add_AuthServiceServicer_to_server(servicer, server):
                     request_deserializer=auth__service__pb2.SetPasswordRequest.FromString,
                     response_serializer=auth__service__pb2.StatusResponse.SerializeToString,
             ),
+            'ResetUserPassword': grpc.unary_unary_rpc_method_handler(
+                    servicer.ResetUserPassword,
+                    request_deserializer=auth__service__pb2.UserIdRequest.FromString,
+                    response_serializer=auth__service__pb2.UserResponse.SerializeToString,
+            ),
             'RequestPhoneOtp': grpc.unary_unary_rpc_method_handler(
                     servicer.RequestPhoneOtp,
                     request_deserializer=auth__service__pb2.PhoneRequest.FromString,
@@ -266,7 +296,7 @@ def add_AuthServiceServicer_to_server(servicer, server):
 
 
  # This class is part of an EXPERIMENTAL API.
-class AuthService(object):
+class AuthService:
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
@@ -446,6 +476,33 @@ class AuthService(object):
             request,
             target,
             '/auth.AuthService/DeactivateUser',
+            auth__service__pb2.DeactivateUserRequest.SerializeToString,
+            auth__service__pb2.UserResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ReactivateUser(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/ReactivateUser',
             auth__service__pb2.UserIdRequest.SerializeToString,
             auth__service__pb2.UserResponse.FromString,
             options,
@@ -556,6 +613,33 @@ class AuthService(object):
             '/auth.AuthService/SetPasswordWithToken',
             auth__service__pb2.SetPasswordRequest.SerializeToString,
             auth__service__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ResetUserPassword(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/ResetUserPassword',
+            auth__service__pb2.UserIdRequest.SerializeToString,
+            auth__service__pb2.UserResponse.FromString,
             options,
             channel_credentials,
             insecure,
