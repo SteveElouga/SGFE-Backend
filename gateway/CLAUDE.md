@@ -12,17 +12,19 @@ Point d'entrée unique pour le frontend (Angular). Expose un schéma GraphQL (St
 gateway/
 ├── gateway/         # Projet Django ASGI (settings, urls, asgi)
 ├── schema/          # App Django : types, queries, mutations, grpc_clients, context (JWT)
-│   ├── types.py        # Types Strawberry (miroir du schéma GraphQL — docs/ARCHITECTURE.md §10)
-│   ├── grpc_clients.py  # Clients gRPC vers les microservices (auth_client, ...)
+│   ├── *_types.py       # Types Strawberry par domaine (auth_types.py, abonne_types.py, ...)
+│   ├── *_queries.py / *_mutations.py  # Resolvers par domaine, agrégés dans queries.py/mutations.py
+│   ├── grpc_clients.py  # Clients gRPC vers les microservices (auth_client, abonne_client, ...)
 │   ├── context.py       # Extraction du JWT (header Authorization) + require_auth/require_role
-│   ├── queries.py / mutations.py
-│   └── schema.py        # strawberry.Schema(query=Query, mutation=Mutation)
+│   ├── espace_abonne.py # Vues Django (pas GraphQL) pour l'espace abonné public tokenisé
+│   ├── subscriptions.py # Subscriptions GraphQL (Redis pub/sub)
+│   └── schema.py        # strawberry.Schema(query=Query, mutation=Mutation, subscription=Subscription)
 ├── proto/           # Stubs générés — NE PAS MODIFIER
 ```
 
 ## Spécificités
 
-- Seul `auth_service` est branché pour l'instant (login, refreshToken, logout, me, createUser, deactivateUser). Les autres types du schéma (Abonne, Campagne, Facture, ...) ne sont pas encore résolus — ajouter leur `grpc_client` + resolver au fur et à mesure que chaque microservice est implémenté.
+- Tous les domaines sont branchés sauf `reporting` (service pas encore implémenté) : auth, abonne, campagne, facturation, paiement, notification, config ont chacun leurs `grpc_client` + resolvers (`*_queries.py`/`*_mutations.py`).
 - `require_auth`/`require_role` (dans `context.py`) valident le JWT en appelant `AuthService.ValidateToken` en gRPC à chaque requête protégée (pas de décodage JWT local — la source de vérité reste `auth_service`, qui peut révoquer un token).
 - GraphiQL activé sur `/graphql` (`graphiql=True`), CSRF désactivé sur cette route (API stateless, pas de session Django).
 

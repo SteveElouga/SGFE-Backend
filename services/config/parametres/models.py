@@ -23,33 +23,42 @@ class InfosSociete(models.Model):
         return self.nom
 
 
-# Clés de configuration et leurs valeurs par défaut
+# Clés de configuration et leurs valeurs par défaut.
+#
+# Les noms de clés doivent correspondre exactement (même casse) à ceux utilisés
+# par les ConfigServiceClient des services consommateurs (facturation, paiement,
+# notification) — un écart de casse ou de nom fait échouer GetConfig en
+# NOT_FOUND et retombe silencieusement sur la valeur par défaut codée en dur
+# côté consommateur (voir ANO-001 dans docs/ETAT_DU_SYSTEME.md). Toute
+# nouvelle clé doit être ajoutée ici avec le nom exact utilisé par l'appelant.
+#
+# Délais de relance impayés alignés sur docs/SRS.md EF-IMP-002 (J+0/J+3/J+7/J+10).
 CONFIG_DEFAULTS: dict[str, tuple[str, str]] = {
-    "DELAI_PAIEMENT_JOURS": (
+    "delai_paiement_jours": (
         "5",
         "Nombre de jours accordés pour payer une facture après le relevé",
     ),
-    "TOKEN_VALIDITE_JOURS": (
+    "token_validite_jours": (
         "20",
         "Durée de validité des tokens d'accès abonné (WhatsApp)",
     ),
-    "SUSPENSION_AUTO_ACTIVE": (
+    "impaye_delai_rappel_1": ("0", "Délai J+X pour l'envoi du rappel doux (étape 1)"),
+    "impaye_delai_rappel_2": ("3", "Délai J+X pour le rappel ferme (étape 2)"),
+    "impaye_delai_avertissement": ("7", "Délai J+X pour l'avertissement (étape 3)"),
+    "impaye_delai_suspension": ("10", "Délai J+X pour la suspension effective (étape 4)"),
+    "impaye_suspension_auto": (
         "true",
         "Activer la suspension automatique des abonnés impayés (true/false)",
     ),
-    "DELAI_SUSPENSION_APRES_VERSEMENT_JOURS": (
+    "impaye_suspension_relances": (
         "5",
-        "Délai accordé après un versement partiel avant relance suivante",
+        "Délai accordé après un versement partiel avant reprise des relances",
     ),
-    "RELANCE_ETAPE_1_JOURS": ("0", "Délai J+X pour l'envoi du rappel doux (étape 1)"),
-    "RELANCE_ETAPE_2_JOURS": ("3", "Délai J+X pour le rappel ferme (étape 2)"),
-    "RELANCE_ETAPE_3_JOURS": ("7", "Délai J+X pour la mise en demeure (étape 3)"),
-    "RELANCE_ETAPE_4_JOURS": ("14", "Délai J+X pour la suspension effective (étape 4)"),
-    "EMAIL_ADMIN_NOTIFICATIONS": (
+    "email_admin_notifications": (
         "",
         "Adresse email destinataire des notifications administratives (Brevo). Vide = désactivé.",
     ),
-    "NOTIFICATIONS_ADMIN_ACTIVEES": (
+    "notifications_admin_activees": (
         "true",
         "Activer les notifications email aux administrateurs (true/false). false = silence total.",
     ),

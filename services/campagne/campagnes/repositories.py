@@ -19,7 +19,9 @@ class CampagneRepository:
         numero_mobile_money: str = "",
         generer_factures_auto: bool = True,
         envoyer_whatsapp_auto: bool = True,
+        demarrer_maintenant: bool = False,
     ) -> Campagne:
+        statut = StatutCampagne.EN_COURS if demarrer_maintenant else StatutCampagne.PLANIFIEE
         return Campagne.objects.create(
             nom=nom,
             periode_mois=periode_mois,
@@ -29,7 +31,7 @@ class CampagneRepository:
             numero_mobile_money=numero_mobile_money,
             generer_factures_auto=generer_factures_auto,
             envoyer_whatsapp_auto=envoyer_whatsapp_auto,
-            statut=StatutCampagne.PLANIFIEE,
+            statut=statut,
         )
 
     def get_by_id(self, campagne_id: str) -> Campagne:
@@ -59,11 +61,16 @@ class CampagneRepository:
         campagne.save(update_fields=["statut", "date_cloture"])
         return campagne
 
-    def find_planifiee_pour_date(self, date_planifiee) -> Optional[Campagne]:
-        return Campagne.objects.filter(
-            statut=StatutCampagne.PLANIFIEE,
-            date_planifiee=date_planifiee,
-        ).first()
+    def list_planifiees_pour_date(self, date_planifiee) -> list[Campagne]:
+        """Retourne TOUTES les campagnes PLANIFIEE pour cette date (voir ANO-019 —
+        `.first()` ne démarrait auparavant qu'une seule campagne par jour cible,
+        même si plusieurs partageaient la même date_planifiee)."""
+        return list(
+            Campagne.objects.filter(
+                statut=StatutCampagne.PLANIFIEE,
+                date_planifiee=date_planifiee,
+            )
+        )
 
 
 class ReleveRepository:

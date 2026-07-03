@@ -98,7 +98,18 @@ class AuthService:
         except ObjectDoesNotExist as exc:
             raise AuthenticationError("Utilisateur introuvable") from exc
 
-        return self._generer_tokens(user)
+        nouveaux_tokens = self._generer_tokens(user)
+
+        # Rotation : révoque l'ancien refresh token maintenant qu'un nouveau
+        # couple a été émis. Sans cela, un refresh token intercepté reste
+        # utilisable jusqu'à son expiration naturelle (7j) même après avoir
+        # servi une fois.
+        self.revoked_tokens.revoke(
+            token_jti=refresh["jti"],
+            expires_at=timezone.datetime.fromtimestamp(refresh["exp"], tz=timezone.get_current_timezone()),
+        )
+
+        return nouveaux_tokens
 
     def logout(self, token: str) -> None:
         try:

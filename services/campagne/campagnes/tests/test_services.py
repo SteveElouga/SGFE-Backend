@@ -1,11 +1,29 @@
 """Tests unitaires du Campagne Service — logique métier."""
 
+from types import SimpleNamespace
+from unittest.mock import patch
+
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.test import TestCase
 
+from campagnes.grpc_clients import AbonneServiceClient
 from campagnes.models import Campagne, StatutCampagne, StatutReleve
 from campagnes.repositories import CampagneAgentRepository, CampagneRepository
 from campagnes.services import CampagneService, ReleveService
+
+# ajouter_abonne_campagne vérifie désormais le statut ACTIF de l'abonné
+# (ANO-003) via un appel gRPC réel à Abonné Service. On patche cet appel
+# pour tout le module afin que les tests existants (non liés à cette
+# vérification) n'aient pas besoin d'un Abonné Service en cours d'exécution.
+_abonne_patcher = patch.object(AbonneServiceClient, "get_abonne", return_value=SimpleNamespace(statut="ACTIF"))
+
+
+def setUpModule() -> None:
+    _abonne_patcher.start()
+
+
+def tearDownModule() -> None:
+    _abonne_patcher.stop()
 
 
 class TestCampagneService(TestCase):
@@ -42,6 +60,26 @@ class TestCampagneService(TestCase):
         self.assertEqual(c.periode_mois, 3)
         self.assertEqual(c.created_by, self.created_by)
 
+    def test_creer_campagne_demarrer_maintenant_statut_en_cours(self) -> None:
+        c = self.svc.creer_campagne(
+            nom="Campagne Immédiate",
+            periode_mois=7,
+            periode_annee=2026,
+            created_by=self.created_by,
+            demarrer_maintenant=True,
+        )
+        self.assertEqual(c.statut, StatutCampagne.EN_COURS)
+
+    def test_creer_campagne_sans_demarrer_maintenant_reste_planifiee(self) -> None:
+        c = self.svc.creer_campagne(
+            nom="Campagne Planifiée",
+            periode_mois=7,
+            periode_annee=2026,
+            created_by=self.created_by,
+            demarrer_maintenant=False,
+        )
+        self.assertEqual(c.statut, StatutCampagne.PLANIFIEE)
+
     def test_creer_campagne_nom_vide_leve_erreur(self) -> None:
         with self.assertRaises(ValidationError):
             self.svc.creer_campagne(
@@ -62,9 +100,7 @@ class TestCampagneService(TestCase):
 
     def test_creer_campagne_without_created_by_leve_erreur(self) -> None:
         with self.assertRaises(ValidationError):
-            self.svc.creer_campagne(
-                nom="Test", periode_mois=1, periode_annee=2026, created_by=""
-            )
+            self.svc.creer_campagne(nom="Test", periode_mois=1, periode_annee=2026, created_by="")
 
     # --- démarrer ---
 
@@ -125,9 +161,7 @@ class TestCampagneService(TestCase):
 
     def test_ajouter_abonne_campagne_succes(self) -> None:
         c = self._creer_campagne(StatutCampagne.EN_COURS)
-        releve = self.svc.ajouter_abonne_campagne(
-            str(c.id), "abonne-001", ancien_index=100.0
-        )
+        releve = self.svc.ajouter_abonne_campagne(str(c.id), "abonne-001", ancien_index=100.0)
         self.assertEqual(releve.statut, StatutReleve.A_RELEVER)
         self.assertEqual(releve.ancien_index, 100.0)
 
@@ -141,6 +175,24 @@ class TestCampagneService(TestCase):
         self.svc.ajouter_abonne_campagne(str(c.id), "abonne-001", ancien_index=0.0)
         with self.assertRaises(ValidationError):
             self.svc.ajouter_abonne_campagne(str(c.id), "abonne-001", ancien_index=0.0)
+
+    def test_ajouter_abonne_suspendu_leve_erreur(self) -> None:
+        """Régression ANO-003 : un abonné non ACTIF ne peut pas être ajouté à une campagne."""
+        c = self._creer_campagne(StatutCampagne.EN_COURS)
+        with patch.object(AbonneServiceClient, "get_abonne", return_value=SimpleNamespace(statut="SUSPENDU")):
+            with self.assertRaises(ValidationError):
+                self.svc.ajouter_abonne_campagne(str(c.id), "abonne-suspendu", ancien_index=0.0)
+
+    def test_ajouter_abonne_service_indisponible_leve_erreur(self) -> None:
+        """Régression ANO-003 : la vérification est bloquante, pas dégradée — si
+        Abonné Service est injoignable, l'ajout doit échouer plutôt que de
+        passer outre la règle métier obligatoire."""
+        import grpc
+
+        c = self._creer_campagne(StatutCampagne.EN_COURS)
+        with patch.object(AbonneServiceClient, "get_abonne", side_effect=grpc.RpcError("indisponible")):
+            with self.assertRaises(ValidationError):
+                self.svc.ajouter_abonne_campagne(str(c.id), "abonne-001", ancien_index=0.0)
 
 
 class TestReleveService(TestCase):
@@ -157,9 +209,7 @@ class TestReleveService(TestCase):
         CampagneRepository().update_statut(campagne, StatutCampagne.EN_COURS)
         self.campagne = campagne
 
-        releve = self.campagne_svc.ajouter_abonne_campagne(
-            str(campagne.id), "abonne-001", ancien_index=100.0
-        )
+        releve = self.campagne_svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", ancien_index=100.0)
         self.releve = releve
 
     # --- saisir index ---
@@ -176,34 +226,24 @@ class TestReleveService(TestCase):
 
     def test_saisir_index_inferieur_a_ancien_leve_erreur(self) -> None:
         with self.assertRaises(ValidationError):
-            self.svc.saisir_index(
-                str(self.releve.id), nouveau_index=50.0, agent_id="agent-001"
-            )
+            self.svc.saisir_index(str(self.releve.id), nouveau_index=50.0, agent_id="agent-001")
 
     def test_saisir_index_deja_releve_leve_erreur(self) -> None:
-        self.svc.saisir_index(
-            str(self.releve.id), nouveau_index=150.0, agent_id="agent-001"
-        )
+        self.svc.saisir_index(str(self.releve.id), nouveau_index=150.0, agent_id="agent-001")
         with self.assertRaises(ValidationError):
-            self.svc.saisir_index(
-                str(self.releve.id), nouveau_index=200.0, agent_id="agent-001"
-            )
+            self.svc.saisir_index(str(self.releve.id), nouveau_index=200.0, agent_id="agent-001")
 
     def test_saisir_index_campagne_non_en_cours_leve_erreur(self) -> None:
         from campagnes.repositories import CampagneRepository
 
         CampagneRepository().update_statut(self.campagne, StatutCampagne.CLOTUREE)
         with self.assertRaises(ValidationError):
-            self.svc.saisir_index(
-                str(self.releve.id), nouveau_index=150.0, agent_id="agent-001"
-            )
+            self.svc.saisir_index(str(self.releve.id), nouveau_index=150.0, agent_id="agent-001")
 
     # --- marquer non relevé / estimé ---
 
     def test_marquer_non_releve_succes(self) -> None:
-        releve = self.svc.marquer_non_releve(
-            str(self.releve.id), statut=StatutReleve.NON_RELEVE, observation="Absent"
-        )
+        releve = self.svc.marquer_non_releve(str(self.releve.id), statut=StatutReleve.NON_RELEVE, observation="Absent")
         self.assertEqual(releve.statut, StatutReleve.NON_RELEVE)
         self.assertEqual(releve.observation, "Absent")
 
@@ -220,13 +260,9 @@ class TestReleveService(TestCase):
             self.svc.marquer_non_releve(str(self.releve.id), statut="RELEVE")
 
     def test_marquer_releve_deja_saisi_leve_erreur(self) -> None:
-        self.svc.saisir_index(
-            str(self.releve.id), nouveau_index=150.0, agent_id="agent-001"
-        )
+        self.svc.saisir_index(str(self.releve.id), nouveau_index=150.0, agent_id="agent-001")
         with self.assertRaises(ValidationError):
-            self.svc.marquer_non_releve(
-                str(self.releve.id), statut=StatutReleve.NON_RELEVE
-            )
+            self.svc.marquer_non_releve(str(self.releve.id), statut=StatutReleve.NON_RELEVE)
 
     def test_marquer_non_releve_campagne_cloturee_leve_erreur(self) -> None:
         CampagneRepository().update_statut(self.campagne, StatutCampagne.CLOTUREE)
@@ -244,9 +280,7 @@ class TestReleveService(TestCase):
             self.svc.get_releve("00000000-0000-0000-0000-000000000000")
 
     def test_list_releves_par_campagne(self) -> None:
-        self.campagne_svc.ajouter_abonne_campagne(
-            str(self.campagne.id), "abonne-002", 200.0
-        )
+        self.campagne_svc.ajouter_abonne_campagne(str(self.campagne.id), "abonne-002", 200.0)
         releves = self.svc.list_releves(str(self.campagne.id))
         self.assertEqual(len(releves), 2)
 
@@ -270,9 +304,7 @@ class TestCampagneAgentRepository(TestCase):
         self.repo.assigner(self.campagne, agent_id="agent-001")  # pas d'exception
         from campagnes.models import CampagneAgent
 
-        count = CampagneAgent.objects.filter(
-            campagne=self.campagne, agent_id="agent-001"
-        ).count()
+        count = CampagneAgent.objects.filter(campagne=self.campagne, agent_id="agent-001").count()
         self.assertEqual(count, 1)
 
     def test_est_affecte_retourne_vrai(self) -> None:
@@ -316,6 +348,29 @@ class TestScheduler(TestCase):
         campagne_planifiee_job()
         campagne.refresh_from_db()
         self.assertEqual(campagne.statut, StatutCampagne.EN_COURS)
+
+    def test_demarrage_plusieurs_campagnes_meme_date_planifiee(self) -> None:
+        """Régression ANO-019 : si plusieurs campagnes partagent la même
+        date_planifiee, elles doivent TOUTES démarrer (auparavant .first()
+        n'en démarrait qu'une seule, les autres restaient bloquées PLANIFIEE
+        indéfiniment)."""
+        from datetime import date
+
+        aujourdhui = str(date.today())
+        c1 = self.svc.creer_campagne(
+            nom="Campagne A", periode_mois=6, periode_annee=2026, created_by="user-A", date_planifiee=aujourdhui
+        )
+        c2 = self.svc.creer_campagne(
+            nom="Campagne B", periode_mois=6, periode_annee=2026, created_by="user-B", date_planifiee=aujourdhui
+        )
+
+        demarrees = self.svc.demarrer_campagnes_planifiees_pour_aujourd_hui()
+
+        self.assertEqual({c.id for c in demarrees}, {c1.id, c2.id})
+        c1.refresh_from_db()
+        c2.refresh_from_db()
+        self.assertEqual(c1.statut, StatutCampagne.EN_COURS)
+        self.assertEqual(c2.statut, StatutCampagne.EN_COURS)
 
     def test_aucune_campagne_planifiee_ne_change_rien(self) -> None:
         from datetime import date, timedelta
