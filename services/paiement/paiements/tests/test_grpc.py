@@ -118,6 +118,7 @@ class TestEnregistrerPaiementRPC(TestCase):
         self.assertIsNotNone(response.paiement_id)
         self.assertEqual(response.facture_id, "facture-001")
         self.assertAlmostEqual(response.montant, 100.00)
+        self.assertEqual(response.enregistre_par, "user-001")
 
     def test_enregistrer_paiement_montant_invalide_abort(self) -> None:
         """Un montant nul provoque un abort INVALID_ARGUMENT."""
@@ -238,6 +239,7 @@ class TestListPaiementsRPC(TestCase):
         response = self.servicer.ListPaiements(request, _mock_context())
         self.assertEqual(len(response.paiements), 1)
         self.assertEqual(response.paiements[0].facture_id, "facture-001")
+        self.assertEqual(response.paiements[0].enregistre_par, "user-001")
 
     def test_list_paiements_vide_retourne_liste_vide(self) -> None:
         """ListPaiements retourne une liste vide si aucun paiement."""

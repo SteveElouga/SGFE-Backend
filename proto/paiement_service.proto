@@ -42,6 +42,9 @@ message PaiementResponse {
   string mode_paiement = 5;
   string reference_transaction = 6;
   string created_at = 7;
+  // ID utilisateur Auth Service ayant enregistré le paiement (résolu en nom
+  // d'utilisateur affichable côté Gateway — voir schema/paiement_types.py).
+  string enregistre_par = 8;
 }
 
 message SoldeResponse {
