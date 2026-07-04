@@ -298,6 +298,8 @@ services:
     depends_on:
       campagne-postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
       DJANGO_DEBUG: "True"
@@ -307,6 +309,7 @@ services:
       CAMPAGNE_DB_USER: campagne_user
       CAMPAGNE_DB_PASSWORD: devpassword
       CAMPAGNE_GRPC_PORT: "50053"
+      REDIS_URL: "redis://redis:6379/0"
       ABONNE_GRPC_HOST: abonne-service
       ABONNE_GRPC_PORT: "50052"
       FACTURATION_GRPC_HOST: facturation-service
@@ -337,6 +340,8 @@ services:
     depends_on:
       config-postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
       DJANGO_DEBUG: "True"
@@ -346,6 +351,7 @@ services:
       CONFIG_DB_USER: config_user
       CONFIG_DB_PASSWORD: devpassword
       CONFIG_GRPC_PORT: "50058"
+      REDIS_URL: "redis://redis:6379/0"
     ports:
       - "50058:50058"
     command: sh -c "python manage.py migrate && python manage.py grpc_server"

@@ -64,6 +64,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # --- gRPC ---
 CAMPAGNE_GRPC_PORT = env.int("CAMPAGNE_GRPC_PORT", default=50053)
 
+# --- Redis (pub/sub : notifie la gateway de l'avancement des campagnes) ---
+REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
+
 # --- Services gRPC consommés ---
 ABONNE_GRPC_HOST = env("ABONNE_GRPC_HOST", default="localhost")
 ABONNE_GRPC_PORT = env.int("ABONNE_GRPC_PORT", default=50052)
