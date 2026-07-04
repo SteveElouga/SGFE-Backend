@@ -49,7 +49,9 @@ _HIST_HAUTEUR_MIN_PX = 4
 # déjà produits — d'où des abonnés recevant l'ancien rendu.
 #   0 = PDF antérieurs au versioning (ReportLab / non marqués) → toujours obsolètes
 #   1 = gabarit « AquaBill » (Django + WeasyPrint)
-PDF_TEMPLATE_VERSION = 1
+#   2 = refonte maquette (compact, police Montserrat embarquée, modalités + pied
+#       ancrés en bas, lien espace abonné)
+PDF_TEMPLATE_VERSION = 2
 
 
 @dataclass
