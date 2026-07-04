@@ -40,12 +40,9 @@ espace         .url .date_expiration — lien de l'espace abonné ; Facturation
   <meta charset="utf-8">
   <title>Facture {{ facture.numero }}</title>
   <style>
-    /* Montserrat — le gabarit la déclare en premier ; pour un rendu réel il
-       faut soit l'embarquer en local (décommenter le @font-face ci-dessous +
-       fournir les .woff2 dans un dossier fonts/ et passer base_url au
-       write_pdf), soit l'installer dans l'image Docker. Sans ça, WeasyPrint
-       retombe sur la police système (Liberation/Arial). */
-    /*
+    /* Montserrat embarquée localement (OFL) — fichiers dans templates/fonts/,
+       résolus via le base_url passé à WeasyPrint (voir pdf_generator.generer_pdf).
+       Rendu offline et déterministe, sans dépendance réseau à l'exécution. */
     @font-face { font-family: 'Montserrat'; font-weight: 400;
       src: url('fonts/Montserrat-Regular.woff2') format('woff2'); }
     @font-face { font-family: 'Montserrat'; font-weight: 500;
@@ -56,7 +53,6 @@ espace         .url .date_expiration — lien de l'espace abonné ; Facturation
       src: url('fonts/Montserrat-Bold.woff2') format('woff2'); }
     @font-face { font-family: 'Montserrat'; font-weight: 800;
       src: url('fonts/Montserrat-ExtraBold.woff2') format('woff2'); }
-    */
 
     @page {
       size: A4;

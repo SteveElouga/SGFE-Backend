@@ -315,7 +315,11 @@ def generer_pdf(
     context = _build_context(facture, societe, historique)
     html_str = render_to_string("facture_pdf.html", context)
     buffer = io.BytesIO()
-    weasyprint.HTML(string=html_str).write_pdf(buffer)
+    # base_url : résout les URLs relatives du gabarit (polices Montserrat dans
+    # templates/fonts/). Trailing slash indispensable pour que urljoin conserve
+    # le dossier templates/ comme base.
+    base_url = f"{Path(__file__).resolve().parent / 'templates'}/"
+    weasyprint.HTML(string=html_str, base_url=base_url).write_pdf(buffer)
 
     with open(filepath, "wb") as f:
         f.write(buffer.getvalue())
