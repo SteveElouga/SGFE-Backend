@@ -1,8 +1,14 @@
 services:
   redis:
     image: redis:7-alpine
+    # Persistance AOF activée : la session WhatsApp (RemoteAuth) et le cache
+    # survivent à un redémarrage de Redis. Sans ce montage, le volume redis_data
+    # déclaré plus bas restait inutilisé et les données étaient éphémères.
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -27,13 +33,21 @@ services:
 
   whatsapp-service:
     build: ./whatsapp-service
+    depends_on:
+      redis:
+        condition: service_healthy
     environment:
       WHATSAPP_INTERNAL_API_KEY: ${WHATSAPP_INTERNAL_API_KEY:-whatsapp-dev-placeholder-do-not-use-in-production}
+      # RemoteAuth persiste la session WhatsApp dans Redis (voir whatsapp-service/redis-store.js)
+      REDIS_URL: "redis://redis:6379/0"
     ports:
       - "3000:3000"
     volumes:
       - whatsapp_session:/app/session
     restart: unless-stopped
+    # Laisse à Chromium le temps de se fermer proprement sur `docker stop` (le
+    # défaut de 10 s peut être trop court) — voir le handler SIGTERM de server.js.
+    stop_grace_period: 30s
 
   auth-service:
     build: ./services/auth
