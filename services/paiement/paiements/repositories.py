@@ -31,14 +31,6 @@ class PaiementRepository:
             enregistre_par=enregistre_par,
         )
 
-    def list_by_facture(self, facture_id: str) -> list[Paiement]:
-        """Liste tous les paiements d'une facture."""
-        return list(Paiement.objects.filter(facture_id=facture_id))
-
-    def list_by_abonne(self, abonne_id: str) -> list[Paiement]:
-        """Liste tous les paiements d'un abonné."""
-        return list(Paiement.objects.filter(abonne_id=abonne_id))
-
     def list_by_facture_and_abonne(self, facture_id: str, abonne_id: str) -> list[Paiement]:
         """Liste les paiements filtrés par facture et/ou abonné."""
         qs = Paiement.objects.all()
