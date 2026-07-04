@@ -2,6 +2,7 @@
 
 import datetime
 import logging
+import os
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -10,7 +11,14 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import transaction
 
 from .models import Facture, StatutFacture, Tarif
-from .pdf_generator import DonneesFacture, InfosSociete, build_historique, generer_pdf, lire_pdf
+from .pdf_generator import (
+    PDF_TEMPLATE_VERSION,
+    DonneesFacture,
+    InfosSociete,
+    build_historique,
+    generer_pdf,
+    lire_pdf,
+)
 from .repositories import FactureRepository, TarifRepository
 
 logger = logging.getLogger(__name__)
@@ -142,9 +150,7 @@ class FactureService:
                     numero_facture=numero,
                     numero_mobile_money=numero_mobile_money,
                 )
-                pdf_path = self._generer_et_sauver_pdf(facture, societe, campagne_nom=campagne_nom)
-                self._repo.update_pdf_path(facture, pdf_path)
-                facture.pdf_path = pdf_path
+                self._regenerer_et_persister(facture, societe=societe, campagne_nom=campagne_nom)
 
             # Initialise le solde dans Paiement Service (dégradation gracieuse si KO)
             self._paiement_client.initialiser_solde(
@@ -212,6 +218,39 @@ class FactureService:
             )
             return ""
 
+    def _regenerer_et_persister(
+        self,
+        facture: Facture,
+        societe: InfosSociete | None = None,
+        campagne_nom: str | None = None,
+    ) -> str:
+        """Régénère le PDF puis persiste (`pdf_path` + version) si la génération réussit.
+
+        Retourne le chemin du PDF, ou '' en cas d'échec (le PDF existant, s'il y
+        en a un, est alors conservé tel quel plutôt qu'écrasé/perdu). `societe`
+        et `campagne_nom` peuvent être fournis pour éviter des appels gRPC
+        répétés lors d'un traitement par lot.
+        """
+        if societe is None:
+            from .grpc_clients import ConfigServiceClient
+
+            societe = ConfigServiceClient().get_infos_societe()
+        if campagne_nom is None:
+            campagne_nom = self._campagne_client.get_campagne_nom(str(facture.campagne_id))
+
+        pdf_path = self._generer_et_sauver_pdf(facture, societe, campagne_nom=campagne_nom)
+        if pdf_path:
+            self._repo.update_pdf_path(facture, pdf_path, PDF_TEMPLATE_VERSION)
+        return pdf_path
+
+    def regenerer_pdf(self, facture: Facture, societe: InfosSociete | None = None) -> bool:
+        """Régénère et persiste le PDF d'une facture. Retourne True si succès.
+
+        Utilisé par la commande `regenerer_pdfs` pour rafraîchir en masse les
+        PDF figés sur un ancien gabarit.
+        """
+        return bool(self._regenerer_et_persister(facture, societe=societe))
+
     def get_facture(self, facture_id: str) -> Facture:
         """Retourne une facture par son ID. Lève ObjectDoesNotExist si introuvable."""
         return self._repo.get_by_id(facture_id)
@@ -235,25 +274,35 @@ class FactureService:
         return self._repo.update_statut(facture, statut)
 
     def get_pdf_bytes(self, facture_id: str) -> tuple[bytes, str]:
-        """Retourne le contenu PDF et le nom du fichier pour une facture.
+        """Retourne le contenu PDF et le nom de fichier d'une facture.
 
-        Génère le PDF à la volée si le chemin n'est pas encore enregistré.
+        Régénère à la volée si le PDF est manquant OU s'il a été produit par un
+        gabarit obsolète (`pdf_template_version` != version courante) — c'est ce
+        qui garantit que l'abonné reçoit toujours le rendu à jour après une
+        évolution du gabarit. Si la régénération échoue (ex. WeasyPrint
+        indisponible), on ressert le PDF existant, même obsolète, plutôt que de
+        ne rien renvoyer.
         """
         facture = self._repo.get_by_id(facture_id)
-        if facture.pdf_path and __import__("os").path.exists(facture.pdf_path):
+
+        cache_a_jour = (
+            facture.pdf_path
+            and facture.pdf_template_version == PDF_TEMPLATE_VERSION
+            and os.path.exists(facture.pdf_path)
+        )
+        if cache_a_jour:
             return lire_pdf(facture.pdf_path), f"{facture.numero_facture}.pdf"
 
-        # Régénération à la volée (PDF manquant ou chemin vide)
-        from .grpc_clients import ConfigServiceClient
+        pdf_path = self._regenerer_et_persister(facture)
+        if pdf_path and os.path.exists(pdf_path):
+            return lire_pdf(pdf_path), f"{facture.numero_facture}.pdf"
 
-        client = ConfigServiceClient()
-        societe = client.get_infos_societe()
-        campagne_nom = self._campagne_client.get_campagne_nom(str(facture.campagne_id))
-        pdf_path = self._generer_et_sauver_pdf(facture, societe, campagne_nom=campagne_nom)
-        if pdf_path:
-            self._repo.update_pdf_path(facture, pdf_path)
+        # Régénération impossible : repli sur le PDF existant (même obsolète).
+        if facture.pdf_path and os.path.exists(facture.pdf_path):
+            logger.warning(
+                "Régénération PDF impossible — repli sur le PDF stocké (gabarit obsolète)",
+                extra={"facture_id": facture_id, "version_stockee": facture.pdf_template_version},
+            )
+            return lire_pdf(facture.pdf_path), f"{facture.numero_facture}.pdf"
 
-        if not pdf_path or not __import__("os").path.exists(pdf_path):
-            raise FileNotFoundError(f"Impossible de générer le PDF pour la facture {facture_id}.")
-
-        return lire_pdf(pdf_path), f"{facture.numero_facture}.pdf"
+        raise FileNotFoundError(f"Impossible de générer le PDF pour la facture {facture_id}.")

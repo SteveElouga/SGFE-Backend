@@ -19,6 +19,7 @@ from factures.pdf_generator import (
     _build_context,
     _date_fr,
     _fcfa,
+    _modalite_delai,
     _nom_abonne,
     _num,
     _periode_fr,
@@ -63,6 +64,22 @@ class HelpersTests(SimpleTestCase):
 
     def test_periode_fr(self):
         self.assertEqual(_periode_fr("2026-06-15"), "Juin 2026")
+
+    def test_modalite_delai_cinq_jours(self):
+        self.assertEqual(_modalite_delai("2026-06-15", "2026-06-20"), "sous 5 jours")
+
+    def test_modalite_delai_reflete_le_delai_configure(self):
+        # Délai porté à 10 jours (config) → la phrase suit, jamais figée à 5.
+        self.assertEqual(_modalite_delai("2026-06-15", "2026-06-25"), "sous 10 jours")
+
+    def test_modalite_delai_singulier(self):
+        self.assertEqual(_modalite_delai("2026-06-15", "2026-06-16"), "sous 1 jour")
+
+    def test_modalite_delai_dates_illisibles_repli(self):
+        self.assertEqual(_modalite_delai("pas-une-date", "2026-06-20"), "dans les meilleurs délais")
+
+    def test_modalite_delai_ecart_nul_repli(self):
+        self.assertEqual(_modalite_delai("2026-06-20", "2026-06-20"), "dans les meilleurs délais")
 
     def test_nom_abonne_complet(self):
         donnees = _donnees(abonne_nom="Koné", abonne_prenom="Mariam")
@@ -217,6 +234,13 @@ class RenderTemplateTests(SimpleTestCase):
         html = render_to_string("facture_pdf.html", _build_context(donnees, self.societe))
         self.assertIn("https://exemple.test/espace/abc123", html)
         self.assertIn("05/07/2026", html)
+
+    def test_modalite_delai_dynamique_dans_le_rendu(self):
+        """Le délai de règlement suit les dates de la facture — pas de « 5 jours » codé en dur."""
+        donnees = _donnees(date_releve="2026-06-15", date_limite_paiement="2026-06-25")  # 10 jours
+        html = render_to_string("facture_pdf.html", _build_context(donnees, self.societe))
+        self.assertIn("Règlement sous 10 jours", html)
+        self.assertNotIn("sous 5 jours", html)
 
     def test_echappement_html_par_django(self):
         """Django auto-échappe les variables — pas d'injection possible dans le gabarit."""

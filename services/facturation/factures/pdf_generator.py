@@ -41,6 +41,16 @@ _MOIS_FR_ABBR = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Aoû", "Se
 _HIST_HAUTEUR_MAX_PX = 44
 _HIST_HAUTEUR_MIN_PX = 4
 
+# Version du gabarit/générateur de PDF. À **incrémenter** à chaque modification
+# visible du rendu (`facture_pdf.html` ou construction du contexte) : une facture
+# dont le PDF stocké porte une version différente est considérée obsolète et
+# régénérée automatiquement (voir `services.py::get_pdf_bytes`). Sans ce
+# marqueur, un changement de gabarit laisserait indéfiniment en cache les PDF
+# déjà produits — d'où des abonnés recevant l'ancien rendu.
+#   0 = PDF antérieurs au versioning (ReportLab / non marqués) → toujours obsolètes
+#   1 = gabarit « AquaBill » (Django + WeasyPrint)
+PDF_TEMPLATE_VERSION = 1
+
 
 @dataclass
 class InfosSociete:
@@ -153,6 +163,26 @@ def _periode_fr(iso_date: str) -> str:
         return iso_date
 
 
+def _modalite_delai(date_releve_iso: str, date_limite_iso: str) -> str:
+    """Phrase de délai de règlement, dérivée de l'écart relevé → date limite.
+
+    Le nombre de jours n'est jamais codé en dur : il reflète le
+    `delai_paiement_jours` réellement appliqué à cette facture
+    (`date_limite = date_releve + delai`), donc reste exact même pour une
+    facture historique générée sous un délai différent. Repli neutre si les
+    dates sont illisibles.
+    """
+    try:
+        releve = datetime.date.fromisoformat(date_releve_iso)
+        limite = datetime.date.fromisoformat(date_limite_iso)
+    except (ValueError, TypeError):
+        return "dans les meilleurs délais"
+    jours = (limite - releve).days
+    if jours <= 0:
+        return "dans les meilleurs délais"
+    return f"sous {jours} jour{'s' if jours > 1 else ''}"
+
+
 def build_historique(entries: list[tuple[str, Decimal | float, bool]]) -> list[MoisConsommation]:
     """Construit les points de l'histogramme à partir de triplets (date_releve ISO, consommation, is_actuel).
 
@@ -234,6 +264,9 @@ def _build_context(
             "frais_supplementaires": _fcfa(Decimal("0")),
             "total": montant_fmt,
             "date_generation": facture.date_generation,
+            # Délai de règlement dérivé des dates de la facture (jamais codé
+            # en dur) — reflète le delai_paiement_jours réellement appliqué.
+            "modalite_delai": _modalite_delai(facture.date_releve, facture.date_limite_paiement),
         },
         "abonne": {
             "civilite": "",

@@ -110,9 +110,11 @@ class FactureRepository:
         facture.save(update_fields=["statut"])
         return facture
 
-    def update_pdf_path(self, facture: Facture, pdf_path: str) -> Facture:
+    def update_pdf_path(self, facture: Facture, pdf_path: str, template_version: int) -> Facture:
+        """Enregistre le chemin du PDF et la version de gabarit qui l'a produit."""
         facture.pdf_path = pdf_path
-        facture.save(update_fields=["pdf_path"])
+        facture.pdf_template_version = template_version
+        facture.save(update_fields=["pdf_path", "pdf_template_version"])
         return facture
 
     def list_historique_consommation(self, abonne_id: str, limit: int = 6) -> list[Facture]:

@@ -59,6 +59,9 @@ class Facture(models.Model):
     date_limite_paiement = models.DateField()
     date_generation = models.DateTimeField(auto_now_add=True)
     pdf_path = models.TextField(blank=True, default="")
+    # Version du gabarit ayant produit le PDF stocké (0 = antérieur au versioning).
+    # Un écart avec pdf_generator.PDF_TEMPLATE_VERSION déclenche la régénération.
+    pdf_template_version = models.PositiveSmallIntegerField(default=0)
     numero_mobile_money = models.CharField(max_length=20, blank=True, default="")
 
     class Meta:
