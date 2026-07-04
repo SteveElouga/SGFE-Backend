@@ -51,9 +51,6 @@ class CampagneRepository:
     def list_en_cours(self) -> list[Campagne]:
         return list(Campagne.objects.filter(statut=StatutCampagne.EN_COURS))
 
-    def list_planifiees(self) -> list[Campagne]:
-        return list(Campagne.objects.filter(statut=StatutCampagne.PLANIFIEE))
-
     def update_statut(self, campagne: Campagne, statut: str) -> Campagne:
         campagne.statut = statut
         if statut == StatutCampagne.CLOTUREE:

@@ -51,11 +51,3 @@ def start_scheduler() -> None:
     )
     _scheduler.start()
     logger.info("PaiementScheduler démarré — cron à 08:00 tous les jours.")
-
-
-def stop_scheduler() -> None:
-    """Arrête proprement le scheduler."""
-    global _scheduler
-    if _scheduler and _scheduler.running:
-        _scheduler.shutdown(wait=False)
-        logger.info("PaiementScheduler arrêté.")

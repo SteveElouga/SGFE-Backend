@@ -29,14 +29,6 @@ class EnvoiRepository:
         """Récupère un envoi par son UUID. Lève ObjectDoesNotExist si absent."""
         return Envoi.objects.get(id=envoi_id)
 
-    def list_by_facture(self, facture_id: str) -> list[Envoi]:
-        """Liste tous les envois d'une facture, du plus récent au plus ancien."""
-        return list(Envoi.objects.filter(facture_id=facture_id).order_by("-created_at"))
-
-    def list_by_abonne(self, abonne_id: str) -> list[Envoi]:
-        """Liste tous les envois d'un abonné, du plus récent au plus ancien."""
-        return list(Envoi.objects.filter(abonne_id=abonne_id).order_by("-created_at"))
-
     def list_by_facture_and_abonne(self, facture_id: str, abonne_id: str) -> list[Envoi]:
         """Liste les envois filtrés par facture et/ou abonné."""
         qs = Envoi.objects.all()
