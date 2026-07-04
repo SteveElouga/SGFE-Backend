@@ -36,9 +36,11 @@ class NotificationQueries:
 
         Permet à l'UI admin d'afficher le QR à scanner (« Appareils connectés »)
         sans exposer la clé interne du whatsapp-service au navigateur : la
-        Gateway relaie via notification-service en gRPC. Le QR tournant côté
-        WhatsApp, l'UI doit rafraîchir cette query périodiquement tant que
-        `ready` est faux.
+        Gateway relaie via notification-service en gRPC.
+
+        Pour un affichage temps réel (nouveau QR / déconnexion poussés sans
+        rafraîchissement), préférer la subscription `whatsappStatus`. Cette
+        query reste utile comme repli (fetch ponctuel / snapshot initial).
         """
         require_auth(info)
         require_role(info, "ADMIN")
