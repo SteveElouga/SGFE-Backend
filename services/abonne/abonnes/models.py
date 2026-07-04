@@ -77,6 +77,8 @@ class HistoriqueCompteur(models.Model):
     nouveau_compteur = models.ForeignKey(Compteur, on_delete=models.PROTECT, related_name="+")
     index_fermeture = models.DecimalField(max_digits=10, decimal_places=3)
     date_remplacement = models.DateField()
+    # Motif du remplacement (ex. « Compteur défectueux »). Optionnel.
+    motif = models.CharField(max_length=255, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

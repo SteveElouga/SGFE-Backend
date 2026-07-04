@@ -5,10 +5,8 @@ import warnings
 
 import abonne_service_pb2 as abonne__service__pb2
 
-GRPC_GENERATED_VERSION = '1.64.1'
+GRPC_GENERATED_VERSION = '1.81.1'
 GRPC_VERSION = grpc.__version__
-EXPECTED_ERROR_RELEASE = '1.65.0'
-SCHEDULED_RELEASE_DATE = 'June 25, 2024'
 _version_not_supported = False
 
 try:
@@ -18,19 +16,16 @@ except ImportError:
     _version_not_supported = True
 
 if _version_not_supported:
-    warnings.warn(
+    raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in abonne_service_pb2_grpc.py depends on'
+        + ' but the generated code in abonne_service_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
-        + f' This warning will become an error in {EXPECTED_ERROR_RELEASE},'
-        + f' scheduled for release on {SCHEDULED_RELEASE_DATE}.',
-        RuntimeWarning
     )
 
 
-class AbonneServiceStub(object):
+class AbonneServiceStub:
     """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
@@ -101,7 +96,7 @@ class AbonneServiceStub(object):
                 _registered_method=True)
 
 
-class AbonneServiceServicer(object):
+class AbonneServiceServicer:
     """Missing associated documentation comment in .proto file."""
 
     def GetAbonne(self, request, context):
@@ -247,7 +242,7 @@ def add_AbonneServiceServicer_to_server(servicer, server):
 
 
  # This class is part of an EXPERIMENTAL API.
-class AbonneService(object):
+class AbonneService:
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod

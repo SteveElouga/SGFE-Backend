@@ -105,6 +105,27 @@ class TestCampagneQueries(SimpleTestCase):
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")
     @patch("schema.campagne_queries.require_role")
+    def test_resume_cloture(self, mock_role, mock_auth, mock_client) -> None:
+        mock_auth.return_value = MagicMock(role="ADMIN", user_id="user-001")
+        mock_client.get_resume_cloture.return_value = MagicMock(
+            campagne_id="camp-001",
+            total_abonnes=50,
+            nb_releves=40,
+            nb_estimes=2,
+            nb_non_releves=2,
+            nb_restants=6,
+            nb_factures_a_generer=42,
+        )
+        info = MagicMock()
+        result = CampagneQueries().resume_cloture(info, campagne_id="camp-001")
+        self.assertEqual(result.nb_factures_a_generer, 42)
+        self.assertEqual(result.nb_estimes, 2)
+        self.assertEqual(result.nb_restants, 6)
+        mock_role.assert_called_once_with(info, "ADMIN", "SUPERVISEUR")
+
+    @patch("schema.campagne_queries.campagne_client")
+    @patch("schema.campagne_queries.require_auth")
+    @patch("schema.campagne_queries.require_role")
     def test_dernier_index(self, mock_role, mock_auth, mock_client) -> None:
         mock_auth.return_value = MagicMock(role="AGENT", user_id="agent-001")
         mock_client.get_dernier_index.return_value = MagicMock(

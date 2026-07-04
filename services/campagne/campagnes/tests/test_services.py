@@ -157,6 +157,37 @@ class TestCampagneService(TestCase):
         total = sum(counts.values())
         self.assertEqual(total, 0)
 
+    def test_get_resume_cloture(self) -> None:
+        c = self._creer_campagne(StatutCampagne.EN_COURS)
+        # 2 relevés, 1 estimé, 1 non relevé, 1 restant (A_RELEVER)
+        statuts = [
+            StatutReleve.RELEVE,
+            StatutReleve.RELEVE,
+            StatutReleve.ESTIME,
+            StatutReleve.NON_RELEVE,
+            StatutReleve.A_RELEVER,
+        ]
+        for i, s in enumerate(statuts):
+            r = self.svc.ajouter_abonne_campagne(str(c.id), f"abonne-{i:03d}", ancien_index=0.0)
+            r.statut = s
+            r.save()
+
+        resume = self.svc.get_resume_cloture(str(c.id))
+
+        self.assertEqual(resume["total_abonnes"], 5)
+        self.assertEqual(resume["nb_releves"], 2)
+        self.assertEqual(resume["nb_estimes"], 1)
+        self.assertEqual(resume["nb_non_releves"], 1)
+        self.assertEqual(resume["nb_restants"], 1)
+        # Seuls relevés + estimés sont facturés
+        self.assertEqual(resume["nb_factures_a_generer"], 3)
+
+    def test_get_resume_cloture_campagne_introuvable_leve_erreur(self) -> None:
+        import uuid as _uuid
+
+        with self.assertRaises(ObjectDoesNotExist):
+            self.svc.get_resume_cloture(str(_uuid.uuid4()))
+
     # --- ajouter abonné ---
 
     def test_ajouter_abonne_campagne_succes(self) -> None:

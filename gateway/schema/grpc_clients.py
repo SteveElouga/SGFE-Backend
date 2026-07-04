@@ -187,6 +187,9 @@ class CampagneServiceClient:
     def get_progression(self, campagne_id: str) -> campagne_pb.ProgressionResponse:
         return self._stub.GetProgression(campagne_pb.CampagneIdRequest(campagne_id=campagne_id))
 
+    def get_resume_cloture(self, campagne_id: str) -> campagne_pb.ResumeClotureResponse:
+        return self._stub.GetResumeCloture(campagne_pb.CampagneIdRequest(campagne_id=campagne_id))
+
     def cloturer_campagne(self, campagne_id: str) -> campagne_pb.CampagneResponse:
         return self._stub.CloturerCampagne(campagne_pb.CampagneIdRequest(campagne_id=campagne_id))
 

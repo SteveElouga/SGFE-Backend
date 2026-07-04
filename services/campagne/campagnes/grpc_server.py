@@ -167,6 +167,29 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
             logger.exception("GetProgression échoué")
             context.abort(grpc.StatusCode.INTERNAL, str(exc))
 
+    def GetResumeCloture(
+        self,
+        request: pb.CampagneIdRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.ResumeClotureResponse:
+        """Aperçu de clôture prêt à afficher (modal de confirmation)."""
+        try:
+            r = self._campagne_svc.get_resume_cloture(request.campagne_id)
+            return pb.ResumeClotureResponse(
+                campagne_id=request.campagne_id,
+                total_abonnes=r["total_abonnes"],
+                nb_releves=r["nb_releves"],
+                nb_estimes=r["nb_estimes"],
+                nb_non_releves=r["nb_non_releves"],
+                nb_restants=r["nb_restants"],
+                nb_factures_a_generer=r["nb_factures_a_generer"],
+            )
+        except ObjectDoesNotExist as exc:
+            context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
+        except Exception as exc:
+            logger.exception("GetResumeCloture échoué")
+            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+
     # ------------------------------------------------------------------ #
     # Relevés
     # ------------------------------------------------------------------ #

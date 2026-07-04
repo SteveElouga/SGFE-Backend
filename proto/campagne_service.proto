@@ -11,6 +11,7 @@ service CampagneService {
   rpc GetReleve (ReleveIdRequest) returns (ReleveResponse);
   rpc ListReleves (CampagneIdRequest) returns (ListRelevesResponse);
   rpc GetProgression (CampagneIdRequest) returns (ProgressionResponse);
+  rpc GetResumeCloture (CampagneIdRequest) returns (ResumeClotureResponse);
   rpc CloturerCampagne (CampagneIdRequest) returns (CampagneResponse);
   rpc GetDernierIndex (AbonneIdRequest) returns (DernierIndexResponse);
 }
@@ -78,6 +79,17 @@ message ProgressionResponse {
   int32 nb_releves = 3;
   int32 nb_en_attente = 4;
   double pourcentage = 5;
+}
+
+// Aperçu prêt à afficher avant la clôture d'une campagne (modal de confirmation).
+message ResumeClotureResponse {
+  string campagne_id = 1;
+  int32 total_abonnes = 2;
+  int32 nb_releves = 3;            // statut RELEVE
+  int32 nb_estimes = 4;           // statut ESTIME
+  int32 nb_non_releves = 5;       // statut NON_RELEVE
+  int32 nb_restants = 6;          // statut A_RELEVER (pas encore traités)
+  int32 nb_factures_a_generer = 7; // relevés + estimés (les seuls facturés)
 }
 
 message DernierIndexResponse {

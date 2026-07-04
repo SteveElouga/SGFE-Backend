@@ -78,6 +78,7 @@ class RemplacerCompteurInput:
     nouveau_camp: int
     nouvel_index_initial: float
     date_remplacement: str
+    motif: str = ""
 
 
 @strawberry.type
@@ -88,6 +89,7 @@ class HistoriqueCompteur:
     index_fermeture: float
     date_remplacement: str
     created_at: str
+    motif: str
 
 
 def compteur_from_grpc(compteur_response) -> Compteur:
@@ -110,6 +112,7 @@ def historique_from_grpc(h) -> HistoriqueCompteur:
         index_fermeture=h.index_fermeture,
         date_remplacement=h.date_remplacement,
         created_at=h.created_at,
+        motif=h.motif,
     )
 
 

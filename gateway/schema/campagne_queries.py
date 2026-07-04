@@ -3,7 +3,15 @@
 import strawberry
 import strawberry.types
 
-from .campagne_types import Campagne, DernierIndex, Progression, Releve, campagne_from_grpc, releve_from_grpc
+from .campagne_types import (
+    Campagne,
+    DernierIndex,
+    Progression,
+    Releve,
+    ResumeCloture,
+    campagne_from_grpc,
+    releve_from_grpc,
+)
 from .context import require_auth, require_role
 from .grpc_clients import campagne_client
 
@@ -76,6 +84,24 @@ class CampagneQueries:
             nb_releves=r.nb_releves,
             nb_en_attente=r.nb_en_attente,
             pourcentage=r.pourcentage,
+        )
+
+    @strawberry.field
+    def resume_cloture(self, info: strawberry.types.Info, campagne_id: str) -> ResumeCloture:
+        """Aperçu de clôture (ventilation des relevés + factures à générer) —
+        ADMIN (toutes), SUPERVISEUR (les siennes)."""
+        user = require_auth(info)
+        require_role(info, "ADMIN", "SUPERVISEUR")
+        _verifier_acces_campagne(user, campagne_id)
+        r = campagne_client.get_resume_cloture(campagne_id)
+        return ResumeCloture(
+            campagne_id=r.campagne_id,
+            total_abonnes=r.total_abonnes,
+            nb_releves=r.nb_releves,
+            nb_estimes=r.nb_estimes,
+            nb_non_releves=r.nb_non_releves,
+            nb_restants=r.nb_restants,
+            nb_factures_a_generer=r.nb_factures_a_generer,
         )
 
     @strawberry.field

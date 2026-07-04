@@ -89,5 +89,6 @@ class AbonneMutations:
             nouveau_camp=input.nouveau_camp,
             nouvel_index_initial=input.nouvel_index_initial,
             date_remplacement=input.date_remplacement,
+            motif=input.motif,
         )
         return compteur_from_grpc(response)

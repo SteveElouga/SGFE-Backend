@@ -98,6 +98,25 @@ class CampagneService:
         self._repo.get_by_id(campagne_id)  # lève ObjectDoesNotExist si introuvable
         return self._releve_repo.count_by_campagne(campagne_id)
 
+    def get_resume_cloture(self, campagne_id: str) -> dict[str, int]:
+        """Aperçu prêt à afficher avant la clôture : ventilation des relevés par
+        statut et nombre de factures qui seront générées (relevés + estimés ;
+        les non-relevés et restants ne sont pas facturés)."""
+        self._repo.get_by_id(campagne_id)  # lève ObjectDoesNotExist si introuvable
+        counts = self._releve_repo.count_by_campagne(campagne_id)
+        nb_releves = counts.get(StatutReleve.RELEVE, 0)
+        nb_estimes = counts.get(StatutReleve.ESTIME, 0)
+        nb_non_releves = counts.get(StatutReleve.NON_RELEVE, 0)
+        nb_restants = counts.get(StatutReleve.A_RELEVER, 0)
+        return {
+            "total_abonnes": nb_releves + nb_estimes + nb_non_releves + nb_restants,
+            "nb_releves": nb_releves,
+            "nb_estimes": nb_estimes,
+            "nb_non_releves": nb_non_releves,
+            "nb_restants": nb_restants,
+            "nb_factures_a_generer": nb_releves + nb_estimes,
+        }
+
     def ajouter_abonne_campagne(
         self,
         campagne_id: str,

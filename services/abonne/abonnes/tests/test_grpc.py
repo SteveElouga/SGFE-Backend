@@ -117,6 +117,25 @@ class AbonneServiceServicerTests(TestCase):
         )
         self.assertEqual(response.numero_compteur, 2)
 
+    def test_remplacer_compteur_motif_persiste_et_ressort_dans_historique(self):
+        created = self._create()
+        self.servicer.RemplacerCompteur(
+            pb.RemplacerCompteurRequest(
+                abonne_id=created.abonne_id,
+                index_fermeture=100,
+                nouveau_numero_compteur=2,
+                nouveau_quartier="Nouveau",
+                nouveau_camp=2,
+                nouvel_index_initial=0,
+                date_remplacement="2024-06-01",
+                motif="Compteur défectueux",
+            ),
+            self.context,
+        )
+        historique = self.servicer.GetHistoriqueCompteur(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
+        self.assertEqual(len(historique.historique), 1)
+        self.assertEqual(historique.historique[0].motif, "Compteur défectueux")
+
     def test_remplacer_compteur_invalid_index_raises(self):
         created = self._create(index_initial=50.0)
         with self.assertRaises(ValidationError):
