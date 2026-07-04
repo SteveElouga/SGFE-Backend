@@ -168,7 +168,12 @@ espace         .url .date_expiration — lien de l'espace abonné ; Facturation
     .page-footer {
       position: running(pageFooter);
       display: flex; justify-content: space-between; align-items: center;
-      border-top: 2px solid #0f1c3d; padding-top: 9px; width: 100%;
+      border-top: 2px solid #0f1c3d; padding-top: 9px;
+      /* La boîte de marge @bottom-center ne s'étire pas à la largeur de page :
+         on force la largeur imprimable (A4 210mm − 2×marge 0.6in ≈ 179.5mm)
+         pour que le pied occupe toute la largeur et que le texte gauche/droite
+         se colle aux bords. À ajuster si la marge @page change. */
+      width: 179.5mm;
       font-size: 9.5px; color: #94a3b8;
     }
     .page-footer .page-num::after { content: "Page " counter(page) " / " counter(pages); }
