@@ -13,6 +13,7 @@ from django.test import TestCase
 from factures.models import Facture, StatutFacture, Tarif
 from factures.pdf_generator import InfosSociete, PDF_TEMPLATE_VERSION
 from factures.services import FactureService, ReleveData, TarifService
+from factures.tests.helpers import service_avec_clients_mockes
 
 
 class TarifServiceTests(TestCase):
@@ -57,7 +58,7 @@ class TarifServiceTests(TestCase):
 
 class FactureServiceTests(TestCase):
     def setUp(self):
-        self.svc = FactureService()
+        self.svc = service_avec_clients_mockes()
         self.tarif_svc = TarifService()
         self.tarif_svc.update_tarif(Decimal("500.00"), datetime.date(2025, 7, 1))
         self.societe = InfosSociete(nom="SGFE Test", adresse="Yaoundé", telephone="+237000000000")
@@ -242,7 +243,7 @@ class GetPdfBytesTests(TestCase):
     """Cache PDF version-aware : régénération si gabarit obsolète, repli si échec."""
 
     def setUp(self):
-        self.svc = FactureService()
+        self.svc = service_avec_clients_mockes()
         self.facture = Facture.objects.create(
             numero_facture="FACT-2026-07-0001",
             abonne_id="abo-1",

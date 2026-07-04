@@ -5,6 +5,7 @@ import logging
 import os
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
+from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
@@ -20,6 +21,14 @@ from .pdf_generator import (
     lire_pdf,
 )
 from .repositories import FactureRepository, TarifRepository
+
+if TYPE_CHECKING:  # imports réservés au typage — non exécutés (évite la circularité)
+    from .grpc_clients import (
+        AbonneServiceClient,
+        CampagneServiceClient,
+        NotificationServiceClient,
+        PaiementServiceClient,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -61,10 +70,18 @@ class TarifService:
 class FactureService:
     """Génération et gestion des factures."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        paiement_client: "PaiementServiceClient | None" = None,
+        notification_client: "NotificationServiceClient | None" = None,
+        abonne_client: "AbonneServiceClient | None" = None,
+        campagne_client: "CampagneServiceClient | None" = None,
+    ) -> None:
         self._repo = FactureRepository()
         self._tarif_repo = TarifRepository()
-        # Import tardif pour éviter la circularité au niveau module
+        # Clients gRPC injectables (défaut = client réel) — permet des tests
+        # isolés sans appel réseau. Import tardif : évite la circularité au
+        # niveau module (grpc_clients importe des symboles de ce module).
         from .grpc_clients import (
             AbonneServiceClient,
             CampagneServiceClient,
@@ -72,10 +89,10 @@ class FactureService:
             PaiementServiceClient,
         )
 
-        self._paiement_client = PaiementServiceClient()
-        self._notification_client = NotificationServiceClient()
-        self._abonne_client = AbonneServiceClient()
-        self._campagne_client = CampagneServiceClient()
+        self._paiement_client = paiement_client or PaiementServiceClient()
+        self._notification_client = notification_client or NotificationServiceClient()
+        self._abonne_client = abonne_client or AbonneServiceClient()
+        self._campagne_client = campagne_client or CampagneServiceClient()
 
     def generer_factures(
         self,
