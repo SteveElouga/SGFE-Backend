@@ -65,6 +65,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # --- gRPC ---
 PAIEMENT_GRPC_PORT = env.int("PAIEMENT_GRPC_PORT", default=50055)
 
+# --- Redis (pub/sub : notifie la gateway des paiements enregistrés) ---
+REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
+
 # --- Services gRPC consommés ---
 FACTURATION_GRPC_HOST = env("FACTURATION_GRPC_HOST", default="localhost")
 FACTURATION_GRPC_PORT = env.int("FACTURATION_GRPC_PORT", default=50054)

@@ -134,3 +134,129 @@ class SubscriptionWhatsappStatusTests(IsolatedAsyncioTestCase):
         self.assertTrue(second.ready)
         self.assertEqual(second.number, "237690000000")
         mock_pubsub.subscribe.assert_awaited_once_with("whatsapp:events")
+
+
+def _mock_redis(listen_gen, mock_redis_cls):
+    """Câble un pubsub Redis mocké dont listen() renvoie l'async-gen fourni."""
+    pubsub = MagicMock()
+    pubsub.subscribe = AsyncMock()
+    pubsub.unsubscribe = AsyncMock()
+    pubsub.listen = listen_gen
+    instance = MagicMock()
+    instance.pubsub.return_value = pubsub
+    instance.aclose = AsyncMock()
+    mock_redis_cls.from_url.return_value = instance
+    return pubsub
+
+
+class SubscriptionFactureUpdatedTests(IsolatedAsyncioTestCase):
+    """factureUpdated : réservé ADMIN/COMPTABLE, pousse la facture re-fetchée."""
+
+    @patch("schema.subscriptions.require_role")
+    async def test_factureupdated_role_insuffisant_leve_autherror(self, mock_require_role):
+        mock_require_role.side_effect = AuthError("Accès non autorisé", code="PERMISSION_DENIED")
+
+        info = MagicMock()
+        agen = Subscription().facture_updated(info=info)
+        with self.assertRaises(AuthError):
+            await agen.__anext__()
+        mock_require_role.assert_called_once_with(info, "ADMIN", "COMPTABLE")
+
+    @patch("redis.asyncio.Redis")
+    @patch("schema.subscriptions.facturation_client")
+    @patch("schema.subscriptions.require_role")
+    async def test_factureupdated_admin_pousse_la_facture(
+        self, mock_require_role, mock_facturation_client, mock_redis_cls
+    ):
+        mock_require_role.return_value = MagicMock()
+
+        async def _listen():
+            yield {"type": "message", "data": '{"facture_id": "fac-1", "campagne_id": "camp-1"}'}
+
+        _mock_redis(_listen, mock_redis_cls)
+
+        facture = MagicMock()
+        facture.facture_id = "fac-1"
+        facture.campagne_id = "camp-1"
+        facture.statut = "PARTIELLE"
+        for attr in (
+            "numero_facture",
+            "abonne_id",
+            "date_releve",
+            "date_limite_paiement",
+            "date_generation",
+            "pdf_path",
+            "numero_mobile_money",
+        ):
+            setattr(facture, attr, "")
+        for attr in ("ancien_index", "nouveau_index", "consommation", "prix_m3", "montant"):
+            setattr(facture, attr, 0.0)
+        mock_facturation_client.get_facture.return_value = facture
+
+        agen = Subscription().facture_updated(info=MagicMock())
+        result = await agen.__anext__()
+        self.assertEqual(result.facture_id, "fac-1")
+        self.assertEqual(result.statut, "PARTIELLE")
+        mock_facturation_client.get_facture.assert_called_once_with("fac-1")
+
+    @patch("redis.asyncio.Redis")
+    @patch("schema.subscriptions.facturation_client")
+    @patch("schema.subscriptions.require_role")
+    async def test_factureupdated_filtre_campagne_ecarte_les_autres(
+        self, mock_require_role, mock_facturation_client, mock_redis_cls
+    ):
+        """Un événement d'une autre campagne ne doit rien pousser (ni re-fetch)."""
+        mock_require_role.return_value = MagicMock()
+
+        async def _listen():
+            yield {"type": "message", "data": '{"facture_id": "fac-1", "campagne_id": "AUTRE"}'}
+
+        _mock_redis(_listen, mock_redis_cls)
+
+        agen = Subscription().facture_updated(info=MagicMock(), campagne_id="camp-1")
+        with self.assertRaises(StopAsyncIteration):
+            await agen.__anext__()
+        mock_facturation_client.get_facture.assert_not_called()
+
+
+class SubscriptionPaiementCreeTests(IsolatedAsyncioTestCase):
+    """paiementCree : réservé ADMIN/COMPTABLE, événement Redis auto-porteur."""
+
+    @patch("schema.subscriptions.require_role")
+    async def test_paiementcree_role_insuffisant_leve_autherror(self, mock_require_role):
+        mock_require_role.side_effect = AuthError("Accès non autorisé", code="PERMISSION_DENIED")
+
+        info = MagicMock()
+        agen = Subscription().paiement_cree(info=info)
+        with self.assertRaises(AuthError):
+            await agen.__anext__()
+        mock_require_role.assert_called_once_with(info, "ADMIN", "COMPTABLE")
+
+    @patch("redis.asyncio.Redis")
+    @patch("schema.subscriptions.auth_client")
+    @patch("schema.subscriptions.require_role")
+    async def test_paiementcree_admin_pousse_le_paiement(self, mock_require_role, mock_auth_client, mock_redis_cls):
+        """Sans filtre : le paiement est reconstruit depuis l'événement, avec le
+        statut de facture et l'opérateur résolu (aucun re-fetch de facture)."""
+        mock_require_role.return_value = MagicMock()
+        mock_auth_client.get_user.return_value = MagicMock(username="comptable1")
+
+        data = (
+            '{"event_type": "PAIEMENT_CREATED", "paiement_id": "pay-1", "facture_id": "fac-1",'
+            ' "montant": 5000, "date_paiement": "2026-07-04", "mode_paiement": "ESPECES",'
+            ' "reference_transaction": "", "created_at": "2026-07-04T10:00:00",'
+            ' "enregistre_par": "user-1", "statut_facture": "PARTIELLE"}'
+        )
+
+        async def _listen():
+            yield {"type": "message", "data": data}
+
+        pubsub = _mock_redis(_listen, mock_redis_cls)
+
+        agen = Subscription().paiement_cree(info=MagicMock())
+        result = await agen.__anext__()
+        self.assertEqual(result.paiement_id, "pay-1")
+        self.assertEqual(result.montant, 5000.0)
+        self.assertEqual(result.statut_facture, "PARTIELLE")
+        self.assertEqual(result.operateur, "comptable1")
+        pubsub.subscribe.assert_awaited_once_with("paiement:events")

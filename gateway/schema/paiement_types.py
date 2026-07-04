@@ -25,6 +25,10 @@ class Paiement:
     # paiement — résolu depuis enregistre_par (user_id) par l'appelant, voir
     # paiement_queries.py/paiement_mutations.py. Vide si non résolu.
     operateur: str = ""
+    # Statut résultant de la facture (IMPAYEE/PARTIELLE/PAYEE) au moment du
+    # paiement. Renseigné uniquement par la souscription paiementCree (l'événement
+    # Redis auto-porteur le transporte) ; vide via les queries gRPC classiques.
+    statut_facture: str = ""
 
 
 @strawberry.type
@@ -57,6 +61,25 @@ def paiement_from_grpc(r, operateur: str = "") -> Paiement:
         reference_transaction=r.reference_transaction,
         created_at=r.created_at,
         operateur=operateur,
+    )
+
+
+def paiement_from_event(data: dict, operateur: str = "") -> Paiement:
+    """Construit un Paiement depuis l'événement Redis auto-porteur (paiementCree).
+
+    Le service paiement n'expose pas de GetPaiement : l'événement transporte
+    directement tous les champs affichés (voir paiements/event_publisher.py).
+    """
+    return Paiement(
+        paiement_id=data.get("paiement_id", ""),
+        facture_id=data.get("facture_id", ""),
+        montant=float(data.get("montant") or 0),
+        date_paiement=data.get("date_paiement", "") or "",
+        mode_paiement=data.get("mode_paiement", "") or "",
+        reference_transaction=data.get("reference_transaction", "") or "",
+        created_at=data.get("created_at", "") or "",
+        operateur=operateur,
+        statut_facture=data.get("statut_facture", "") or "",
     )
 
 

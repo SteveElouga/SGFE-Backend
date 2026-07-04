@@ -90,5 +90,8 @@ JWT_ALGORITHM = env("JWT_ALGORITHM", default="HS256")
 # --- PDF ---
 PDF_STORAGE_DIR = env("PDF_STORAGE_DIR", default=str(BASE_DIR / "pdfs"))
 
+# --- Redis (pub/sub : notifie la gateway des mutations de facture) ---
+REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
+
 # --- Délai de paiement par défaut (en jours) si Config Service est indisponible ---
 DEFAULT_DELAI_PAIEMENT_JOURS = 5
