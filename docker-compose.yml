@@ -54,6 +54,8 @@ services:
     depends_on:
       auth-postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       whatsapp-service:
         condition: service_started
     environment:
@@ -65,6 +67,7 @@ services:
       AUTH_DB_USER: auth_user
       AUTH_DB_PASSWORD: devpassword
       AUTH_GRPC_PORT: "50051"
+      REDIS_URL: "redis://redis:6379/0"
       JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
       BREVO_API_KEY: ${BREVO_API_KEY:-dev-fake-key}
       BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-SGFE}

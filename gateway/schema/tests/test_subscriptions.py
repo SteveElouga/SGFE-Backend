@@ -260,3 +260,67 @@ class SubscriptionPaiementCreeTests(IsolatedAsyncioTestCase):
         self.assertEqual(result.statut_facture, "PARTIELLE")
         self.assertEqual(result.operateur, "comptable1")
         pubsub.subscribe.assert_awaited_once_with("paiement:events")
+
+
+def _mock_user(user_id: str, role: str = "ADMIN") -> MagicMock:
+    """UserResponse gRPC mocké, exploitable par user_from_grpc."""
+    u = MagicMock()
+    u.user_id = user_id
+    u.username = "bob"
+    u.email = "bob@example.com"
+    u.phone_number = "+237690000000"
+    u.role = role
+    u.is_active = True
+    u.created_at = "2026-07-01T00:00:00Z"
+    return u
+
+
+class SubscriptionUtilisateurUpdatedTests(IsolatedAsyncioTestCase):
+    """utilisateurUpdated : ADMIN suit tout le monde ; un non-ADMIN ne peut suivre
+    que son propre compte (cas « profil » sécurité)."""
+
+    @patch("schema.subscriptions.require_auth")
+    async def test_non_admin_sans_filtre_soi_leve_autherror(self, mock_require_auth):
+        """Un non-ADMIN sans filtre (ou filtrant un autre id) est refusé."""
+        mock_require_auth.return_value = MagicMock(role="COMPTABLE", user_id="u-1")
+
+        agen = Subscription().utilisateur_updated(info=MagicMock())
+        with self.assertRaises(AuthError):
+            await agen.__anext__()
+
+    @patch("redis.asyncio.Redis")
+    @patch("schema.subscriptions.auth_client")
+    @patch("schema.subscriptions.require_auth")
+    async def test_non_admin_sur_son_propre_id_recoit_son_compte(
+        self, mock_require_auth, mock_auth_client, mock_redis_cls
+    ):
+        """Cas profil : un COMPTABLE peut suivre son propre id (déconnexion forcée
+        si un admin le désactive / change son rôle)."""
+        mock_require_auth.return_value = MagicMock(role="COMPTABLE", user_id="u-1")
+        mock_auth_client.get_user.return_value = _mock_user("u-1")
+
+        async def _listen():
+            yield {"type": "message", "data": '{"event_type": "USER_UPDATED", "user_id": "u-1"}'}
+
+        _mock_redis(_listen, mock_redis_cls)
+
+        agen = Subscription().utilisateur_updated(info=MagicMock(), utilisateur_id="u-1")
+        result = await agen.__anext__()
+        self.assertEqual(result.id, "u-1")
+        mock_auth_client.get_user.assert_called_once_with("u-1")
+
+    @patch("redis.asyncio.Redis")
+    @patch("schema.subscriptions.auth_client")
+    @patch("schema.subscriptions.require_auth")
+    async def test_admin_flux_global_recoit_les_autres(self, mock_require_auth, mock_auth_client, mock_redis_cls):
+        mock_require_auth.return_value = MagicMock(role="ADMIN", user_id="admin-1")
+        mock_auth_client.get_user.return_value = _mock_user("u-2")
+
+        async def _listen():
+            yield {"type": "message", "data": '{"event_type": "USER_CREATED", "user_id": "u-2"}'}
+
+        _mock_redis(_listen, mock_redis_cls)
+
+        agen = Subscription().utilisateur_updated(info=MagicMock())
+        result = await agen.__anext__()
+        self.assertEqual(result.id, "u-2")

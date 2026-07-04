@@ -92,6 +92,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # --- gRPC ---
 AUTH_GRPC_PORT = env.int("AUTH_GRPC_PORT", default=50051)
 
+# --- Redis (pub/sub : notifie la gateway des mutations utilisateur) ---
+REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
+
 # --- JWT ---
 JWT_SECRET_KEY = env("JWT_SECRET_KEY", default=SECRET_KEY)
 JWT_ALGORITHM = env("JWT_ALGORITHM", default="HS256")
