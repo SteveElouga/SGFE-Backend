@@ -8,7 +8,8 @@ from django.conf import settings
 from strawberry.types import Info
 
 from schema.abonne_types import Abonne, abonne_from_grpc
-from schema.context import require_role
+from schema.auth_types import User, user_from_grpc
+from schema.context import AuthError, require_auth, require_role
 from schema.facturation_types import Facture, facture_from_grpc
 from schema.grpc_clients import (
     abonne_client,
@@ -41,6 +42,22 @@ async def _resoudre_operateur(enregistre_par: str) -> str:
     except Exception as exc:
         logger.warning("paiement_cree: résolution opérateur échouée : %s", exc)
         return ""
+
+
+async def _autoriser_acces_utilisateur(info: Info, filter_id: str | None) -> None:
+    """Garde d'accès de utilisateurUpdated.
+
+    Un ADMIN peut suivre tout le monde (flux global ou filtré). Un utilisateur
+    non-ADMIN ne peut suivre **que son propre compte** (cas « profil » : réagir à
+    un changement de son rôle / sa désactivation) — il doit donc fournir un
+    filtre égal à son propre id. Lève AuthError sinon.
+    """
+    payload = await asyncio.to_thread(require_auth, info)
+    if payload.role == "ADMIN":
+        return
+    if filter_id and filter_id == payload.user_id:
+        return
+    raise AuthError("Accès non autorisé", code="PERMISSION_DENIED")
 
 
 @strawberry.type
@@ -245,4 +262,53 @@ class Subscription:
                 yield paiement_from_event(data, operateur=operateur)
         finally:
             await pubsub.unsubscribe("paiement:events")
+            await redis.aclose()
+
+    @strawberry.subscription
+    async def utilisateur_updated(
+        self,
+        info: Info,
+        utilisateur_id: strawberry.ID | None = strawberry.UNSET,
+    ) -> AsyncGenerator[User, None]:
+        """Pousse l'utilisateur mis à jour dès qu'une mutation le modifie.
+
+        - Sans filtre (ADMIN) → toutes les créations/modifications/(dés)activations
+          d'utilisateurs (vue liste admin — voir une action d'un autre admin en direct).
+        - utilisateurId=ID    → uniquement cet utilisateur. Cas « profil » : un
+          utilisateur non-ADMIN peut suivre son propre compte pour réagir
+          immédiatement à un changement de rôle ou une désactivation (sécurité).
+
+        Accès : ADMIN, ou l'utilisateur lui-même sur son propre id
+        (voir _autoriser_acces_utilisateur).
+        """
+        filter_id = str(utilisateur_id) if utilisateur_id and utilisateur_id is not strawberry.UNSET else None
+        await _autoriser_acces_utilisateur(info, filter_id)
+
+        from redis.asyncio import Redis
+
+        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        pubsub = redis.pubsub()
+        await pubsub.subscribe("user:events")
+
+        try:
+            async for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+
+                try:
+                    data = json.loads(message["data"])
+                except (json.JSONDecodeError, TypeError):
+                    continue
+
+                user_id: str = data.get("user_id", "")
+                if not user_id or (filter_id and user_id != filter_id):
+                    continue
+
+                try:
+                    response = await asyncio.to_thread(auth_client.get_user, user_id)
+                    yield user_from_grpc(response)
+                except Exception as exc:
+                    logger.warning("utilisateur_updated: GetUser(%s) échoué : %s", user_id, exc)
+        finally:
+            await pubsub.unsubscribe("user:events")
             await redis.aclose()

@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 import auth_service_pb2 as pb
 import auth_service_pb2_grpc as pb_grpc
 
+from comptes.event_publisher import publish_user_event
 from comptes.grpc_interceptors import ErrorHandlingInterceptor
 from comptes.serializers import user_to_payload, user_to_response
 from comptes.services import AuthService, PasswordSetupService, PhoneOtpService, UserAdminService
@@ -53,6 +54,7 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):
             phone_number=request.phone_number,
             role=request.role,
         )
+        publish_user_event(str(user.id), "USER_CREATED")
         return pb.UserResponse(**user_to_response(user))
 
     def UpdateUser(self, request, context):
@@ -62,14 +64,18 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):
             role=request.role,
             phone_number=request.phone_number,
         )
+        # Couvre notamment le changement de rôle (cas sécurité côté front).
+        publish_user_event(str(user.id), "USER_UPDATED")
         return pb.UserResponse(**user_to_response(user))
 
     def DeactivateUser(self, request, context):
         user = self.user_admin_service.deactivate_user(request.user_id, caller_id=request.caller_id)
+        publish_user_event(str(user.id), "USER_UPDATED")
         return pb.UserResponse(**user_to_response(user))
 
     def ReactivateUser(self, request, context):
         user = self.user_admin_service.reactivate_user(request.user_id)
+        publish_user_event(str(user.id), "USER_UPDATED")
         return pb.UserResponse(**user_to_response(user))
 
     def ResetUserPassword(self, request, context):
