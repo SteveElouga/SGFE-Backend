@@ -130,6 +130,8 @@ services:
     depends_on:
       facturation-postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       campagne-service:
         condition: service_started
       config-service:
@@ -155,6 +157,7 @@ services:
       ABONNE_GRPC_PORT: "50052"
       JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
       PDF_STORAGE_DIR: /app/pdfs
+      REDIS_URL: "redis://redis:6379/0"
     ports:
       - "50054:50054"
     volumes:
@@ -182,6 +185,8 @@ services:
     depends_on:
       paiement-postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       facturation-service:
         condition: service_started
       notification-service:
@@ -199,6 +204,7 @@ services:
       PAIEMENT_DB_USER: paiement_user
       PAIEMENT_DB_PASSWORD: devpassword
       PAIEMENT_GRPC_PORT: "50055"
+      REDIS_URL: "redis://redis:6379/0"
       FACTURATION_GRPC_HOST: facturation-service
       FACTURATION_GRPC_PORT: "50054"
       NOTIFICATION_GRPC_HOST: notification-service

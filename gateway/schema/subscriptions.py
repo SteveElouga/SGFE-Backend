@@ -9,10 +9,38 @@ from strawberry.types import Info
 
 from schema.abonne_types import Abonne, abonne_from_grpc
 from schema.context import require_role
-from schema.grpc_clients import abonne_client, notification_client
+from schema.facturation_types import Facture, facture_from_grpc
+from schema.grpc_clients import (
+    abonne_client,
+    auth_client,
+    facturation_client,
+    notification_client,
+)
 from schema.notification_types import WhatsAppQr, whatsapp_qr_from_grpc
+from schema.paiement_types import Paiement, paiement_from_event
 
 logger = logging.getLogger(__name__)
+
+
+async def _paiement_dans_campagne(data: dict, campagne_id: str) -> bool:
+    """True si le paiement appartient à la campagne, via sa facture liée."""
+    try:
+        facture = await asyncio.to_thread(facturation_client.get_facture, data.get("facture_id", ""))
+    except Exception as exc:
+        logger.warning("paiement_cree: filtrage campagne échoué : %s", exc)
+        return False
+    return facture.campagne_id == campagne_id
+
+
+async def _resoudre_operateur(enregistre_par: str) -> str:
+    """Résout un user_id (enregistre_par) en username affichable, best-effort."""
+    if not enregistre_par:
+        return ""
+    try:
+        return (await asyncio.to_thread(auth_client.get_user, enregistre_par)).username
+    except Exception as exc:
+        logger.warning("paiement_cree: résolution opérateur échouée : %s", exc)
+        return ""
 
 
 @strawberry.type
@@ -120,4 +148,101 @@ class Subscription:
                 )
         finally:
             await pubsub.unsubscribe("whatsapp:events")
+            await redis.aclose()
+
+    @strawberry.subscription
+    async def facture_updated(
+        self,
+        info: Info,
+        campagne_id: strawberry.ID | None = strawberry.UNSET,
+    ) -> AsyncGenerator[Facture, None]:
+        """Pousse la facture mise à jour dès qu'une mutation la modifie.
+
+        - Sans filtre    → toutes les factures (vue globale comptable).
+        - campagneId=ID  → uniquement les factures de cette campagne.
+
+        Couvre la génération (FACTURE_CREATED) et tout changement de statut
+        (FACTURE_UPDATED : IMPAYEE→PARTIELLE→PAYEE via paiement, relances,
+        suspensions). Réservé à ADMIN/COMPTABLE, comme les queries factures.
+        """
+        await asyncio.to_thread(require_role, info, "ADMIN", "COMPTABLE")
+
+        from redis.asyncio import Redis
+
+        filter_id = str(campagne_id) if campagne_id and campagne_id is not strawberry.UNSET else None
+
+        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        pubsub = redis.pubsub()
+        await pubsub.subscribe("facture:events")
+
+        try:
+            async for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+
+                try:
+                    data = json.loads(message["data"])
+                except (json.JSONDecodeError, TypeError):
+                    continue
+
+                if filter_id and data.get("campagne_id") != filter_id:
+                    continue
+
+                facture_id: str = data.get("facture_id", "")
+                if not facture_id:
+                    continue
+
+                try:
+                    response = await asyncio.to_thread(facturation_client.get_facture, facture_id)
+                    yield facture_from_grpc(response)
+                except Exception as exc:
+                    logger.warning("facture_updated: GetFacture(%s) échoué : %s", facture_id, exc)
+        finally:
+            await pubsub.unsubscribe("facture:events")
+            await redis.aclose()
+
+    @strawberry.subscription
+    async def paiement_cree(
+        self,
+        info: Info,
+        campagne_id: strawberry.ID | None = strawberry.UNSET,
+    ) -> AsyncGenerator[Paiement, None]:
+        """Pousse chaque nouveau paiement dès son enregistrement.
+
+        - Sans filtre    → tous les paiements.
+        - campagneId=ID  → uniquement les paiements des factures de cette campagne.
+
+        L'événement est auto-porteur (le service paiement n'expose pas de
+        GetPaiement) ; le filtre campagne est résolu ici via la facture liée, et
+        seulement si un filtre est demandé. Réservé à ADMIN/COMPTABLE.
+        """
+        await asyncio.to_thread(require_role, info, "ADMIN", "COMPTABLE")
+
+        from redis.asyncio import Redis
+
+        filter_id = str(campagne_id) if campagne_id and campagne_id is not strawberry.UNSET else None
+
+        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        pubsub = redis.pubsub()
+        await pubsub.subscribe("paiement:events")
+
+        try:
+            async for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+
+                try:
+                    data = json.loads(message["data"])
+                except (json.JSONDecodeError, TypeError):
+                    continue
+
+                # Le paiement porte facture_id : on remonte à la campagne via la
+                # facture liée (fetch uniquement si un filtre campagne est demandé).
+                if filter_id and not await _paiement_dans_campagne(data, filter_id):
+                    continue
+
+                operateur = await _resoudre_operateur(data.get("enregistre_par", ""))
+                yield paiement_from_event(data, operateur=operateur)
+        finally:
+            await pubsub.unsubscribe("paiement:events")
             await redis.aclose()

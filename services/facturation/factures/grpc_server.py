@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 import facturation_service_pb2 as pb
 import facturation_service_pb2_grpc as pb_grpc
 
+from .event_publisher import publish_facture_event
 from .grpc_clients import CampagneServiceClient, ConfigServiceClient
 from .serializers import facture_to_proto, tarif_to_proto
 from .services import FactureService, ReleveData, TarifService
@@ -124,6 +125,10 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
             context.abort(grpc.StatusCode.INTERNAL, f"Erreur interne : {exc}")
             return pb.GenererFacturesResponse()
 
+        # Notifie la gateway (souscription factureUpdated) : une facture par relevé.
+        for f in factures:
+            publish_facture_event(str(f.id), str(f.campagne_id), "FACTURE_CREATED")
+
         return pb.GenererFacturesResponse(factures=[facture_to_proto(f) for f in factures])
 
     def GetFacture(
@@ -190,6 +195,9 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
     ) -> pb.FactureResponse:
         try:
             facture = self._facture_svc.update_statut(request.facture_id, request.statut)
+            # Notifie la gateway : couvre le passage IMPAYEE→PARTIELLE→PAYEE
+            # déclenché par un paiement, ainsi que relances/suspensions.
+            publish_facture_event(str(facture.id), str(facture.campagne_id), "FACTURE_UPDATED")
             return facture_to_proto(facture)
         except ObjectDoesNotExist:
             context.abort(

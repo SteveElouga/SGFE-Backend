@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 import paiement_service_pb2 as pb
 import paiement_service_pb2_grpc as pb_grpc
 
+from paiements.event_publisher import publish_paiement_event
 from paiements.grpc_clients import FacturationServiceClient
 from paiements.serializers import paiement_to_proto, solde_to_proto, suivi_to_proto
 from paiements.services import PaiementService
@@ -94,6 +95,10 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
             self._svc.marquer_facture_payee_si_applicable(solde)
             self._svc.suspendre_relances_si_partiel(solde)
 
+            # Notifie la gateway (souscription paiementCree) — événement
+            # auto-porteur, avec le statut de facture résultant.
+            publish_paiement_event(paiement, statut_facture=solde.statut)
+
             return paiement_to_proto(paiement)
 
         except ValidationError as exc:
@@ -140,9 +145,7 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
                 facture_id=request.facture_id,
                 abonne_id=request.abonne_id,
             )
-            return pb.ListPaiementsResponse(
-                paiements=[paiement_to_proto(p) for p in paiements]
-            )
+            return pb.ListPaiementsResponse(paiements=[paiement_to_proto(p) for p in paiements])
         except Exception as exc:
             logger.exception("ListPaiements échoué")
             context.abort(grpc.StatusCode.INTERNAL, str(exc))
