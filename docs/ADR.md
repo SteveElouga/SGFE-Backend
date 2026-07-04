@@ -721,7 +721,7 @@ Utiliser **whatsapp-web.js** comme seule solution d'envoi WhatsApp, via un servi
 whatsapp-service/        ← service Node.js (10e pod du cluster)
 ├── server.js            ← Express + whatsapp-web.js
 ├── Dockerfile           ← node:18-slim + Chromium
-└── /app/session/        ← volume persistant (session WhatsApp)
+└── /app/session/        ← répertoire de travail RemoteAuth (session persistée dans Redis, voir ANO-030)
 
 API HTTP interne :
   POST /send   { phone, message }  → envoie un message WhatsApp
@@ -744,7 +744,8 @@ Les services Django (Auth, Notification) appellent `whatsapp-service:3000/send` 
 |---|---|---|
 | Blocage du numéro par Meta | Faible (usage métier ciblé) | Compte dédié de la régie, volume maîtrisé |
 | Casse lors d'une MàJ WhatsApp Web | Modérée | Mise à jour du package (projet open source très actif) |
-| Session expirée | Faible (LocalAuth persistante) | Endpoint /qr pour rescan rapide |
+| Session expirée | Faible (RemoteAuth : session persistée dans Redis) | Endpoint /qr pour rescan rapide |
+| Perte de session au redémarrage du container | Résolu (ANO-030) | RemoteAuth + arrêt gracieux : session restaurée depuis Redis au démarrage (remplace `LocalAuth`, qui la perdait à chaque `docker stop`) |
 | Indisponibilité temporaire | Possible | Auth Service renvoie erreur SERVICE_UNAVAILABLE, retry côté client |
 
 #### Alternatives rejetées

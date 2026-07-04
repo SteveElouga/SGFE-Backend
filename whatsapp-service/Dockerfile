@@ -24,7 +24,7 @@ RUN npm install --omit=dev \
     # ex. picomatch) sans affecter l'exécution (CMD n'appelle que "node").
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 
-COPY server.js .
+COPY server.js redis-store.js ./
 
 # Préparer le dossier de session et céder la propriété à l'utilisateur non-root
 # (Puppeteer/Chromium a besoin d'écrire sous /app à l'exécution — profil de

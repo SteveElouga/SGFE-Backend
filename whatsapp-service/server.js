@@ -1,10 +1,10 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Client, RemoteAuth } = require('whatsapp-web.js');
 const crypto = require('crypto');
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
+const Redis = require('ioredis');
 const qrcodeTerminal = require('qrcode-terminal');
 const QRCode = require('qrcode');
+const { RedisStore } = require('./redis-store');
 
 const app = express();
 app.use(express.json());
@@ -12,6 +12,11 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const SESSION_PATH = process.env.SESSION_PATH || '/app/session';
 const INTERNAL_API_KEY = process.env.WHATSAPP_INTERNAL_API_KEY || '';
+const REDIS_URL = process.env.REDIS_URL || 'redis://redis:6379/0';
+// Intervalle de sauvegarde périodique de la session vers Redis (minimum 60000 ms
+// imposé par RemoteAuth). La toute première sauvegarde a lieu 60 s après le scan
+// du QR ; au-delà, la session persistée survit à tout redémarrage du container.
+const BACKUP_INTERVAL_MS = Number(process.env.WHATSAPP_BACKUP_INTERVAL_MS) || 300000;
 
 if (!INTERNAL_API_KEY) {
     console.warn(
@@ -39,52 +44,33 @@ function requireApiKey(req, res, next) {
     next();
 }
 
-// Répertoire Chromium créé par LocalAuth (sans clientId → nom "session")
-const CHROMIUM_USER_DATA_DIR = path.join(SESSION_PATH, 'session');
-
 let isReady = false;
 let currentQr = null;
 let activeClient = null;
 let restartCount = 0;
 
-/**
- * Supprime les fichiers Singleton* laissés par Chromium après un arrêt brutal.
- * Sans ce nettoyage, Chromium détecte une instance existante et refuse de
- * démarrer, provoquant un crash-loop au redémarrage du container Docker.
- */
-function cleanChromiumLocks() {
-    if (!fs.existsSync(CHROMIUM_USER_DATA_DIR)) return;
+// Client Redis partagé : coffre-fort de la session WhatsApp (RemoteAuth y stocke
+// un zip du profil, restauré au démarrage). C'est ce qui permet de survivre à un
+// redémarrage/rebuild du container sans re-scanner le QR code.
+const redis = new Redis(REDIS_URL, {
+    // La session doit pouvoir être restaurée même si Redis vient lui-même de
+    // redémarrer : on laisse ioredis retenter indéfiniment plutôt qu'échouer.
+    maxRetriesPerRequest: null,
+});
+redis.on('error', (err) => console.error('[WhatsApp] Erreur Redis :', err.message));
 
-    let removed = 0;
-    try {
-        const entries = fs.readdirSync(CHROMIUM_USER_DATA_DIR, { withFileTypes: true });
-        for (const entry of entries) {
-            if (!entry.name.startsWith('Singleton')) continue;
-            const lockPath = path.join(CHROMIUM_USER_DATA_DIR, entry.name);
-            try {
-                // lstatSync avant unlink car SingletonLock est un symlink
-                fs.lstatSync(lockPath);
-                fs.unlinkSync(lockPath);
-                removed++;
-            } catch (_) {
-                // Déjà supprimé ou lien mort — ignoré
-            }
-        }
-    } catch (err) {
-        console.warn('[WhatsApp] Impossible de scanner le répertoire session :', err.message);
-        return;
-    }
-
-    if (removed > 0) {
-        console.log(`[WhatsApp] ${removed} lock(s) Chromium supprimé(s) avant démarrage`);
-    }
-}
+const sessionStore = new RedisStore({ redis, dataPath: SESSION_PATH });
 
 function startClient() {
-    cleanChromiumLocks();
-
+    // Pas de nettoyage de lock Chromium ici : RemoteAuth supprime et ré-extrait
+    // un profil propre depuis Redis à chaque initialisation (extractRemoteSession),
+    // donc aucun SingletonLock d'un arrêt brutal ne subsiste.
     const client = new Client({
-        authStrategy: new LocalAuth({ dataPath: SESSION_PATH }),
+        authStrategy: new RemoteAuth({
+            store: sessionStore,
+            dataPath: SESSION_PATH,
+            backupSyncIntervalMs: BACKUP_INTERVAL_MS,
+        }),
         puppeteer: {
             headless: true,
             args: [
@@ -108,6 +94,13 @@ function startClient() {
 
     client.on('authenticated', () => {
         console.log('[WhatsApp] Session authentifiée');
+    });
+
+    // Émis après chaque sauvegarde de la session vers Redis. Tant que ce message
+    // n'est pas apparu au moins une fois (≈ 60 s après le tout premier scan),
+    // un redémarrage exigerait un nouveau scan.
+    client.on('remote_session_saved', () => {
+        console.log('[WhatsApp] Session sauvegardée dans Redis — un redémarrage du container ne nécessitera plus de re-scan');
     });
 
     client.on('ready', () => {
@@ -258,3 +251,28 @@ app.listen(PORT, () => {
 });
 
 startClient();
+
+// ── Arrêt gracieux ──────────────────────────────────────────────────────────
+// Sans ce handler, `docker stop` termine Node sans prévenir Chromium : Puppeteer
+// tue alors le navigateur par SIGKILL, laissant le profil dans un état incohérent.
+// On ferme d'abord le client WhatsApp (browser.close() propre + arrêt de la
+// sauvegarde périodique), puis on ferme Redis, avant de sortir.
+let shuttingDown = false;
+async function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[WhatsApp] ${signal} reçu — fermeture propre en cours…`);
+    try {
+        if (activeClient) await activeClient.destroy();
+    } catch (err) {
+        console.warn('[WhatsApp] Erreur pendant la fermeture du client :', err.message);
+    }
+    try {
+        await redis.quit();
+    } catch (err) {
+        console.warn('[WhatsApp] Erreur pendant la fermeture de Redis :', err.message);
+    }
+    process.exit(0);
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
