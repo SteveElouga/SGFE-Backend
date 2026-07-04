@@ -22,6 +22,7 @@ def paiement_to_proto(p: Paiement) -> pb.PaiementResponse:
         mode_paiement=p.mode_paiement,
         reference_transaction=p.reference_transaction or "",
         created_at=p.created_at.isoformat() if p.created_at else "",
+        enregistre_par=p.enregistre_par or "",
     )
 
 

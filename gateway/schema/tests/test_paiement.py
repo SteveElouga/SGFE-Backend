@@ -28,6 +28,7 @@ def _paiement_response(**kwargs) -> MagicMock:
         mode_paiement="MOBILE_MONEY",
         reference_transaction="TXN123",
         created_at="2026-07-02T10:00:00",
+        enregistre_par="user-001",
     )
     defaults.update(kwargs)
     return MagicMock(**defaults)
@@ -58,16 +59,56 @@ class TestPaiementQueries(SimpleTestCase):
         self.assertEqual(result.solde_restant, 15000.0)
         self.assertEqual(result.statut, "PARTIELLE")
 
+    @patch("schema.paiement_queries.auth_client")
     @patch("schema.paiement_queries.paiement_client")
     @patch("schema.paiement_queries.require_auth")
     @patch("schema.paiement_queries.require_role")
-    def test_paiements_avec_filtre(self, mock_role, mock_auth, mock_client) -> None:
+    def test_paiements_avec_filtre(self, mock_role, mock_auth, mock_client, mock_auth_client) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN")
         mock_client.list_paiements.return_value = MagicMock(paiements=[_paiement_response()])
+        mock_auth_client.get_user.return_value = MagicMock(username="bah.comptable")
         info = MagicMock()
         result = PaiementQueries().paiements(info, facture_id="facture-001")
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].montant, 10000.0)
+        self.assertEqual(result[0].operateur, "bah.comptable")
+        mock_auth_client.get_user.assert_called_once_with("user-001")
+
+    @patch("schema.paiement_queries.auth_client")
+    @patch("schema.paiement_queries.paiement_client")
+    @patch("schema.paiement_queries.require_auth")
+    @patch("schema.paiement_queries.require_role")
+    def test_paiements_operateur_non_resolu_replie_sur_identifiant(
+        self, mock_role, mock_auth, mock_client, mock_auth_client
+    ) -> None:
+        """Auth Service indisponible : la liste des paiements reste servie (dégradation gracieuse)."""
+        mock_auth.return_value = MagicMock(role="ADMIN")
+        mock_client.list_paiements.return_value = MagicMock(paiements=[_paiement_response(enregistre_par="user-999")])
+        mock_auth_client.get_user.side_effect = RuntimeError("Auth Service indisponible")
+        info = MagicMock()
+        result = PaiementQueries().paiements(info, facture_id="facture-001")
+        self.assertEqual(result[0].operateur, "Utilisateur user-999")
+
+    @patch("schema.paiement_queries.auth_client")
+    @patch("schema.paiement_queries.paiement_client")
+    @patch("schema.paiement_queries.require_auth")
+    @patch("schema.paiement_queries.require_role")
+    def test_paiements_resout_chaque_operateur_une_seule_fois(
+        self, mock_role, mock_auth, mock_client, mock_auth_client
+    ) -> None:
+        """Plusieurs paiements du même opérateur ne déclenchent qu'un seul appel gRPC."""
+        mock_auth.return_value = MagicMock(role="ADMIN")
+        mock_client.list_paiements.return_value = MagicMock(
+            paiements=[
+                _paiement_response(paiement_id="p1", enregistre_par="user-001"),
+                _paiement_response(paiement_id="p2", enregistre_par="user-001"),
+            ]
+        )
+        mock_auth_client.get_user.return_value = MagicMock(username="bah.comptable")
+        info = MagicMock()
+        result = PaiementQueries().paiements(info)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(mock_auth_client.get_user.call_count, 1)
 
     @patch("schema.paiement_queries.paiement_client")
     @patch("schema.paiement_queries.require_auth")
@@ -95,7 +136,7 @@ class TestPaiementMutations(SimpleTestCase):
     @patch("schema.paiement_mutations.paiement_client")
     @patch("schema.paiement_mutations.require_role")
     def test_enregistrer_paiement(self, mock_role, mock_client) -> None:
-        mock_role.return_value = MagicMock(role="COMPTABLE", user_id="user-001")
+        mock_role.return_value = MagicMock(role="COMPTABLE", user_id="user-001", username="bah.comptable")
         mock_client.enregistrer_paiement.return_value = _paiement_response()
         info = MagicMock()
         result = PaiementMutations().enregistrer_paiement(
@@ -108,6 +149,9 @@ class TestPaiementMutations(SimpleTestCase):
             reference_transaction="TXN123",
         )
         self.assertEqual(result.montant, 10000.0)
+        # L'opérateur affiché est le nom d'utilisateur courant, déjà connu du
+        # payload JWT — aucun aller-retour vers Auth Service pour la mutation.
+        self.assertEqual(result.operateur, "bah.comptable")
         mock_client.enregistrer_paiement.assert_called_once_with(
             facture_id="facture-001",
             abonne_id="abonne-001",

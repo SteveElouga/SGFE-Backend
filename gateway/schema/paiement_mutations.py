@@ -32,5 +32,9 @@ class PaiementMutations:
                 mode_paiement=mode_paiement,
                 reference_transaction=reference_transaction,
                 enregistre_par=str(user.user_id),
-            )
+            ),
+            # Le nom d'utilisateur de l'opérateur courant est déjà disponible
+            # dans le payload JWT (ValidateToken) — pas besoin d'un aller-retour
+            # supplémentaire vers Auth Service pour ce cas précis.
+            operateur=user.username,
         )

@@ -21,6 +21,10 @@ class Paiement:
     mode_paiement: str
     reference_transaction: str
     created_at: str
+    # Nom d'utilisateur (Auth Service) de l'opérateur ayant enregistré le
+    # paiement — résolu depuis enregistre_par (user_id) par l'appelant, voir
+    # paiement_queries.py/paiement_mutations.py. Vide si non résolu.
+    operateur: str = ""
 
 
 @strawberry.type
@@ -43,7 +47,7 @@ def solde_from_grpc(r) -> SoldeFacture:
     )
 
 
-def paiement_from_grpc(r) -> Paiement:
+def paiement_from_grpc(r, operateur: str = "") -> Paiement:
     return Paiement(
         paiement_id=r.paiement_id,
         facture_id=r.facture_id,
@@ -52,6 +56,7 @@ def paiement_from_grpc(r) -> Paiement:
         mode_paiement=r.mode_paiement,
         reference_transaction=r.reference_transaction,
         created_at=r.created_at,
+        operateur=operateur,
     )
 
 
