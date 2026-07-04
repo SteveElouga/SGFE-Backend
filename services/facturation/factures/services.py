@@ -197,6 +197,11 @@ class FactureService:
             # gracieuse : None si Abonné Service est inaccessible → repli sur
             # l'identifiant technique dans le gabarit).
             identite = self._abonne_client.get_abonne(str(facture.abonne_id))
+            # Lien de l'espace abonné (get-or-create token côté Notification) —
+            # dégradation gracieuse : ("", "") si Notification KO → bloc masqué.
+            espace_url, espace_expiration = self._notification_client.get_espace_url(
+                abonne_id=str(facture.abonne_id), facture_id=str(facture.id)
+            )
             donnees = DonneesFacture(
                 numero_facture=facture.numero_facture,
                 abonne_id=str(facture.abonne_id),
@@ -220,6 +225,8 @@ class FactureService:
                 quartier=identite.quartier if identite else "",
                 camp=identite.camp if identite else "",
                 campagne_nom=campagne_nom,
+                espace_url=espace_url,
+                espace_date_expiration=espace_expiration,
             )
             historique = build_historique(
                 [

@@ -201,6 +201,41 @@ class TestValiderTokenRPC(TestCase):
         context.abort.assert_not_called()
 
 
+class TestGetEspaceUrlRPC(TestCase):
+    """Tests du RPC GetEspaceUrl."""
+
+    @patch("notifications.services.config_client")
+    def test_get_espace_url_cree_token_et_retourne_url(self, mock_config):
+        """GetEspaceUrl crée un token si besoin et renvoie l'URL + expiration ISO."""
+        mock_config.get_token_validite_jours.return_value = 20
+        servicer = NotificationServiceServicer()
+        request = pb.GetEspaceUrlRequest(abonne_id="abo-1", facture_id="fac-1")
+        context = MagicMock()
+
+        response = servicer.GetEspaceUrl(request, context)
+
+        token = TokenAcces.objects.get(abonne_id="abo-1")
+        self.assertIn("/espace/", response.url)
+        self.assertIn(str(token.token), response.url)
+        self.assertEqual(response.date_expiration, token.date_expiration.isoformat())
+
+    def test_get_espace_url_reutilise_token_existant(self):
+        """Un token valide existant de l'abonné est réutilisé (pas de doublon)."""
+        existant = TokenAcces.objects.create(
+            abonne_id="abo-2",
+            facture_id="fac-old",
+            date_expiration=date.today() + timedelta(days=10),
+        )
+        servicer = NotificationServiceServicer()
+        request = pb.GetEspaceUrlRequest(abonne_id="abo-2", facture_id="fac-new")
+        context = MagicMock()
+
+        response = servicer.GetEspaceUrl(request, context)
+
+        self.assertIn(str(existant.token), response.url)
+        self.assertEqual(TokenAcces.objects.filter(abonne_id="abo-2").count(), 1)
+
+
 class TestRevoquerTokenRPC(TestCase):
     """Tests du RPC RevoquerToken."""
 

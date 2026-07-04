@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1anotification_service.proto\x12\x0cnotification\">\n\x15\x45nvoyerFactureRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\"M\n\x15\x45nvoyerRelanceRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\r\n\x05\x65tape\x18\x03 \x01(\x05\"&\n\x10\x46\x61\x63tureIdRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\"\"\n\x0e\x45nvoiIdRequest\x12\x10\n\x08\x65nvoi_id\x18\x01 \x01(\t\"\"\n\x0eTokenIdRequest\x12\x10\n\x08token_id\x18\x01 \x01(\t\":\n\x11ListEnvoisRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\"$\n\x13ValiderTokenRequest\x12\r\n\x05token\x18\x01 \x01(\t\"M\n\x15NotifierAdminsRequest\x12\x11\n\tevenement\x18\x01 \x01(\t\x12\x0e\n\x06\x64\x65tail\x18\x02 \x01(\t\x12\x11\n\tentite_id\x18\x03 \x01(\t\"\x84\x01\n\rEnvoiResponse\x12\x10\n\x08\x65nvoi_id\x18\x01 \x01(\t\x12\x12\n\nfacture_id\x18\x02 \x01(\t\x12\x0e\n\x06statut\x18\x03 \x01(\t\x12\x12\n\ndate_envoi\x18\x04 \x01(\t\x12\x19\n\x11telnyx_message_id\x18\x05 \x01(\t\x12\x0e\n\x06\x65rreur\x18\x06 \x01(\t\"T\n\x14ValiderTokenResponse\x12\x10\n\x08is_valid\x18\x01 \x01(\x08\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x17\n\x0f\x64\x61te_expiration\x18\x03 \x01(\t\"A\n\x12ListEnvoisResponse\x12+\n\x06\x65nvois\x18\x01 \x03(\x0b\x32\x1b.notification.EnvoiResponse\"2\n\x0eStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"\x0e\n\x0c\x45mptyRequest\"?\n\x12WhatsAppQrResponse\x12\r\n\x05ready\x18\x01 \x01(\x08\x12\n\n\x02qr\x18\x02 \x01(\t\x12\x0e\n\x06number\x18\x03 \x01(\t\"+\n\x1aRevoquerTousTokensResponse\x12\r\n\x05\x63ount\x18\x01 \x01(\x05\"*\n\x12TesterEnvoiRequest\x12\x14\n\x0cphone_number\x18\x01 \x01(\t2\x99\x07\n\x13NotificationService\x12R\n\x0e\x45nvoyerFacture\x12#.notification.EnvoyerFactureRequest\x1a\x1b.notification.EnvoiResponse\x12O\n\x10ReenvoyerFacture\x12\x1e.notification.FactureIdRequest\x1a\x1b.notification.EnvoiResponse\x12R\n\x0e\x45nvoyerRelance\x12#.notification.EnvoyerRelanceRequest\x1a\x1b.notification.EnvoiResponse\x12\x45\n\x08GetEnvoi\x12\x1c.notification.EnvoiIdRequest\x1a\x1b.notification.EnvoiResponse\x12O\n\nListEnvois\x12\x1f.notification.ListEnvoisRequest\x1a .notification.ListEnvoisResponse\x12U\n\x0cValiderToken\x12!.notification.ValiderTokenRequest\x1a\".notification.ValiderTokenResponse\x12K\n\rRevoquerToken\x12\x1c.notification.TokenIdRequest\x1a\x1c.notification.StatusResponse\x12Z\n\x12RevoquerTousTokens\x12\x1a.notification.EmptyRequest\x1a(.notification.RevoquerTousTokensResponse\x12S\n\x0eNotifierAdmins\x12#.notification.NotifierAdminsRequest\x1a\x1c.notification.StatusResponse\x12M\n\rGetWhatsAppQr\x12\x1a.notification.EmptyRequest\x1a .notification.WhatsAppQrResponse\x12M\n\x0bTesterEnvoi\x12 .notification.TesterEnvoiRequest\x1a\x1c.notification.StatusResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1anotification_service.proto\x12\x0cnotification\">\n\x15\x45nvoyerFactureRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\"M\n\x15\x45nvoyerRelanceRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\r\n\x05\x65tape\x18\x03 \x01(\x05\"&\n\x10\x46\x61\x63tureIdRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\"\"\n\x0e\x45nvoiIdRequest\x12\x10\n\x08\x65nvoi_id\x18\x01 \x01(\t\"\"\n\x0eTokenIdRequest\x12\x10\n\x08token_id\x18\x01 \x01(\t\":\n\x11ListEnvoisRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\"$\n\x13ValiderTokenRequest\x12\r\n\x05token\x18\x01 \x01(\t\"M\n\x15NotifierAdminsRequest\x12\x11\n\tevenement\x18\x01 \x01(\t\x12\x0e\n\x06\x64\x65tail\x18\x02 \x01(\t\x12\x11\n\tentite_id\x18\x03 \x01(\t\"\x84\x01\n\rEnvoiResponse\x12\x10\n\x08\x65nvoi_id\x18\x01 \x01(\t\x12\x12\n\nfacture_id\x18\x02 \x01(\t\x12\x0e\n\x06statut\x18\x03 \x01(\t\x12\x12\n\ndate_envoi\x18\x04 \x01(\t\x12\x19\n\x11telnyx_message_id\x18\x05 \x01(\t\x12\x0e\n\x06\x65rreur\x18\x06 \x01(\t\"T\n\x14ValiderTokenResponse\x12\x10\n\x08is_valid\x18\x01 \x01(\x08\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x17\n\x0f\x64\x61te_expiration\x18\x03 \x01(\t\"<\n\x13GetEspaceUrlRequest\x12\x11\n\tabonne_id\x18\x01 \x01(\t\x12\x12\n\nfacture_id\x18\x02 \x01(\t\"9\n\x11\x45spaceUrlResponse\x12\x0b\n\x03url\x18\x01 \x01(\t\x12\x17\n\x0f\x64\x61te_expiration\x18\x02 \x01(\t\"A\n\x12ListEnvoisResponse\x12+\n\x06\x65nvois\x18\x01 \x03(\x0b\x32\x1b.notification.EnvoiResponse\"2\n\x0eStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"\x0e\n\x0c\x45mptyRequest\"?\n\x12WhatsAppQrResponse\x12\r\n\x05ready\x18\x01 \x01(\x08\x12\n\n\x02qr\x18\x02 \x01(\t\x12\x0e\n\x06number\x18\x03 \x01(\t\"+\n\x1aRevoquerTousTokensResponse\x12\r\n\x05\x63ount\x18\x01 \x01(\x05\"*\n\x12TesterEnvoiRequest\x12\x14\n\x0cphone_number\x18\x01 \x01(\t2\xed\x07\n\x13NotificationService\x12R\n\x0e\x45nvoyerFacture\x12#.notification.EnvoyerFactureRequest\x1a\x1b.notification.EnvoiResponse\x12O\n\x10ReenvoyerFacture\x12\x1e.notification.FactureIdRequest\x1a\x1b.notification.EnvoiResponse\x12R\n\x0e\x45nvoyerRelance\x12#.notification.EnvoyerRelanceRequest\x1a\x1b.notification.EnvoiResponse\x12\x45\n\x08GetEnvoi\x12\x1c.notification.EnvoiIdRequest\x1a\x1b.notification.EnvoiResponse\x12O\n\nListEnvois\x12\x1f.notification.ListEnvoisRequest\x1a .notification.ListEnvoisResponse\x12U\n\x0cValiderToken\x12!.notification.ValiderTokenRequest\x1a\".notification.ValiderTokenResponse\x12K\n\rRevoquerToken\x12\x1c.notification.TokenIdRequest\x1a\x1c.notification.StatusResponse\x12Z\n\x12RevoquerTousTokens\x12\x1a.notification.EmptyRequest\x1a(.notification.RevoquerTousTokensResponse\x12R\n\x0cGetEspaceUrl\x12!.notification.GetEspaceUrlRequest\x1a\x1f.notification.EspaceUrlResponse\x12S\n\x0eNotifierAdmins\x12#.notification.NotifierAdminsRequest\x1a\x1c.notification.StatusResponse\x12M\n\rGetWhatsAppQr\x12\x1a.notification.EmptyRequest\x1a .notification.WhatsAppQrResponse\x12M\n\x0bTesterEnvoi\x12 .notification.TesterEnvoiRequest\x1a\x1c.notification.StatusResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -51,18 +51,22 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_ENVOIRESPONSE']._serialized_end=609
   _globals['_VALIDERTOKENRESPONSE']._serialized_start=611
   _globals['_VALIDERTOKENRESPONSE']._serialized_end=695
-  _globals['_LISTENVOISRESPONSE']._serialized_start=697
-  _globals['_LISTENVOISRESPONSE']._serialized_end=762
-  _globals['_STATUSRESPONSE']._serialized_start=764
-  _globals['_STATUSRESPONSE']._serialized_end=814
-  _globals['_EMPTYREQUEST']._serialized_start=816
-  _globals['_EMPTYREQUEST']._serialized_end=830
-  _globals['_WHATSAPPQRRESPONSE']._serialized_start=832
-  _globals['_WHATSAPPQRRESPONSE']._serialized_end=895
-  _globals['_REVOQUERTOUSTOKENSRESPONSE']._serialized_start=897
-  _globals['_REVOQUERTOUSTOKENSRESPONSE']._serialized_end=940
-  _globals['_TESTERENVOIREQUEST']._serialized_start=942
-  _globals['_TESTERENVOIREQUEST']._serialized_end=984
-  _globals['_NOTIFICATIONSERVICE']._serialized_start=987
-  _globals['_NOTIFICATIONSERVICE']._serialized_end=1908
+  _globals['_GETESPACEURLREQUEST']._serialized_start=697
+  _globals['_GETESPACEURLREQUEST']._serialized_end=757
+  _globals['_ESPACEURLRESPONSE']._serialized_start=759
+  _globals['_ESPACEURLRESPONSE']._serialized_end=816
+  _globals['_LISTENVOISRESPONSE']._serialized_start=818
+  _globals['_LISTENVOISRESPONSE']._serialized_end=883
+  _globals['_STATUSRESPONSE']._serialized_start=885
+  _globals['_STATUSRESPONSE']._serialized_end=935
+  _globals['_EMPTYREQUEST']._serialized_start=937
+  _globals['_EMPTYREQUEST']._serialized_end=951
+  _globals['_WHATSAPPQRRESPONSE']._serialized_start=953
+  _globals['_WHATSAPPQRRESPONSE']._serialized_end=1016
+  _globals['_REVOQUERTOUSTOKENSRESPONSE']._serialized_start=1018
+  _globals['_REVOQUERTOUSTOKENSRESPONSE']._serialized_end=1061
+  _globals['_TESTERENVOIREQUEST']._serialized_start=1063
+  _globals['_TESTERENVOIREQUEST']._serialized_end=1105
+  _globals['_NOTIFICATIONSERVICE']._serialized_start=1108
+  _globals['_NOTIFICATIONSERVICE']._serialized_end=2113
 # @@protoc_insertion_point(module_scope)

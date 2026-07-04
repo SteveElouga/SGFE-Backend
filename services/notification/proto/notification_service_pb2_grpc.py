@@ -74,6 +74,11 @@ class NotificationServiceStub:
                 request_serializer=notification__service__pb2.EmptyRequest.SerializeToString,
                 response_deserializer=notification__service__pb2.RevoquerTousTokensResponse.FromString,
                 _registered_method=True)
+        self.GetEspaceUrl = channel.unary_unary(
+                '/notification.NotificationService/GetEspaceUrl',
+                request_serializer=notification__service__pb2.GetEspaceUrlRequest.SerializeToString,
+                response_deserializer=notification__service__pb2.EspaceUrlResponse.FromString,
+                _registered_method=True)
         self.NotifierAdmins = channel.unary_unary(
                 '/notification.NotificationService/NotifierAdmins',
                 request_serializer=notification__service__pb2.NotifierAdminsRequest.SerializeToString,
@@ -142,6 +147,12 @@ class NotificationServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetEspaceUrl(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def NotifierAdmins(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -202,6 +213,11 @@ def add_NotificationServiceServicer_to_server(servicer, server):
                     servicer.RevoquerTousTokens,
                     request_deserializer=notification__service__pb2.EmptyRequest.FromString,
                     response_serializer=notification__service__pb2.RevoquerTousTokensResponse.SerializeToString,
+            ),
+            'GetEspaceUrl': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetEspaceUrl,
+                    request_deserializer=notification__service__pb2.GetEspaceUrlRequest.FromString,
+                    response_serializer=notification__service__pb2.EspaceUrlResponse.SerializeToString,
             ),
             'NotifierAdmins': grpc.unary_unary_rpc_method_handler(
                     servicer.NotifierAdmins,
@@ -435,6 +451,33 @@ class NotificationService:
             '/notification.NotificationService/RevoquerTousTokens',
             notification__service__pb2.EmptyRequest.SerializeToString,
             notification__service__pb2.RevoquerTousTokensResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetEspaceUrl(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/notification.NotificationService/GetEspaceUrl',
+            notification__service__pb2.GetEspaceUrlRequest.SerializeToString,
+            notification__service__pb2.EspaceUrlResponse.FromString,
             options,
             channel_credentials,
             insecure,

@@ -72,6 +72,18 @@ class TokenAccesRepository:
         """Liste les tokens actifs d'une facture."""
         return list(TokenAcces.objects.filter(facture_id=facture_id, is_active=True))
 
+    def get_latest_valid_by_abonne(self, abonne_id: str) -> TokenAcces | None:
+        """Dernier token actif et non expiré d'un abonné (None si aucun)."""
+        return (
+            TokenAcces.objects.filter(
+                abonne_id=abonne_id,
+                is_active=True,
+                date_expiration__gte=date.today(),
+            )
+            .order_by("-created_at")
+            .first()
+        )
+
     def revoquer_tous_actifs(self) -> int:
         """Révoque en masse tous les tokens actifs. Retourne le nombre révoqué."""
         return TokenAcces.objects.filter(is_active=True).update(is_active=False)

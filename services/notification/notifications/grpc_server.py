@@ -113,6 +113,15 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
         self._token_service.revoquer_token(token_id=request.token_id)
         return pb.StatusResponse(success=True, message="Token révoqué avec succès")
 
+    def GetEspaceUrl(self, request, context):
+        """Retourne l'URL de l'espace abonné (get-or-create token) pour affichage sur le PDF."""
+        token = self._token_service.get_or_create_token(
+            abonne_id=request.abonne_id,
+            facture_id=request.facture_id,
+        )
+        url = f"{settings.FRONTEND_URL}/espace/{token.token}"
+        return pb.EspaceUrlResponse(url=url, date_expiration=token.date_expiration.isoformat())
+
     def NotifierAdmins(self, request, context):
         """Envoie une notification email aux administrateurs via Brevo.
 

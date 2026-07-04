@@ -352,6 +352,25 @@ class TokenService:
     def __init__(self) -> None:
         self._tokens = TokenAccesRepository()
 
+    def get_or_create_token(self, abonne_id: str, facture_id: str) -> TokenAcces:
+        """Retourne un token d'accès valide pour l'abonné, en créant un si besoin.
+
+        L'espace abonné donne accès à tout l'historique de l'abonné : on
+        réutilise donc son token actif non expiré le plus récent (peu importe
+        la facture d'origine). S'il n'en existe pas, on en crée un avec la durée
+        de validité configurée (clé `token_validite_jours`). `facture_id` ne sert
+        qu'à renseigner la facture ayant déclenché la création.
+        """
+        existant = self._tokens.get_latest_valid_by_abonne(abonne_id)
+        if existant:
+            return existant
+        validite_jours = config_client.get_token_validite_jours()
+        return self._tokens.create(
+            abonne_id=abonne_id,
+            facture_id=facture_id,
+            date_expiration=date.today() + timedelta(days=validite_jours),
+        )
+
     def valider_token(self, token_str: str) -> TokenAcces:
         """Vérifie qu'un token est valide (actif et non expiré).
 

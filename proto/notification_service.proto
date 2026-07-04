@@ -10,6 +10,7 @@ service NotificationService {
   rpc ValiderToken (ValiderTokenRequest) returns (ValiderTokenResponse);
   rpc RevoquerToken (TokenIdRequest) returns (StatusResponse);
   rpc RevoquerTousTokens (EmptyRequest) returns (RevoquerTousTokensResponse);
+  rpc GetEspaceUrl (GetEspaceUrlRequest) returns (EspaceUrlResponse);
   rpc NotifierAdmins (NotifierAdminsRequest) returns (StatusResponse);
   rpc GetWhatsAppQr (EmptyRequest) returns (WhatsAppQrResponse);
   rpc TesterEnvoi (TesterEnvoiRequest) returns (StatusResponse);
@@ -56,6 +57,20 @@ message ValiderTokenResponse {
   bool is_valid = 1;
   string abonne_id = 2;
   string date_expiration = 3;
+}
+
+// Récupère (ou crée) l'URL de l'espace abonné pour un abonné donné.
+// Utilisé par Facturation pour afficher le lien de consultation sur le PDF.
+// `facture_id` sert uniquement à créer un token s'il n'en existe pas encore
+// de valide pour l'abonné (un token existant valide est réutilisé).
+message GetEspaceUrlRequest {
+  string abonne_id = 1;
+  string facture_id = 2;
+}
+
+message EspaceUrlResponse {
+  string url = 1;             // {FRONTEND_URL}/espace/{token}
+  string date_expiration = 2; // ISO YYYY-MM-DD
 }
 
 message ListEnvoisResponse { repeated EnvoiResponse envois = 1; }
