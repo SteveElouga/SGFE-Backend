@@ -56,8 +56,10 @@ espace         .url .date_expiration — lien de l'espace abonné ; Facturation
 
     @page {
       size: A4;
-      margin: 0.6in;
-      @bottom-center { content: element(pageFooter); }
+      /* Marge basse agrandie pour loger le bloc bas répété (modalités + pied),
+         ancré en bas de page comme la maquette. */
+      margin: 0.6in 0.6in 1.55in;
+      @bottom-center { content: element(pageBottom); }
     }
 
     * { box-sizing: border-box; }
@@ -155,26 +157,28 @@ espace         .url .date_expiration — lien de l'espace abonné ; Facturation
     .hist__month { flex: 1; text-align: center; font-size: 8.5px; color: #94a3b8; }
     .hist__month--current { font-weight: 700; color: #1a56db; }
 
-    /* ── Modalités ───────────────────────────────────────────────────────── */
+    /* ── Bloc bas répété : modalités + pied (ancré en bas de page) ────────── */
+    /* Élément « running » placé dans la marge basse (@bottom-center) : modalités
+       et pied de page sont ainsi ramassés en bas, comme la maquette, au lieu de
+       laisser le pied flotter séparément. width = largeur imprimable
+       (A4 210mm − 2×marge 0.6in ≈ 179.5mm), la boîte @bottom-center ne s'étirant
+       pas à la largeur de page. */
+    .page-bottom { position: running(pageBottom); width: 179.5mm; }
+
     .terms {
       background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
-      padding: 12px 16px; margin-top: 22px;
+      padding: 12px 16px; margin-bottom: 12px;
     }
     .terms__title { font-size: 10.5px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
     .terms__body { font-size: 9.5px; color: #64748b; line-height: 1.7; }
     .terms__link { color: #1a56db; text-decoration: underline; }
 
-    /* ── Pied de page répété ─────────────────────────────────────────────── */
-    .page-footer {
-      position: running(pageFooter);
+    .footer-line {
       display: flex; justify-content: space-between; align-items: center;
       border-top: 1.5px solid #0f1c3d; padding-top: 9px;
-      /* @bottom-center ne s'étire pas à la largeur de page : on force la
-         largeur imprimable (A4 210mm − 2×marge 0.6in ≈ 179.5mm). */
-      width: 179.5mm;
       font-size: 8.5px; color: #94a3b8;
     }
-    .page-footer .page-num::after { content: "Page " counter(page) " / " counter(pages); }
+    .footer-line .page-num::after { content: "Page " counter(page) " / " counter(pages); }
   </style>
 </head>
 <body>
@@ -280,23 +284,23 @@ espace         .url .date_expiration — lien de l'espace abonné ; Facturation
     </div>
   </div>
 
-  <!-- Modalités -->
-  <div class="terms">
-    <div class="terms__title">Modalités de paiement</div>
-    <div class="terms__body">
-      Règlement {{ facture.modalite_delai }} : Espèces · Mobile Money · Virement — auprès de notre service comptable.<br>
-      {% if espace.url %}
-      Consultez votre historique en ligne :
-      <span class="terms__link">{{ espace.url }}</span>
-      <span class="muted">(lien valable jusqu'au {{ espace.date_expiration }})</span>
-      {% endif %}
+  <!-- Bloc bas répété (ancré en bas de chaque page) : modalités + pied -->
+  <div class="page-bottom">
+    <div class="terms">
+      <div class="terms__title">Modalités de paiement</div>
+      <div class="terms__body">
+        Règlement {{ facture.modalite_delai }} : Espèces · Mobile Money · Virement — auprès de notre service comptable.<br>
+        {% if espace.url %}
+        Consultez votre historique en ligne :
+        <span class="terms__link">{{ espace.url }}</span>
+        <span class="muted">(lien valable jusqu'au {{ espace.date_expiration }})</span>
+        {% endif %}
+      </div>
     </div>
-  </div>
-
-  <!-- Pied de page répété sur chaque page -->
-  <div class="page-footer">
-    <span>{{ societe.nom }} — Système de facturation d'eau AquaBill</span>
-    <span>Facture générée automatiquement le {{ facture.date_generation }} — <span class="page-num"></span></span>
+    <div class="footer-line">
+      <span>{{ societe.nom }} — Système de facturation d'eau AquaBill</span>
+      <span>Facture générée automatiquement le {{ facture.date_generation }} — <span class="page-num"></span></span>
+    </div>
   </div>
 
 </body>
