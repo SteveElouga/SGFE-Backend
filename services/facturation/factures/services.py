@@ -140,7 +140,14 @@ class FactureService:
                 )
                 continue
 
-            date_releve = datetime.date.fromisoformat(releve.date_releve)
+            # Campagne Service horodate le relevé (date_releve est un DateTimeField) :
+            # date_releve peut donc arriver en date ("YYYY-MM-DD") — ancien seed —
+            # OU en datetime ISO ("YYYY-MM-DDTHH:MM:SS+00:00") via le vrai flux
+            # SaisirIndex. On n'en garde que la date pour le calcul (ANO-032).
+            try:
+                date_releve = datetime.date.fromisoformat(releve.date_releve)
+            except ValueError:
+                date_releve = datetime.datetime.fromisoformat(releve.date_releve).date()
             date_limite = date_releve + datetime.timedelta(days=delai_paiement_jours)
 
             consommation = Decimal(str(releve.consommation)).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)

@@ -149,6 +149,32 @@ class FactureServiceTests(TestCase):
         # date_releve = 2025-07-15, délai = 5 jours → limite = 2025-07-20
         self.assertEqual(factures[0].date_limite_paiement, datetime.date(2025, 7, 20))
 
+    def test_generer_factures_date_releve_datetime(self):
+        """Régression ANO-032 : Campagne horodate date_releve (DateTimeField), donc
+        date_releve peut arriver en datetime ISO (« ...T17:10:12+00:00 ») via le vrai
+        flux SaisirIndex, pas seulement en date. La génération doit en extraire la
+        date sans planter (avant : Invalid isoformat string → génération impossible)."""
+        releve = ReleveData(
+            abonne_id="abo-001",
+            ancien_index=100.0,
+            nouveau_index=115.0,
+            consommation=15.0,
+            date_releve="2025-07-15T17:10:12.179407+00:00",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("factures.services.settings") as mock_settings:
+                mock_settings.PDF_STORAGE_DIR = tmpdir
+                factures = self.svc.generer_factures(
+                    campagne_id="camp-datetime",
+                    releves=[releve],
+                    delai_paiement_jours=5,
+                    societe=self.societe,
+                )
+
+        self.assertEqual(len(factures), 1)
+        self.assertEqual(factures[0].date_releve, datetime.date(2025, 7, 15))
+        self.assertEqual(factures[0].date_limite_paiement, datetime.date(2025, 7, 20))
+
     def test_generer_factures_sans_tarif_leve_erreur(self):
         from django.core.exceptions import ValidationError
 
