@@ -75,16 +75,14 @@ class GenererFacturesTests(TestCase):
         from factures.grpc_server import FacturationServicer
 
         self.servicer = FacturationServicer.__new__(FacturationServicer)
-        from factures.services import FactureService
+        from factures.tests.helpers import service_avec_clients_mockes
 
         self.servicer._tarif_svc = TarifService()
-        self.servicer._facture_svc = FactureService()
+        self.servicer._facture_svc = service_avec_clients_mockes()
         self.servicer._campagne_client = MagicMock()
         self.servicer._config_client = MagicMock()
         self.servicer._config_client.get_delai_paiement_jours.return_value = 5
-        self.servicer._config_client.get_infos_societe.return_value = InfosSociete(
-            nom="SGFE"
-        )
+        self.servicer._config_client.get_infos_societe.return_value = InfosSociete(nom="SGFE")
 
         TarifService().update_tarif(Decimal("500.00"), datetime.date(2025, 7, 1))
 
@@ -114,9 +112,7 @@ class GenererFacturesTests(TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch("factures.services.settings") as mock_settings:
                 mock_settings.PDF_STORAGE_DIR = tmpdir
-                response = self.servicer.GenererFactures(
-                    pb.GenererFacturesRequest(campagne_id="camp-001"), MagicMock()
-                )
+                response = self.servicer.GenererFactures(pb.GenererFacturesRequest(campagne_id="camp-001"), MagicMock())
         self.assertEqual(len(response.factures), 1)
         self.assertAlmostEqual(response.factures[0].montant, 7500.0)
 
@@ -127,9 +123,7 @@ class GenererFacturesTests(TestCase):
         pb = self._pb()
         ctx = _make_context()
         with self.assertRaises(Exception, msg="aborted"):
-            self.servicer.GenererFactures(
-                pb.GenererFacturesRequest(campagne_id="camp-002"), ctx
-            )
+            self.servicer.GenererFactures(pb.GenererFacturesRequest(campagne_id="camp-002"), ctx)
         ctx.abort.assert_called_once()
 
     def test_generer_factures_sans_tarif_abort(self):
@@ -150,26 +144,22 @@ class GenererFacturesTests(TestCase):
             with tempfile.TemporaryDirectory() as tmpdir:
                 with patch("factures.services.settings") as mock_settings:
                     mock_settings.PDF_STORAGE_DIR = tmpdir
-                    self.servicer.GenererFactures(
-                        pb.GenererFacturesRequest(campagne_id="camp-003"), ctx
-                    )
+                    self.servicer.GenererFactures(pb.GenererFacturesRequest(campagne_id="camp-003"), ctx)
         ctx.abort.assert_called_once()
 
 
 class UpdateStatutFactureTests(TestCase):
     def setUp(self):
         from factures.grpc_server import FacturationServicer
-        from factures.services import FactureService
+        from factures.tests.helpers import service_avec_clients_mockes
 
         self.servicer = FacturationServicer.__new__(FacturationServicer)
         self.servicer._tarif_svc = TarifService()
-        self.servicer._facture_svc = FactureService()
+        self.servicer._facture_svc = service_avec_clients_mockes()
         self.servicer._campagne_client = MagicMock()
         self.servicer._config_client = MagicMock()
         self.servicer._config_client.get_delai_paiement_jours.return_value = 5
-        self.servicer._config_client.get_infos_societe.return_value = InfosSociete(
-            nom="SGFE"
-        )
+        self.servicer._config_client.get_infos_societe.return_value = InfosSociete(nom="SGFE")
 
         TarifService().update_tarif(Decimal("500.00"), datetime.date(2025, 7, 1))
 
@@ -204,9 +194,7 @@ class UpdateStatutFactureTests(TestCase):
 
     def test_update_statut_vers_partielle(self):
         response = self.servicer.UpdateStatutFacture(
-            self._pb.UpdateStatutRequest(
-                facture_id=self.facture_id, statut=StatutFacture.PARTIELLE
-            ),
+            self._pb.UpdateStatutRequest(facture_id=self.facture_id, statut=StatutFacture.PARTIELLE),
             MagicMock(),
         )
         self.assertEqual(response.statut, StatutFacture.PARTIELLE)
@@ -215,9 +203,7 @@ class UpdateStatutFactureTests(TestCase):
         ctx = _make_context()
         with self.assertRaises(Exception, msg="aborted"):
             self.servicer.UpdateStatutFacture(
-                self._pb.UpdateStatutRequest(
-                    facture_id=self.facture_id, statut="INVALIDE"
-                ),
+                self._pb.UpdateStatutRequest(facture_id=self.facture_id, statut="INVALIDE"),
                 ctx,
             )
         ctx.abort.assert_called_once()
@@ -226,9 +212,7 @@ class UpdateStatutFactureTests(TestCase):
         ctx = _make_context()
         with self.assertRaises(Exception, msg="aborted"):
             self.servicer.GetFacture(
-                self._pb.FactureIdRequest(
-                    facture_id="00000000-0000-0000-0000-000000000000"
-                ),
+                self._pb.FactureIdRequest(facture_id="00000000-0000-0000-0000-000000000000"),
                 ctx,
             )
         ctx.abort.assert_called_once()
