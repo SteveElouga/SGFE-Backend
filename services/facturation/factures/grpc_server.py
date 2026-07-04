@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 import facturation_service_pb2 as pb
 import facturation_service_pb2_grpc as pb_grpc
 
-from .event_publisher import publish_facture_event
+from .event_publisher import publish_facture_event, publish_tarif_event
 from .grpc_clients import CampagneServiceClient, ConfigServiceClient
 from .serializers import facture_to_proto, tarif_to_proto
 from .services import FactureService, ReleveData, TarifService
@@ -66,6 +66,8 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
                 prix_m3=Decimal(str(request.prix_m3)),
                 date_effet=date_effet,
             )
+            # Notifie la gateway (souscription tarifUpdated).
+            publish_tarif_event()
             return tarif_to_proto(tarif)
         except ValidationError as exc:
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))

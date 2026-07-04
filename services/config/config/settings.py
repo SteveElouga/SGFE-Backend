@@ -40,9 +40,7 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 
 if TESTING:
-    DATABASES = {
-        "default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}
-    }
+    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
 else:
     DATABASES = {
         "default": {
@@ -65,3 +63,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- gRPC ---
 CONFIG_GRPC_PORT = env.int("CONFIG_GRPC_PORT", default=50058)
+
+# --- Redis (pub/sub : notifie la gateway des changements de paramètre) ---
+REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")

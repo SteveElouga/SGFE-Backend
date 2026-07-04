@@ -324,3 +324,125 @@ class SubscriptionUtilisateurUpdatedTests(IsolatedAsyncioTestCase):
         agen = Subscription().utilisateur_updated(info=MagicMock())
         result = await agen.__anext__()
         self.assertEqual(result.id, "u-2")
+
+
+class SubscriptionConfigUpdatedTests(IsolatedAsyncioTestCase):
+    """configUpdated : ADMIN, pousse le paramètre re-fetché."""
+
+    @patch("schema.subscriptions.require_role")
+    async def test_role_insuffisant_leve_autherror(self, mock_require_role):
+        mock_require_role.side_effect = AuthError("Accès non autorisé", code="PERMISSION_DENIED")
+        info = MagicMock()
+        agen = Subscription().config_updated(info=info)
+        with self.assertRaises(AuthError):
+            await agen.__anext__()
+        mock_require_role.assert_called_once_with(info, "ADMIN")
+
+    @patch("redis.asyncio.Redis")
+    @patch("schema.subscriptions.config_client")
+    @patch("schema.subscriptions.require_role")
+    async def test_admin_pousse_le_parametre(self, mock_require_role, mock_config_client, mock_redis_cls):
+        mock_require_role.return_value = MagicMock()
+
+        async def _listen():
+            yield {"type": "message", "data": '{"cle": "delai_paiement_jours"}'}
+
+        _mock_redis(_listen, mock_redis_cls)
+
+        param = MagicMock()
+        param.cle = "delai_paiement_jours"
+        param.valeur = "7"
+        param.description = "Délai de paiement"
+        mock_config_client.get_config.return_value = param
+
+        agen = Subscription().config_updated(info=MagicMock())
+        result = await agen.__anext__()
+        self.assertEqual(result.cle, "delai_paiement_jours")
+        self.assertEqual(result.valeur, "7")
+        mock_config_client.get_config.assert_called_once_with("delai_paiement_jours")
+
+
+class SubscriptionTarifUpdatedTests(IsolatedAsyncioTestCase):
+    """tarifUpdated : ADMIN/COMPTABLE, re-fetch le tarif actif."""
+
+    @patch("schema.subscriptions.require_role")
+    async def test_role_insuffisant_leve_autherror(self, mock_require_role):
+        mock_require_role.side_effect = AuthError("Accès non autorisé", code="PERMISSION_DENIED")
+        info = MagicMock()
+        agen = Subscription().tarif_updated(info=info)
+        with self.assertRaises(AuthError):
+            await agen.__anext__()
+        mock_require_role.assert_called_once_with(info, "ADMIN", "COMPTABLE")
+
+    @patch("redis.asyncio.Redis")
+    @patch("schema.subscriptions.facturation_client")
+    @patch("schema.subscriptions.require_role")
+    async def test_pousse_le_tarif_actif(self, mock_require_role, mock_facturation_client, mock_redis_cls):
+        mock_require_role.return_value = MagicMock()
+
+        async def _listen():
+            yield {"type": "message", "data": '{"event_type": "TARIF_UPDATED"}'}
+
+        _mock_redis(_listen, mock_redis_cls)
+
+        tarif = MagicMock()
+        tarif.tarif_id = "t-1"
+        tarif.prix_m3 = 515.0
+        tarif.date_effet = "2026-07-01"
+        tarif.is_active = True
+        mock_facturation_client.get_tarif_actuel.return_value = tarif
+
+        agen = Subscription().tarif_updated(info=MagicMock())
+        result = await agen.__anext__()
+        self.assertEqual(result.tarif_id, "t-1")
+        self.assertEqual(result.prix_m3, 515.0)
+
+
+class SubscriptionProgressionUpdatedTests(IsolatedAsyncioTestCase):
+    """progressionUpdated : ADMIN/AGENT/SUPERVISEUR ; un SUPERVISEUR/AGENT ne
+    voit que ses campagnes, le flux global est réservé à l'ADMIN."""
+
+    @patch("schema.subscriptions.require_role")
+    async def test_flux_global_non_admin_refuse(self, mock_require_role):
+        mock_require_role.return_value = MagicMock(role="AGENT", user_id="a-1")
+        agen = Subscription().progression_updated(info=MagicMock())
+        with self.assertRaises(AuthError):
+            await agen.__anext__()
+
+    @patch("schema.subscriptions._verifier_acces_campagne")
+    @patch("schema.subscriptions.require_role")
+    async def test_superviseur_autre_campagne_refuse(self, mock_require_role, mock_verifier):
+        mock_require_role.return_value = MagicMock(role="SUPERVISEUR", user_id="s-1")
+        mock_verifier.side_effect = PermissionError("cette campagne ne vous appartient pas")
+        agen = Subscription().progression_updated(info=MagicMock(), campagne_id="c-2")
+        with self.assertRaises(PermissionError):
+            await agen.__anext__()
+
+    @patch("redis.asyncio.Redis")
+    @patch("schema.subscriptions.campagne_client")
+    @patch("schema.subscriptions._verifier_acces_campagne")
+    @patch("schema.subscriptions.require_role")
+    async def test_superviseur_sur_sa_campagne_recoit_la_progression(
+        self, mock_require_role, mock_verifier, mock_campagne_client, mock_redis_cls
+    ):
+        mock_require_role.return_value = MagicMock(role="SUPERVISEUR", user_id="s-1")
+        mock_verifier.return_value = None  # accès autorisé
+
+        async def _listen():
+            yield {"type": "message", "data": '{"campagne_id": "c-1"}'}
+
+        _mock_redis(_listen, mock_redis_cls)
+
+        prog = MagicMock()
+        prog.campagne_id = "c-1"
+        prog.total_abonnes = 10
+        prog.nb_releves = 4
+        prog.nb_en_attente = 6
+        prog.pourcentage = 40.0
+        mock_campagne_client.get_progression.return_value = prog
+
+        agen = Subscription().progression_updated(info=MagicMock(), campagne_id="c-1")
+        result = await agen.__anext__()
+        self.assertEqual(result.campagne_id, "c-1")
+        self.assertEqual(result.nb_releves, 4)
+        mock_verifier.assert_called_once()

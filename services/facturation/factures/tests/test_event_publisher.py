@@ -7,7 +7,12 @@ from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
-from factures.event_publisher import CHANNEL, publish_facture_event
+from factures.event_publisher import (
+    CHANNEL,
+    TARIF_CHANNEL,
+    publish_facture_event,
+    publish_tarif_event,
+)
 
 
 def _fake_redis_module(client: MagicMock) -> SimpleNamespace:
@@ -35,3 +40,21 @@ class PublishFactureEventTests(SimpleTestCase):
         client.publish.side_effect = RuntimeError("redis down")
         with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
             publish_facture_event("fac-1", "camp-1")  # ne doit pas lever
+
+
+class PublishTarifEventTests(SimpleTestCase):
+    def test_publie_sur_le_canal_tarif(self):
+        client = MagicMock()
+        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+            publish_tarif_event()
+
+        channel, payload = client.publish.call_args.args
+        self.assertEqual(channel, TARIF_CHANNEL)
+        self.assertEqual(json.loads(payload), {"event_type": "TARIF_UPDATED"})
+        client.close.assert_called_once()
+
+    def test_best_effort_sur_echec_redis(self):
+        client = MagicMock()
+        client.publish.side_effect = RuntimeError("redis down")
+        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+            publish_tarif_event()  # ne doit pas lever

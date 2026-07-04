@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 import campagne_service_pb2 as pb
 import campagne_service_pb2_grpc as pb_grpc
 
+from campagnes.event_publisher import publish_progression_event
 from campagnes.grpc_clients import FacturationServiceClient
 from campagnes.models import StatutReleve
 from campagnes.repositories import (
@@ -197,6 +198,9 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
                 agent_id=request.agent_id,
                 observation=request.observation,
             )
+            # Notifie la gateway (souscription progressionUpdated) : l'avancement
+            # de la campagne vient de changer.
+            publish_progression_event(request.campagne_id)
             return releve_to_proto(releve)
         except ObjectDoesNotExist as exc:
             context.abort(grpc.StatusCode.NOT_FOUND, str(exc))

@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 import config_service_pb2 as pb
 import config_service_pb2_grpc as pb_grpc
 
+from parametres.event_publisher import publish_config_event
 from parametres.grpc_interceptors import ErrorHandlingInterceptor
 from parametres.serializers import config_to_response, infos_to_response
 from parametres.services import ConfigService, InfosSocieteService
@@ -44,13 +45,12 @@ class ConfigServiceServicer(pb_grpc.ConfigServiceServicer):
 
     def UpdateConfig(self, request, context):
         param = self.config_service.update(request.cle, request.valeur)
+        publish_config_event(param.cle, "CONFIG_UPDATED")
         return pb.ConfigResponse(**config_to_response(param))
 
     def ListConfigs(self, request, context):
         params = self.config_service.list_all()
-        return pb.ListConfigsResponse(
-            configs=[pb.ConfigResponse(**config_to_response(p)) for p in params]
-        )
+        return pb.ListConfigsResponse(configs=[pb.ConfigResponse(**config_to_response(p)) for p in params])
 
 
 def serve() -> None:

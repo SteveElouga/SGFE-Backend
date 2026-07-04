@@ -9,11 +9,16 @@ from strawberry.types import Info
 
 from schema.abonne_types import Abonne, abonne_from_grpc
 from schema.auth_types import User, user_from_grpc
+from schema.campagne_queries import _verifier_acces_campagne
+from schema.campagne_types import Progression
+from schema.config_types import ConfigParam, config_from_grpc
 from schema.context import AuthError, require_auth, require_role
-from schema.facturation_types import Facture, facture_from_grpc
+from schema.facturation_types import Facture, Tarif, facture_from_grpc, tarif_from_grpc
 from schema.grpc_clients import (
     abonne_client,
     auth_client,
+    campagne_client,
+    config_client,
     facturation_client,
     notification_client,
 )
@@ -58,6 +63,25 @@ async def _autoriser_acces_utilisateur(info: Info, filter_id: str | None) -> Non
     if filter_id and filter_id == payload.user_id:
         return
     raise AuthError("Accès non autorisé", code="PERMISSION_DENIED")
+
+
+async def _autoriser_acces_progression(info: Info, filter_id: str | None) -> None:
+    """Garde d'accès de progressionUpdated (miroir de la query progression).
+
+    ADMIN / AGENT / SUPERVISEUR. Sur une campagne donnée, `_verifier_acces_campagne`
+    contrôle la propriété (SUPERVISEUR = créateur, AGENT = affecté ; ADMIN libre).
+    Le flux global (sans campagne) est réservé à l'ADMIN — un SUPERVISEUR/AGENT
+    doit préciser une campagne dont il a l'accès pour ne pas voir les autres.
+    """
+    user = await asyncio.to_thread(require_role, info, "ADMIN", "AGENT", "SUPERVISEUR")
+    if filter_id:
+        # Lève PermissionError si l'utilisateur n'a pas accès à cette campagne.
+        await asyncio.to_thread(_verifier_acces_campagne, user, filter_id)
+    elif user.role != "ADMIN":
+        raise AuthError(
+            "Précisez une campagne : le flux global est réservé à l'ADMIN",
+            code="PERMISSION_DENIED",
+        )
 
 
 @strawberry.type
@@ -311,4 +335,129 @@ class Subscription:
                     logger.warning("utilisateur_updated: GetUser(%s) échoué : %s", user_id, exc)
         finally:
             await pubsub.unsubscribe("user:events")
+            await redis.aclose()
+
+    @strawberry.subscription
+    async def config_updated(
+        self,
+        info: Info,
+        cle: str | None = strawberry.UNSET,
+    ) -> AsyncGenerator[ConfigParam, None]:
+        """Pousse un paramètre système dès sa modification — ADMIN.
+
+        - Sans filtre → tout changement de paramètre (`updateConfig`).
+        - cle=String  → uniquement ce paramètre.
+        """
+        await asyncio.to_thread(require_role, info, "ADMIN")
+
+        from redis.asyncio import Redis
+
+        filter_cle = str(cle) if cle and cle is not strawberry.UNSET else None
+
+        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        pubsub = redis.pubsub()
+        await pubsub.subscribe("config:events")
+
+        try:
+            async for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+
+                try:
+                    data = json.loads(message["data"])
+                except (json.JSONDecodeError, TypeError):
+                    continue
+
+                event_cle: str = data.get("cle", "")
+                if not event_cle or (filter_cle and event_cle != filter_cle):
+                    continue
+
+                try:
+                    response = await asyncio.to_thread(config_client.get_config, event_cle)
+                    yield config_from_grpc(response)
+                except Exception as exc:
+                    logger.warning("config_updated: GetConfig(%s) échoué : %s", event_cle, exc)
+        finally:
+            await pubsub.unsubscribe("config:events")
+            await redis.aclose()
+
+    @strawberry.subscription
+    async def tarif_updated(self, info: Info) -> AsyncGenerator[Tarif, None]:
+        """Pousse le tarif actif dès sa modification — ADMIN/COMPTABLE.
+
+        Un seul tarif actif à la fois : pas d'argument, la souscription re-fetch
+        `GetTarifActuel` à chaque changement (`updateTarif`).
+        """
+        await asyncio.to_thread(require_role, info, "ADMIN", "COMPTABLE")
+
+        from redis.asyncio import Redis
+
+        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        pubsub = redis.pubsub()
+        await pubsub.subscribe("tarif:events")
+
+        try:
+            async for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+
+                try:
+                    response = await asyncio.to_thread(facturation_client.get_tarif_actuel)
+                    yield tarif_from_grpc(response)
+                except Exception as exc:
+                    logger.warning("tarif_updated: GetTarifActuel échoué : %s", exc)
+        finally:
+            await pubsub.unsubscribe("tarif:events")
+            await redis.aclose()
+
+    @strawberry.subscription
+    async def progression_updated(
+        self,
+        info: Info,
+        campagne_id: strawberry.ID | None = strawberry.UNSET,
+    ) -> AsyncGenerator[Progression, None]:
+        """Pousse la progression d'une campagne à chaque saisie d'index.
+
+        - campagneId=ID → cette campagne (ADMIN, AGENT affecté, SUPERVISEUR créateur).
+        - Sans filtre   → toutes les campagnes, réservé ADMIN.
+
+        Le contrôle d'accès (voir _autoriser_acces_progression) reprend celui de
+        la query `progression`.
+        """
+        filter_id = str(campagne_id) if campagne_id and campagne_id is not strawberry.UNSET else None
+        await _autoriser_acces_progression(info, filter_id)
+
+        from redis.asyncio import Redis
+
+        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        pubsub = redis.pubsub()
+        await pubsub.subscribe("progression:events")
+
+        try:
+            async for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+
+                try:
+                    data = json.loads(message["data"])
+                except (json.JSONDecodeError, TypeError):
+                    continue
+
+                event_campagne_id: str = data.get("campagne_id", "")
+                if not event_campagne_id or (filter_id and event_campagne_id != filter_id):
+                    continue
+
+                try:
+                    r = await asyncio.to_thread(campagne_client.get_progression, event_campagne_id)
+                    yield Progression(
+                        campagne_id=r.campagne_id,
+                        total_abonnes=r.total_abonnes,
+                        nb_releves=r.nb_releves,
+                        nb_en_attente=r.nb_en_attente,
+                        pourcentage=r.pourcentage,
+                    )
+                except Exception as exc:
+                    logger.warning("progression_updated: GetProgression(%s) échoué : %s", event_campagne_id, exc)
+        finally:
+            await pubsub.unsubscribe("progression:events")
             await redis.aclose()
