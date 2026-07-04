@@ -9,7 +9,8 @@ from strawberry.types import Info
 
 from schema.abonne_types import Abonne, abonne_from_grpc
 from schema.context import require_role
-from schema.grpc_clients import abonne_client
+from schema.grpc_clients import abonne_client, notification_client
+from schema.notification_types import WhatsAppQr, whatsapp_qr_from_grpc
 
 logger = logging.getLogger(__name__)
 
@@ -71,4 +72,52 @@ class Subscription:
                     logger.warning("abonne_updated: GetAbonne(%s) échoué : %s", event_abonne_id, exc)
         finally:
             await pubsub.unsubscribe("abonne:events")
+            await redis.aclose()
+
+    @strawberry.subscription
+    async def whatsapp_status(self, info: Info) -> AsyncGenerator[WhatsAppQr, None]:
+        """Pousse en temps réel le statut de connexion WhatsApp + le QR — ADMIN.
+
+        Remplace le polling de la query `whatsappQr` : dès que whatsapp-service
+        change d'état (nouveau QR, connecté, déconnecté), il publie sur le canal
+        Redis `whatsapp:events` et l'événement est poussé au navigateur via
+        WebSocket. Un snapshot initial est émis à l'abonnement pour afficher
+        immédiatement l'état courant sans attendre le prochain événement.
+
+        Réservé à ADMIN, comme la query `whatsappQr` équivalente.
+        """
+        await asyncio.to_thread(require_role, info, "ADMIN")
+
+        from redis.asyncio import Redis
+
+        # Snapshot initial : état courant immédiat (le QR peut déjà être prêt).
+        # Appel gRPC synchrone déporté dans un thread pour ne pas bloquer l'event
+        # loop ASGI ; un échec (services indisponibles) ne doit pas tuer le flux.
+        try:
+            snapshot = await asyncio.to_thread(notification_client.get_whatsapp_qr)
+            yield whatsapp_qr_from_grpc(snapshot)
+        except Exception as exc:
+            logger.warning("whatsapp_status: snapshot initial échoué : %s", exc)
+
+        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        pubsub = redis.pubsub()
+        await pubsub.subscribe("whatsapp:events")
+
+        try:
+            async for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+
+                try:
+                    data = json.loads(message["data"])
+                except (json.JSONDecodeError, TypeError):
+                    continue
+
+                yield WhatsAppQr(
+                    ready=bool(data.get("ready", False)),
+                    qr=data.get("qr", "") or "",
+                    number=data.get("number", "") or "",
+                )
+        finally:
+            await pubsub.unsubscribe("whatsapp:events")
             await redis.aclose()

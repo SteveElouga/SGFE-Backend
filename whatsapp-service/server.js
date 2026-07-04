@@ -61,6 +61,26 @@ redis.on('error', (err) => console.error('[WhatsApp] Erreur Redis :', err.messag
 
 const sessionStore = new RedisStore({ redis, dataPath: SESSION_PATH });
 
+// Canal pub/sub sur lequel on pousse tout changement d'état (nouveau QR,
+// connecté, déconnecté). La Gateway y est abonnée et relaie en temps réel à
+// l'UI admin via une subscription GraphQL (plus besoin de poller le QR).
+const WHATSAPP_EVENTS_CHANNEL = 'whatsapp:events';
+
+/**
+ * Publie l'état courant de la connexion WhatsApp sur Redis.
+ * @param {{ ready: boolean, qr: string, number: string }} payload
+ *   `qr` est une data-URL PNG prête pour un <img src> (vide si connecté).
+ */
+async function publishStatus(payload) {
+    try {
+        await redis.publish(WHATSAPP_EVENTS_CHANNEL, JSON.stringify(payload));
+    } catch (err) {
+        // Best-effort : un échec de publication ne doit jamais casser le cycle de
+        // vie du client WhatsApp (l'UI retombe sur la query whatsappQr en repli).
+        console.warn('[WhatsApp] Publication du statut sur Redis échouée :', err.message);
+    }
+}
+
 function startClient() {
     // Pas de nettoyage de lock Chromium ici : RemoteAuth supprime et ré-extrait
     // un profil propre depuis Redis à chaque initialisation (extractRemoteSession),
@@ -86,10 +106,13 @@ function startClient() {
 
     activeClient = client;
 
-    client.on('qr', (qr) => {
+    client.on('qr', async (qr) => {
         currentQr = qr;
         qrcodeTerminal.generate(qr, { small: true });
         console.log(`[WhatsApp] QR code prêt — scannez-le sur http://localhost:${PORT}/qr`);
+        // Pousse le nouveau QR (data-URL PNG, même format que /qr-data) en temps réel.
+        const qrImage = await QRCode.toDataURL(qr);
+        await publishStatus({ ready: false, qr: qrImage, number: '' });
     });
 
     client.on('authenticated', () => {
@@ -103,16 +126,19 @@ function startClient() {
         console.log('[WhatsApp] Session sauvegardée dans Redis — un redémarrage du container ne nécessitera plus de re-scan');
     });
 
-    client.on('ready', () => {
+    client.on('ready', async () => {
         isReady = true;
         restartCount = 0;
         currentQr = null;
         console.log('[WhatsApp] Client prêt — envoi de messages activé');
+        const number = client.info?.wid?.user || '';
+        await publishStatus({ ready: true, qr: '', number });
     });
 
-    client.on('auth_failure', (msg) => {
+    client.on('auth_failure', async (msg) => {
         console.error('[WhatsApp] Échec d\'authentification :', msg);
         isReady = false;
+        await publishStatus({ ready: false, qr: '', number: '' });
         scheduleRestart(client);
     });
 
@@ -120,6 +146,7 @@ function startClient() {
         if (activeClient !== client) return; // un nouveau cycle a déjà commencé
         console.warn('[WhatsApp] Déconnecté :', reason);
         isReady = false;
+        await publishStatus({ ready: false, qr: '', number: '' });
         scheduleRestart(client);
     });
 
