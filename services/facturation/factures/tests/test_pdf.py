@@ -227,7 +227,7 @@ class RenderTemplateTests(SimpleTestCase):
         html = render_to_string("facture_pdf.html", _build_context(_donnees(), self.societe))
         style = html.split("<style>")[1].split("</style>")[0]
         bar_rule = [line for line in style.splitlines() if ".hist__bar {" in line][0]
-        self.assertIn("width: 28px", bar_rule)
+        self.assertIn("width: 30px", bar_rule)
         self.assertNotIn("width: 100%", bar_rule)
 
     def test_barres_histogramme_marge_haut_calculee(self):

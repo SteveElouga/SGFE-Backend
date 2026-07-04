@@ -8,6 +8,8 @@ HTML(string=...).write_pdf(). Compatible WeasyPrint 69 :
   - flexbox + tables uniquement (pas de CSS Grid) ;
   - police et logo embarqués localement (voir @font-face ci-dessous), le
     logo est un SVG inline → aucune dépendance réseau à l'exécution.
+  - proportions/espacements alignés sur la maquette du designer (carte
+    640×905px ≈ zone imprimable A4 avec marges 0.6in → tailles ~1:1).
 
 CONTRAT DE CONTEXTE attendu (toutes les valeurs numériques sont fournies
 DÉJÀ FORMATÉES en chaînes — séparateur de milliers = espace insécable, ex.
@@ -38,8 +40,11 @@ espace         .url .date_expiration — lien de l'espace abonné ; Facturation
   <meta charset="utf-8">
   <title>Facture {{ facture.numero }}</title>
   <style>
-    /* Police embarquée localement — remplacer les chemins par les .woff2 servis
-       depuis le service facturation (ou base64). Si absente, fallback système. */
+    /* Montserrat — le gabarit la déclare en premier ; pour un rendu réel il
+       faut soit l'embarquer en local (décommenter le @font-face ci-dessous +
+       fournir les .woff2 dans un dossier fonts/ et passer base_url au
+       write_pdf), soit l'installer dans l'image Docker. Sans ça, WeasyPrint
+       retombe sur la police système (Liberation/Arial). */
     /*
     @font-face { font-family: 'Montserrat'; font-weight: 400;
       src: url('fonts/Montserrat-Regular.woff2') format('woff2'); }
@@ -65,126 +70,126 @@ espace         .url .date_expiration — lien de l'espace abonné ; Facturation
       font-family: 'Montserrat', 'Helvetica Neue', Arial, sans-serif;
       color: #0f172a;
       margin: 0;
-      font-size: 12px;
+      font-size: 11px;
       line-height: 1.4;
     }
 
-    .muted { color: #64748b; }
-    .navy  { color: #0f1c3d; }
+    .muted { color: #94a3b8; }
 
-    /* ── En-tête ─────────────────────────────────────────────────────────── */
-    .header { display: flex; justify-content: space-between; align-items: flex-start; }
-    .brand { display: flex; gap: 13px; align-items: center; }
-    .brand__name { font-size: 21px; font-weight: 800; color: #0f1c3d; }
-    .brand__meta { font-size: 11.5px; color: #64748b; margin-top: 4px; line-height: 1.6; }
-    .doc-title { font-size: 28px; font-weight: 800; color: #0f1c3d; letter-spacing: 1.5px; text-align: right; }
-    .doc-num { font-size: 13.5px; font-weight: 700; color: #1a56db; margin-top: 4px; text-align: right; }
-    .doc-dates { font-size: 11.5px; color: #64748b; margin-top: 8px; line-height: 1.7; text-align: right; }
-    .doc-dates b { color: #dc2626; }
-
-    .rule {
-      height: 4px; border-radius: 2px; margin: 18px 0 22px;
+    /* ── Bande d'accent supérieure (signature AquaBill) ──────────────────── */
+    .topbar {
+      height: 6px; border-radius: 3px; margin-bottom: 26px;
       background: linear-gradient(90deg, #0f1c3d 0%, #1a56db 60%, #0e9f6e 100%);
     }
 
+    /* ── En-tête ─────────────────────────────────────────────────────────── */
+    .header { display: flex; justify-content: space-between; align-items: flex-start; }
+    .brand { display: flex; gap: 12px; align-items: center; }
+    .brand__name { font-size: 18px; font-weight: 800; color: #0f1c3d; }
+    .brand__meta { font-size: 10px; color: #64748b; margin-top: 3px; line-height: 1.5; }
+    .doc-title { font-size: 24px; font-weight: 800; color: #0f1c3d; letter-spacing: 1px; text-align: right; }
+    .doc-num { font-size: 12px; font-weight: 600; color: #1a56db; margin-top: 3px; text-align: right; }
+    .doc-dates { font-size: 10px; color: #64748b; margin-top: 6px; line-height: 1.6; text-align: right; }
+    .doc-dates b { color: #dc2626; }
+
     /* ── Cartes abonné / compteur (flexbox, pas de grid) ─────────────────── */
-    .cards { display: flex; gap: 14px; }
-    .card { flex: 1; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 18px; }
+    .cards { display: flex; gap: 14px; margin-top: 26px; }
+    .card { flex: 1; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; }
     .card__label {
-      font-size: 10px; font-weight: 700; color: #94a3b8;
-      letter-spacing: 1.4px; text-transform: uppercase; margin-bottom: 9px;
+      font-size: 9px; font-weight: 700; color: #94a3b8;
+      letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 8px;
     }
-    .card__title { font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
-    .card__body { font-size: 12px; color: #64748b; line-height: 1.8; }
+    .card__title { font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 3px; }
+    .card__body { font-size: 10.5px; color: #64748b; line-height: 1.7; }
 
     /* ── Table détail ────────────────────────────────────────────────────── */
     .detail { width: 100%; border-collapse: collapse; margin-top: 22px; }
     .detail th {
-      padding: 11px 12px; font-size: 10.5px; font-weight: 700; color: #fff;
-      letter-spacing: 1px; text-transform: uppercase; background: #0f1c3d; text-align: right;
+      padding: 9px 12px; font-size: 9.5px; font-weight: 700; color: #fff;
+      letter-spacing: .8px; text-transform: uppercase; background: #0f1c3d; text-align: right;
     }
-    .detail th:first-child { padding-left: 16px; text-align: left; }
-    .detail th:last-child  { padding-right: 16px; }
+    .detail th:first-child { padding-left: 14px; text-align: left; }
+    .detail th:last-child  { padding-right: 14px; }
     .detail td {
-      padding: 15px 12px; font-size: 13.5px; color: #0f172a;
+      padding: 13px 12px; font-size: 12px; color: #0f172a;
       border-bottom: 1px solid #e2e8f0; text-align: right;
     }
-    .detail td:first-child { padding-left: 16px; text-align: left; font-size: 13px; font-weight: 500; }
-    .detail td:last-child  { padding-right: 16px; font-weight: 700; }
+    .detail td:first-child { padding-left: 14px; text-align: left; font-size: 11px; font-weight: 500; }
+    .detail td:last-child  { padding-right: 14px; font-weight: 700; }
     .detail .num-old  { font-weight: 500; color: #64748b; }
     .detail .num-new  { font-weight: 600; }
     .detail .num-conso{ font-weight: 700; }
     .detail .num-pu   { font-weight: 500; color: #64748b; }
 
     /* ── Totaux ──────────────────────────────────────────────────────────── */
-    .totals { display: flex; justify-content: flex-end; margin-top: 16px; }
-    .totals__box { width: 280px; }
-    .totals__row { display: flex; justify-content: space-between; padding: 8px 16px; font-size: 12.5px; }
+    .totals { display: flex; justify-content: flex-end; margin-top: 14px; }
+    .totals__box { width: 250px; }
+    .totals__row { display: flex; justify-content: space-between; padding: 7px 14px; font-size: 11px; }
     .totals__row span:first-child { color: #64748b; }
     .totals__row span:last-child { font-weight: 600; color: #0f172a; }
     .totals__grand {
       display: flex; justify-content: space-between; align-items: center;
-      padding: 13px 16px; background: #0f1c3d; border-radius: 10px; margin-top: 8px;
+      padding: 11px 14px; background: #0f1c3d; border-radius: 8px; margin-top: 6px;
     }
     .totals__grand-label {
-      font-size: 11px; font-weight: 700; color: rgba(255,255,255,.75);
-      letter-spacing: 1px; text-transform: uppercase;
+      font-size: 10px; font-weight: 700; color: rgba(255,255,255,.75);
+      letter-spacing: .8px; text-transform: uppercase;
     }
-    .totals__grand-value { font-size: 21px; font-weight: 800; color: #fff; }
+    .totals__grand-value { font-size: 18px; font-weight: 800; color: #fff; }
 
     /* ── Histogramme conso ───────────────────────────────────────────────── */
-    .hist { margin-top: 26px; }
+    .hist { margin-top: 22px; }
     .hist__label {
-      font-size: 10px; font-weight: 700; color: #94a3b8;
-      letter-spacing: 1.4px; text-transform: uppercase; margin-bottom: 12px;
+      font-size: 9px; font-weight: 700; color: #94a3b8;
+      letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 10px;
     }
     .hist__bars {
-      display: flex; align-items: flex-end; gap: 12px; height: 74px;
-      border-bottom: 2px solid #e2e8f0; padding: 0 6px;
+      display: flex; align-items: flex-end; gap: 10px; height: 66px;
+      border-bottom: 1.5px solid #e2e8f0; padding: 0 4px;
     }
-    .hist__col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; }
-    .hist__val { font-size: 10.5px; font-weight: 600; color: #94a3b8; }
+    .hist__col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .hist__val { font-size: 9px; font-weight: 600; color: #94a3b8; }
     .hist__val--current { font-weight: 700; color: #1a56db; }
     /* Largeur fixe plutôt que 100% : un pourcentage sur un enfant flex dont
-       l'axe transversal n'est pas "stretch" (ici align-items: center) est mal
-       résolu par WeasyPrint (barres qui débordent et se chevauchent au lieu
-       de rester dans leur colonne). */
-    .hist__bar { width: 28px; background: #dbeafe; border-radius: 4px 4px 0 0; }
+       l'axe transversal n'est pas "stretch" (align-items: center) est mal
+       résolu par WeasyPrint (barres qui débordent de leur colonne). */
+    .hist__bar { width: 30px; background: #dbeafe; border-radius: 3px 3px 0 0; }
     .hist__bar--current { background: linear-gradient(180deg, #1a56db, #3b82f6); }
-    .hist__months { display: flex; gap: 12px; padding: 5px 6px 0; }
-    .hist__month { flex: 1; text-align: center; font-size: 10px; color: #94a3b8; }
+    .hist__months { display: flex; gap: 10px; padding: 4px 4px 0; }
+    .hist__month { flex: 1; text-align: center; font-size: 8.5px; color: #94a3b8; }
     .hist__month--current { font-weight: 700; color: #1a56db; }
 
     /* ── Modalités ───────────────────────────────────────────────────────── */
     .terms {
-      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
-      padding: 14px 18px; margin-top: 26px;
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+      padding: 12px 16px; margin-top: 22px;
     }
-    .terms__title { font-size: 12px; font-weight: 700; color: #0f172a; margin-bottom: 5px; }
-    .terms__body { font-size: 11.5px; color: #64748b; line-height: 1.8; }
+    .terms__title { font-size: 10.5px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+    .terms__body { font-size: 9.5px; color: #64748b; line-height: 1.7; }
     .terms__link { color: #1a56db; text-decoration: underline; }
 
     /* ── Pied de page répété ─────────────────────────────────────────────── */
     .page-footer {
       position: running(pageFooter);
       display: flex; justify-content: space-between; align-items: center;
-      border-top: 2px solid #0f1c3d; padding-top: 9px;
-      /* La boîte de marge @bottom-center ne s'étire pas à la largeur de page :
-         on force la largeur imprimable (A4 210mm − 2×marge 0.6in ≈ 179.5mm)
-         pour que le pied occupe toute la largeur et que le texte gauche/droite
-         se colle aux bords. À ajuster si la marge @page change. */
+      border-top: 1.5px solid #0f1c3d; padding-top: 9px;
+      /* @bottom-center ne s'étire pas à la largeur de page : on force la
+         largeur imprimable (A4 210mm − 2×marge 0.6in ≈ 179.5mm). */
       width: 179.5mm;
-      font-size: 9.5px; color: #94a3b8;
+      font-size: 8.5px; color: #94a3b8;
     }
     .page-footer .page-num::after { content: "Page " counter(page) " / " counter(pages); }
   </style>
 </head>
 <body>
 
+  <!-- Bande d'accent supérieure -->
+  <div class="topbar"></div>
+
   <!-- En-tête -->
   <div class="header">
     <div class="brand">
-      <svg width="48" height="48" viewBox="0 0 38 38" fill="none">
+      <svg width="42" height="42" viewBox="0 0 38 38" fill="none">
         <path d="M19 3C19 3 8 15.5 8 23C8 30.18 13.04 34 19 34C24.96 34 30 30.18 30 23C30 15.5 19 3 19 3Z" fill="#0f1c3d" fill-opacity=".95"/>
         <path d="M19 16C19 16 14 21.5 14 25C14 27.76 16.24 30 19 30C21.76 30 24 27.76 24 25C24 21.5 19 16 19 16Z" fill="#0e9f6e" fill-opacity=".85"/>
       </svg>
@@ -202,7 +207,6 @@ espace         .url .date_expiration — lien de l'espace abonné ; Facturation
       </div>
     </div>
   </div>
-  <div class="rule"></div>
 
   <!-- Abonné / Compteur -->
   <div class="cards">
