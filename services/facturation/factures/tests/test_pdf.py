@@ -224,6 +224,18 @@ class RenderTemplateTests(SimpleTestCase):
         for mois in historique:
             self.assertIn(f"margin-top: {mois.marge_haut_px}px", html)
 
+    def test_footer_pleine_largeur(self):
+        """Régression : le pied de page (running element dans @bottom-center) doit
+        porter une largeur explicite (≈ zone imprimable A4), sinon la boîte de marge
+        centrale le confine au tiers central et le texte gauche/droite se colle au
+        centre au lieu des bords.
+        """
+        html = render_to_string("facture_pdf.html", _build_context(_donnees(), self.societe))
+        style = html.split("<style>")[1].split("</style>")[0]
+        footer_rule = style.split(".page-footer {")[1].split("}")[0]
+        self.assertIn("179.5mm", footer_rule)
+        self.assertNotIn("width: 100%", footer_rule)
+
     def test_bloc_espace_masque_si_aucun_token(self):
         donnees = _donnees()  # espace_url vide par défaut
         html = render_to_string("facture_pdf.html", _build_context(donnees, self.societe))
