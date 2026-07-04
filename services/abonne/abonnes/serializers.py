@@ -28,6 +28,7 @@ def historique_to_response(h: HistoriqueCompteur) -> dict:
         "index_fermeture": float(h.index_fermeture),
         "date_remplacement": _date_to_str(h.date_remplacement),
         "created_at": h.created_at.isoformat(),
+        "motif": h.motif or "",
     }
 
 

@@ -162,6 +162,35 @@ class CompteurServiceTests(TestCase):
         self.assertEqual(nouveau.numero_compteur, 2)
         self.assertEqual(self.compteur_service.get_compteur_actif(str(abonne.id)).id, nouveau.id)
 
+    def test_remplacer_compteur_enregistre_le_motif(self):
+        abonne = _create_abonne(self.abonne_service, index_initial=0, numero_compteur=1)
+        self.compteur_service.remplacer_compteur(
+            abonne_id=str(abonne.id),
+            index_fermeture=120,
+            nouveau_numero_compteur=2,
+            nouveau_quartier="Q2",
+            nouveau_camp=2,
+            nouvel_index_initial=0,
+            date_remplacement="2024-06-01",
+            motif="Compteur défectueux",
+        )
+        historique = self.compteur_service.get_historique(str(abonne.id))
+        self.assertEqual(historique[0].motif, "Compteur défectueux")
+
+    def test_remplacer_compteur_motif_optionnel_defaut_vide(self):
+        abonne = _create_abonne(self.abonne_service, index_initial=0, numero_compteur=1)
+        self.compteur_service.remplacer_compteur(
+            abonne_id=str(abonne.id),
+            index_fermeture=120,
+            nouveau_numero_compteur=2,
+            nouveau_quartier="Q2",
+            nouveau_camp=2,
+            nouvel_index_initial=0,
+            date_remplacement="2024-06-01",
+        )
+        historique = self.compteur_service.get_historique(str(abonne.id))
+        self.assertEqual(historique[0].motif, "")
+
     def test_remplacer_compteur_with_index_fermeture_below_initial_raises(self):
         abonne = _create_abonne(self.abonne_service, index_initial=50)
 

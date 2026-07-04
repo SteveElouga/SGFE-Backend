@@ -62,6 +62,7 @@ class HistoriqueCompteurRepository:
         nouveau_compteur: Compteur,
         index_fermeture: float,
         date_remplacement: str,
+        motif: str = "",
     ) -> HistoriqueCompteur:
         return HistoriqueCompteur.objects.create(
             abonne=abonne,
@@ -69,6 +70,7 @@ class HistoriqueCompteurRepository:
             nouveau_compteur=nouveau_compteur,
             index_fermeture=index_fermeture,
             date_remplacement=date_remplacement,
+            motif=motif,
         )
 
     def list_by_abonne(self, abonne_id: str) -> list[HistoriqueCompteur]:

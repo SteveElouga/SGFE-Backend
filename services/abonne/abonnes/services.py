@@ -162,6 +162,7 @@ class CompteurService:
         nouveau_camp: int,
         nouvel_index_initial: float,
         date_remplacement: str,
+        motif: str = "",
     ) -> Compteur:
         abonne = self.abonnes.get_by_id(abonne_id)
         ancien_compteur = self.compteurs.get_actif(abonne_id)
@@ -188,6 +189,7 @@ class CompteurService:
                 nouveau_compteur=nouveau_compteur,
                 index_fermeture=index_fermeture,
                 date_remplacement=date_remplacement,
+                motif=motif,
             )
 
         return nouveau_compteur

@@ -56,6 +56,8 @@ message RemplacerCompteurRequest {
   int32 nouveau_camp = 5;
   double nouvel_index_initial = 6;
   string date_remplacement = 7;
+  // Motif du remplacement (ex. « Compteur défectueux »). Optionnel.
+  string motif = 8;
 }
 
 message AbonneResponse {
@@ -90,6 +92,7 @@ message HistoriqueCompteurResponse {
   double index_fermeture = 4;
   string date_remplacement = 5;
   string created_at = 6;
+  string motif = 7;
 }
 
 message ListHistoriqueResponse {

@@ -212,14 +212,18 @@ class AbonneMutationTests(SimpleTestCase):
     def test_remplacer_compteur_success_as_admin(self):
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
-            patch.object(abonne_client, "remplacer_compteur", return_value=make_compteur_response(numero_compteur=2)),
+            patch.object(
+                abonne_client, "remplacer_compteur", return_value=make_compteur_response(numero_compteur=2)
+            ) as mock_remplacer,
         ):
             result = schema.execute_sync(
                 'mutation { remplacerCompteur(abonneId: "abonne-1", input: {indexFermeture: 100, '
                 'nouveauNumeroCompteur: 2, nouveauQuartier: "Q", nouveauCamp: 2, nouvelIndexInitial: 0, '
-                'dateRemplacement: "2024-06-01"}) { numeroCompteur } }',
+                'dateRemplacement: "2024-06-01", motif: "Compteur défectueux"}) { numeroCompteur } }',
                 context_value=self._admin_context(),
             )
+            # Le motif saisi est bien propagé jusqu'au client gRPC.
+            self.assertEqual(mock_remplacer.call_args.kwargs["motif"], "Compteur défectueux")
 
         self.assertIsNone(result.errors)
         self.assertEqual(result.data["remplacerCompteur"]["numeroCompteur"], 2)
@@ -257,6 +261,7 @@ class HistoriqueCompteurQueryTests(SimpleTestCase):
         h.index_fermeture = 120.0
         h.date_remplacement = "2024-06-01"
         h.created_at = "2024-06-01T08:00:00"
+        h.motif = "Compteur défectueux"
         return h
 
     def test_historique_compteur_returns_list(self):
@@ -269,7 +274,7 @@ class HistoriqueCompteurQueryTests(SimpleTestCase):
             ),
         ):
             result = schema.execute_sync(
-                'query { historiqueCompteur(id: "abonne-1") { id indexFermeture '
+                'query { historiqueCompteur(id: "abonne-1") { id indexFermeture motif '
                 "ancienCompteur { numeroCompteur statut } nouveauCompteur { numeroCompteur } } }",
                 context_value=context(token="access-1"),
             )
@@ -278,6 +283,7 @@ class HistoriqueCompteurQueryTests(SimpleTestCase):
         self.assertEqual(len(result.data["historiqueCompteur"]), 1)
         entry = result.data["historiqueCompteur"][0]
         self.assertEqual(entry["indexFermeture"], 120.0)
+        self.assertEqual(entry["motif"], "Compteur défectueux")
         self.assertEqual(entry["ancienCompteur"]["numeroCompteur"], 1)
         self.assertEqual(entry["ancienCompteur"]["statut"], "REMPLACE")
         self.assertEqual(entry["nouveauCompteur"]["numeroCompteur"], 2)

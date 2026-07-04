@@ -5,10 +5,8 @@ import warnings
 
 import campagne_service_pb2 as campagne__service__pb2
 
-GRPC_GENERATED_VERSION = '1.64.1'
+GRPC_GENERATED_VERSION = '1.81.1'
 GRPC_VERSION = grpc.__version__
-EXPECTED_ERROR_RELEASE = '1.65.0'
-SCHEDULED_RELEASE_DATE = 'June 25, 2024'
 _version_not_supported = False
 
 try:
@@ -18,19 +16,16 @@ except ImportError:
     _version_not_supported = True
 
 if _version_not_supported:
-    warnings.warn(
+    raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in campagne_service_pb2_grpc.py depends on'
+        + ' but the generated code in campagne_service_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
-        + f' This warning will become an error in {EXPECTED_ERROR_RELEASE},'
-        + f' scheduled for release on {SCHEDULED_RELEASE_DATE}.',
-        RuntimeWarning
     )
 
 
-class CampagneServiceStub(object):
+class CampagneServiceStub:
     """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
@@ -84,6 +79,11 @@ class CampagneServiceStub(object):
                 request_serializer=campagne__service__pb2.CampagneIdRequest.SerializeToString,
                 response_deserializer=campagne__service__pb2.ProgressionResponse.FromString,
                 _registered_method=True)
+        self.GetResumeCloture = channel.unary_unary(
+                '/campagne.CampagneService/GetResumeCloture',
+                request_serializer=campagne__service__pb2.CampagneIdRequest.SerializeToString,
+                response_deserializer=campagne__service__pb2.ResumeClotureResponse.FromString,
+                _registered_method=True)
         self.CloturerCampagne = channel.unary_unary(
                 '/campagne.CampagneService/CloturerCampagne',
                 request_serializer=campagne__service__pb2.CampagneIdRequest.SerializeToString,
@@ -96,7 +96,7 @@ class CampagneServiceStub(object):
                 _registered_method=True)
 
 
-class CampagneServiceServicer(object):
+class CampagneServiceServicer:
     """Missing associated documentation comment in .proto file."""
 
     def CreateCampagne(self, request, context):
@@ -148,6 +148,12 @@ class CampagneServiceServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def GetProgression(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetResumeCloture(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -213,6 +219,11 @@ def add_CampagneServiceServicer_to_server(servicer, server):
                     request_deserializer=campagne__service__pb2.CampagneIdRequest.FromString,
                     response_serializer=campagne__service__pb2.ProgressionResponse.SerializeToString,
             ),
+            'GetResumeCloture': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetResumeCloture,
+                    request_deserializer=campagne__service__pb2.CampagneIdRequest.FromString,
+                    response_serializer=campagne__service__pb2.ResumeClotureResponse.SerializeToString,
+            ),
             'CloturerCampagne': grpc.unary_unary_rpc_method_handler(
                     servicer.CloturerCampagne,
                     request_deserializer=campagne__service__pb2.CampagneIdRequest.FromString,
@@ -231,7 +242,7 @@ def add_CampagneServiceServicer_to_server(servicer, server):
 
 
  # This class is part of an EXPERIMENTAL API.
-class CampagneService(object):
+class CampagneService:
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
@@ -467,6 +478,33 @@ class CampagneService(object):
             '/campagne.CampagneService/GetProgression',
             campagne__service__pb2.CampagneIdRequest.SerializeToString,
             campagne__service__pb2.ProgressionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetResumeCloture(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/campagne.CampagneService/GetResumeCloture',
+            campagne__service__pb2.CampagneIdRequest.SerializeToString,
+            campagne__service__pb2.ResumeClotureResponse.FromString,
             options,
             channel_credentials,
             insecure,

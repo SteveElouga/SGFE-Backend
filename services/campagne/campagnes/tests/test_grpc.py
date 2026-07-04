@@ -254,6 +254,32 @@ class TestGetProgressionRPC(TestCase):
         self.assertAlmostEqual(response.pourcentage, 0.0)
 
 
+class TestGetResumeClotureRPC(TestCase):
+    def setUp(self) -> None:
+        from campagnes.models import StatutReleve
+
+        self.servicer = CampagneServicer()
+        svc = CampagneService()
+        campagne = svc.creer_campagne("C1", 1, 2026, created_by="user-A")
+        svc.demarrer_campagne(str(campagne.id))
+        # 2 relevés, 1 estimé, 1 restant (A_RELEVER)
+        statuts = [StatutReleve.RELEVE, StatutReleve.RELEVE, StatutReleve.ESTIME, StatutReleve.A_RELEVER]
+        for i, s in enumerate(statuts):
+            r = svc.ajouter_abonne_campagne(str(campagne.id), f"abonne-{i:03d}", 0.0)
+            r.statut = s
+            r.save()
+        self.campagne = campagne
+
+    def test_resume_cloture(self) -> None:
+        request = pb.CampagneIdRequest(campagne_id=str(self.campagne.id))
+        response = self.servicer.GetResumeCloture(request, _mock_context())
+        self.assertEqual(response.total_abonnes, 4)
+        self.assertEqual(response.nb_releves, 2)
+        self.assertEqual(response.nb_estimes, 1)
+        self.assertEqual(response.nb_restants, 1)
+        self.assertEqual(response.nb_factures_a_generer, 3)
+
+
 class TestMarquerNonReleveRPC(TestCase):
     def setUp(self) -> None:
         self.servicer = CampagneServicer()

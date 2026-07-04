@@ -42,6 +42,19 @@ class Progression:
 
 
 @strawberry.type
+class ResumeCloture:
+    """Aperçu prêt à afficher avant la clôture d'une campagne (modal de confirmation)."""
+
+    campagne_id: str
+    total_abonnes: int
+    nb_releves: int  # statut RELEVE
+    nb_estimes: int  # statut ESTIME
+    nb_non_releves: int  # statut NON_RELEVE
+    nb_restants: int  # pas encore traités (A_RELEVER)
+    nb_factures_a_generer: int  # relevés + estimés (les seuls facturés)
+
+
+@strawberry.type
 class DernierIndex:
     abonne_id: str
     dernier_index: float

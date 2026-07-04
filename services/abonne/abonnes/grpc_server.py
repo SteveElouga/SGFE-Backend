@@ -120,6 +120,7 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
                     index_fermeture=data["index_fermeture"],
                     date_remplacement=data["date_remplacement"],
                     created_at=data["created_at"],
+                    motif=data["motif"],
                 )
             )
         return pb.ListHistoriqueResponse(historique=items)
@@ -133,6 +134,7 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
             nouveau_camp=request.nouveau_camp,
             nouvel_index_initial=request.nouvel_index_initial,
             date_remplacement=request.date_remplacement,
+            motif=request.motif,
         )
         publish_abonne_event(request.abonne_id)
         return pb.CompteurResponse(**compteur_to_response(compteur))
