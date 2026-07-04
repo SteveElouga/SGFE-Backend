@@ -19,4 +19,5 @@ def service_avec_clients_mockes() -> FactureService:
     )
     svc._abonne_client.get_abonne.return_value = None
     svc._campagne_client.get_campagne_nom.return_value = ""
+    svc._notification_client.get_espace_url.return_value = ("", "")
     return svc

@@ -287,7 +287,9 @@ def _build_context(
         "historique": historique or [],
         "espace": {
             "url": facture.espace_url,
-            "date_expiration": facture.espace_date_expiration,
+            # Notification renvoie une date ISO ; _date_fr laisse passer une
+            # valeur déjà formatée (ou vide) sans la casser.
+            "date_expiration": _date_fr(facture.espace_date_expiration),
         },
     }
 

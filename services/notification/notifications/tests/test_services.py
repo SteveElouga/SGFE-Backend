@@ -308,6 +308,39 @@ class TestTokenService(TestCase):
         self.assertEqual(result.id, token.id)
         self.assertIsNotNone(result.date_derniere_visite)
 
+    def test_get_or_create_token_reutilise_token_valide(self):
+        """Réutilise le token actif non expiré de l'abonné (pas de doublon)."""
+        token = self._create_token()
+        service = TokenService()
+
+        result = service.get_or_create_token(abonne_id=token.abonne_id, facture_id="fac-1")
+
+        self.assertEqual(result.id, token.id)
+        self.assertEqual(TokenAcces.objects.filter(abonne_id=token.abonne_id).count(), 1)
+
+    @patch("notifications.services.config_client")
+    def test_get_or_create_token_cree_si_aucun(self, mock_config):
+        """Crée un token (expiration = config) si l'abonné n'en a pas de valide."""
+        mock_config.get_token_validite_jours.return_value = 20
+        service = TokenService()
+
+        result = service.get_or_create_token(abonne_id="abo-x", facture_id="fac-x")
+
+        self.assertEqual(result.abonne_id, "abo-x")
+        self.assertEqual(result.facture_id, "fac-x")
+        self.assertEqual(result.date_expiration, date.today() + timedelta(days=20))
+        self.assertTrue(result.is_active)
+
+    @patch("notifications.services.config_client")
+    def test_get_or_create_token_ignore_token_expire(self, mock_config):
+        """Un token expiré n'est pas réutilisé — un nouveau est créé."""
+        mock_config.get_token_validite_jours.return_value = 20
+        expire = self._create_token(jours_expiration=-1)
+
+        result = TokenService().get_or_create_token(abonne_id=expire.abonne_id, facture_id="f")
+
+        self.assertNotEqual(result.id, expire.id)
+
     def test_valider_token_expire(self):
         """valider_token lève ValueError si le token est expiré."""
         token = self._create_token(jours_expiration=-1)  # Expiré hier

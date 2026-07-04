@@ -208,6 +208,23 @@ class NotificationServiceClient:
             )
             return False
 
+    def get_espace_url(self, abonne_id: str, facture_id: str) -> tuple[str, str]:
+        """Récupère (ou crée) l'URL de l'espace abonné, pour l'afficher sur le PDF.
+
+        Retourne (url, date_expiration ISO), ou ("", "") en cas d'erreur —
+        dégradation gracieuse : le bloc « espace abonné » du PDF est alors
+        simplement masqué (le lien reste par ailleurs envoyé par WhatsApp).
+        """
+        try:
+            resp = self._stub.GetEspaceUrl(self._pb.GetEspaceUrlRequest(abonne_id=abonne_id, facture_id=facture_id))
+            return resp.url, resp.date_expiration
+        except Exception as exc:
+            logger.warning(
+                "Notification Service inaccessible — GetEspaceUrl ignoré",
+                extra={"abonne_id": abonne_id, "error": str(exc)},
+            )
+            return "", ""
+
 
 class PaiementServiceClient:
     """Client gRPC vers Paiement Service (port 50055) — initialisation du solde."""

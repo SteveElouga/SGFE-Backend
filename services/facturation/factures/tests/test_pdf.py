@@ -174,6 +174,19 @@ class BuildContextTests(SimpleTestCase):
         # Repli sur la période du relevé si le nom de campagne est indisponible.
         self.assertEqual(ctx["releve"]["campagne_nom"], "Juin 2026")
 
+    def test_contexte_espace_url_et_date_formatee(self):
+        """L'URL espace est transmise telle quelle ; la date ISO est formatée JJ/MM/AAAA."""
+        donnees = _donnees(espace_url="aquabill.ci/espace/abc", espace_date_expiration="2026-07-05")
+        ctx = _build_context(donnees, self.societe)
+        self.assertEqual(ctx["espace"]["url"], "aquabill.ci/espace/abc")
+        self.assertEqual(ctx["espace"]["date_expiration"], "05/07/2026")
+
+    def test_contexte_espace_vide_par_defaut(self):
+        """Sans URL espace, le bloc reste vide (masqué dans le gabarit)."""
+        ctx = _build_context(_donnees(), self.societe)
+        self.assertEqual(ctx["espace"]["url"], "")
+        self.assertEqual(ctx["espace"]["date_expiration"], "")
+
 
 class RenderTemplateTests(SimpleTestCase):
     """Rendu du gabarit Django (sans WeasyPrint) — valide la syntaxe et l'échappement."""
