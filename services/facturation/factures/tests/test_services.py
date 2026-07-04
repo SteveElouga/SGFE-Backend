@@ -1,14 +1,17 @@
 """Tests de la logique métier du Facturation Service."""
 
 import datetime
+import os
 import tempfile
 from decimal import Decimal
+from io import StringIO
 from unittest.mock import patch
 
+from django.core.management import call_command
 from django.test import TestCase
 
-from factures.models import StatutFacture, Tarif
-from factures.pdf_generator import InfosSociete
+from factures.models import Facture, StatutFacture, Tarif
+from factures.pdf_generator import InfosSociete, PDF_TEMPLATE_VERSION
 from factures.services import FactureService, ReleveData, TarifService
 
 
@@ -233,3 +236,126 @@ class FactureServiceTests(TestCase):
         result = self.svc.list_factures(campagne_id="camp-aaa")
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].campagne_id, "camp-aaa")
+
+
+class GetPdfBytesTests(TestCase):
+    """Cache PDF version-aware : régénération si gabarit obsolète, repli si échec."""
+
+    def setUp(self):
+        self.svc = FactureService()
+        self.facture = Facture.objects.create(
+            numero_facture="FACT-2026-07-0001",
+            abonne_id="abo-1",
+            campagne_id="camp-1",
+            ancien_index=Decimal("100"),
+            nouveau_index=Decimal("112"),
+            consommation=Decimal("12"),
+            prix_m3=Decimal("500"),
+            montant=Decimal("6000"),
+            date_releve=datetime.date(2026, 7, 1),
+            date_limite_paiement=datetime.date(2026, 7, 6),
+        )
+
+    def _fichier_pdf(self, contenu: bytes) -> str:
+        fd, path = tempfile.mkstemp(suffix=".pdf")
+        with os.fdopen(fd, "wb") as f:
+            f.write(contenu)
+        self.addCleanup(lambda: os.path.exists(path) and os.remove(path))
+        return path
+
+    def test_sert_le_cache_si_version_a_jour(self):
+        self.facture.pdf_path = self._fichier_pdf(b"%PDF-cache")
+        self.facture.pdf_template_version = PDF_TEMPLATE_VERSION
+        self.facture.save()
+
+        with patch.object(self.svc, "_regenerer_et_persister") as mock_regen:
+            contenu, nom = self.svc.get_pdf_bytes(str(self.facture.id))
+
+        mock_regen.assert_not_called()
+        self.assertEqual(contenu, b"%PDF-cache")
+        self.assertEqual(nom, "FACT-2026-07-0001.pdf")
+
+    def test_regenere_si_version_obsolete(self):
+        self.facture.pdf_path = self._fichier_pdf(b"%PDF-vieux")
+        self.facture.pdf_template_version = 0  # antérieur au gabarit courant
+        self.facture.save()
+        neuf = self._fichier_pdf(b"%PDF-neuf")
+
+        with patch.object(self.svc, "_regenerer_et_persister", return_value=neuf) as mock_regen:
+            contenu, _ = self.svc.get_pdf_bytes(str(self.facture.id))
+
+        mock_regen.assert_called_once()
+        self.assertEqual(contenu, b"%PDF-neuf")
+
+    def test_repli_sur_pdf_obsolete_si_regeneration_echoue(self):
+        self.facture.pdf_path = self._fichier_pdf(b"%PDF-vieux")
+        self.facture.pdf_template_version = 0
+        self.facture.save()
+
+        with patch.object(self.svc, "_regenerer_et_persister", return_value=""):
+            contenu, _ = self.svc.get_pdf_bytes(str(self.facture.id))
+
+        # Repli : on ressert l'ancien PDF plutôt que de ne rien renvoyer.
+        self.assertEqual(contenu, b"%PDF-vieux")
+
+    def test_erreur_si_aucun_pdf_et_regeneration_echoue(self):
+        self.facture.pdf_path = ""
+        self.facture.pdf_template_version = 0
+        self.facture.save()
+
+        with patch.object(self.svc, "_regenerer_et_persister", return_value=""):
+            with self.assertRaises(FileNotFoundError):
+                self.svc.get_pdf_bytes(str(self.facture.id))
+
+    def test_regenerer_pdf_estampille_la_version_courante(self):
+        chemin = self._fichier_pdf(b"%PDF-genere")
+        with (
+            patch.object(self.svc, "_generer_et_sauver_pdf", return_value=chemin),
+            patch.object(self.svc._campagne_client, "get_campagne_nom", return_value=""),
+        ):
+            ok = self.svc.regenerer_pdf(self.facture, societe=InfosSociete(nom="X"))
+
+        self.assertTrue(ok)
+        self.facture.refresh_from_db()
+        self.assertEqual(self.facture.pdf_template_version, PDF_TEMPLATE_VERSION)
+        self.assertEqual(self.facture.pdf_path, chemin)
+
+
+class RegenererPdfsCommandTests(TestCase):
+    """Commande `regenerer_pdfs` — sélection des obsolètes, dry-run, rapport."""
+
+    def _facture_obsolete(self) -> Facture:
+        return Facture.objects.create(
+            numero_facture="FACT-2026-07-0009",
+            abonne_id="abo-9",
+            campagne_id="camp-9",
+            ancien_index=Decimal("10"),
+            nouveau_index=Decimal("20"),
+            consommation=Decimal("10"),
+            prix_m3=Decimal("500"),
+            montant=Decimal("5000"),
+            date_releve=datetime.date(2026, 7, 1),
+            date_limite_paiement=datetime.date(2026, 7, 6),
+            pdf_template_version=0,
+        )
+
+    def test_dry_run_liste_sans_regenerer(self):
+        self._facture_obsolete()
+        out = StringIO()
+        with patch.object(FactureService, "regenerer_pdf") as mock_regen:
+            call_command("regenerer_pdfs", "--dry-run", stdout=out)
+
+        mock_regen.assert_not_called()
+        self.assertIn("dry-run", out.getvalue().lower())
+
+    def test_regenere_les_obsoletes_et_rapporte(self):
+        self._facture_obsolete()
+        out = StringIO()
+        with (
+            patch("factures.grpc_clients.ConfigServiceClient"),
+            patch.object(FactureService, "regenerer_pdf", return_value=True) as mock_regen,
+        ):
+            call_command("regenerer_pdfs", stdout=out)
+
+        mock_regen.assert_called_once()
+        self.assertIn("1/1 PDF régénérés", out.getvalue())

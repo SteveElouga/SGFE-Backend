@@ -17,12 +17,15 @@ societe        .nom .adresse_ligne1 .telephone
 facture        .numero .date_releve .date_limite_paiement .designation
                .ancien_index .nouveau_index .consommation .prix_unitaire
                .montant .sous_total .frais_supplementaires .total
-               .date_generation
+               .date_generation .modalite_delai (ex. "sous 5 jours", dérivé
+               des dates — jamais codé en dur)
 abonne         .civilite (opt.) .nom .prenom .numero .quartier .camp .whatsapp
 compteur       .numero
 releve         .campagne_nom .agent_username .date .heure
-historique     liste de 6 mois, chacun : .label .conso .hauteur_px .is_actuel
-               (hauteur_px = round(conso / max_conso * 44), borne ~[4,44])
+historique     liste de 6 mois, chacun : .label .conso .hauteur_px
+               .marge_haut_px .is_actuel
+               (hauteur_px = round(conso / max_conso * 44), borne ~[4,44] ;
+                marge_haut_px = 44 - hauteur_px)
 espace         .url .date_expiration — bloc masqué si .url est vide (aucun
                token d'accès n'existe encore au moment de la génération
                initiale du PDF, voir docs/ETAT_DU_SYSTEME.md)
@@ -275,7 +278,7 @@ espace         .url .date_expiration — bloc masqué si .url est vide (aucun
   <div class="terms">
     <div class="terms__title">Modalités de paiement</div>
     <div class="terms__body">
-      Règlement sous 5 jours : Espèces · Mobile Money · Virement — auprès de notre service comptable.<br>
+      Règlement {{ facture.modalite_delai }} : Espèces · Mobile Money · Virement — auprès de notre service comptable.<br>
       {% if espace.url %}
       Consultez votre historique en ligne :
       <span class="terms__link">{{ espace.url }}</span>
