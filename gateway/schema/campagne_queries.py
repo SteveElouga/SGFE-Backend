@@ -4,16 +4,20 @@ import strawberry
 import strawberry.types
 
 from .campagne_types import (
+    AgentAffecte,
     Campagne,
     DernierIndex,
     Progression,
     Releve,
     ResumeCloture,
+    ZoneDisponible,
+    ZoneRepartition,
+    ZoneStat,
     campagne_from_grpc,
     releve_from_grpc,
 )
 from .context import require_auth, require_role
-from .grpc_clients import campagne_client
+from .grpc_clients import abonne_client, auth_client, campagne_client
 
 
 def _verifier_acces_campagne(user: object, campagne_id: str) -> None:
@@ -35,6 +39,73 @@ def _verifier_acces_campagne(user: object, campagne_id: str) -> None:
 
 # Alias conservé pour l'import dans campagne_mutations.py
 _verifier_propriete_superviseur = _verifier_acces_campagne
+
+
+def _statut_tournee(derniere_activite: str) -> str:
+    """Dérive le statut de tournée d'un agent depuis la date de son dernier relevé.
+
+    Pas de heartbeat dédié : la saisie étant temps réel, « dernière activité »
+    = date du dernier relevé. Seuils : ≤15 min → EN_TOURNEE, ≤2 h → ACTIF,
+    au-delà → EN_RETARD ; aucun relevé → INACTIF.
+    """
+    if not derniere_activite:
+        return "INACTIF"
+    from datetime import datetime, timezone
+
+    try:
+        dt = datetime.fromisoformat(derniere_activite)
+    except ValueError:
+        return "ACTIF"
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    minutes = (datetime.now(timezone.utc) - dt).total_seconds() / 60
+    if minutes <= 15:
+        return "EN_TOURNEE"
+    if minutes <= 120:
+        return "ACTIF"
+    return "EN_RETARD"
+
+
+def _resoudre_user(agent_id: str) -> tuple[str, str]:
+    """Nom d'utilisateur + rôle d'un agent via Auth Service (best-effort)."""
+    try:
+        user = auth_client.get_user(agent_id)
+        return user.username, user.role
+    except Exception:  # agent introuvable / Auth indisponible : enrichissement non bloquant
+        return "", ""
+
+
+def _enrichir_agents(grpc_agents) -> list[AgentAffecte]:
+    """Complète les agents (issus de ListAgentsCampagne) avec le nombre d'abonnés
+    par zone (ListZones), le nom/rôle (Auth) et le statut de tournée dérivé."""
+    zones_abonnes = {(z.quartier, z.camp): z.nb_abonnes for z in abonne_client.list_zones().zones}
+    agents: list[AgentAffecte] = []
+    for a in grpc_agents:
+        username, role = _resoudre_user(a.agent_id)
+        zones = []
+        for z in a.zones:
+            nb_ab = zones_abonnes.get((z.quartier, z.camp), 0)
+            zones.append(
+                ZoneStat(
+                    quartier=z.quartier,
+                    camp=z.camp,
+                    nb_abonnes=nb_ab,
+                    nb_releves=z.nb_releves,
+                    pct=round(z.nb_releves / nb_ab * 100, 1) if nb_ab else 0.0,
+                )
+            )
+        agents.append(
+            AgentAffecte(
+                agent_id=a.agent_id,
+                username=username,
+                role=role,
+                statut=_statut_tournee(a.derniere_activite),
+                derniere_activite=a.derniere_activite,
+                nb_releves=a.nb_releves,
+                zones=zones,
+            )
+        )
+    return agents
 
 
 @strawberry.type
@@ -86,6 +157,52 @@ class CampagneQueries:
             raise PermissionError("Accès refusé : vous ne pouvez consulter que votre propre tournée.")
         response = campagne_client.list_releves(campagne_id)
         return [releve_from_grpc(r) for r in response.releves if r.agent_id == agent_id]
+
+    @strawberry.field
+    def agents_campagne(self, info: strawberry.types.Info, campagne_id: str) -> list[AgentAffecte]:
+        """Agents affectés à une campagne (cartes « détail campagne ») : zones,
+        avancement, statut de tournée et dernière activité.
+
+        ADMIN (toutes), SUPERVISEUR (les siennes), AGENT (les siennes).
+        """
+        user = require_auth(info)
+        require_role(info, "ADMIN", "AGENT", "SUPERVISEUR")
+        _verifier_acces_campagne(user, campagne_id)
+        response = campagne_client.list_agents_campagne(campagne_id)
+        return _enrichir_agents(response.agents)
+
+    @strawberry.field
+    def repartition_par_zone(self, info: strawberry.types.Info, campagne_id: str) -> list[ZoneRepartition]:
+        """Tableau « répartition par zone » : une ligne par zone affectée
+        (zone → agent responsable + avancement). Mêmes accès que agents_campagne."""
+        user = require_auth(info)
+        require_role(info, "ADMIN", "AGENT", "SUPERVISEUR")
+        _verifier_acces_campagne(user, campagne_id)
+        agents = _enrichir_agents(campagne_client.list_agents_campagne(campagne_id).agents)
+        lignes = [
+            ZoneRepartition(
+                quartier=z.quartier,
+                camp=z.camp,
+                agent_id=a.agent_id,
+                agent_username=a.username,
+                nb_abonnes=z.nb_abonnes,
+                nb_releves=z.nb_releves,
+                pct=z.pct,
+            )
+            for a in agents
+            for z in a.zones
+        ]
+        lignes.sort(key=lambda ligne: (ligne.quartier, ligne.camp))
+        return lignes
+
+    @strawberry.field
+    def zones_disponibles(self, info: strawberry.types.Info) -> list[ZoneDisponible]:
+        """Zones existantes (issues des compteurs) proposées à l'affectation —
+        ADMIN, SUPERVISEUR."""
+        require_auth(info)
+        require_role(info, "ADMIN", "SUPERVISEUR")
+        response = abonne_client.list_zones()
+        return [ZoneDisponible(quartier=z.quartier, camp=z.camp, nb_abonnes=z.nb_abonnes) for z in response.zones]
 
     @strawberry.field
     def progression(self, info: strawberry.types.Info, campagne_id: str) -> Progression:

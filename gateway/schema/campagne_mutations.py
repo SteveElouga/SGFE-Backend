@@ -3,17 +3,21 @@
 import strawberry
 import strawberry.types
 
+from proto import campagne_service_pb2 as campagne_pb
+
 from .campagne_types import (
+    AgentAffecte,
     Campagne,
     CorrigerReleveInput,
     CreateCampagneInput,
     MarquerNonReleveInput,
     Releve,
     SaisirIndexInput,
+    ZoneInput,
     campagne_from_grpc,
     releve_from_grpc,
 )
-from .campagne_queries import _verifier_propriete_superviseur
+from .campagne_queries import _enrichir_agents, _verifier_propriete_superviseur
 from .context import require_auth, require_role
 from .grpc_clients import campagne_client
 
@@ -93,6 +97,29 @@ class CampagneMutations:
             auteur_role=user.role,
         )
         return releve_from_grpc(response)
+
+    @strawberry.mutation
+    def affecter_zones(
+        self,
+        info: strawberry.types.Info,
+        campagne_id: str,
+        agent_id: str,
+        zones: list[ZoneInput],
+    ) -> list[AgentAffecte]:
+        """Affecte un agent à un ensemble de zones (remplace ses zones actuelles).
+
+        ADMIN (toutes), SUPERVISEUR (les siennes). Retourne la liste des agents
+        de la campagne rafraîchie (avec zones, stats et statut de tournée).
+        """
+        user = require_auth(info)
+        require_role(info, "ADMIN", "SUPERVISEUR")
+        _verifier_propriete_superviseur(user, campagne_id)
+        response = campagne_client.affecter_zones(
+            campagne_id=campagne_id,
+            agent_id=agent_id,
+            zones=[campagne_pb.Zone(quartier=z.quartier, camp=z.camp) for z in zones],
+        )
+        return _enrichir_agents(response.agents)
 
     @strawberry.mutation
     def marquer_non_releve(self, info: strawberry.types.Info, input: MarquerNonReleveInput) -> Releve:

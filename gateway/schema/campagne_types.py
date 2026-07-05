@@ -90,6 +90,58 @@ class DernierIndex:
     est_index_initial: bool
 
 
+@strawberry.type
+class ZoneStat:
+    """Une zone (quartier + camp) affectée à un agent, avec son avancement."""
+
+    quartier: str
+    camp: int
+    nb_abonnes: int  # abonnés actifs de la zone (dénominateur, via Abonné Service)
+    nb_releves: int  # relevés RELEVE de la zone
+    pct: float  # avancement de la zone (0-100)
+
+
+@strawberry.type
+class AgentAffecte:
+    """Un agent affecté à une campagne (globalement et/ou par zone) + son état."""
+
+    agent_id: str
+    username: str
+    role: str
+    statut: str  # EN_TOURNEE | ACTIF | EN_RETARD | INACTIF (dérivé du dernier relevé)
+    derniere_activite: str  # ISO 8601 du dernier relevé de l'agent, "" si aucun
+    nb_releves: int  # total relevés RELEVE saisis par l'agent
+    zones: list[ZoneStat]
+
+
+@strawberry.type
+class ZoneDisponible:
+    """Zone existante (issue des compteurs) proposée à l'affectation."""
+
+    quartier: str
+    camp: int
+    nb_abonnes: int
+
+
+@strawberry.type
+class ZoneRepartition:
+    """Une ligne du tableau « répartition par zone » (zone + agent responsable)."""
+
+    quartier: str
+    camp: int
+    agent_id: str
+    agent_username: str
+    nb_abonnes: int
+    nb_releves: int
+    pct: float
+
+
+@strawberry.input
+class ZoneInput:
+    quartier: str
+    camp: int
+
+
 @strawberry.input
 class CreateCampagneInput:
     nom: str
