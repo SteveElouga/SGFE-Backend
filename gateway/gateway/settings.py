@@ -71,6 +71,9 @@ NOTIFICATION_GRPC_PORT = env.int("NOTIFICATION_GRPC_PORT", default=50056)
 CONFIG_GRPC_HOST = env("CONFIG_GRPC_HOST", default="localhost")
 CONFIG_GRPC_PORT = env.int("CONFIG_GRPC_PORT", default=50058)
 
+REPORTING_GRPC_HOST = env("REPORTING_GRPC_HOST", default="localhost")
+REPORTING_GRPC_PORT = env.int("REPORTING_GRPC_PORT", default=50057)
+
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 
 # Le refresh token n'est jamais renvoyé dans le corps de la réponse GraphQL :
