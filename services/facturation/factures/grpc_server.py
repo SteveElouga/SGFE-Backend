@@ -19,7 +19,7 @@ import facturation_service_pb2_grpc as pb_grpc
 from .event_publisher import publish_facture_event, publish_tarif_event
 from .grpc_clients import CampagneServiceClient, ConfigServiceClient
 from .serializers import facture_to_proto, tarif_to_proto
-from .services import FactureService, ReleveData, TarifService
+from .services import BilanImpayesService, FactureService, ReleveData, TarifService
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,7 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
     def __init__(self) -> None:
         self._tarif_svc = TarifService()
         self._facture_svc = FactureService()
+        self._bilan_svc = BilanImpayesService()
         self._campagne_client = CampagneServiceClient()
         self._config_client = ConfigServiceClient()
 
@@ -187,6 +188,20 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
             )
             return pb.PDFResponse()
         except FileNotFoundError as exc:
+            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+            return pb.PDFResponse()
+
+    def GenererBilanImpayesPDF(
+        self,
+        request: pb.EmptyRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.PDFResponse:
+        """Génère le PDF du bilan des impayés (agrégat back-office)."""
+        try:
+            pdf_bytes, filename = self._bilan_svc.generer_bilan_impayes_pdf()
+            return pb.PDFResponse(pdf_content=pdf_bytes, filename=filename)
+        except Exception as exc:
+            logger.exception("GenererBilanImpayesPDF échoué")
             context.abort(grpc.StatusCode.INTERNAL, str(exc))
             return pb.PDFResponse()
 

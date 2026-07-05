@@ -270,3 +270,43 @@ class PaiementServiceClient:
                 extra={"facture_id": facture_id, "error": str(exc)},
             )
             return False
+
+    def list_impayes(self) -> list[dict]:
+        """Retourne les soldes impayés (facture_id + montants) depuis Paiement Service.
+
+        Dégradation gracieuse : liste vide si le service est inaccessible.
+        """
+        try:
+            response = self._stub.ListImpayes(self._pb.EmptyRequest())
+            return [
+                {
+                    "facture_id": s.facture_id,
+                    "montant_total": s.montant_total,
+                    "montant_paye": s.montant_paye,
+                    "solde_restant": s.solde_restant,
+                    "statut": s.statut,
+                }
+                for s in response.impayes
+            ]
+        except Exception as exc:
+            logger.warning("Paiement Service inaccessible — ListImpayes vide", extra={"error": str(exc)})
+            return []
+
+    def get_suivi_impaye(self, facture_id: str) -> dict | None:
+        """Retourne le suivi de relance d'une facture (étape, date de dépassement).
+
+        Dégradation gracieuse : None si le service est inaccessible ou sans suivi.
+        """
+        try:
+            s = self._stub.GetSuiviImpaye(self._pb.FactureIdRequest(facture_id=facture_id))
+            return {
+                "etape_actuelle": s.etape_actuelle,
+                "date_depassement": s.date_depassement,
+                "resolu_le": s.resolu_le,
+            }
+        except Exception as exc:
+            logger.warning(
+                "Paiement Service inaccessible — GetSuiviImpaye ignoré",
+                extra={"facture_id": facture_id, "error": str(exc)},
+            )
+            return None

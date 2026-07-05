@@ -6,6 +6,8 @@ service FacturationService {
   rpc GetFacture (FactureIdRequest) returns (FactureResponse);
   rpc ListFactures (ListFacturesRequest) returns (ListFacturesResponse);
   rpc GetFacturePDF (FactureIdRequest) returns (PDFResponse);
+  // Bilan des impayés (document A4 agrégé) — back-office ADMIN/COMPTABLE.
+  rpc GenererBilanImpayesPDF (EmptyRequest) returns (PDFResponse);
   rpc UpdateStatutFacture (UpdateStatutRequest) returns (FactureResponse);
   rpc GetTarifActuel (EmptyRequest) returns (TarifResponse);
   rpc UpdateTarif (UpdateTarifRequest) returns (TarifResponse);
