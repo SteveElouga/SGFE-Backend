@@ -1,0 +1,191 @@
+{% comment %}
+============================================================================
+TEMPLATE BILAN DES IMPAYÉS — AquaBill (WeasyPrint)
+----------------------------------------------------------------------------
+Rendu via render_to_string('bilan_impayes.html', context) puis WeasyPrint.
+Toutes les valeurs numériques sont fournies DÉJÀ FORMATÉES en chaînes
+(séparateur de milliers = espace) par bilan_generator.build_bilan_context.
+
+CONTRAT DE CONTEXTE :
+societe       .nom .adresse .telephone
+perimetre     texte (ex. "Ensemble des impayés")
+date_arrete   "JJ/MM/AAAA"      numero_bilan  "BILAN-IMP-AAAA-MM-JJ"
+nb_impayes    total_solde_court  nb_etape3_plus  nb_suspendus
+total_montant total_paye total_solde  (chaînes formatées)
+lignes        liste : .nom_complet .numero_abonne .numero_facture .montant
+              .paye .solde .retard .badge .badge_couleur .critique
+repartition   liste : .label .couleur .nb .solde .pct
+============================================================================
+{% endcomment %}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    @font-face { font-family: 'Montserrat'; font-weight: 400;
+      src: url('fonts/Montserrat-Regular.woff2') format('woff2'); }
+    @font-face { font-family: 'Montserrat'; font-weight: 500;
+      src: url('fonts/Montserrat-Medium.woff2') format('woff2'); }
+    @font-face { font-family: 'Montserrat'; font-weight: 600;
+      src: url('fonts/Montserrat-SemiBold.woff2') format('woff2'); }
+    @font-face { font-family: 'Montserrat'; font-weight: 700;
+      src: url('fonts/Montserrat-Bold.woff2') format('woff2'); }
+    @font-face { font-family: 'Montserrat'; font-weight: 800;
+      src: url('fonts/Montserrat-ExtraBold.woff2') format('woff2'); }
+
+    @page { size: A4; margin: 0.6in; }
+
+    * { box-sizing: border-box; }
+    body { font-family: 'Montserrat', 'Helvetica Neue', Arial, sans-serif; color: #0f172a; font-size: 11px; margin: 0; }
+
+    .head { display: flex; justify-content: space-between; align-items: flex-start; }
+    .brand { display: flex; gap: 13px; align-items: center; }
+    .brand__name { font-size: 21px; font-weight: 800; color: #0f1c3d; }
+    .brand__meta { font-size: 11.5px; color: #64748b; margin-top: 4px; line-height: 1.6; }
+    .doc-title { font-size: 26px; font-weight: 800; color: #0f1c3d; letter-spacing: 1px; }
+    .doc-num { font-size: 13px; font-weight: 700; color: #1a56db; margin-top: 4px; }
+    .doc-meta { font-size: 11.5px; color: #64748b; margin-top: 8px; line-height: 1.7; }
+    .rule { height: 4px; background: linear-gradient(90deg,#0f1c3d 0%,#1a56db 60%,#0e9f6e 100%); border-radius: 2px; margin: 18px 0 20px; }
+
+    .kpis { display: flex; gap: 12px; }
+    .kpi { flex: 1; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; }
+    .kpi--red { border-top: 3px solid #ef4444; }
+    .kpi__num { font-size: 26px; font-weight: 800; color: #0f172a; }
+    .kpi__num--danger { color: #dc2626; font-size: 22px; }
+    .kpi__num--warn { color: #b45309; }
+    .kpi__num--dark { color: #7f1d1d; }
+    .kpi__label { font-size: 11px; font-weight: 500; color: #94a3b8; margin-top: 3px; }
+
+    .section-title { font-size: 10px; font-weight: 700; color: #94a3b8; letter-spacing: 1.4px;
+      text-transform: uppercase; margin: 24px 0 10px; }
+
+    table { width: 100%; border-collapse: collapse; }
+    thead tr { background: #0f1c3d; }
+    th { padding: 10px 12px; font-size: 10px; font-weight: 700; color: #fff; letter-spacing: .8px;
+      text-transform: uppercase; }
+    th.l { text-align: left; } th.r { text-align: right; } th.c { text-align: center; }
+    td { padding: 12px 12px; border-bottom: 1px solid #e2e8f0; font-size: 12.5px; }
+    td.r { text-align: right; } td.c { text-align: center; }
+    .ab-nom { font-weight: 600; color: #0f172a; }
+    .ab-nom--crit { font-weight: 700; }
+    .ab-ref { font-size: 10px; color: #94a3b8; margin-top: 1px; }
+    .solde { font-weight: 700; color: #dc2626; }
+    .paye0 { color: #94a3b8; font-weight: 500; }
+    .paye1 { color: #15803d; font-weight: 600; }
+    .retard { font-weight: 700; }
+    .badge { display: inline-block; border-radius: 6px; padding: 3px 9px; font-size: 9px; font-weight: 700;
+      letter-spacing: .3px; text-transform: uppercase; color: #fff; }
+    tr.crit { background: #fef9f9; }
+    tr.total { background: #0f1c3d; }
+    tr.total td { border-bottom: none; color: #fff; }
+    .total__lbl { font-size: 11px; font-weight: 700; color: rgba(255,255,255,.75); letter-spacing: .5px; text-transform: uppercase; }
+    .total__paye { color: #86efac; font-weight: 700; }
+    .total__solde { font-size: 15px; font-weight: 800; }
+    .note { font-size: 9.5px; color: #94a3b8; margin-top: 8px; }
+
+    .rep-legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 6px; }
+    .rep-item { display: flex; gap: 8px; align-items: flex-start; width: 46%; }
+    .rep-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; margin-top: 3px; }
+    .rep-lbl { font-size: 11px; font-weight: 600; color: #0f172a; }
+    .rep-sub { font-size: 10px; color: #94a3b8; margin-top: 2px; }
+
+    .config { background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px; padding: 13px 16px; margin-top: 22px;
+      font-size: 10.5px; color: #64748b; line-height: 1.7; }
+    .config b { color: #475569; }
+
+    .foot { width: 100%; border-top: 2px solid #0f1c3d; padding-top: 9px; margin-top: 24px;
+      font-size: 9.5px; color: #94a3b8; }
+    .foot td { padding: 0; font-size: 9.5px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+
+  <div class="head">
+    <div class="brand">
+      <svg width="48" height="48" viewBox="0 0 38 38" fill="none"><path d="M19 3C19 3 8 15.5 8 23C8 30.18 13.04 34 19 34C24.96 34 30 30.18 30 23C30 15.5 19 3 19 3Z" fill="#0f1c3d" fill-opacity=".95"/><path d="M19 16C19 16 14 21.5 14 25C14 27.76 16.24 30 19 30C21.76 30 24 27.76 24 25C24 21.5 19 16 19 16Z" fill="#0e9f6e" fill-opacity=".85"/></svg>
+      <div>
+        <div class="brand__name">{{ societe.nom }}</div>
+        <div class="brand__meta">{{ societe.adresse }}<br>{{ societe.telephone }}</div>
+      </div>
+    </div>
+    <div style="text-align:right">
+      <div class="doc-title">BILAN DES IMPAYÉS</div>
+      <div class="doc-num">{{ numero_bilan }}</div>
+      <div class="doc-meta">Situation arrêtée au : <b style="color:#0f172a">{{ date_arrete }}</b><br>Périmètre : {{ perimetre }}</div>
+    </div>
+  </div>
+  <div class="rule"></div>
+
+  <div class="kpis">
+    <div class="kpi kpi--red"><div class="kpi__num">{{ nb_impayes }}</div><div class="kpi__label">factures impayées</div></div>
+    <div class="kpi"><div class="kpi__num kpi__num--danger">{{ total_solde }}</div><div class="kpi__label">FCFA de solde restant</div></div>
+    <div class="kpi"><div class="kpi__num kpi__num--warn">{{ nb_etape3_plus }}</div><div class="kpi__label">en étape 3 ou plus</div></div>
+    <div class="kpi"><div class="kpi__num kpi__num--dark">{{ nb_suspendus }}</div><div class="kpi__label">ligne(s) d'eau suspendue(s)</div></div>
+  </div>
+
+  <div class="section-title">Détail des créances — classées par ancienneté</div>
+  <table>
+    <thead>
+      <tr>
+        <th class="l">Abonné</th>
+        <th class="r">Montant</th>
+        <th class="r">Payé</th>
+        <th class="r">Solde</th>
+        <th class="c">Retard</th>
+        <th class="l">Relance</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in lignes %}
+      <tr class="{% if l.critique %}crit{% endif %}">
+        <td>
+          <div class="ab-nom {% if l.critique %}ab-nom--crit{% endif %}">{{ l.nom_complet|default:"—" }}</div>
+          <div class="ab-ref">{{ l.numero_abonne }} · {{ l.numero_facture }}</div>
+        </td>
+        <td class="r" style="font-weight:600">{{ l.montant }}</td>
+        <td class="r {% if l.paye == '0' %}paye0{% else %}paye1{% endif %}">{{ l.paye }}</td>
+        <td class="r solde">{{ l.solde }}</td>
+        <td class="c retard">{{ l.retard }}</td>
+        <td><span class="badge" style="background:{{ l.badge_couleur }}">{{ l.badge }}</span></td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px">Aucune facture impayée à la date d'arrêt.</td></tr>
+      {% endfor %}
+      {% if lignes %}
+      <tr class="total">
+        <td class="total__lbl">Total · {{ nb_impayes }} impayé(s)</td>
+        <td class="r" style="font-weight:700">{{ total_montant }}</td>
+        <td class="r total__paye">{{ total_paye }}</td>
+        <td class="r total__solde">{{ total_solde }}</td>
+        <td colspan="2"></td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+  <div class="note">Montants en FCFA · « Payé » = acomptes déjà encaissés · « Solde » = reste à recouvrer.</div>
+
+  {% if repartition %}
+  <div class="section-title">Répartition du solde par étape de relance</div>
+  <div class="rep-legend">
+    {% for r in repartition %}
+    <div class="rep-item">
+      <div class="rep-dot" style="background:{{ r.couleur }}"></div>
+      <div><div class="rep-lbl">{{ r.label }}</div><div class="rep-sub">{{ r.nb }} abonné(s) · {{ r.solde }} · {{ r.pct }}%</div></div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="config">
+    Relances automatiques : <b>Étape 1</b> J+0 (rappel doux) · <b>Étape 2</b> J+3 (rappel ferme) ·
+    <b>Étape 3</b> J+7 (avertissement + notification admin) · <b>Étape 4</b> J+10 (suspension automatique).
+    Paramétrage modifiable dans <b>Configuration → Relances</b>.
+  </div>
+
+  <table class="foot"><tr>
+    <td style="text-align:left">{{ societe.nom }} — Système de facturation d'eau AquaBill</td>
+    <td style="text-align:right">Bilan des impayés généré le {{ date_arrete }} — Document interne</td>
+  </tr></table>
+
+</body>
+</html>

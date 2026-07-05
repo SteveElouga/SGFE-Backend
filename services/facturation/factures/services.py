@@ -337,3 +337,88 @@ class FactureService:
             return lire_pdf(facture.pdf_path), f"{facture.numero_facture}.pdf"
 
         raise FileNotFoundError(f"Impossible de générer le PDF pour la facture {facture_id}.")
+
+
+class BilanImpayesService:
+    """Génère le PDF « Bilan des impayés » (agrégat back-office ADMIN/COMPTABLE).
+
+    Agrège les impayés (Paiement Service) enrichis du numéro de facture (base
+    locale), de l'identité de l'abonné (Abonné Service) et de l'étape de relance
+    (Paiement Service), puis rend un document A4 via WeasyPrint. Dégradation
+    gracieuse : un service amont indisponible n'empêche pas la génération (les
+    champs manquants sont laissés vides / à zéro).
+    """
+
+    def __init__(
+        self,
+        paiement_client: "PaiementServiceClient | None" = None,
+        abonne_client: "AbonneServiceClient | None" = None,
+        config_client=None,
+    ) -> None:
+        self._repo = FactureRepository()
+        from .grpc_clients import AbonneServiceClient, ConfigServiceClient, PaiementServiceClient
+
+        self._paiement_client = paiement_client or PaiementServiceClient()
+        self._abonne_client = abonne_client or AbonneServiceClient()
+        self._config_client = config_client or ConfigServiceClient()
+
+    def _build_ligne(self, solde: dict, date_arrete: datetime.date):
+        from .bilan_generator import LigneImpaye
+
+        facture_id = solde["facture_id"]
+        # Numéro de facture + abonne_id depuis la base locale (facturation possède
+        # les factures) ; dégradation si la facture a disparu.
+        try:
+            facture = self._repo.get_by_id(facture_id)
+            numero_facture = facture.numero_facture
+            abonne_id = facture.abonne_id
+        except ObjectDoesNotExist:
+            numero_facture = ""
+            abonne_id = ""
+
+        identite = self._abonne_client.get_abonne(abonne_id) if abonne_id else None
+        if identite is not None:
+            nom_complet = f"{identite.prenom} {identite.nom}".strip()
+            numero_abonne = identite.numero_abonne
+        else:
+            nom_complet = ""
+            numero_abonne = ""
+
+        suivi = self._paiement_client.get_suivi_impaye(facture_id)
+        etape = 1
+        jours_retard = 0
+        if suivi:
+            etape = suivi.get("etape_actuelle") or 1
+            date_dep = suivi.get("date_depassement") or ""
+            try:
+                jours_retard = (date_arrete - datetime.date.fromisoformat(date_dep[:10])).days
+            except (ValueError, TypeError):
+                jours_retard = 0
+
+        return LigneImpaye(
+            nom_complet=nom_complet,
+            numero_abonne=numero_abonne,
+            numero_facture=numero_facture,
+            montant=solde["montant_total"],
+            paye=solde["montant_paye"],
+            solde=solde["solde_restant"],
+            jours_retard=jours_retard,
+            etape=etape,
+            en_pause=solde["montant_paye"] > 0,  # un acompte reçu met les relances en pause
+        )
+
+    def generer_bilan_impayes_pdf(self) -> tuple[bytes, str]:
+        """Retourne (pdf_bytes, filename) du bilan des impayés arrêté ce jour."""
+        from .bilan_generator import build_bilan_context, generer_bilan_pdf_bytes
+
+        date_arrete = datetime.date.today()
+        impayes = self._paiement_client.list_impayes()
+        lignes = [self._build_ligne(s, date_arrete) for s in impayes]
+        # Tri par ancienneté décroissante (les plus en retard d'abord).
+        lignes.sort(key=lambda ligne: ligne.jours_retard, reverse=True)
+
+        societe = self._config_client.get_infos_societe()
+        context = build_bilan_context(lignes, societe, date_arrete)
+        pdf_bytes = generer_bilan_pdf_bytes(context)
+        filename = f"bilan-impayes-{date_arrete.isoformat()}.pdf"
+        return pdf_bytes, filename

@@ -95,3 +95,56 @@ class FacturePdfViewTests(SimpleTestCase):
         ):
             response = self.client.get(_URL, **_AUTH)
         self.assertEqual(response.status_code, 503)
+
+
+class BilanImpayesPdfViewTests(SimpleTestCase):
+    """Vue back-office GET /bilan-impayes/pdf/ (JWT + rôle ADMIN/COMPTABLE)."""
+
+    _URL = "/bilan-impayes/pdf/"
+
+    def test_sans_token_retourne_401(self):
+        response = self.client.get(self._URL)
+        self.assertEqual(response.status_code, 401)
+
+    def test_role_insuffisant_retourne_403_sans_appeler_le_pdf(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=make_user(role="AGENT")),
+            patch.object(facturation_client, "generer_bilan_impayes_pdf") as mock_pdf,
+        ):
+            response = self.client.get(self._URL, **_AUTH)
+        self.assertEqual(response.status_code, 403)
+        mock_pdf.assert_not_called()
+
+    def test_admin_recupere_le_bilan(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
+            patch.object(
+                facturation_client,
+                "generer_bilan_impayes_pdf",
+                return_value=make_pdf_response(pdf_content=b"%PDF bilan", filename="bilan-impayes-2026-07-04.pdf"),
+            ),
+        ):
+            response = self.client.get(self._URL, **_AUTH)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertEqual(b"".join(response.streaming_content), b"%PDF bilan")
+
+    def test_comptable_autorise(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=make_user(role="COMPTABLE")),
+            patch.object(facturation_client, "generer_bilan_impayes_pdf", return_value=make_pdf_response()),
+        ):
+            response = self.client.get(self._URL, **_AUTH)
+        self.assertEqual(response.status_code, 200)
+
+    def test_erreur_service_retourne_503(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
+            patch.object(
+                facturation_client,
+                "generer_bilan_impayes_pdf",
+                side_effect=_FakeRpcError(grpc.StatusCode.INTERNAL),
+            ),
+        ):
+            response = self.client.get(self._URL, **_AUTH)
+        self.assertEqual(response.status_code, 503)

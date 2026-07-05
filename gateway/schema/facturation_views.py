@@ -58,3 +58,37 @@ def facture_pdf(request: HttpRequest, facture_id: str) -> FileResponse | JsonRes
         as_attachment=False,
         filename=f"facture-{facture_id}.pdf",
     )
+
+
+@require_GET
+def bilan_impayes_pdf(request: HttpRequest) -> FileResponse | JsonResponse:
+    """Retourne le PDF du bilan des impayés pour un utilisateur ADMIN ou COMPTABLE.
+
+    Document agrégé (tous les impayés en cours), généré par le Facturation
+    Service. Authentification par JWT (`Authorization: Bearer <token>`), même
+    contrat de rôle que la consultation des factures.
+    """
+    token = extract_token(request)
+    if not token:
+        return JsonResponse({"erreur": "Authentification requise."}, status=401)
+
+    try:
+        user = auth_client.validate_token(token)
+    except grpc.RpcError:
+        return JsonResponse({"erreur": "Token invalide ou expiré."}, status=401)
+
+    if user.role not in _ROLES_AUTORISES:
+        return JsonResponse({"erreur": "Accès non autorisé."}, status=403)
+
+    try:
+        pdf_resp = facturation_client.generer_bilan_impayes_pdf()
+    except grpc.RpcError as exc:
+        logger.error("GenererBilanImpayesPDF gRPC error", extra={"error": str(exc)})
+        return JsonResponse({"erreur": "Bilan indisponible."}, status=503)
+
+    return FileResponse(
+        io.BytesIO(pdf_resp.pdf_content),
+        content_type="application/pdf",
+        as_attachment=False,
+        filename=pdf_resp.filename or "bilan-impayes.pdf",
+    )

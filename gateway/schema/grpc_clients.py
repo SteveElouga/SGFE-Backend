@@ -240,6 +240,9 @@ class FacturationServiceClient:
     def get_facture_pdf(self, facture_id: str) -> facturation_pb.PDFResponse:
         return self._stub.GetFacturePDF(facturation_pb.FactureIdRequest(facture_id=facture_id))
 
+    def generer_bilan_impayes_pdf(self) -> facturation_pb.PDFResponse:
+        return self._stub.GenererBilanImpayesPDF(facturation_pb.EmptyRequest())
+
     def update_statut_facture(self, facture_id: str, statut: str) -> facturation_pb.FactureResponse:
         return self._stub.UpdateStatutFacture(facturation_pb.UpdateStatutRequest(facture_id=facture_id, statut=statut))
 
