@@ -158,6 +158,8 @@ services:
       PAIEMENT_GRPC_PORT: "50055"
       ABONNE_GRPC_HOST: abonne-service
       ABONNE_GRPC_PORT: "50052"
+      REPORTING_GRPC_HOST: reporting-service
+      REPORTING_GRPC_PORT: "50057"
       JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
       PDF_STORAGE_DIR: /app/pdfs
       REDIS_URL: "redis://redis:6379/0"
@@ -216,6 +218,8 @@ services:
       ABONNE_GRPC_PORT: "50052"
       CONFIG_GRPC_HOST: config-service
       CONFIG_GRPC_PORT: "50058"
+      REPORTING_GRPC_HOST: reporting-service
+      REPORTING_GRPC_PORT: "50057"
       JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
     ports:
       - "50055:50055"
@@ -314,6 +318,8 @@ services:
       ABONNE_GRPC_PORT: "50052"
       FACTURATION_GRPC_HOST: facturation-service
       FACTURATION_GRPC_PORT: "50054"
+      REPORTING_GRPC_HOST: reporting-service
+      REPORTING_GRPC_PORT: "50057"
       JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
     ports:
       - "50053:50053"
@@ -356,6 +362,40 @@ services:
       - "50058:50058"
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
+  reporting-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: reporting_db
+      POSTGRES_USER: reporting_user
+      POSTGRES_PASSWORD: devpassword
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reporting_user -d reporting_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - reporting_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5439:5432"
+
+  reporting-service:
+    build: ./services/reporting
+    depends_on:
+      reporting-postgres:
+        condition: service_healthy
+    environment:
+      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_DEBUG: "True"
+      REPORTING_DB_HOST: reporting-postgres
+      REPORTING_DB_PORT: "5432"
+      REPORTING_DB_NAME: reporting_db
+      REPORTING_DB_USER: reporting_user
+      REPORTING_DB_PASSWORD: devpassword
+      REPORTING_GRPC_PORT: "50057"
+    ports:
+      - "50057:50057"
+    command: sh -c "python manage.py migrate && python manage.py grpc_server"
+
   gateway:
     build: ./gateway
     depends_on:
@@ -366,6 +406,7 @@ services:
       - paiement-service
       - notification-service
       - config-service
+      - reporting-service
       - redis
     environment:
       DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
@@ -385,6 +426,8 @@ services:
       NOTIFICATION_GRPC_PORT: "50056"
       CONFIG_GRPC_HOST: config-service
       CONFIG_GRPC_PORT: "50058"
+      REPORTING_GRPC_HOST: reporting-service
+      REPORTING_GRPC_PORT: "50057"
       GATEWAY_HTTP_PORT: "8000"
       COOKIE_SECURE: "False"
       REDIS_URL: "redis://redis:6379/0"
@@ -407,5 +450,6 @@ volumes:
   paiement_postgres_data:
   notification_postgres_data:
   config_postgres_data:
+  reporting_postgres_data:
   whatsapp_session:
   redis_data:
