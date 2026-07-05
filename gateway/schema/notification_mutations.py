@@ -25,6 +25,18 @@ class NotificationMutations:
         return envoi_from_grpc(notification_client.renvoyer_facture(facture_id=facture_id))
 
     @strawberry.mutation
+    def renvoyer_envoi(self, info: strawberry.types.Info, envoi_id: str) -> Envoi:
+        """Renvoie le message d'un envoi identifié par son id — ADMIN, COMPTABLE.
+
+        Résout la facture de l'envoi puis relance l'envoi (nouveau token) —
+        pratique pour le bouton « Renvoyer » de l'écran de suivi des envois (23).
+        """
+        require_auth(info)
+        require_role(info, "ADMIN", "COMPTABLE")
+        envoi = notification_client.get_envoi(envoi_id)
+        return envoi_from_grpc(notification_client.renvoyer_facture(facture_id=envoi.facture_id))
+
+    @strawberry.mutation
     def revoquer_token_abonne(self, info: strawberry.types.Info, token_id: str) -> bool:
         """Révoque un token d'accès abonné — ADMIN."""
         require_auth(info)

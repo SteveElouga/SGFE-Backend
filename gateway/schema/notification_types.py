@@ -6,9 +6,14 @@ import strawberry
 @strawberry.type
 class Envoi:
     envoi_id: str
+    abonne_id: str
     facture_id: str
-    statut: str
+    type_envoi: str  # FACTURE | RELANCE_1..4 | AVERTISSEMENT | SUSPENSION | RETABLISSEMENT
+    statut: str  # EN_ATTENTE | ENVOYE | ECHEC
     date_envoi: str
+    message_id: str  # identifiant technique du message (ex-telnyx_message_id)
+    raison_echec: str  # motif d'échec (vide si succès)
+    # Conservés pour rétro-compatibilité (mêmes valeurs que message_id / raison_echec).
     telnyx_message_id: str
     erreur: str
 
@@ -16,9 +21,13 @@ class Envoi:
 def envoi_from_grpc(r) -> Envoi:
     return Envoi(
         envoi_id=r.envoi_id,
+        abonne_id=getattr(r, "abonne_id", ""),
         facture_id=r.facture_id,
+        type_envoi=getattr(r, "type_envoi", ""),
         statut=r.statut,
         date_envoi=r.date_envoi,
+        message_id=r.telnyx_message_id,
+        raison_echec=r.erreur,
         telnyx_message_id=r.telnyx_message_id,
         erreur=r.erreur,
     )
