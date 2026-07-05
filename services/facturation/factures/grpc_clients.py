@@ -310,3 +310,51 @@ class PaiementServiceClient:
                 extra={"facture_id": facture_id, "error": str(exc)},
             )
             return None
+
+
+class ReportingServiceClient:
+    """Client gRPC vers Reporting Service (port 50057) — pousse les stats de facturation.
+
+    Le Reporting Service est un read model aval (ADR-019) : son indisponibilité
+    ne doit jamais interrompre la génération/mise à jour d'une facture. Toutes
+    les méthodes dégradent gracieusement (log + retour False).
+    """
+
+    def __init__(self) -> None:
+        address = f"{settings.REPORTING_GRPC_HOST}:{settings.REPORTING_GRPC_PORT}"
+        self._channel = grpc.insecure_channel(address)
+
+        proto_path = str(Path(settings.BASE_DIR) / "proto")
+        if proto_path not in sys.path:
+            sys.path.insert(0, proto_path)
+
+        import reporting_service_pb2 as pb
+        import reporting_service_pb2_grpc as pb_grpc
+
+        self._stub = pb_grpc.ReportingServiceStub(self._channel)
+        self._pb = pb
+
+    def update_stats_facturation(
+        self,
+        campagne_id: str,
+        delta_factures: int,
+        delta_montant: float,
+        type_update: str,
+    ) -> bool:
+        """type_update ∈ {GENEREE, ENVOYEE, PAYEE}. Retourne False si Reporting KO."""
+        try:
+            self._stub.UpdateStatsFacturation(
+                self._pb.UpdateStatsFacturationRequest(
+                    campagne_id=campagne_id,
+                    delta_factures=delta_factures,
+                    delta_montant=delta_montant,
+                    type_update=type_update,
+                )
+            )
+            return True
+        except Exception as exc:
+            logger.warning(
+                "Reporting Service inaccessible — UpdateStatsFacturation ignoré",
+                extra={"campagne_id": campagne_id, "type_update": type_update, "error": str(exc)},
+            )
+            return False

@@ -76,6 +76,7 @@ class FactureService:
         notification_client: "NotificationServiceClient | None" = None,
         abonne_client: "AbonneServiceClient | None" = None,
         campagne_client: "CampagneServiceClient | None" = None,
+        reporting_client=None,
     ) -> None:
         self._repo = FactureRepository()
         self._tarif_repo = TarifRepository()
@@ -87,12 +88,14 @@ class FactureService:
             CampagneServiceClient,
             NotificationServiceClient,
             PaiementServiceClient,
+            ReportingServiceClient,
         )
 
         self._paiement_client = paiement_client or PaiementServiceClient()
         self._notification_client = notification_client or NotificationServiceClient()
         self._abonne_client = abonne_client or AbonneServiceClient()
         self._campagne_client = campagne_client or CampagneServiceClient()
+        self._reporting_client = reporting_client or ReportingServiceClient()
 
     def generer_factures(
         self,
@@ -195,6 +198,19 @@ class FactureService:
             "Factures générées pour la campagne",
             extra={"campagne_id": campagne_id, "count": len(factures)},
         )
+
+        # Pousse les stats de facturation au Reporting Service (read model aval,
+        # dégradation gracieuse — voir ADR-019). Une seule mise à jour agrégée
+        # pour tout le lot généré.
+        if factures:
+            total_montant = float(sum((f.montant for f in factures), Decimal("0")))
+            self._reporting_client.update_stats_facturation(
+                campagne_id=campagne_id,
+                delta_factures=len(factures),
+                delta_montant=total_montant,
+                type_update="GENEREE",
+            )
+
         return factures
 
     def _generer_et_sauver_pdf(self, facture: Facture, societe: InfosSociete, campagne_nom: str = "") -> str:
@@ -302,7 +318,19 @@ class FactureService:
         if statut not in StatutFacture.values:
             raise ValidationError(f"Statut invalide : {statut}. Valeurs attendues : {', '.join(StatutFacture.values)}")
         facture = self._repo.get_by_id(facture_id)
-        return self._repo.update_statut(facture, statut)
+        ancien_statut = facture.statut
+        facture = self._repo.update_statut(facture, statut)
+
+        # Une facture qui passe PAYEE (depuis un autre statut) est signalée au
+        # Reporting Service (read model aval, dégradation gracieuse — ADR-019).
+        if statut == StatutFacture.PAYEE and ancien_statut != StatutFacture.PAYEE:
+            self._reporting_client.update_stats_facturation(
+                campagne_id=str(facture.campagne_id),
+                delta_factures=1,
+                delta_montant=0.0,
+                type_update="PAYEE",
+            )
+        return facture
 
     def get_pdf_bytes(self, facture_id: str) -> tuple[bytes, str]:
         """Retourne le contenu PDF et le nom de fichier d'une facture.

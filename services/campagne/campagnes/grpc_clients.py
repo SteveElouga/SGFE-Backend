@@ -131,3 +131,51 @@ class FacturationServiceClient:
                 extra={"campagne_id": campagne_id, "error": str(exc)},
             )
             return False
+
+
+class ReportingServiceClient:
+    """Client gRPC vers Reporting Service (port 50057) — stats de campagne (ADR-019).
+
+    Read model aval : son indisponibilité ne doit jamais faire échouer la clôture
+    d'une campagne. Dégradation gracieuse (log + retour False).
+    """
+
+    def __init__(self) -> None:
+        address = f"{settings.REPORTING_GRPC_HOST}:{settings.REPORTING_GRPC_PORT}"
+        self._channel = grpc.insecure_channel(address)
+
+        proto_path = str(Path(settings.BASE_DIR) / "proto")
+        if proto_path not in sys.path:
+            sys.path.insert(0, proto_path)
+
+        import reporting_service_pb2 as pb
+        import reporting_service_pb2_grpc as pb_grpc
+
+        self._stub = pb_grpc.ReportingServiceStub(self._channel)
+        self._pb = pb
+
+    def update_stats_campagne(
+        self,
+        campagne_id: str,
+        nom_campagne: str,
+        total_abonnes: int,
+        nb_releves: int,
+        consommation_totale: float,
+    ) -> bool:
+        try:
+            self._stub.UpdateStatsCampagne(
+                self._pb.UpdateStatsCampagneRequest(
+                    campagne_id=campagne_id,
+                    nom_campagne=nom_campagne,
+                    total_abonnes=total_abonnes,
+                    nb_releves=nb_releves,
+                    consommation_totale=consommation_totale,
+                )
+            )
+            return True
+        except Exception as exc:
+            logger.warning(
+                "Reporting Service inaccessible — UpdateStatsCampagne ignoré",
+                extra={"campagne_id": campagne_id, "error": str(exc)},
+            )
+            return False

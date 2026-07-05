@@ -179,6 +179,17 @@ class ReleveRepository:
             result[row["statut"]] = row["total"]
         return result
 
+    def sum_consommation_by_campagne(self, campagne_id: str) -> float:
+        """Somme des consommations relevées (statut RELEVE) d'une campagne."""
+        from django.db.models import Sum
+
+        total = (
+            Releve.objects.filter(campagne_id=campagne_id, statut=StatutReleve.RELEVE)
+            .aggregate(total=Sum("consommation"))
+            .get("total")
+        )
+        return float(total or 0.0)
+
     def count_releves_by_zone(self, campagne_id: str) -> dict[tuple[str, Optional[int]], int]:
         """Nombre de relevés RELEVE par zone (quartier, camp) pour une campagne."""
         from django.db.models import Count
