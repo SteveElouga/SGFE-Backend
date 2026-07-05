@@ -53,6 +53,19 @@ class CompteurRepository:
         compteur.save()
         return compteur
 
+    def list_zones(self) -> list[dict]:
+        """Zones de relevé distinctes (quartier, camp) avec le nombre d'abonnés
+        actifs — un abonné actif = un compteur ACTIF rattaché à un abonné ACTIF."""
+        from django.db.models import Count
+
+        rows = (
+            Compteur.objects.filter(statut=StatutCompteur.ACTIF, abonne__statut=StatutAbonne.ACTIF)
+            .values("quartier", "camp")
+            .annotate(nb_abonnes=Count("abonne_id", distinct=True))
+            .order_by("quartier", "camp")
+        )
+        return list(rows)
+
 
 class HistoriqueCompteurRepository:
     def create(
