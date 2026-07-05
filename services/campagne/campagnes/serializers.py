@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 
 import campagne_service_pb2 as pb
 
-from campagnes.models import Campagne, Releve
+from campagnes.models import Campagne, Releve, ReleveAudit
 
 
 def _to_iso(value) -> str:
@@ -42,8 +42,25 @@ def campagne_to_proto(campagne: Campagne) -> pb.CampagneResponse:
     )
 
 
+def audit_to_proto(audit: ReleveAudit) -> pb.ReleveAudit:
+    """Convertit une entrée d'audit en message protobuf ReleveAudit."""
+    return pb.ReleveAudit(
+        action=audit.action,
+        auteur_id=audit.auteur_id,
+        auteur_username=audit.auteur_username,
+        auteur_role=audit.auteur_role,
+        ancien_index=audit.ancien_index if audit.ancien_index is not None else 0.0,
+        nouvel_index=audit.nouvel_index if audit.nouvel_index is not None else 0.0,
+        horodatage=_to_iso(audit.horodatage),
+    )
+
+
 def releve_to_proto(releve: Releve) -> pb.ReleveResponse:
-    """Convertit un objet Releve en message protobuf ReleveResponse."""
+    """Convertit un objet Releve en message protobuf ReleveResponse.
+
+    Le journal d'audit est chargé via ``releve.audits`` : préférer un
+    ``prefetch_related("audits")`` en amont pour les listes (évite le N+1).
+    """
     return pb.ReleveResponse(
         releve_id=str(releve.id),
         abonne_id=releve.abonne_id,
@@ -53,4 +70,9 @@ def releve_to_proto(releve: Releve) -> pb.ReleveResponse:
         date_releve=_to_iso(releve.date_releve),
         observation=releve.observation,
         statut=releve.statut,
+        agent_id=releve.agent_id,
+        # Un relevé non persisté (instance en mémoire) n'a pas encore d'audit :
+        # on évite l'accès à la relation, qui déclencherait une requête inutile.
+        # (la PK ne suffit pas comme test : elle a un default=uuid4 dès l'init.)
+        audit=[audit_to_proto(a) for a in releve.audits.all()] if not releve._state.adding else [],
     )

@@ -81,3 +81,36 @@ class Releve(models.Model):
 
     def __str__(self) -> str:
         return f"Relevé {self.abonne_id} — {self.campagne}"
+
+
+class ActionAudit(models.TextChoices):
+    SAISIE = "SAISIE", "Saisie"
+    CORRECTION = "CORRECTION", "Correction"
+
+
+class ReleveAudit(models.Model):
+    """Journal d'audit d'un relevé : une entrée par saisie/correction d'index.
+
+    L'auteur est stocké en **snapshot** (id + username + rôle au moment de
+    l'action) — un journal d'audit ne doit pas changer si l'utilisateur est
+    renommé ou change de rôle plus tard.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    releve = models.ForeignKey(Releve, on_delete=models.CASCADE, related_name="audits")
+    action = models.CharField(max_length=20, choices=ActionAudit.choices)
+    auteur_id = models.CharField(max_length=36)
+    auteur_username = models.CharField(max_length=150, blank=True, default="")
+    auteur_role = models.CharField(max_length=20, blank=True, default="")
+    # Index avant/après l'action, pour tracer la valeur corrigée.
+    ancien_index = models.FloatField(null=True, blank=True)
+    nouvel_index = models.FloatField(null=True, blank=True)
+    horodatage = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "releve_audits"
+        ordering = ["horodatage"]
+        indexes = [models.Index(fields=["releve"])]
+
+    def __str__(self) -> str:
+        return f"{self.action} — relevé {self.releve_id} par {self.auteur_username or self.auteur_id}"

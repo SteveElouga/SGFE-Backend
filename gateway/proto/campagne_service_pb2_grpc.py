@@ -59,6 +59,11 @@ class CampagneServiceStub:
                 request_serializer=campagne__service__pb2.SaisirIndexRequest.SerializeToString,
                 response_deserializer=campagne__service__pb2.ReleveResponse.FromString,
                 _registered_method=True)
+        self.CorrigerReleve = channel.unary_unary(
+                '/campagne.CampagneService/CorrigerReleve',
+                request_serializer=campagne__service__pb2.CorrigerReleveRequest.SerializeToString,
+                response_deserializer=campagne__service__pb2.ReleveResponse.FromString,
+                _registered_method=True)
         self.MarquerNonReleve = channel.unary_unary(
                 '/campagne.CampagneService/MarquerNonReleve',
                 request_serializer=campagne__service__pb2.MarquerNonReleveRequest.SerializeToString,
@@ -124,6 +129,12 @@ class CampagneServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def SaisirIndex(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CorrigerReleve(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -197,6 +208,11 @@ def add_CampagneServiceServicer_to_server(servicer, server):
             'SaisirIndex': grpc.unary_unary_rpc_method_handler(
                     servicer.SaisirIndex,
                     request_deserializer=campagne__service__pb2.SaisirIndexRequest.FromString,
+                    response_serializer=campagne__service__pb2.ReleveResponse.SerializeToString,
+            ),
+            'CorrigerReleve': grpc.unary_unary_rpc_method_handler(
+                    servicer.CorrigerReleve,
+                    request_deserializer=campagne__service__pb2.CorrigerReleveRequest.FromString,
                     response_serializer=campagne__service__pb2.ReleveResponse.SerializeToString,
             ),
             'MarquerNonReleve': grpc.unary_unary_rpc_method_handler(
@@ -369,6 +385,33 @@ class CampagneService:
             target,
             '/campagne.CampagneService/SaisirIndex',
             campagne__service__pb2.SaisirIndexRequest.SerializeToString,
+            campagne__service__pb2.ReleveResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CorrigerReleve(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/campagne.CampagneService/CorrigerReleve',
+            campagne__service__pb2.CorrigerReleveRequest.SerializeToString,
             campagne__service__pb2.ReleveResponse.FromString,
             options,
             channel_credentials,

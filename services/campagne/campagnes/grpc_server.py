@@ -220,6 +220,8 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
                 nouveau_index=request.nouveau_index,
                 agent_id=request.agent_id,
                 observation=request.observation,
+                auteur_username=request.auteur_username,
+                auteur_role=request.auteur_role,
             )
             # Notifie la gateway (souscription progressionUpdated) : l'avancement
             # de la campagne vient de changer.
@@ -231,6 +233,43 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
         except Exception as exc:
             logger.exception("SaisirIndex échoué")
+            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+
+    def CorrigerReleve(
+        self,
+        request: pb.CorrigerReleveRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.ReleveResponse:
+        """Corrige un index déjà relevé (ADMIN ou SUPERVISEUR propriétaire).
+
+        Le relevé doit exister et être déjà RELEVE ; la correction est
+        autorisée même sur une campagne CLOTUREE. Une entrée d'audit
+        CORRECTION est ajoutée. Le contrôle d'accès (rôle, propriété) est
+        assuré en amont par la Gateway.
+        """
+        releve = self._releve_repo.get_by_campagne_abonne(request.campagne_id, request.abonne_id)
+        if releve is None:
+            context.abort(
+                grpc.StatusCode.NOT_FOUND,
+                f"Relevé introuvable pour l'abonné {request.abonne_id} dans la campagne.",
+            )
+            return
+        try:
+            releve = self._releve_svc.corriger_releve(
+                releve_id=str(releve.id),
+                nouveau_index=request.nouveau_index,
+                auteur_id=request.auteur_id,
+                auteur_username=request.auteur_username,
+                auteur_role=request.auteur_role,
+                observation=request.observation,
+            )
+            return releve_to_proto(releve)
+        except ObjectDoesNotExist as exc:
+            context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
+        except ValidationError as exc:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
+        except Exception as exc:
+            logger.exception("CorrigerReleve échoué")
             context.abort(grpc.StatusCode.INTERNAL, str(exc))
 
     def MarquerNonReleve(

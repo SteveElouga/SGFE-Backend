@@ -72,6 +72,22 @@ class CampagneQueries:
         return [releve_from_grpc(r) for r in response.releves]
 
     @strawberry.field
+    def releves_par_agent(self, info: strawberry.types.Info, campagne_id: str, agent_id: str) -> list[Releve]:
+        """Relevés saisis par un agent dans une campagne (écran « tournée agent »).
+
+        ADMIN (toutes), SUPERVISEUR (les siennes), AGENT (sa propre tournée
+        uniquement). Le filtrage par agent est fait ici, côté Gateway, pour ne
+        pas altérer le RPC ListReleves consommé par Facturation.
+        """
+        user = require_auth(info)
+        require_role(info, "ADMIN", "AGENT", "SUPERVISEUR")
+        _verifier_acces_campagne(user, campagne_id)
+        if user.role == "AGENT" and agent_id != user.user_id:
+            raise PermissionError("Accès refusé : vous ne pouvez consulter que votre propre tournée.")
+        response = campagne_client.list_releves(campagne_id)
+        return [releve_from_grpc(r) for r in response.releves if r.agent_id == agent_id]
+
+    @strawberry.field
     def progression(self, info: strawberry.types.Info, campagne_id: str) -> Progression:
         """Progression d'une campagne — ADMIN, AGENT, SUPERVISEUR (les siennes)."""
         user = require_auth(info)

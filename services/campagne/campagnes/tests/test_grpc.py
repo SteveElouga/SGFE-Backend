@@ -235,6 +235,62 @@ class TestSaisirIndexRPC(TestCase):
         ctx.abort.assert_called_once()
 
 
+class TestCorrigerReleveRPC(TestCase):
+    def setUp(self) -> None:
+        self.servicer = CampagneServicer()
+        svc = CampagneService()
+        campagne = svc.creer_campagne("C1", 1, 2026, created_by="user-A")
+        svc.demarrer_campagne(str(campagne.id))
+        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", ancien_index=100.0)
+        # Saisie initiale (par un agent) avant toute correction.
+        self.servicer.SaisirIndex(
+            pb.SaisirIndexRequest(
+                campagne_id=str(campagne.id),
+                abonne_id="abonne-001",
+                nouveau_index=150.0,
+                agent_id="agent-001",
+                auteur_username="bob",
+                auteur_role="AGENT",
+            ),
+            _mock_context(),
+        )
+        self.campagne = campagne
+
+    def _corriger_request(self, **kw) -> pb.CorrigerReleveRequest:
+        defaults = dict(
+            campagne_id=str(self.campagne.id),
+            abonne_id="abonne-001",
+            nouveau_index=180.0,
+            auteur_id="admin-001",
+            auteur_username="alice",
+            auteur_role="ADMIN",
+        )
+        return pb.CorrigerReleveRequest(**{**defaults, **kw})
+
+    def test_corriger_releve_succes_expose_audit_et_agent(self) -> None:
+        response = self.servicer.CorrigerReleve(self._corriger_request(), _mock_context())
+        self.assertEqual(response.nouveau_index, 180.0)
+        self.assertEqual(response.consommation, 80.0)
+        # agent_id d'origine préservé, journal SAISIE + CORRECTION exposé.
+        self.assertEqual(response.agent_id, "agent-001")
+        self.assertEqual([a.action for a in response.audit], ["SAISIE", "CORRECTION"])
+        self.assertEqual(response.audit[1].auteur_id, "admin-001")
+
+    def test_corriger_releve_apres_cloture(self) -> None:
+        from campagnes.repositories import CampagneRepository
+
+        CampagneRepository().update_statut(self.campagne, StatutCampagne.CLOTUREE)
+        response = self.servicer.CorrigerReleve(self._corriger_request(nouveau_index=175.0), _mock_context())
+        self.assertEqual(response.nouveau_index, 175.0)
+
+    def test_corriger_releve_introuvable_abort(self) -> None:
+        ctx = _mock_context()
+        with self.assertRaises(Exception):
+            self.servicer.CorrigerReleve(self._corriger_request(abonne_id="inconnu"), ctx)
+        ctx.abort.assert_called_once()
+        self.assertEqual(ctx.abort.call_args[0][0], grpc.StatusCode.NOT_FOUND)
+
+
 class TestGetProgressionRPC(TestCase):
     def setUp(self) -> None:
         self.servicer = CampagneServicer()

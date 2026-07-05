@@ -4,10 +4,11 @@ from typing import Optional
 
 import grpc
 from django.core.exceptions import ValidationError
+from django.db import transaction
 
 from .grpc_clients import AbonneServiceClient
-from .models import Campagne, Releve, StatutCampagne, StatutReleve
-from .repositories import CampagneRepository, ReleveRepository
+from .models import ActionAudit, Campagne, Releve, StatutCampagne, StatutReleve
+from .repositories import CampagneRepository, ReleveAuditRepository, ReleveRepository
 
 
 class CampagneService:
@@ -164,6 +165,7 @@ class ReleveService:
     def __init__(self) -> None:
         self._repo = ReleveRepository()
         self._campagne_repo = CampagneRepository()
+        self._audit_repo = ReleveAuditRepository()
 
     def saisir_index(
         self,
@@ -171,6 +173,8 @@ class ReleveService:
         nouveau_index: float,
         agent_id: str,
         observation: str = "",
+        auteur_username: str = "",
+        auteur_role: str = "",
     ) -> Releve:
         releve = self._repo.get_by_id(releve_id)
         if releve.campagne.statut != StatutCampagne.EN_COURS:
@@ -181,12 +185,63 @@ class ReleveService:
             raise ValidationError(
                 f"Le nouvel index ne peut pas être inférieur à l'ancien index ({releve.ancien_index})."
             )
-        return self._repo.saisir_index(
-            releve=releve,
-            nouveau_index=nouveau_index,
-            agent_id=agent_id,
-            observation=observation,
-        )
+        with transaction.atomic():
+            releve = self._repo.saisir_index(
+                releve=releve,
+                nouveau_index=nouveau_index,
+                agent_id=agent_id,
+                observation=observation,
+            )
+            self._audit_repo.create(
+                releve=releve,
+                action=ActionAudit.SAISIE,
+                auteur_id=agent_id,
+                auteur_username=auteur_username,
+                auteur_role=auteur_role,
+                ancien_index=releve.ancien_index,
+                nouvel_index=nouveau_index,
+            )
+        return releve
+
+    def corriger_releve(
+        self,
+        releve_id: str,
+        nouveau_index: float,
+        auteur_id: str,
+        auteur_username: str = "",
+        auteur_role: str = "",
+        observation: str = "",
+    ) -> Releve:
+        """Corrige un index déjà relevé (ADMIN ou SUPERVISEUR propriétaire).
+
+        Contrairement à ``saisir_index``, la correction est autorisée quel que
+        soit le statut de la campagne (y compris CLOTUREE) : une erreur de
+        saisie doit pouvoir être rectifiée après coup. Chaque correction est
+        journalisée (``ReleveAudit`` action CORRECTION).
+        """
+        releve = self._repo.get_by_id(releve_id)
+        if releve.statut != StatutReleve.RELEVE:
+            raise ValidationError("Seul un index déjà relevé peut être corrigé (utilisez la saisie d'index).")
+        if nouveau_index < releve.ancien_index:
+            raise ValidationError(
+                f"Le nouvel index ne peut pas être inférieur à l'ancien index ({releve.ancien_index})."
+            )
+        with transaction.atomic():
+            releve = self._repo.corriger(
+                releve=releve,
+                nouveau_index=nouveau_index,
+                observation=observation,
+            )
+            self._audit_repo.create(
+                releve=releve,
+                action=ActionAudit.CORRECTION,
+                auteur_id=auteur_id,
+                auteur_username=auteur_username,
+                auteur_role=auteur_role,
+                ancien_index=releve.ancien_index,
+                nouvel_index=nouveau_index,
+            )
+        return releve
 
     def marquer_non_releve(
         self,

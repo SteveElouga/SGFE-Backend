@@ -271,6 +271,62 @@ class TestReleveService(TestCase):
         with self.assertRaises(ValidationError):
             self.svc.saisir_index(str(self.releve.id), nouveau_index=150.0, agent_id="agent-001")
 
+    def test_saisir_index_cree_audit_saisie(self) -> None:
+        releve = self.svc.saisir_index(
+            str(self.releve.id),
+            nouveau_index=150.0,
+            agent_id="agent-001",
+            auteur_username="bob",
+            auteur_role="AGENT",
+        )
+        audits = list(releve.audits.all())
+        self.assertEqual(len(audits), 1)
+        self.assertEqual(audits[0].action, "SAISIE")
+        self.assertEqual(audits[0].auteur_id, "agent-001")
+        self.assertEqual(audits[0].auteur_username, "bob")
+        self.assertEqual(audits[0].auteur_role, "AGENT")
+        self.assertEqual(audits[0].ancien_index, 100.0)
+        self.assertEqual(audits[0].nouvel_index, 150.0)
+
+    # --- corriger relevé ---
+
+    def test_corriger_releve_succes_et_audit(self) -> None:
+        self.svc.saisir_index(str(self.releve.id), nouveau_index=150.0, agent_id="agent-001")
+        releve = self.svc.corriger_releve(
+            str(self.releve.id),
+            nouveau_index=180.0,
+            auteur_id="admin-001",
+            auteur_username="alice",
+            auteur_role="ADMIN",
+            observation="Erreur de lecture",
+        )
+        self.assertEqual(releve.nouveau_index, 180.0)
+        self.assertEqual(releve.consommation, 80.0)
+        self.assertEqual(releve.statut, StatutReleve.RELEVE)
+        # agent_id d'origine préservé (l'auteur de la correction n'écrase pas la saisie)
+        self.assertEqual(releve.agent_id, "agent-001")
+        actions = [a.action for a in releve.audits.all()]
+        self.assertEqual(actions, ["SAISIE", "CORRECTION"])
+        correction = releve.audits.all()[1]
+        self.assertEqual(correction.auteur_id, "admin-001")
+        self.assertEqual(correction.nouvel_index, 180.0)
+
+    def test_corriger_releve_autorise_apres_cloture(self) -> None:
+        self.svc.saisir_index(str(self.releve.id), nouveau_index=150.0, agent_id="agent-001")
+        CampagneRepository().update_statut(self.campagne, StatutCampagne.CLOTUREE)
+        releve = self.svc.corriger_releve(str(self.releve.id), nouveau_index=175.0, auteur_id="admin-001")
+        self.assertEqual(releve.nouveau_index, 175.0)
+
+    def test_corriger_releve_non_saisi_leve_erreur(self) -> None:
+        # Le relevé est encore A_RELEVER : rien à corriger.
+        with self.assertRaises(ValidationError):
+            self.svc.corriger_releve(str(self.releve.id), nouveau_index=150.0, auteur_id="admin-001")
+
+    def test_corriger_releve_inferieur_a_ancien_leve_erreur(self) -> None:
+        self.svc.saisir_index(str(self.releve.id), nouveau_index=150.0, agent_id="agent-001")
+        with self.assertRaises(ValidationError):
+            self.svc.corriger_releve(str(self.releve.id), nouveau_index=50.0, auteur_id="admin-001")
+
     # --- marquer non relevé / estimé ---
 
     def test_marquer_non_releve_succes(self) -> None:

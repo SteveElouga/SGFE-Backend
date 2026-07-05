@@ -59,6 +59,11 @@ class CampagneServiceStub:
                 request_serializer=campagne__service__pb2.SaisirIndexRequest.SerializeToString,
                 response_deserializer=campagne__service__pb2.ReleveResponse.FromString,
                 _registered_method=True)
+        self.CorrigerReleve = channel.unary_unary(
+                '/campagne.CampagneService/CorrigerReleve',
+                request_serializer=campagne__service__pb2.CorrigerReleveRequest.SerializeToString,
+                response_deserializer=campagne__service__pb2.ReleveResponse.FromString,
+                _registered_method=True)
         self.MarquerNonReleve = channel.unary_unary(
                 '/campagne.CampagneService/MarquerNonReleve',
                 request_serializer=campagne__service__pb2.MarquerNonReleveRequest.SerializeToString,
@@ -78,6 +83,11 @@ class CampagneServiceStub:
                 '/campagne.CampagneService/GetProgression',
                 request_serializer=campagne__service__pb2.CampagneIdRequest.SerializeToString,
                 response_deserializer=campagne__service__pb2.ProgressionResponse.FromString,
+                _registered_method=True)
+        self.GetResumeCloture = channel.unary_unary(
+                '/campagne.CampagneService/GetResumeCloture',
+                request_serializer=campagne__service__pb2.CampagneIdRequest.SerializeToString,
+                response_deserializer=campagne__service__pb2.ResumeClotureResponse.FromString,
                 _registered_method=True)
         self.CloturerCampagne = channel.unary_unary(
                 '/campagne.CampagneService/CloturerCampagne',
@@ -124,6 +134,12 @@ class CampagneServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CorrigerReleve(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def MarquerNonReleve(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -143,6 +159,12 @@ class CampagneServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def GetProgression(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetResumeCloture(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -188,6 +210,11 @@ def add_CampagneServiceServicer_to_server(servicer, server):
                     request_deserializer=campagne__service__pb2.SaisirIndexRequest.FromString,
                     response_serializer=campagne__service__pb2.ReleveResponse.SerializeToString,
             ),
+            'CorrigerReleve': grpc.unary_unary_rpc_method_handler(
+                    servicer.CorrigerReleve,
+                    request_deserializer=campagne__service__pb2.CorrigerReleveRequest.FromString,
+                    response_serializer=campagne__service__pb2.ReleveResponse.SerializeToString,
+            ),
             'MarquerNonReleve': grpc.unary_unary_rpc_method_handler(
                     servicer.MarquerNonReleve,
                     request_deserializer=campagne__service__pb2.MarquerNonReleveRequest.FromString,
@@ -207,6 +234,11 @@ def add_CampagneServiceServicer_to_server(servicer, server):
                     servicer.GetProgression,
                     request_deserializer=campagne__service__pb2.CampagneIdRequest.FromString,
                     response_serializer=campagne__service__pb2.ProgressionResponse.SerializeToString,
+            ),
+            'GetResumeCloture': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetResumeCloture,
+                    request_deserializer=campagne__service__pb2.CampagneIdRequest.FromString,
+                    response_serializer=campagne__service__pb2.ResumeClotureResponse.SerializeToString,
             ),
             'CloturerCampagne': grpc.unary_unary_rpc_method_handler(
                     servicer.CloturerCampagne,
@@ -365,6 +397,33 @@ class CampagneService:
             _registered_method=True)
 
     @staticmethod
+    def CorrigerReleve(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/campagne.CampagneService/CorrigerReleve',
+            campagne__service__pb2.CorrigerReleveRequest.SerializeToString,
+            campagne__service__pb2.ReleveResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def MarquerNonReleve(request,
             target,
             options=(),
@@ -462,6 +521,33 @@ class CampagneService:
             '/campagne.CampagneService/GetProgression',
             campagne__service__pb2.CampagneIdRequest.SerializeToString,
             campagne__service__pb2.ProgressionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetResumeCloture(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/campagne.CampagneService/GetResumeCloture',
+            campagne__service__pb2.CampagneIdRequest.SerializeToString,
+            campagne__service__pb2.ResumeClotureResponse.FromString,
             options,
             channel_credentials,
             insecure,

@@ -175,6 +175,9 @@ class CampagneServiceClient:
     def saisir_index(self, **kwargs) -> campagne_pb.ReleveResponse:
         return self._stub.SaisirIndex(campagne_pb.SaisirIndexRequest(**kwargs))
 
+    def corriger_releve(self, **kwargs) -> campagne_pb.ReleveResponse:
+        return self._stub.CorrigerReleve(campagne_pb.CorrigerReleveRequest(**kwargs))
+
     def marquer_non_releve(self, **kwargs) -> campagne_pb.ReleveResponse:
         return self._stub.MarquerNonReleve(campagne_pb.MarquerNonReleveRequest(**kwargs))
 
