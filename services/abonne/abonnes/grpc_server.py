@@ -139,6 +139,12 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
         publish_abonne_event(request.abonne_id)
         return pb.CompteurResponse(**compteur_to_response(compteur))
 
+    def ListZones(self, request, context):
+        zones = self.compteur_service.list_zones()
+        return pb.ListZonesResponse(
+            zones=[pb.ZoneStat(quartier=z["quartier"], camp=z["camp"], nb_abonnes=z["nb_abonnes"]) for z in zones]
+        )
+
 
 def serve() -> None:
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10), interceptors=[ErrorHandlingInterceptor()])

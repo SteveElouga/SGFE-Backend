@@ -59,6 +59,26 @@ class AbonneServiceServicerTests(TestCase):
         response = self.servicer.ListAbonnesActifs(pb.EmptyRequest(), self.context)
         self.assertEqual(len(response.abonnes), 0)
 
+    def test_list_zones_agrege_par_quartier_camp(self):
+        # 2 abonnés Centre·1, 1 abonné Plateau·3, 1 abonné Centre·2.
+        self._create(numero_compteur=1, quartier="Centre", camp=1)
+        self._create(numero_compteur=2, quartier="Centre", camp=1)
+        self._create(numero_compteur=3, quartier="Plateau", camp=3)
+        self._create(numero_compteur=4, quartier="Centre", camp=2)
+        response = self.servicer.ListZones(pb.EmptyRequest(), self.context)
+        zones = {(z.quartier, z.camp): z.nb_abonnes for z in response.zones}
+        self.assertEqual(zones[("Centre", 1)], 2)
+        self.assertEqual(zones[("Centre", 2)], 1)
+        self.assertEqual(zones[("Plateau", 3)], 1)
+
+    def test_list_zones_exclut_abonne_suspendu(self):
+        self._create(numero_compteur=1, quartier="Centre", camp=1)
+        suspendu = self._create(numero_compteur=2, quartier="Centre", camp=1)
+        self.servicer.SuspendreAbonne(pb.AbonneIdRequest(abonne_id=suspendu.abonne_id), self.context)
+        response = self.servicer.ListZones(pb.EmptyRequest(), self.context)
+        zones = {(z.quartier, z.camp): z.nb_abonnes for z in response.zones}
+        self.assertEqual(zones[("Centre", 1)], 1)
+
     def test_update_abonne(self):
         created = self._create()
         response = self.servicer.UpdateAbonne(

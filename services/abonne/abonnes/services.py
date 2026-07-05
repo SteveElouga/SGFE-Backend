@@ -153,6 +153,10 @@ class CompteurService:
     def get_historique(self, abonne_id: str) -> list:
         return self.historique.list_by_abonne(abonne_id)
 
+    def list_zones(self) -> list[dict]:
+        """Zones de relevé (quartier, camp) et nombre d'abonnés actifs par zone."""
+        return self.compteurs.list_zones()
+
     def remplacer_compteur(
         self,
         abonne_id: str,

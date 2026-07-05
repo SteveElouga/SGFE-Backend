@@ -14,6 +14,9 @@ service AbonneService {
   rpc UpdateCompteur (UpdateCompteurRequest) returns (CompteurResponse);
   rpc RemplacerCompteur (RemplacerCompteurRequest) returns (CompteurResponse);
   rpc GetHistoriqueCompteur (AbonneIdRequest) returns (ListHistoriqueResponse);
+  // Zones de relevé distinctes (quartier + camp) avec le nombre d'abonnés
+  // actifs — sert à l'affectation des agents par zone (Campagne/Gateway).
+  rpc ListZones (EmptyRequest) returns (ListZonesResponse);
 }
 
 message AbonneIdRequest { string abonne_id = 1; }
@@ -84,6 +87,15 @@ message CompteurResponse {
 
 message ListAbonnesResponse { repeated AbonneResponse abonnes = 1; }
 message EmptyRequest {}
+
+// Une zone de relevé = une paire (quartier, camp) portée par les compteurs.
+message ZoneStat {
+  string quartier = 1;
+  int32 camp = 2;
+  int32 nb_abonnes = 3;  // abonnés ACTIFS avec compteur ACTIF dans la zone
+}
+
+message ListZonesResponse { repeated ZoneStat zones = 1; }
 
 message HistoriqueCompteurResponse {
   string historique_id = 1;
