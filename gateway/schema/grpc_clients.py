@@ -254,6 +254,9 @@ class FacturationServiceClient:
     def generer_bilan_impayes_pdf(self) -> facturation_pb.PDFResponse:
         return self._stub.GenererBilanImpayesPDF(facturation_pb.EmptyRequest())
 
+    def generer_synthese_campagne_pdf(self, campagne_id: str) -> facturation_pb.PDFResponse:
+        return self._stub.GenererSyntheseCampagnePDF(facturation_pb.CampagneIdRequest(campagne_id=campagne_id))
+
     def update_statut_facture(self, facture_id: str, statut: str) -> facturation_pb.FactureResponse:
         return self._stub.UpdateStatutFacture(facturation_pb.UpdateStatutRequest(facture_id=facture_id, statut=statut))
 
@@ -271,6 +274,9 @@ class PaiementServiceClient:
 
     def list_paiements(self, facture_id: str = "", abonne_id: str = "") -> paiement_pb.ListPaiementsResponse:
         return self._stub.ListPaiements(paiement_pb.ListPaiementsRequest(facture_id=facture_id, abonne_id=abonne_id))
+
+    def list_paiements_par_campagne(self, campagne_id: str) -> paiement_pb.ListPaiementsResponse:
+        return self._stub.ListPaiementsParCampagne(paiement_pb.CampagneIdRequest(campagne_id=campagne_id))
 
     def enregistrer_paiement(
         self,

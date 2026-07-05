@@ -44,6 +44,11 @@ class ReportingServiceStub:
                 request_serializer=reporting__service__pb2.CampagneIdRequest.SerializeToString,
                 response_deserializer=reporting__service__pb2.StatsCampagneResponse.FromString,
                 _registered_method=True)
+        self.GetStatsCompletes = channel.unary_unary(
+                '/reporting.ReportingService/GetStatsCompletes',
+                request_serializer=reporting__service__pb2.CampagneIdRequest.SerializeToString,
+                response_deserializer=reporting__service__pb2.DashboardResponse.FromString,
+                _registered_method=True)
         self.GetStatsGlobales = channel.unary_unary(
                 '/reporting.ReportingService/GetStatsGlobales',
                 request_serializer=reporting__service__pb2.EmptyRequest.SerializeToString,
@@ -77,6 +82,15 @@ class ReportingServiceServicer:
 
     def GetStatsCampagne(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetStatsCompletes(self, request, context):
+        """Stats agrégées des 3 domaines pour UNE campagne précise (synthèse PDF,
+        écran 13). Comme GetDashboard mais ciblé par campagne_id ; sous-blocs vides
+        si la campagne n'a pas encore de stats dans un domaine.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -117,6 +131,11 @@ def add_ReportingServiceServicer_to_server(servicer, server):
                     servicer.GetStatsCampagne,
                     request_deserializer=reporting__service__pb2.CampagneIdRequest.FromString,
                     response_serializer=reporting__service__pb2.StatsCampagneResponse.SerializeToString,
+            ),
+            'GetStatsCompletes': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetStatsCompletes,
+                    request_deserializer=reporting__service__pb2.CampagneIdRequest.FromString,
+                    response_serializer=reporting__service__pb2.DashboardResponse.SerializeToString,
             ),
             'GetStatsGlobales': grpc.unary_unary_rpc_method_handler(
                     servicer.GetStatsGlobales,
@@ -193,6 +212,33 @@ class ReportingService:
             '/reporting.ReportingService/GetStatsCampagne',
             reporting__service__pb2.CampagneIdRequest.SerializeToString,
             reporting__service__pb2.StatsCampagneResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetStatsCompletes(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/reporting.ReportingService/GetStatsCompletes',
+            reporting__service__pb2.CampagneIdRequest.SerializeToString,
+            reporting__service__pb2.DashboardResponse.FromString,
             options,
             channel_credentials,
             insecure,

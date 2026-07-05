@@ -4,6 +4,10 @@ package reporting;
 service ReportingService {
   rpc GetDashboard (EmptyRequest) returns (DashboardResponse);
   rpc GetStatsCampagne (CampagneIdRequest) returns (StatsCampagneResponse);
+  // Stats agrégées des 3 domaines pour UNE campagne précise (synthèse PDF,
+  // écran 13). Comme GetDashboard mais ciblé par campagne_id ; sous-blocs vides
+  // si la campagne n'a pas encore de stats dans un domaine.
+  rpc GetStatsCompletes (CampagneIdRequest) returns (DashboardResponse);
   rpc GetStatsGlobales (EmptyRequest) returns (StatsGlobalesResponse);
   rpc UpdateStatsCampagne (UpdateStatsCampagneRequest) returns (StatusResponse);
   rpc UpdateStatsFacturation (UpdateStatsFacturationRequest) returns (StatusResponse);

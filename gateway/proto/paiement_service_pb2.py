@@ -24,33 +24,35 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16paiement_service.proto\x12\x08paiement\"u\n\x17InitialiserSoldeRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x15\n\rmontant_total\x18\x03 \x01(\x01\x12\x1c\n\x14\x64\x61te_limite_paiement\x18\x04 \x01(\t\"\xb9\x01\n\x1a\x45nregistrerPaiementRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x0f\n\x07montant\x18\x03 \x01(\x01\x12\x15\n\rdate_paiement\x18\x04 \x01(\t\x12\x15\n\rmode_paiement\x18\x05 \x01(\t\x12\x1d\n\x15reference_transaction\x18\x06 \x01(\t\x12\x16\n\x0e\x65nregistre_par\x18\x07 \x01(\t\"&\n\x10\x46\x61\x63tureIdRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\"=\n\x14ListPaiementsRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\"\xc5\x01\n\x10PaiementResponse\x12\x13\n\x0bpaiement_id\x18\x01 \x01(\t\x12\x12\n\nfacture_id\x18\x02 \x01(\t\x12\x0f\n\x07montant\x18\x03 \x01(\x01\x12\x15\n\rdate_paiement\x18\x04 \x01(\t\x12\x15\n\rmode_paiement\x18\x05 \x01(\t\x12\x1d\n\x15reference_transaction\x18\x06 \x01(\t\x12\x12\n\ncreated_at\x18\x07 \x01(\t\x12\x16\n\x0e\x65nregistre_par\x18\x08 \x01(\t\"w\n\rSoldeResponse\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x15\n\rmontant_total\x18\x02 \x01(\x01\x12\x14\n\x0cmontant_paye\x18\x03 \x01(\x01\x12\x15\n\rsolde_restant\x18\x04 \x01(\x01\x12\x0e\n\x06statut\x18\x05 \x01(\t\"\x93\x01\n\x13SuiviImpayeResponse\x12\x10\n\x08suivi_id\x18\x01 \x01(\t\x12\x12\n\nfacture_id\x18\x02 \x01(\t\x12\x11\n\tabonne_id\x18\x03 \x01(\t\x12\x18\n\x10\x64\x61te_depassement\x18\x04 \x01(\t\x12\x16\n\x0e\x65tape_actuelle\x18\x05 \x01(\x05\x12\x11\n\tresolu_le\x18\x06 \x01(\t\"F\n\x15ListPaiementsResponse\x12-\n\tpaiements\x18\x01 \x03(\x0b\x32\x1a.paiement.PaiementResponse\"?\n\x13ListImpayesResponse\x12(\n\x07impayes\x18\x01 \x03(\x0b\x32\x17.paiement.SoldeResponse\"\x0e\n\x0c\x45mptyRequest2\xe0\x03\n\x0fPaiementService\x12N\n\x10InitialiserSolde\x12!.paiement.InitialiserSoldeRequest\x1a\x17.paiement.SoldeResponse\x12W\n\x13\x45nregistrerPaiement\x12$.paiement.EnregistrerPaiementRequest\x1a\x1a.paiement.PaiementResponse\x12?\n\x08GetSolde\x12\x1a.paiement.FactureIdRequest\x1a\x17.paiement.SoldeResponse\x12P\n\rListPaiements\x12\x1e.paiement.ListPaiementsRequest\x1a\x1f.paiement.ListPaiementsResponse\x12\x44\n\x0bListImpayes\x12\x16.paiement.EmptyRequest\x1a\x1d.paiement.ListImpayesResponse\x12K\n\x0eGetSuiviImpaye\x12\x1a.paiement.FactureIdRequest\x1a\x1d.paiement.SuiviImpayeResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16paiement_service.proto\x12\x08paiement\"\x8a\x01\n\x17InitialiserSoldeRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x15\n\rmontant_total\x18\x03 \x01(\x01\x12\x1c\n\x14\x64\x61te_limite_paiement\x18\x04 \x01(\t\x12\x13\n\x0b\x63\x61mpagne_id\x18\x05 \x01(\t\"\xb9\x01\n\x1a\x45nregistrerPaiementRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x0f\n\x07montant\x18\x03 \x01(\x01\x12\x15\n\rdate_paiement\x18\x04 \x01(\t\x12\x15\n\rmode_paiement\x18\x05 \x01(\t\x12\x1d\n\x15reference_transaction\x18\x06 \x01(\t\x12\x16\n\x0e\x65nregistre_par\x18\x07 \x01(\t\"&\n\x10\x46\x61\x63tureIdRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\"(\n\x11\x43\x61mpagneIdRequest\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\"=\n\x14ListPaiementsRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\"\xd8\x01\n\x10PaiementResponse\x12\x13\n\x0bpaiement_id\x18\x01 \x01(\t\x12\x12\n\nfacture_id\x18\x02 \x01(\t\x12\x0f\n\x07montant\x18\x03 \x01(\x01\x12\x15\n\rdate_paiement\x18\x04 \x01(\t\x12\x15\n\rmode_paiement\x18\x05 \x01(\t\x12\x1d\n\x15reference_transaction\x18\x06 \x01(\t\x12\x12\n\ncreated_at\x18\x07 \x01(\t\x12\x16\n\x0e\x65nregistre_par\x18\x08 \x01(\t\x12\x11\n\tabonne_id\x18\t \x01(\t\"w\n\rSoldeResponse\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x15\n\rmontant_total\x18\x02 \x01(\x01\x12\x14\n\x0cmontant_paye\x18\x03 \x01(\x01\x12\x15\n\rsolde_restant\x18\x04 \x01(\x01\x12\x0e\n\x06statut\x18\x05 \x01(\t\"\x93\x01\n\x13SuiviImpayeResponse\x12\x10\n\x08suivi_id\x18\x01 \x01(\t\x12\x12\n\nfacture_id\x18\x02 \x01(\t\x12\x11\n\tabonne_id\x18\x03 \x01(\t\x12\x18\n\x10\x64\x61te_depassement\x18\x04 \x01(\t\x12\x16\n\x0e\x65tape_actuelle\x18\x05 \x01(\x05\x12\x11\n\tresolu_le\x18\x06 \x01(\t\"F\n\x15ListPaiementsResponse\x12-\n\tpaiements\x18\x01 \x03(\x0b\x32\x1a.paiement.PaiementResponse\"?\n\x13ListImpayesResponse\x12(\n\x07impayes\x18\x01 \x03(\x0b\x32\x17.paiement.SoldeResponse\"\x0e\n\x0c\x45mptyRequest2\xba\x04\n\x0fPaiementService\x12N\n\x10InitialiserSolde\x12!.paiement.InitialiserSoldeRequest\x1a\x17.paiement.SoldeResponse\x12W\n\x13\x45nregistrerPaiement\x12$.paiement.EnregistrerPaiementRequest\x1a\x1a.paiement.PaiementResponse\x12?\n\x08GetSolde\x12\x1a.paiement.FactureIdRequest\x1a\x17.paiement.SoldeResponse\x12P\n\rListPaiements\x12\x1e.paiement.ListPaiementsRequest\x1a\x1f.paiement.ListPaiementsResponse\x12X\n\x18ListPaiementsParCampagne\x12\x1b.paiement.CampagneIdRequest\x1a\x1f.paiement.ListPaiementsResponse\x12\x44\n\x0bListImpayes\x12\x16.paiement.EmptyRequest\x1a\x1d.paiement.ListImpayesResponse\x12K\n\x0eGetSuiviImpaye\x12\x1a.paiement.FactureIdRequest\x1a\x1d.paiement.SuiviImpayeResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'paiement_service_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_INITIALISERSOLDEREQUEST']._serialized_start=36
-  _globals['_INITIALISERSOLDEREQUEST']._serialized_end=153
-  _globals['_ENREGISTRERPAIEMENTREQUEST']._serialized_start=156
-  _globals['_ENREGISTRERPAIEMENTREQUEST']._serialized_end=341
-  _globals['_FACTUREIDREQUEST']._serialized_start=343
-  _globals['_FACTUREIDREQUEST']._serialized_end=381
-  _globals['_LISTPAIEMENTSREQUEST']._serialized_start=383
-  _globals['_LISTPAIEMENTSREQUEST']._serialized_end=444
-  _globals['_PAIEMENTRESPONSE']._serialized_start=447
-  _globals['_PAIEMENTRESPONSE']._serialized_end=644
-  _globals['_SOLDERESPONSE']._serialized_start=646
-  _globals['_SOLDERESPONSE']._serialized_end=765
-  _globals['_SUIVIIMPAYERESPONSE']._serialized_start=768
-  _globals['_SUIVIIMPAYERESPONSE']._serialized_end=915
-  _globals['_LISTPAIEMENTSRESPONSE']._serialized_start=917
-  _globals['_LISTPAIEMENTSRESPONSE']._serialized_end=987
-  _globals['_LISTIMPAYESRESPONSE']._serialized_start=989
-  _globals['_LISTIMPAYESRESPONSE']._serialized_end=1052
-  _globals['_EMPTYREQUEST']._serialized_start=1054
-  _globals['_EMPTYREQUEST']._serialized_end=1068
-  _globals['_PAIEMENTSERVICE']._serialized_start=1071
-  _globals['_PAIEMENTSERVICE']._serialized_end=1551
+  _globals['_INITIALISERSOLDEREQUEST']._serialized_start=37
+  _globals['_INITIALISERSOLDEREQUEST']._serialized_end=175
+  _globals['_ENREGISTRERPAIEMENTREQUEST']._serialized_start=178
+  _globals['_ENREGISTRERPAIEMENTREQUEST']._serialized_end=363
+  _globals['_FACTUREIDREQUEST']._serialized_start=365
+  _globals['_FACTUREIDREQUEST']._serialized_end=403
+  _globals['_CAMPAGNEIDREQUEST']._serialized_start=405
+  _globals['_CAMPAGNEIDREQUEST']._serialized_end=445
+  _globals['_LISTPAIEMENTSREQUEST']._serialized_start=447
+  _globals['_LISTPAIEMENTSREQUEST']._serialized_end=508
+  _globals['_PAIEMENTRESPONSE']._serialized_start=511
+  _globals['_PAIEMENTRESPONSE']._serialized_end=727
+  _globals['_SOLDERESPONSE']._serialized_start=729
+  _globals['_SOLDERESPONSE']._serialized_end=848
+  _globals['_SUIVIIMPAYERESPONSE']._serialized_start=851
+  _globals['_SUIVIIMPAYERESPONSE']._serialized_end=998
+  _globals['_LISTPAIEMENTSRESPONSE']._serialized_start=1000
+  _globals['_LISTPAIEMENTSRESPONSE']._serialized_end=1070
+  _globals['_LISTIMPAYESRESPONSE']._serialized_start=1072
+  _globals['_LISTIMPAYESRESPONSE']._serialized_end=1135
+  _globals['_EMPTYREQUEST']._serialized_start=1137
+  _globals['_EMPTYREQUEST']._serialized_end=1151
+  _globals['_PAIEMENTSERVICE']._serialized_start=1154
+  _globals['_PAIEMENTSERVICE']._serialized_end=1724
 # @@protoc_insertion_point(module_scope)

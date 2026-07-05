@@ -303,6 +303,30 @@ class TestListPaiementsRPC(TestCase):
         self.assertEqual(len(response.paiements), 0)
 
 
+class TestListPaiementsParCampagneRPC(TestCase):
+    """Tests du RPC ListPaiementsParCampagne (export CSV écran 13)."""
+
+    def setUp(self) -> None:
+        with patch("paiements.grpc_server.FacturationServiceClient"):
+            self.servicer = PaiementServicer()
+        _creer_solde("fac-a1", "ab-1", 500.00, campagne_id="camp-A")
+        _creer_solde("fac-b1", "ab-2", 200.00, campagne_id="camp-B")
+
+    def test_filtre_les_paiements_de_la_campagne(self) -> None:
+        svc = PaiementService()
+        svc.enregistrer_paiement("fac-a1", "ab-1", 100.0, date.today(), ModePaiement.ESPECES, "", "u-1")
+        svc.enregistrer_paiement("fac-b1", "ab-2", 50.0, date.today(), ModePaiement.ESPECES, "", "u-1")
+
+        response = self.servicer.ListPaiementsParCampagne(pb.CampagneIdRequest(campagne_id="camp-A"), _mock_context())
+        self.assertEqual(len(response.paiements), 1)
+        self.assertEqual(response.paiements[0].facture_id, "fac-a1")
+        self.assertEqual(response.paiements[0].abonne_id, "ab-1")
+
+    def test_campagne_sans_paiement_retourne_vide(self) -> None:
+        response = self.servicer.ListPaiementsParCampagne(pb.CampagneIdRequest(campagne_id="camp-A"), _mock_context())
+        self.assertEqual(len(response.paiements), 0)
+
+
 class TestListImpayesRPC(TestCase):
     """Tests du RPC ListImpayes."""
 

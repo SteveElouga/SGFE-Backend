@@ -66,6 +66,19 @@ class AgregateurDashboard:
         """Lève ObjectDoesNotExist si la campagne n'a pas de stats."""
         return self._campagne.get(campagne_id)
 
+    def get_stats_completes(self, campagne_id: str) -> Dashboard:
+        """Retourne les stats des 3 domaines pour une campagne précise.
+
+        Contrairement à get_stats_campagne, ne lève pas si la campagne est
+        inconnue : renvoie un Dashboard aux sous-blocs None (dégradation propre,
+        utilisé par la synthèse PDF de l'écran 13).
+        """
+        return Dashboard(
+            campagne=self._campagne.get_or_none(campagne_id),
+            facturation=self._facturation.get_or_none(campagne_id),
+            paiements=self._paiements.get_or_none(campagne_id),
+        )
+
     def get_stats_globales(self) -> StatsGlobales:
         campagnes = self._campagne.list_all()
         conso = sum((c.consommation_totale for c in campagnes), Decimal("0"))

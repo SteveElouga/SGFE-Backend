@@ -168,6 +168,23 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
             context.abort(grpc.StatusCode.INTERNAL, str(exc))
 
     # ------------------------------------------------------------------ #
+    # ListPaiementsParCampagne
+    # ------------------------------------------------------------------ #
+
+    def ListPaiementsParCampagne(
+        self,
+        request: pb.CampagneIdRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.ListPaiementsResponse:
+        """Liste les paiements de toutes les factures d'une campagne (export CSV)."""
+        try:
+            paiements = self._svc.list_paiements_par_campagne(campagne_id=request.campagne_id)
+            return pb.ListPaiementsResponse(paiements=[paiement_to_proto(p) for p in paiements])
+        except Exception as exc:
+            logger.exception("ListPaiementsParCampagne échoué")
+            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+
+    # ------------------------------------------------------------------ #
     # ListImpayes
     # ------------------------------------------------------------------ #
 

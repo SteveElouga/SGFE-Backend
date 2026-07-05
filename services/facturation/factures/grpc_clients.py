@@ -336,6 +336,60 @@ class ReportingServiceClient:
         self._stub = pb_grpc.ReportingServiceStub(self._channel)
         self._pb = pb
 
+    def get_stats_completes(self, campagne_id: str) -> dict | None:
+        """Stats agrégées des 3 domaines pour une campagne (synthèse PDF, écran 13).
+
+        Retourne un dict `{campagne, facturation, paiements}` dont chaque bloc
+        vaut None si le domaine n'a pas de stats pour cette campagne. Retourne
+        None si le Reporting Service est injoignable (dégradation gracieuse — la
+        synthèse ne peut alors pas être produite, le serveur renvoie NOT_FOUND).
+        """
+        try:
+            r = self._stub.GetStatsCompletes(self._pb.CampagneIdRequest(campagne_id=campagne_id))
+        except Exception as exc:
+            logger.warning(
+                "Reporting Service inaccessible — GetStatsCompletes ignoré",
+                extra={"campagne_id": campagne_id, "error": str(exc)},
+            )
+            return None
+        c, f, p = r.campagne_en_cours, r.facturation_en_cours, r.paiements_en_cours
+        return {
+            "campagne": (
+                {
+                    "campagne_id": c.campagne_id,
+                    "nom_campagne": c.nom_campagne,
+                    "total_abonnes": c.total_abonnes,
+                    "nb_releves": c.nb_releves,
+                    "nb_en_attente": c.nb_en_attente,
+                    "pourcentage_progression": c.pourcentage_progression,
+                    "consommation_totale": c.consommation_totale,
+                }
+                if c.campagne_id
+                else None
+            ),
+            "facturation": (
+                {
+                    "total_factures": f.total_factures,
+                    "montant_total_facture": f.montant_total_facture,
+                    "nb_factures_envoyees": f.nb_factures_envoyees,
+                    "nb_factures_payees": f.nb_factures_payees,
+                    "nb_impayes": f.nb_impayes,
+                }
+                if f.campagne_id
+                else None
+            ),
+            "paiements": (
+                {
+                    "montant_encaisse": p.montant_encaisse,
+                    "montant_impaye": p.montant_impaye,
+                    "nb_impayes": p.nb_impayes,
+                    "taux_recouvrement": p.taux_recouvrement,
+                }
+                if p.campagne_id
+                else None
+            ),
+        }
+
     def update_stats_facturation(
         self,
         campagne_id: str,

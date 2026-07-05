@@ -6,6 +6,9 @@ service PaiementService {
   rpc EnregistrerPaiement (EnregistrerPaiementRequest) returns (PaiementResponse);
   rpc GetSolde (FactureIdRequest) returns (SoldeResponse);
   rpc ListPaiements (ListPaiementsRequest) returns (ListPaiementsResponse);
+  // Liste les paiements de toutes les factures d'une campagne (export CSV
+  // back-office, écran 13). Le rattachement passe par SoldeFacture.campagne_id.
+  rpc ListPaiementsParCampagne (CampagneIdRequest) returns (ListPaiementsResponse);
   rpc ListImpayes (EmptyRequest) returns (ListImpayesResponse);
   rpc GetSuiviImpaye (FactureIdRequest) returns (SuiviImpayeResponse);
 }
@@ -31,6 +34,7 @@ message EnregistrerPaiementRequest {
 }
 
 message FactureIdRequest { string facture_id = 1; }
+message CampagneIdRequest { string campagne_id = 1; }
 
 message ListPaiementsRequest {
   string facture_id = 1;
@@ -48,6 +52,7 @@ message PaiementResponse {
   // ID utilisateur Auth Service ayant enregistré le paiement (résolu en nom
   // d'utilisateur affichable côté Gateway — voir schema/paiement_types.py).
   string enregistre_par = 8;
+  string abonne_id = 9;
 }
 
 message SoldeResponse {

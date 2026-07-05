@@ -19,7 +19,7 @@ import facturation_service_pb2_grpc as pb_grpc
 from .event_publisher import publish_facture_event, publish_tarif_event
 from .grpc_clients import CampagneServiceClient, ConfigServiceClient
 from .serializers import facture_to_proto, tarif_to_proto
-from .services import BilanImpayesService, FactureService, ReleveData, TarifService
+from .services import BilanImpayesService, FactureService, ReleveData, SyntheseCampagneService, TarifService
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
         self._tarif_svc = TarifService()
         self._facture_svc = FactureService()
         self._bilan_svc = BilanImpayesService()
+        self._synthese_svc = SyntheseCampagneService()
         self._campagne_client = CampagneServiceClient()
         self._config_client = ConfigServiceClient()
 
@@ -202,6 +203,26 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
             return pb.PDFResponse(pdf_content=pdf_bytes, filename=filename)
         except Exception as exc:
             logger.exception("GenererBilanImpayesPDF échoué")
+            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+            return pb.PDFResponse()
+
+    def GenererSyntheseCampagnePDF(
+        self,
+        request: pb.CampagneIdRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.PDFResponse:
+        """Génère le PDF de synthèse d'une campagne (écran 13, stats 3 domaines)."""
+        try:
+            pdf_bytes, filename = self._synthese_svc.generer_synthese_campagne_pdf(request.campagne_id)
+            return pb.PDFResponse(pdf_content=pdf_bytes, filename=filename)
+        except ObjectDoesNotExist:
+            context.abort(
+                grpc.StatusCode.NOT_FOUND,
+                f"Aucune statistique pour la campagne : {request.campagne_id}",
+            )
+            return pb.PDFResponse()
+        except Exception as exc:
+            logger.exception("GenererSyntheseCampagnePDF échoué")
             context.abort(grpc.StatusCode.INTERNAL, str(exc))
             return pb.PDFResponse()
 
