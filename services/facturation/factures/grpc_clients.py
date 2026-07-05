@@ -249,6 +249,7 @@ class PaiementServiceClient:
         abonne_id: str,
         montant_total: float,
         date_limite_paiement: str,
+        campagne_id: str = "",
     ) -> bool:
         """Initialise le solde de la facture dans Paiement Service.
 
@@ -261,6 +262,7 @@ class PaiementServiceClient:
                     abonne_id=abonne_id,
                     montant_total=montant_total,
                     date_limite_paiement=date_limite_paiement,
+                    campagne_id=campagne_id,
                 )
             )
             return True

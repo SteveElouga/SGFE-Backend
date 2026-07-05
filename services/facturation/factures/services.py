@@ -185,6 +185,7 @@ class FactureService:
                 abonne_id=releve.abonne_id,
                 montant_total=float(facture.montant),
                 date_limite_paiement=date_limite.isoformat(),
+                campagne_id=campagne_id,
             )
             # Envoi WhatsApp si activé sur la campagne (dégradation gracieuse si KO)
             if envoyer_whatsapp_auto:

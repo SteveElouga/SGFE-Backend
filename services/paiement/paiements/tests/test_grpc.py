@@ -32,6 +32,7 @@ def _creer_solde(
     abonne_id: str = "abonne-001",
     montant: float = 300.00,
     date_limite: date | None = None,
+    campagne_id: str = "",
 ) -> SoldeFacture:
     """Crée un SoldeFacture de test."""
     return SoldeFactureRepository().create(
@@ -39,6 +40,7 @@ def _creer_solde(
         abonne_id=abonne_id,
         montant_total=Decimal(str(montant)),
         date_limite_paiement=date_limite or date(2026, 7, 31),
+        campagne_id=campagne_id,
     )
 
 
@@ -62,6 +64,17 @@ class TestInitialiserSoldeRPC(TestCase):
         self.assertEqual(response.statut, StatutSolde.IMPAYEE)
         self.assertAlmostEqual(response.montant_total, 300.00)
         self.assertAlmostEqual(response.montant_paye, 0.0)
+
+    def test_initialiser_solde_stocke_campagne_id(self) -> None:
+        request = pb.InitialiserSoldeRequest(
+            facture_id="facture-camp",
+            abonne_id="abonne-001",
+            montant_total=300.00,
+            date_limite_paiement="2026-07-31",
+            campagne_id="camp-42",
+        )
+        self.servicer.InitialiserSolde(request, _mock_context())
+        self.assertEqual(SoldeFacture.objects.get(facture_id="facture-camp").campagne_id, "camp-42")
 
     def test_initialiser_solde_montant_nul_abort(self) -> None:
         """Un montant nul provoque un abort INVALID_ARGUMENT."""
@@ -119,6 +132,48 @@ class TestEnregistrerPaiementRPC(TestCase):
         self.assertEqual(response.facture_id, "facture-001")
         self.assertAlmostEqual(response.montant, 100.00)
         self.assertEqual(response.enregistre_par, "user-001")
+
+    @patch("paiements.grpc_server.ReportingServiceClient")
+    @patch("paiements.grpc_server.FacturationServiceClient")
+    def test_enregistrer_paiement_pousse_stats_reporting(self, mock_fact_cls, mock_rep_cls) -> None:
+        _creer_solde("facture-rep", "abonne-001", 300.00, campagne_id="camp-9")
+        servicer = PaiementServicer()
+        request = pb.EnregistrerPaiementRequest(
+            facture_id="facture-rep",
+            abonne_id="abonne-001",
+            montant=100.00,
+            date_paiement="2026-06-20",
+            mode_paiement="ESPECES",
+            reference_transaction="",
+            enregistre_par="user-001",
+        )
+        servicer.EnregistrerPaiement(request, _mock_context())
+
+        servicer._reporting_client.update_stats_paiements.assert_called()
+        first = servicer._reporting_client.update_stats_paiements.call_args_list[0].kwargs
+        self.assertEqual(first["campagne_id"], "camp-9")
+        self.assertEqual(first["type_update"], "PAIEMENT")
+        self.assertAlmostEqual(first["montant_paiement"], 100.0)
+
+    @patch("paiements.grpc_server.ReportingServiceClient")
+    @patch("paiements.grpc_server.FacturationServiceClient")
+    def test_enregistrer_paiement_total_emet_impaye_resolu(self, mock_fact_cls, mock_rep_cls) -> None:
+        _creer_solde("facture-full", "abonne-001", 100.00, campagne_id="camp-9")
+        servicer = PaiementServicer()
+        request = pb.EnregistrerPaiementRequest(
+            facture_id="facture-full",
+            abonne_id="abonne-001",
+            montant=100.00,  # solde entièrement payé -> PAYEE
+            date_paiement="2026-06-20",
+            mode_paiement="ESPECES",
+            reference_transaction="",
+            enregistre_par="user-001",
+        )
+        servicer.EnregistrerPaiement(request, _mock_context())
+
+        types = [c.kwargs["type_update"] for c in servicer._reporting_client.update_stats_paiements.call_args_list]
+        self.assertIn("PAIEMENT", types)
+        self.assertIn("IMPAYE_RESOLU", types)
 
     def test_enregistrer_paiement_montant_invalide_abort(self) -> None:
         """Un montant nul provoque un abort INVALID_ARGUMENT."""

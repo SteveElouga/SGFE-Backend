@@ -16,7 +16,8 @@ import paiement_service_pb2 as pb
 import paiement_service_pb2_grpc as pb_grpc
 
 from paiements.event_publisher import publish_paiement_event
-from paiements.grpc_clients import FacturationServiceClient
+from paiements.grpc_clients import FacturationServiceClient, ReportingServiceClient
+from paiements.models import StatutSolde
 from paiements.serializers import paiement_to_proto, solde_to_proto, suivi_to_proto
 from paiements.services import PaiementService
 
@@ -29,6 +30,7 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
     def __init__(self) -> None:
         self._svc = PaiementService()
         self._facturation_client = FacturationServiceClient()
+        self._reporting_client = ReportingServiceClient()
 
     # ------------------------------------------------------------------ #
     # InitialiserSolde — appelé par Facturation Service après génération
@@ -47,6 +49,7 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
                 abonne_id=request.abonne_id,
                 montant_total=request.montant_total,
                 date_limite_paiement=date_limite,
+                campagne_id=request.campagne_id,
             )
             return solde_to_proto(solde)
         except ValidationError as exc:
@@ -94,6 +97,20 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
             # Résolution ou suspension des relances
             self._svc.marquer_facture_payee_si_applicable(solde)
             self._svc.suspendre_relances_si_partiel(solde)
+
+            # Pousse les stats de paiement au Reporting Service (read model aval,
+            # dégradation gracieuse — ADR-019). campagne_id porté par le solde.
+            self._reporting_client.update_stats_paiements(
+                campagne_id=solde.campagne_id,
+                montant_paiement=float(request.montant),
+                type_update="PAIEMENT",
+            )
+            if solde.statut == StatutSolde.PAYEE:
+                self._reporting_client.update_stats_paiements(
+                    campagne_id=solde.campagne_id,
+                    montant_paiement=0.0,
+                    type_update="IMPAYE_RESOLU",
+                )
 
             # Notifie la gateway (souscription paiementCree) — événement
             # auto-porteur, avec le statut de facture résultant.

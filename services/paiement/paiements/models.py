@@ -48,6 +48,9 @@ class SoldeFacture(models.Model):
     # Clé primaire métier : une ligne par facture
     facture_id = models.CharField(max_length=36, primary_key=True)
     abonne_id = models.CharField(max_length=36)
+    # Campagne d'origine (fournie par Facturation à InitialiserSolde) — permet
+    # d'agréger les stats de paiement par campagne sans lookup (Reporting, ADR-019).
+    campagne_id = models.CharField(max_length=36, blank=True, default="")
     montant_total = models.DecimalField(max_digits=12, decimal_places=2)
     montant_paye = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     solde_restant = models.DecimalField(max_digits=12, decimal_places=2)
