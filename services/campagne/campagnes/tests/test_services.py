@@ -473,3 +473,62 @@ class TestScheduler(TestCase):
         campagne_planifiee_job()
         campagne.refresh_from_db()
         self.assertEqual(campagne.statut, StatutCampagne.PLANIFIEE)
+
+
+class TestAffectationZone(TestCase):
+    """Affectation des agents par zone + agrégation ListAgentsCampagne."""
+
+    def setUp(self) -> None:
+        self.svc = CampagneService()
+        self.releve_svc = ReleveService()
+        campagne = self.svc.creer_campagne("C", 6, 2026, created_by="user-A")
+        CampagneRepository().update_statut(campagne, StatutCampagne.EN_COURS)
+        self.campagne = campagne
+
+    def _ajouter(self, abonne_id: str, quartier: str, camp: int, ancien_index: float = 0.0):
+        with patch.object(
+            AbonneServiceClient,
+            "get_abonne",
+            return_value=SimpleNamespace(statut="ACTIF", compteur=SimpleNamespace(quartier=quartier, camp=camp)),
+        ):
+            return self.svc.ajouter_abonne_campagne(str(self.campagne.id), abonne_id, ancien_index)
+
+    def test_snapshot_zone_sur_releve(self) -> None:
+        releve = self._ajouter("ab-1", "Plateau", 3)
+        self.assertEqual(releve.quartier, "Plateau")
+        self.assertEqual(releve.camp, 3)
+
+    def test_affecter_zones_cree_affectation_globale(self) -> None:
+        agents = self.svc.affecter_zones(str(self.campagne.id), "agent-1", [("Plateau", 3), ("Centre", 1)])
+        self.assertTrue(CampagneAgentRepository().est_affecte(str(self.campagne.id), "agent-1"))
+        agent = next(a for a in agents if a["agent_id"] == "agent-1")
+        zones = {(z["quartier"], z["camp"]) for z in agent["zones"]}
+        self.assertEqual(zones, {("Plateau", 3), ("Centre", 1)})
+
+    def test_affecter_zones_reaffecte_une_zone(self) -> None:
+        self.svc.affecter_zones(str(self.campagne.id), "agent-1", [("Plateau", 3), ("Centre", 1)])
+        # Plateau·3 passe à agent-2 ; agent-1 ne garde que Centre·1.
+        self.svc.affecter_zones(str(self.campagne.id), "agent-2", [("Plateau", 3)])
+        agents = {a["agent_id"]: a for a in self.svc.list_agents_campagne(str(self.campagne.id))}
+        self.assertEqual({(z["quartier"], z["camp"]) for z in agents["agent-1"]["zones"]}, {("Centre", 1)})
+        self.assertEqual({(z["quartier"], z["camp"]) for z in agents["agent-2"]["zones"]}, {("Plateau", 3)})
+
+    def test_list_agents_campagne_stats(self) -> None:
+        # 2 abonnés Plateau·3, 1 relevé saisi par agent-1.
+        r1 = self._ajouter("ab-1", "Plateau", 3, ancien_index=100.0)
+        self._ajouter("ab-2", "Plateau", 3, ancien_index=50.0)
+        self.releve_svc.saisir_index(str(r1.id), nouveau_index=150.0, agent_id="agent-1")
+        self.svc.affecter_zones(str(self.campagne.id), "agent-1", [("Plateau", 3)])
+
+        agent = next(a for a in self.svc.list_agents_campagne(str(self.campagne.id)) if a["agent_id"] == "agent-1")
+        self.assertEqual(agent["nb_releves"], 1)
+        self.assertIsNotNone(agent["derniere_activite"])
+        zone = agent["zones"][0]
+        self.assertEqual((zone["quartier"], zone["camp"]), ("Plateau", 3))
+        self.assertEqual(zone["nb_releves"], 1)  # 1 relevé RELEVE dans la zone
+
+    def test_agent_global_sans_zone_apparait(self) -> None:
+        CampagneAgentRepository().assigner(self.campagne, "agent-global")
+        agents = {a["agent_id"]: a for a in self.svc.list_agents_campagne(str(self.campagne.id))}
+        self.assertIn("agent-global", agents)
+        self.assertEqual(agents["agent-global"]["zones"], [])

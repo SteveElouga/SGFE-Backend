@@ -23,7 +23,7 @@ from campagnes.repositories import (
     CampagneRepository,
     ReleveRepository,
 )
-from campagnes.serializers import campagne_to_proto, releve_to_proto
+from campagnes.serializers import agent_affecte_to_proto, campagne_to_proto, releve_to_proto
 from campagnes.services import CampagneService, ReleveService
 
 logger = logging.getLogger(__name__)
@@ -114,6 +114,39 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
             context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
         except Exception as exc:
             logger.exception("AssignerAgent échoué")
+            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+
+    def AffecterZones(
+        self,
+        request: pb.AffecterZonesRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.ListAgentsCampagneResponse:
+        """Affecte un agent à un ensemble de zones (remplace ses zones actuelles)."""
+        try:
+            zones = [(z.quartier, z.camp) for z in request.zones]
+            agents = self._campagne_svc.affecter_zones(request.campagne_id, request.agent_id, zones)
+            return pb.ListAgentsCampagneResponse(agents=[agent_affecte_to_proto(a) for a in agents])
+        except ObjectDoesNotExist as exc:
+            context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
+        except ValidationError as exc:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
+        except Exception as exc:
+            logger.exception("AffecterZones échoué")
+            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+
+    def ListAgentsCampagne(
+        self,
+        request: pb.CampagneIdRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.ListAgentsCampagneResponse:
+        """Liste les agents affectés à une campagne (global et/ou par zone) + stats."""
+        try:
+            agents = self._campagne_svc.list_agents_campagne(request.campagne_id)
+            return pb.ListAgentsCampagneResponse(agents=[agent_affecte_to_proto(a) for a in agents])
+        except ObjectDoesNotExist as exc:
+            context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
+        except Exception as exc:
+            logger.exception("ListAgentsCampagne échoué")
             context.abort(grpc.StatusCode.INTERNAL, str(exc))
 
     def CloturerCampagne(
@@ -224,8 +257,9 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
                 auteur_role=request.auteur_role,
             )
             # Notifie la gateway (souscription progressionUpdated) : l'avancement
-            # de la campagne vient de changer.
-            publish_progression_event(request.campagne_id)
+            # de la campagne vient de changer. agent_id permet de rafraîchir la
+            # carte de l'agent (statut/dernière activité) côté « détail campagne ».
+            publish_progression_event(request.campagne_id, agent_id=request.agent_id)
             return releve_to_proto(releve)
         except ObjectDoesNotExist as exc:
             context.abort(grpc.StatusCode.NOT_FOUND, str(exc))

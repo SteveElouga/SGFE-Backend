@@ -71,8 +71,23 @@ def releve_to_proto(releve: Releve) -> pb.ReleveResponse:
         observation=releve.observation,
         statut=releve.statut,
         agent_id=releve.agent_id,
+        quartier=releve.quartier,
+        camp=releve.camp if releve.camp is not None else 0,
         # Un relevé non persisté (instance en mémoire) n'a pas encore d'audit :
         # on évite l'accès à la relation, qui déclencherait une requête inutile.
         # (la PK ne suffit pas comme test : elle a un default=uuid4 dès l'init.)
         audit=[audit_to_proto(a) for a in releve.audits.all()] if not releve._state.adding else [],
+    )
+
+
+def agent_affecte_to_proto(agent: dict) -> pb.AgentAffecte:
+    """Convertit un dict d'agent affecté (voir CampagneService.list_agents_campagne)
+    en message protobuf AgentAffecte."""
+    return pb.AgentAffecte(
+        agent_id=agent["agent_id"],
+        zones=[
+            pb.ZoneAffectee(quartier=z["quartier"], camp=z["camp"], nb_releves=z["nb_releves"]) for z in agent["zones"]
+        ],
+        nb_releves=agent["nb_releves"],
+        derniere_activite=_to_iso(agent["derniere_activite"]),
     )

@@ -18,11 +18,14 @@ class PublishProgressionEventTests(SimpleTestCase):
     def test_publie_le_bon_payload_sur_le_bon_canal(self):
         client = MagicMock()
         with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
-            publish_progression_event("camp-1")
+            publish_progression_event("camp-1", agent_id="agent-1")
 
         channel, payload = client.publish.call_args.args
         self.assertEqual(channel, CHANNEL)
-        self.assertEqual(json.loads(payload), {"event_type": "PROGRESSION_UPDATED", "campagne_id": "camp-1"})
+        self.assertEqual(
+            json.loads(payload),
+            {"event_type": "PROGRESSION_UPDATED", "campagne_id": "camp-1", "agent_id": "agent-1"},
+        )
         client.close.assert_called_once()
 
     def test_best_effort_sur_echec_redis(self):

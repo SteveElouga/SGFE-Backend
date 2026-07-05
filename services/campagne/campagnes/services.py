@@ -8,7 +8,13 @@ from django.db import transaction
 
 from .grpc_clients import AbonneServiceClient
 from .models import ActionAudit, Campagne, Releve, StatutCampagne, StatutReleve
-from .repositories import CampagneRepository, ReleveAuditRepository, ReleveRepository
+from .repositories import (
+    AffectationZoneRepository,
+    CampagneAgentRepository,
+    CampagneRepository,
+    ReleveAuditRepository,
+    ReleveRepository,
+)
 
 
 class CampagneService:
@@ -17,10 +23,12 @@ class CampagneService:
     def __init__(self) -> None:
         self._repo = CampagneRepository()
         self._releve_repo = ReleveRepository()
+        self._agent_repo = CampagneAgentRepository()
+        self._zone_repo = AffectationZoneRepository()
         self._abonne_client = AbonneServiceClient()
 
-    def _verifier_abonne_actif(self, abonne_id: str) -> None:
-        """Vérifie que l'abonné est ACTIF avant tout ajout en campagne.
+    def _verifier_abonne_actif(self, abonne_id: str):
+        """Vérifie que l'abonné est ACTIF et le retourne (avec son compteur).
 
         Règle métier obligatoire (CLAUDE.md racine) : un abonné suspendu ou
         résilié ne peut pas être relevé. On échoue de façon volontairement
@@ -41,6 +49,18 @@ class CampagneService:
                 f"L'abonné {abonne_id} n'est pas ACTIF (statut actuel : {abonne.statut}) — "
                 "un abonné suspendu ou résilié ne peut pas être relevé."
             )
+        return abonne
+
+    @staticmethod
+    def _zone_de(abonne) -> tuple[str, Optional[int]]:
+        """Extrait la zone (quartier, camp) du compteur d'un abonné, à copier
+        dans le relevé. Tolère l'absence de compteur (retourne '', None)."""
+        compteur = getattr(abonne, "compteur", None)
+        if compteur is None:
+            return "", None
+        quartier = getattr(compteur, "quartier", "") or ""
+        camp = getattr(compteur, "camp", None)
+        return quartier, camp
 
     def creer_campagne(
         self,
@@ -127,11 +147,18 @@ class CampagneService:
         campagne = self._repo.get_by_id(campagne_id)
         if campagne.statut not in (StatutCampagne.PLANIFIEE, StatutCampagne.EN_COURS):
             raise ValidationError("Impossible d'ajouter un abonné à une campagne clôturée.")
-        self._verifier_abonne_actif(abonne_id)
+        abonne = self._verifier_abonne_actif(abonne_id)
         existant = self._releve_repo.get_by_campagne_abonne(campagne_id, abonne_id)
         if existant:
             raise ValidationError(f"L'abonné {abonne_id} est déjà inscrit à la campagne {campagne_id}.")
-        return self._releve_repo.create(campagne=campagne, abonne_id=abonne_id, ancien_index=ancien_index)
+        quartier, camp = self._zone_de(abonne)
+        return self._releve_repo.create(
+            campagne=campagne,
+            abonne_id=abonne_id,
+            ancien_index=ancien_index,
+            quartier=quartier,
+            camp=camp,
+        )
 
     def verifier_deja_presente(self, campagne_id: str) -> Optional[Campagne]:
         """Retourne la première campagne EN_COURS, ou None."""
@@ -157,6 +184,69 @@ class CampagneService:
                 except Exception:
                     pass
         return demarrees
+
+    def affecter_zones(
+        self,
+        campagne_id: str,
+        agent_id: str,
+        zones: list[tuple[str, int]],
+    ) -> list[dict]:
+        """Affecte un agent à un ensemble de zones (remplace ses zones actuelles).
+
+        Affecter des zones implique que l'agent travaille la campagne : on
+        garantit aussi son affectation globale (``CampagneAgent``) pour qu'il
+        puisse saisir. Retourne la liste des agents rafraîchie.
+        """
+        campagne = self._repo.get_by_id(campagne_id)
+        if not agent_id:
+            raise ValidationError("L'identifiant de l'agent est obligatoire.")
+        with transaction.atomic():
+            self._agent_repo.assigner(campagne, agent_id)
+            self._zone_repo.set_zones_for_agent(campagne, agent_id, zones)
+        return self.list_agents_campagne(campagne_id)
+
+    def list_agents_campagne(self, campagne_id: str) -> list[dict]:
+        """Agents affectés à une campagne (global et/ou par zone), avec stats.
+
+        Pour chaque agent : ses zones (avec le nb de relevés RELEVE de la zone),
+        son total de relevés saisis et la date de son dernier relevé. Le nombre
+        d'abonnés par zone (dénominateur) est ajouté côté Gateway via
+        ListZones (Abonné Service) — non requis ici.
+        """
+        from collections import defaultdict
+
+        self._repo.get_by_id(campagne_id)  # lève ObjectDoesNotExist si introuvable
+        global_ids = self._agent_repo.list_agent_ids(campagne_id)
+        zones = self._zone_repo.list_by_campagne(campagne_id)
+        zone_counts = self._releve_repo.count_releves_by_zone(campagne_id)
+        agent_stats = self._releve_repo.stats_by_agent(campagne_id)
+
+        zones_by_agent: dict[str, list] = defaultdict(list)
+        for z in zones:
+            zones_by_agent[z.agent_id].append(z)
+
+        # Union ordonnée : agents affectés globalement puis agents ayant des zones.
+        agent_ids = list(dict.fromkeys(global_ids + list(zones_by_agent.keys())))
+
+        agents: list[dict] = []
+        for agent_id in agent_ids:
+            stats = agent_stats.get(agent_id, {})
+            agents.append(
+                {
+                    "agent_id": agent_id,
+                    "zones": [
+                        {
+                            "quartier": z.quartier,
+                            "camp": z.camp,
+                            "nb_releves": zone_counts.get((z.quartier, z.camp), 0),
+                        }
+                        for z in zones_by_agent.get(agent_id, [])
+                    ],
+                    "nb_releves": stats.get("nb_releves", 0),
+                    "derniere_activite": stats.get("derniere_activite"),
+                }
+            )
+        return agents
 
 
 class ReleveService:

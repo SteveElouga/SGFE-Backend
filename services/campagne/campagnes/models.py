@@ -74,6 +74,10 @@ class Releve(models.Model):
     statut = models.CharField(max_length=20, choices=StatutReleve.choices, default=StatutReleve.A_RELEVER)
     # ID de l'agent Auth Service qui a saisi le relevé
     agent_id = models.CharField(max_length=36, blank=True, default="")
+    # Zone du compteur de l'abonné, copiée à la création du relevé (snapshot) :
+    # permet de ventiler les relevés par zone sans requête inter-services.
+    quartier = models.CharField(max_length=100, blank=True, default="")
+    camp = models.IntegerField(null=True, blank=True)
 
     class Meta:
         db_table = "releves"
@@ -114,3 +118,28 @@ class ReleveAudit(models.Model):
 
     def __str__(self) -> str:
         return f"{self.action} — relevé {self.releve_id} par {self.auteur_username or self.auteur_id}"
+
+
+class AffectationZone(models.Model):
+    """Affectation d'un agent à une zone (quartier + camp) d'une campagne.
+
+    Coexiste avec ``CampagneAgent`` (affectation globale à la campagne) : un
+    agent peut être affecté globalement et/ou à des zones précises. Une zone
+    donnée d'une campagne appartient à **un seul** agent (unique_together).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    campagne = models.ForeignKey(Campagne, on_delete=models.CASCADE, related_name="zones_affectees")
+    # ID de l'agent dans Auth Service — pas de FK inter-service
+    agent_id = models.CharField(max_length=36)
+    quartier = models.CharField(max_length=100)
+    camp = models.IntegerField()
+    date_affectation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "affectation_zones"
+        unique_together = [("campagne", "quartier", "camp")]
+        indexes = [models.Index(fields=["campagne", "agent_id"])]
+
+    def __str__(self) -> str:
+        return f"{self.quartier}·{self.camp} → agent {self.agent_id} ({self.campagne_id})"
