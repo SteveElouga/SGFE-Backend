@@ -6,7 +6,7 @@ from factures.services import FactureService
 
 
 def service_avec_clients_mockes() -> FactureService:
-    """FactureService avec ses 4 clients gRPC mockés — tests isolés, sans réseau.
+    """FactureService avec ses clients gRPC mockés — tests isolés, sans réseau.
 
     Repli identité/campagne indisponibles (get_abonne=None, get_campagne_nom="")
     pour reproduire le comportement dégradé attendu sans appel réseau réel.
@@ -16,6 +16,7 @@ def service_avec_clients_mockes() -> FactureService:
         notification_client=MagicMock(),
         abonne_client=MagicMock(),
         campagne_client=MagicMock(),
+        reporting_client=MagicMock(),
     )
     svc._abonne_client.get_abonne.return_value = None
     svc._campagne_client.get_campagne_nom.return_value = ""

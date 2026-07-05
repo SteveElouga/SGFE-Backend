@@ -138,6 +138,17 @@ class CampagneService:
             "nb_factures_a_generer": nb_releves + nb_estimes,
         }
 
+    def get_stats_reporting(self, campagne_id: str) -> dict:
+        """Stats poussées au Reporting Service à la clôture (nom, total, relevés, consommation)."""
+        campagne = self._repo.get_by_id(campagne_id)
+        counts = self._releve_repo.count_by_campagne(campagne_id)
+        return {
+            "nom_campagne": campagne.nom,
+            "total_abonnes": sum(counts.values()),
+            "nb_releves": counts.get(StatutReleve.RELEVE, 0),
+            "consommation_totale": self._releve_repo.sum_consommation_by_campagne(campagne_id),
+        }
+
     def ajouter_abonne_campagne(
         self,
         campagne_id: str,

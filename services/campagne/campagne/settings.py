@@ -77,6 +77,10 @@ FACTURATION_GRPC_PORT = env.int("FACTURATION_GRPC_PORT", default=50054)
 NOTIFICATION_GRPC_HOST = env("NOTIFICATION_GRPC_HOST", default="localhost")
 NOTIFICATION_GRPC_PORT = env.int("NOTIFICATION_GRPC_PORT", default=50056)
 
+# Reporting Service — pour pousser les stats de campagne à la clôture (ADR-019).
+REPORTING_GRPC_HOST = env("REPORTING_GRPC_HOST", default="localhost")
+REPORTING_GRPC_PORT = env.int("REPORTING_GRPC_PORT", default=50057)
+
 # --- JWT (validation interne) ---
 JWT_SECRET_KEY = env("JWT_SECRET_KEY", default="changeme")
 JWT_ALGORITHM = env("JWT_ALGORITHM", default="HS256")

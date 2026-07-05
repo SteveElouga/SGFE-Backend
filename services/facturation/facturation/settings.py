@@ -83,6 +83,10 @@ NOTIFICATION_GRPC_PORT = env.int("NOTIFICATION_GRPC_PORT", default=50056)
 ABONNE_GRPC_HOST = env("ABONNE_GRPC_HOST", default="localhost")
 ABONNE_GRPC_PORT = env.int("ABONNE_GRPC_PORT", default=50052)
 
+# Reporting Service — pour pousser les stats de facturation (ADR-019, read model).
+REPORTING_GRPC_HOST = env("REPORTING_GRPC_HOST", default="localhost")
+REPORTING_GRPC_PORT = env.int("REPORTING_GRPC_PORT", default=50057)
+
 # --- JWT (validation interne) ---
 JWT_SECRET_KEY = env("JWT_SECRET_KEY", default="changeme")
 JWT_ALGORITHM = env("JWT_ALGORITHM", default="HS256")
