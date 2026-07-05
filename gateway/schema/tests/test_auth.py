@@ -361,6 +361,62 @@ class UsersQueryTests(SimpleTestCase):
         self.assertIn("Authentification requise", str(result.errors))
 
 
+class AgentsDisponiblesQueryTests(SimpleTestCase):
+    def _list_users_mock(self):
+        return Mock(
+            return_value=Mock(
+                users=[
+                    make_user_response(user_id="u-1", username="agent_actif", role="AGENT", is_active=True),
+                    make_user_response(user_id="u-2", username="agent_inactif", role="AGENT", is_active=False),
+                    make_user_response(user_id="u-3", username="comptable1", role="COMPTABLE", is_active=True),
+                    make_user_response(user_id="u-4", username="superviseur1", role="SUPERVISEUR", is_active=True),
+                ]
+            )
+        )
+
+    def test_ne_retourne_que_les_agents_actifs(self):
+        with patch.multiple(
+            auth_client,
+            validate_token=Mock(return_value=Mock(user_id="admin-1", role="ADMIN")),
+            list_users=self._list_users_mock(),
+        ):
+            result = schema.execute_sync(
+                "query { agentsDisponibles { username role } }", context_value=context(token="access-1")
+            )
+
+        self.assertIsNone(result.errors)
+        usernames = [u["username"] for u in result.data["agentsDisponibles"]]
+        self.assertEqual(usernames, ["agent_actif"])
+
+    def test_accessible_au_superviseur(self):
+        with patch.multiple(
+            auth_client,
+            validate_token=Mock(return_value=Mock(user_id="sup-1", role="SUPERVISEUR")),
+            list_users=self._list_users_mock(),
+        ):
+            result = schema.execute_sync(
+                "query { agentsDisponibles { username } }", context_value=context(token="access-1")
+            )
+
+        self.assertIsNone(result.errors)
+        self.assertEqual(len(result.data["agentsDisponibles"]), 1)
+
+    def test_refuse_au_comptable(self):
+        with patch.object(auth_client, "validate_token", return_value=Mock(user_id="c-1", role="COMPTABLE")):
+            result = schema.execute_sync(
+                "query { agentsDisponibles { username } }", context_value=context(token="access-1")
+            )
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("Accès non autorisé", str(result.errors))
+
+    def test_requires_auth(self):
+        result = schema.execute_sync("query { agentsDisponibles { username } }", context_value=context())
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("Authentification requise", str(result.errors))
+
+
 class PasswordSetupMutationTests(SimpleTestCase):
     def test_request_password_reset_returns_success(self):
         with patch.object(auth_client, "request_password_reset", return_value=Mock(success=True)):
