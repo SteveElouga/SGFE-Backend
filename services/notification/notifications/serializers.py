@@ -35,6 +35,8 @@ def envoi_to_proto(envoi: Envoi) -> pb.EnvoiResponse:
         date_envoi=date_envoi_str,
         telnyx_message_id=envoi.telnyx_message_id or "",
         erreur=envoi.erreur or "",
+        type_envoi=envoi.type_envoi or "",
+        abonne_id=envoi.abonne_id or "",
     )
 
 

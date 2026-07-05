@@ -14,7 +14,9 @@ from schema.notification_queries import NotificationQueries
 def _envoi_response(**kwargs) -> MagicMock:
     defaults = dict(
         envoi_id="envoi-001",
+        abonne_id="abonne-001",
         facture_id="facture-001",
+        type_envoi="FACTURE",
         statut="ENVOYE",
         date_envoi="2026-07-02T10:00:00",
         telnyx_message_id="msg-123",
@@ -22,6 +24,36 @@ def _envoi_response(**kwargs) -> MagicMock:
     )
     defaults.update(kwargs)
     return MagicMock(**defaults)
+
+
+class TestEnvoiMapping(SimpleTestCase):
+    @patch("schema.notification_queries.notification_client")
+    @patch("schema.notification_queries.require_auth")
+    @patch("schema.notification_queries.require_role")
+    def test_envoi_expose_type_abonne_message_raison(self, mock_role, mock_auth, mock_client) -> None:
+        mock_auth.return_value = MagicMock(role="ADMIN")
+        mock_client.get_envoi.return_value = _envoi_response(
+            type_envoi="RELANCE_2", erreur="numéro invalide", statut="ECHEC"
+        )
+        result = NotificationQueries().envoi(MagicMock(), envoi_id="envoi-001")
+        self.assertEqual(result.type_envoi, "RELANCE_2")
+        self.assertEqual(result.abonne_id, "abonne-001")
+        self.assertEqual(result.message_id, "msg-123")
+        self.assertEqual(result.raison_echec, "numéro invalide")
+
+
+class TestRenvoyerEnvoi(SimpleTestCase):
+    @patch("schema.notification_mutations.notification_client")
+    @patch("schema.notification_mutations.require_auth")
+    @patch("schema.notification_mutations.require_role")
+    def test_renvoyer_envoi_resout_facture_et_renvoie(self, mock_role, mock_auth, mock_client) -> None:
+        mock_auth.return_value = MagicMock(role="COMPTABLE")
+        mock_client.get_envoi.return_value = _envoi_response(facture_id="facture-9")
+        mock_client.renvoyer_facture.return_value = _envoi_response(envoi_id="envoi-2", facture_id="facture-9")
+        result = NotificationMutations().renvoyer_envoi(MagicMock(), envoi_id="envoi-001")
+        mock_client.get_envoi.assert_called_once_with("envoi-001")
+        mock_client.renvoyer_facture.assert_called_once_with(facture_id="facture-9")
+        self.assertEqual(result.envoi_id, "envoi-2")
 
 
 class TestNotificationQueries(SimpleTestCase):
