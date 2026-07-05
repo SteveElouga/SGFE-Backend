@@ -7,6 +7,7 @@ service CampagneService {
   rpc ListCampagnes (ListCampagnesRequest) returns (ListCampagnesResponse);
   rpc AssignerAgent (AssignerAgentRequest) returns (CampagneResponse);
   rpc SaisirIndex (SaisirIndexRequest) returns (ReleveResponse);
+  rpc CorrigerReleve (CorrigerReleveRequest) returns (ReleveResponse);
   rpc MarquerNonReleve (MarquerNonReleveRequest) returns (ReleveResponse);
   rpc GetReleve (ReleveIdRequest) returns (ReleveResponse);
   rpc ListReleves (CampagneIdRequest) returns (ListRelevesResponse);
@@ -33,7 +34,21 @@ message SaisirIndexRequest {
   string abonne_id = 2;
   double nouveau_index = 3;
   string observation = 4;
-  string agent_id = 5;
+  string agent_id = 5;         // = auteur_id (agent ou admin de secours)
+  string auteur_username = 6;
+  string auteur_role = 7;
+}
+
+// Correction d'un index déjà remonté (ADMIN ou SUPERVISEUR propriétaire).
+// Rejoue les règles métier mais autorise un relevé déjà RELEVE.
+message CorrigerReleveRequest {
+  string campagne_id = 1;
+  string abonne_id = 2;
+  double nouveau_index = 3;
+  string observation = 4;
+  string auteur_id = 5;
+  string auteur_username = 6;
+  string auteur_role = 7;
 }
 
 message MarquerNonReleveRequest {
@@ -62,6 +77,17 @@ message CampagneResponse {
   bool envoyer_whatsapp_auto = 11;
 }
 
+// Une entrée du journal d'audit d'un relevé (saisie initiale ou correction).
+message ReleveAudit {
+  string action = 1;          // SAISIE | CORRECTION
+  string auteur_id = 2;
+  string auteur_username = 3;
+  string auteur_role = 4;
+  double ancien_index = 5;    // index avant l'action (référence)
+  double nouvel_index = 6;    // index posé par l'action
+  string horodatage = 7;      // ISO 8601
+}
+
 message ReleveResponse {
   string releve_id = 1;
   string abonne_id = 2;
@@ -71,6 +97,8 @@ message ReleveResponse {
   string date_releve = 6;
   string observation = 7;
   string statut = 8;
+  string agent_id = 9;              // agent/admin ayant saisi (P3)
+  repeated ReleveAudit audit = 10;  // journal SAISIE/CORRECTION (P1/P2)
 }
 
 message ProgressionResponse {

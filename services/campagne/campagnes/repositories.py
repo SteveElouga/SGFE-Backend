@@ -3,7 +3,14 @@ from typing import Optional
 from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
 
-from .models import Campagne, CampagneAgent, Releve, StatutCampagne, StatutReleve
+from .models import (
+    Campagne,
+    CampagneAgent,
+    Releve,
+    ReleveAudit,
+    StatutCampagne,
+    StatutReleve,
+)
 
 
 class CampagneRepository:
@@ -93,7 +100,9 @@ class ReleveRepository:
             raise ObjectDoesNotExist(f"Relevé introuvable : {releve_id}")
 
     def list_by_campagne(self, campagne_id: str) -> list[Releve]:
-        return list(Releve.objects.filter(campagne_id=campagne_id).select_related("campagne"))
+        return list(
+            Releve.objects.filter(campagne_id=campagne_id).select_related("campagne").prefetch_related("audits")
+        )
 
     def get_by_campagne_abonne(self, campagne_id: str, abonne_id: str) -> Optional[Releve]:
         return Releve.objects.filter(campagne_id=campagne_id, abonne_id=abonne_id).first()
@@ -124,6 +133,26 @@ class ReleveRepository:
         )
         return releve
 
+    def corriger(
+        self,
+        releve: Releve,
+        nouveau_index: float,
+        observation: str = "",
+    ) -> Releve:
+        """Corrige la valeur d'un relevé déjà saisi.
+
+        Ne touche ni à ``agent_id`` (l'auteur d'origine reste tracé) ni à
+        ``date_releve`` (la période relevée est inchangée) : seul l'index et
+        la consommation sont recalculés. La traçabilité de la correction est
+        assurée par une entrée ``ReleveAudit`` distincte.
+        """
+        releve.nouveau_index = nouveau_index
+        releve.consommation = nouveau_index - releve.ancien_index
+        if observation:
+            releve.observation = observation
+        releve.save(update_fields=["nouveau_index", "consommation", "observation"])
+        return releve
+
     def marquer_non_releve(
         self,
         releve: Releve,
@@ -144,6 +173,33 @@ class ReleveRepository:
         for row in counts:
             result[row["statut"]] = row["total"]
         return result
+
+
+class ReleveAuditRepository:
+    """Accès base de données pour le journal d'audit des relevés."""
+
+    def create(
+        self,
+        releve: Releve,
+        action: str,
+        auteur_id: str,
+        auteur_username: str = "",
+        auteur_role: str = "",
+        ancien_index: Optional[float] = None,
+        nouvel_index: Optional[float] = None,
+    ) -> ReleveAudit:
+        return ReleveAudit.objects.create(
+            releve=releve,
+            action=action,
+            auteur_id=auteur_id,
+            auteur_username=auteur_username,
+            auteur_role=auteur_role,
+            ancien_index=ancien_index,
+            nouvel_index=nouvel_index,
+        )
+
+    def list_by_releve(self, releve: Releve) -> list[ReleveAudit]:
+        return list(releve.audits.all())
 
 
 class CampagneAgentRepository:

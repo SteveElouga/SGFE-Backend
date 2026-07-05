@@ -1,5 +1,7 @@
 """Types GraphQL du Campagne Service (campagnes + relevés)."""
 
+from typing import Optional
+
 import strawberry
 
 from proto import campagne_service_pb2 as campagne_pb
@@ -21,6 +23,26 @@ class Campagne:
 
 
 @strawberry.type
+class Auteur:
+    """Auteur d'une action sur un relevé (snapshot au moment de l'action)."""
+
+    id: str
+    username: str
+    role: str
+
+
+@strawberry.type
+class ReleveAudit:
+    """Une entrée du journal d'audit d'un relevé (saisie initiale ou correction)."""
+
+    action: str  # SAISIE | CORRECTION
+    auteur: Auteur
+    ancien_index: float  # index avant l'action (référence)
+    nouvel_index: float  # index posé par l'action
+    horodatage: str  # ISO 8601
+
+
+@strawberry.type
 class Releve:
     releve_id: str
     abonne_id: str
@@ -30,6 +52,13 @@ class Releve:
     date_releve: str
     observation: str
     statut: str
+    # ID de l'agent/admin ayant saisi le relevé (P3 — écran « tournée agent »).
+    agent_id: str
+    # Auteur et horodatage de la saisie initiale (P1), dérivés du journal d'audit.
+    saisi_par: Optional[Auteur]
+    saisi_le: str
+    # Journal complet SAISIE/CORRECTION, du plus ancien au plus récent (P2).
+    audit: list[ReleveAudit]
 
 
 @strawberry.type
@@ -82,6 +111,14 @@ class SaisirIndexInput:
 
 
 @strawberry.input
+class CorrigerReleveInput:
+    campagne_id: str
+    abonne_id: str
+    nouveau_index: float
+    observation: str = ""
+
+
+@strawberry.input
 class MarquerNonReleveInput:
     campagne_id: str
     abonne_id: str
@@ -105,7 +142,21 @@ def campagne_from_grpc(r: campagne_pb.CampagneResponse) -> Campagne:
     )
 
 
+def _audit_from_grpc(a: campagne_pb.ReleveAudit) -> ReleveAudit:
+    return ReleveAudit(
+        action=a.action,
+        auteur=Auteur(id=a.auteur_id, username=a.auteur_username, role=a.auteur_role),
+        ancien_index=a.ancien_index,
+        nouvel_index=a.nouvel_index,
+        horodatage=a.horodatage,
+    )
+
+
 def releve_from_grpc(r: campagne_pb.ReleveResponse) -> Releve:
+    audit = [_audit_from_grpc(a) for a in r.audit]
+    # saisiPar / saisiLe = auteur et horodatage de la saisie initiale (première
+    # entrée SAISIE). Absents pour les relevés d'avant l'introduction de l'audit.
+    saisie = next((a for a in audit if a.action == "SAISIE"), None)
     return Releve(
         releve_id=r.releve_id,
         abonne_id=r.abonne_id,
@@ -115,4 +166,8 @@ def releve_from_grpc(r: campagne_pb.ReleveResponse) -> Releve:
         date_releve=r.date_releve,
         observation=r.observation,
         statut=r.statut,
+        agent_id=r.agent_id,
+        saisi_par=saisie.auteur if saisie else None,
+        saisi_le=saisie.horodatage if saisie else "",
+        audit=audit,
     )

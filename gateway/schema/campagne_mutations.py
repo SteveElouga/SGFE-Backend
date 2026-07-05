@@ -5,6 +5,7 @@ import strawberry.types
 
 from .campagne_types import (
     Campagne,
+    CorrigerReleveInput,
     CreateCampagneInput,
     MarquerNonReleveInput,
     Releve,
@@ -67,6 +68,29 @@ class CampagneMutations:
             nouveau_index=input.nouveau_index,
             observation=input.observation,
             agent_id=user.user_id,
+            auteur_username=user.username,
+            auteur_role=user.role,
+        )
+        return releve_from_grpc(response)
+
+    @strawberry.mutation
+    def corriger_releve(self, info: strawberry.types.Info, input: CorrigerReleveInput) -> Releve:
+        """Corrige un index déjà relevé — ADMIN (tous), SUPERVISEUR (les siens).
+
+        Autorisée même après clôture de la campagne (rectification d'erreur de
+        saisie). Chaque correction est tracée dans le journal d'audit du relevé.
+        """
+        user = require_auth(info)
+        require_role(info, "ADMIN", "SUPERVISEUR")
+        _verifier_propriete_superviseur(user, input.campagne_id)
+        response = campagne_client.corriger_releve(
+            campagne_id=input.campagne_id,
+            abonne_id=input.abonne_id,
+            nouveau_index=input.nouveau_index,
+            observation=input.observation,
+            auteur_id=user.user_id,
+            auteur_username=user.username,
+            auteur_role=user.role,
         )
         return releve_from_grpc(response)
 
