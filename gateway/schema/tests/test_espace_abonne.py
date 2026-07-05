@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 import grpc
 from django.test import SimpleTestCase
 
+from proto import facturation_service_pb2 as facturation_pb
 from schema.grpc_clients import facturation_client, notification_client, paiement_client
 
 
@@ -11,10 +12,13 @@ def make_token_response(is_valid=True, abonne_id="abonne-1", date_expiration="20
 
 
 def make_facture_response(facture_id="facture-1", abonne_id="abonne-1", numero="FACT-2026-07-0001"):
-    return Mock(
+    # Vrai message proto (et non un Mock) : un Mock accepte n'importe quel nom
+    # d'attribut et masquerait un décalage de champ (cf. le bug f.numero vs
+    # f.numero_facture). Le proto échoue si la vue lit un champ inexistant.
+    return facturation_pb.FactureResponse(
         facture_id=facture_id,
         abonne_id=abonne_id,
-        numero=numero,
+        numero_facture=numero,
         date_releve="2026-07-01",
         montant=15000.0,
         statut="IMPAYEE",
@@ -23,7 +27,7 @@ def make_facture_response(facture_id="facture-1", abonne_id="abonne-1", numero="
 
 
 def make_list_factures_response(*factures):
-    return Mock(factures=list(factures))
+    return facturation_pb.ListFacturesResponse(factures=list(factures))
 
 
 def make_pdf_response(pdf_content=b"%PDF-1.4 contenu", filename="facture-1.pdf"):
