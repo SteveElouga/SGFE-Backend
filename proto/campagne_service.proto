@@ -6,6 +6,10 @@ service CampagneService {
   rpc GetCampagne (CampagneIdRequest) returns (CampagneResponse);
   rpc ListCampagnes (ListCampagnesRequest) returns (ListCampagnesResponse);
   rpc AssignerAgent (AssignerAgentRequest) returns (CampagneResponse);
+  // Affecte un agent à un ensemble de zones (quartier + camp) de la campagne.
+  rpc AffecterZones (AffecterZonesRequest) returns (ListAgentsCampagneResponse);
+  // Liste les agents affectés à une campagne (global et/ou par zone) + stats.
+  rpc ListAgentsCampagne (CampagneIdRequest) returns (ListAgentsCampagneResponse);
   rpc SaisirIndex (SaisirIndexRequest) returns (ReleveResponse);
   rpc CorrigerReleve (CorrigerReleveRequest) returns (ReleveResponse);
   rpc MarquerNonReleve (MarquerNonReleveRequest) returns (ReleveResponse);
@@ -99,7 +103,37 @@ message ReleveResponse {
   string statut = 8;
   string agent_id = 9;              // agent/admin ayant saisi (P3)
   repeated ReleveAudit audit = 10;  // journal SAISIE/CORRECTION (P1/P2)
+  string quartier = 11;             // zone du compteur (snapshot à la création)
+  int32 camp = 12;
 }
+
+// Une zone de relevé = une paire (quartier, camp).
+message Zone {
+  string quartier = 1;
+  int32 camp = 2;
+}
+
+message AffecterZonesRequest {
+  string campagne_id = 1;
+  string agent_id = 2;
+  repeated Zone zones = 3;  // remplace l'ensemble des zones de cet agent
+}
+
+// Une zone affectée à un agent, avec l'avancement des relevés de la zone.
+message ZoneAffectee {
+  string quartier = 1;
+  int32 camp = 2;
+  int32 nb_releves = 3;  // relevés RELEVE de la campagne dans cette zone
+}
+
+message AgentAffecte {
+  string agent_id = 1;
+  repeated ZoneAffectee zones = 2;
+  int32 nb_releves = 3;          // total relevés RELEVE saisis par l'agent
+  string derniere_activite = 4;  // ISO du dernier relevé de l'agent, "" si aucun
+}
+
+message ListAgentsCampagneResponse { repeated AgentAffecte agents = 1; }
 
 message ProgressionResponse {
   string campagne_id = 1;

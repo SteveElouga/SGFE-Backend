@@ -466,3 +466,46 @@ class TestGetDernierIndexRPC(TestCase):
         response = self.servicer.GetDernierIndex(request, _mock_context())
         self.assertAlmostEqual(response.dernier_index, 120.0)
         self.assertFalse(response.est_index_initial)
+
+
+class TestAffecterZonesRPC(TestCase):
+    def setUp(self) -> None:
+        self.servicer = CampagneServicer()
+        svc = CampagneService()
+        campagne = svc.creer_campagne("C1", 1, 2026, created_by="user-A")
+        svc.demarrer_campagne(str(campagne.id))
+        self.campagne = campagne
+
+    def _affecter(self, agent_id: str, zones: list[tuple[str, int]]):
+        request = pb.AffecterZonesRequest(
+            campagne_id=str(self.campagne.id),
+            agent_id=agent_id,
+            zones=[pb.Zone(quartier=q, camp=c) for q, c in zones],
+        )
+        return self.servicer.AffecterZones(request, _mock_context())
+
+    def test_affecter_zones_retourne_agent_avec_zones(self) -> None:
+        response = self._affecter("agent-1", [("Plateau", 3), ("Centre", 1)])
+        agent = next(a for a in response.agents if a.agent_id == "agent-1")
+        zones = {(z.quartier, z.camp) for z in agent.zones}
+        self.assertEqual(zones, {("Plateau", 3), ("Centre", 1)})
+
+    def test_list_agents_campagne_rpc(self) -> None:
+        self._affecter("agent-1", [("Plateau", 3)])
+        response = self.servicer.ListAgentsCampagne(
+            pb.CampagneIdRequest(campagne_id=str(self.campagne.id)), _mock_context()
+        )
+        agent_ids = {a.agent_id for a in response.agents}
+        self.assertIn("agent-1", agent_ids)
+
+    def test_affecter_zones_campagne_introuvable_abort(self) -> None:
+        request = pb.AffecterZonesRequest(
+            campagne_id="00000000-0000-0000-0000-000000000000",
+            agent_id="agent-1",
+            zones=[pb.Zone(quartier="Plateau", camp=3)],
+        )
+        ctx = _mock_context()
+        with self.assertRaises(Exception):
+            self.servicer.AffecterZones(request, ctx)
+        ctx.abort.assert_called_once()
+        self.assertEqual(ctx.abort.call_args[0][0], grpc.StatusCode.NOT_FOUND)

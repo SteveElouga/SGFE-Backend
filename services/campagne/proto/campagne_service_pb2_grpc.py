@@ -54,6 +54,16 @@ class CampagneServiceStub:
                 request_serializer=campagne__service__pb2.AssignerAgentRequest.SerializeToString,
                 response_deserializer=campagne__service__pb2.CampagneResponse.FromString,
                 _registered_method=True)
+        self.AffecterZones = channel.unary_unary(
+                '/campagne.CampagneService/AffecterZones',
+                request_serializer=campagne__service__pb2.AffecterZonesRequest.SerializeToString,
+                response_deserializer=campagne__service__pb2.ListAgentsCampagneResponse.FromString,
+                _registered_method=True)
+        self.ListAgentsCampagne = channel.unary_unary(
+                '/campagne.CampagneService/ListAgentsCampagne',
+                request_serializer=campagne__service__pb2.CampagneIdRequest.SerializeToString,
+                response_deserializer=campagne__service__pb2.ListAgentsCampagneResponse.FromString,
+                _registered_method=True)
         self.SaisirIndex = channel.unary_unary(
                 '/campagne.CampagneService/SaisirIndex',
                 request_serializer=campagne__service__pb2.SaisirIndexRequest.SerializeToString,
@@ -124,6 +134,20 @@ class CampagneServiceServicer:
 
     def AssignerAgent(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AffecterZones(self, request, context):
+        """Affecte un agent à un ensemble de zones (quartier + camp) de la campagne.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListAgentsCampagne(self, request, context):
+        """Liste les agents affectés à une campagne (global et/ou par zone) + stats.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -204,6 +228,16 @@ def add_CampagneServiceServicer_to_server(servicer, server):
                     servicer.AssignerAgent,
                     request_deserializer=campagne__service__pb2.AssignerAgentRequest.FromString,
                     response_serializer=campagne__service__pb2.CampagneResponse.SerializeToString,
+            ),
+            'AffecterZones': grpc.unary_unary_rpc_method_handler(
+                    servicer.AffecterZones,
+                    request_deserializer=campagne__service__pb2.AffecterZonesRequest.FromString,
+                    response_serializer=campagne__service__pb2.ListAgentsCampagneResponse.SerializeToString,
+            ),
+            'ListAgentsCampagne': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListAgentsCampagne,
+                    request_deserializer=campagne__service__pb2.CampagneIdRequest.FromString,
+                    response_serializer=campagne__service__pb2.ListAgentsCampagneResponse.SerializeToString,
             ),
             'SaisirIndex': grpc.unary_unary_rpc_method_handler(
                     servicer.SaisirIndex,
@@ -359,6 +393,60 @@ class CampagneService:
             '/campagne.CampagneService/AssignerAgent',
             campagne__service__pb2.AssignerAgentRequest.SerializeToString,
             campagne__service__pb2.CampagneResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AffecterZones(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/campagne.CampagneService/AffecterZones',
+            campagne__service__pb2.AffecterZonesRequest.SerializeToString,
+            campagne__service__pb2.ListAgentsCampagneResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListAgentsCampagne(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/campagne.CampagneService/ListAgentsCampagne',
+            campagne__service__pb2.CampagneIdRequest.SerializeToString,
+            campagne__service__pb2.ListAgentsCampagneResponse.FromString,
             options,
             channel_credentials,
             insecure,

@@ -4,6 +4,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
 
 from .models import (
+    AffectationZone,
     Campagne,
     CampagneAgent,
     Releve,
@@ -85,12 +86,16 @@ class ReleveRepository:
         campagne: Campagne,
         abonne_id: str,
         ancien_index: float,
+        quartier: str = "",
+        camp: Optional[int] = None,
     ) -> Releve:
         return Releve.objects.create(
             campagne=campagne,
             abonne_id=abonne_id,
             ancien_index=ancien_index,
             statut=StatutReleve.A_RELEVER,
+            quartier=quartier,
+            camp=camp,
         )
 
     def get_by_id(self, releve_id: str) -> Releve:
@@ -174,6 +179,31 @@ class ReleveRepository:
             result[row["statut"]] = row["total"]
         return result
 
+    def count_releves_by_zone(self, campagne_id: str) -> dict[tuple[str, Optional[int]], int]:
+        """Nombre de relevés RELEVE par zone (quartier, camp) pour une campagne."""
+        from django.db.models import Count
+
+        rows = (
+            Releve.objects.filter(campagne_id=campagne_id, statut=StatutReleve.RELEVE)
+            .values("quartier", "camp")
+            .annotate(total=Count("id"))
+        )
+        return {(r["quartier"], r["camp"]): r["total"] for r in rows}
+
+    def stats_by_agent(self, campagne_id: str) -> dict[str, dict]:
+        """Par agent : nombre de relevés RELEVE saisis et date du dernier relevé."""
+        from django.db.models import Count, Max
+
+        rows = (
+            Releve.objects.filter(campagne_id=campagne_id, statut=StatutReleve.RELEVE)
+            .exclude(agent_id="")
+            .values("agent_id")
+            .annotate(nb_releves=Count("id"), derniere_activite=Max("date_releve"))
+        )
+        return {
+            r["agent_id"]: {"nb_releves": r["nb_releves"], "derniere_activite": r["derniere_activite"]} for r in rows
+        }
+
 
 class ReleveAuditRepository:
     """Accès base de données pour le journal d'audit des relevés."""
@@ -215,3 +245,45 @@ class CampagneAgentRepository:
 
     def est_affecte(self, campagne_id: str, agent_id: str) -> bool:
         return CampagneAgent.objects.filter(campagne_id=campagne_id, agent_id=agent_id).exists()
+
+    def list_agent_ids(self, campagne_id: str) -> list[str]:
+        """IDs des agents affectés globalement à la campagne."""
+        return list(
+            CampagneAgent.objects.filter(campagne_id=campagne_id)
+            .order_by("date_affectation")
+            .values_list("agent_id", flat=True)
+        )
+
+
+class AffectationZoneRepository:
+    """Accès base de données pour l'affectation des agents par zone."""
+
+    def set_zones_for_agent(
+        self,
+        campagne: Campagne,
+        agent_id: str,
+        zones: list[tuple[str, int]],
+    ) -> list[AffectationZone]:
+        """Fixe l'ensemble exact des zones d'un agent dans une campagne.
+
+        Retire les zones de l'agent qui ne sont plus dans la liste, et
+        (ré)affecte chaque zone donnée à cet agent — une zone appartenant à un
+        autre agent lui est retirée (unique par (campagne, quartier, camp)).
+        """
+        wanted = {(q, c) for q, c in zones}
+        # 1. Retire les zones que l'agent n'a plus.
+        for aff in AffectationZone.objects.filter(campagne=campagne, agent_id=agent_id):
+            if (aff.quartier, aff.camp) not in wanted:
+                aff.delete()
+        # 2. (Ré)affecte chaque zone voulue à cet agent (retirée à un autre si besoin).
+        for quartier, camp in wanted:
+            AffectationZone.objects.update_or_create(
+                campagne=campagne,
+                quartier=quartier,
+                camp=camp,
+                defaults={"agent_id": agent_id},
+            )
+        return list(AffectationZone.objects.filter(campagne=campagne, agent_id=agent_id))
+
+    def list_by_campagne(self, campagne_id: str) -> list[AffectationZone]:
+        return list(AffectationZone.objects.filter(campagne_id=campagne_id).order_by("agent_id", "quartier", "camp"))
