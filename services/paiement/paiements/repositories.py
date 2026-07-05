@@ -50,11 +50,13 @@ class SoldeFactureRepository:
         abonne_id: str,
         montant_total: object,
         date_limite_paiement: date,
+        campagne_id: str = "",
     ) -> SoldeFacture:
         """Initialise le solde d'une facture (statut IMPAYEE, montant_paye=0)."""
         return SoldeFacture.objects.create(
             facture_id=facture_id,
             abonne_id=abonne_id,
+            campagne_id=campagne_id,
             montant_total=montant_total,
             montant_paye=0,
             solde_restant=montant_total,

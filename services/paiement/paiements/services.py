@@ -36,6 +36,7 @@ class PaiementService:
         abonne_id: str,
         montant_total: float,
         date_limite_paiement: date,
+        campagne_id: str = "",
     ) -> SoldeFacture:
         """
         Crée le SoldeFacture initial lors de la génération d'une facture.
@@ -52,6 +53,7 @@ class PaiementService:
         return self._solde_repo.create(
             facture_id=facture_id,
             abonne_id=abonne_id,
+            campagne_id=campagne_id,
             montant_total=montant_d,
             date_limite_paiement=date_limite_paiement,
         )

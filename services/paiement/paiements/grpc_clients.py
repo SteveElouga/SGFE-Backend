@@ -245,3 +245,42 @@ class ConfigServiceClient:
                 pass  # Valeur mal formée — défaut conservé
 
         return result
+
+
+class ReportingServiceClient:
+    """Client gRPC vers Reporting Service (port 50057) — stats de paiement (ADR-019).
+
+    Read model aval : son indisponibilité ne doit jamais faire échouer un
+    enregistrement de paiement. Dégradation gracieuse (log + retour False).
+    """
+
+    def __init__(self) -> None:
+        address = f"{settings.REPORTING_GRPC_HOST}:{settings.REPORTING_GRPC_PORT}"
+        self._channel = grpc.insecure_channel(address)
+        _ensure_proto_in_syspath()
+
+        import reporting_service_pb2 as pb
+        import reporting_service_pb2_grpc as pb_grpc
+
+        self._stub = pb_grpc.ReportingServiceStub(self._channel)
+        self._pb = pb
+
+    def update_stats_paiements(self, campagne_id: str, montant_paiement: float, type_update: str) -> bool:
+        """type_update ∈ {PAIEMENT, IMPAYE_RESOLU}. Sans campagne_id, ne fait rien."""
+        if not campagne_id:
+            return False
+        try:
+            self._stub.UpdateStatsPaiements(
+                self._pb.UpdateStatsPaiementsRequest(
+                    campagne_id=campagne_id,
+                    montant_paiement=montant_paiement,
+                    type_update=type_update,
+                )
+            )
+            return True
+        except Exception as exc:
+            logger.warning(
+                "Reporting Service inaccessible — UpdateStatsPaiements ignoré",
+                extra={"campagne_id": campagne_id, "type_update": type_update, "error": str(exc)},
+            )
+            return False

@@ -81,6 +81,10 @@ ABONNE_GRPC_PORT = env.int("ABONNE_GRPC_PORT", default=50052)
 CONFIG_GRPC_HOST = env("CONFIG_GRPC_HOST", default="localhost")
 CONFIG_GRPC_PORT = env.int("CONFIG_GRPC_PORT", default=50058)
 
+# Reporting Service — pousse les stats de paiement par campagne (ADR-019).
+REPORTING_GRPC_HOST = env("REPORTING_GRPC_HOST", default="localhost")
+REPORTING_GRPC_PORT = env.int("REPORTING_GRPC_PORT", default=50057)
+
 # --- JWT (validation interne) ---
 JWT_SECRET_KEY = env("JWT_SECRET_KEY", default="changeme")
 JWT_ALGORITHM = env("JWT_ALGORITHM", default="HS256")

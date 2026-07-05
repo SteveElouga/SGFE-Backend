@@ -15,6 +15,9 @@ message InitialiserSoldeRequest {
   string abonne_id = 2;
   double montant_total = 3;
   string date_limite_paiement = 4;
+  // Campagne d'origine de la facture — conservée sur le solde pour agréger les
+  // stats de paiement par campagne (Reporting Service, ADR-019).
+  string campagne_id = 5;
 }
 
 message EnregistrerPaiementRequest {
