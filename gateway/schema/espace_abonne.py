@@ -76,7 +76,7 @@ def espace_abonne(request: HttpRequest, token: str) -> JsonResponse:
         factures_json.append(
             {
                 "facture_id": f.facture_id,
-                "numero": f.numero,
+                "numero": f.numero_facture,
                 "date_releve": f.date_releve,
                 "montant": f.montant,
                 "statut": f.statut,
