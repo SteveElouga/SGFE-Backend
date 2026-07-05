@@ -103,6 +103,9 @@ class AbonneServiceClient:
     def list_abonnes_actifs(self) -> abonne_pb.ListAbonnesResponse:
         return self._stub.ListAbonnesActifs(abonne_pb.EmptyRequest())
 
+    def list_zones(self) -> abonne_pb.ListZonesResponse:
+        return self._stub.ListZones(abonne_pb.EmptyRequest())
+
     def create_abonne(self, **kwargs) -> abonne_pb.AbonneResponse:
         return self._stub.CreateAbonne(abonne_pb.CreateAbonneRequest(**kwargs))
 
@@ -171,6 +174,12 @@ class CampagneServiceClient:
 
     def assigner_agent(self, campagne_id: str, agent_id: str) -> campagne_pb.CampagneResponse:
         return self._stub.AssignerAgent(campagne_pb.AssignerAgentRequest(campagne_id=campagne_id, agent_id=agent_id))
+
+    def affecter_zones(self, **kwargs) -> campagne_pb.ListAgentsCampagneResponse:
+        return self._stub.AffecterZones(campagne_pb.AffecterZonesRequest(**kwargs))
+
+    def list_agents_campagne(self, campagne_id: str) -> campagne_pb.ListAgentsCampagneResponse:
+        return self._stub.ListAgentsCampagne(campagne_pb.CampagneIdRequest(campagne_id=campagne_id))
 
     def saisir_index(self, **kwargs) -> campagne_pb.ReleveResponse:
         return self._stub.SaisirIndex(campagne_pb.SaisirIndexRequest(**kwargs))

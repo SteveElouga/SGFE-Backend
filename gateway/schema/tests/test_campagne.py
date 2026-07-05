@@ -317,3 +317,97 @@ class TestReleveMapping(SimpleTestCase):
         self.assertIsNone(releve.saisi_par)
         self.assertEqual(releve.saisi_le, "")
         self.assertEqual(releve.audit, [])
+
+
+class TestDetailCampagneZones(SimpleTestCase):
+    """Écran « détail campagne » : agents affectés, zones, statut de tournée."""
+
+    def test_statut_tournee_seuils(self) -> None:
+        from datetime import datetime, timedelta, timezone
+
+        from schema.campagne_queries import _statut_tournee
+
+        now = datetime.now(timezone.utc)
+        self.assertEqual(_statut_tournee(""), "INACTIF")
+        self.assertEqual(_statut_tournee((now - timedelta(minutes=5)).isoformat()), "EN_TOURNEE")
+        self.assertEqual(_statut_tournee((now - timedelta(minutes=40)).isoformat()), "ACTIF")
+        self.assertEqual(_statut_tournee((now - timedelta(hours=3)).isoformat()), "EN_RETARD")
+
+    @patch("schema.campagne_queries.auth_client")
+    @patch("schema.campagne_queries.abonne_client")
+    @patch("schema.campagne_queries.campagne_client")
+    @patch("schema.campagne_queries.require_auth")
+    @patch("schema.campagne_queries.require_role")
+    def test_agents_campagne_enrichi(self, mock_role, mock_auth, mock_camp, mock_ab, mock_authc) -> None:
+        mock_auth.return_value = MagicMock(role="ADMIN", user_id="admin-1")
+        zone = MagicMock(quartier="Plateau", camp=3, nb_releves=8)
+        agent = MagicMock(agent_id="agent-1", zones=[zone], nb_releves=8, derniere_activite="")
+        mock_camp.list_agents_campagne.return_value = MagicMock(agents=[agent])
+        mock_ab.list_zones.return_value = MagicMock(zones=[MagicMock(quartier="Plateau", camp=3, nb_abonnes=10)])
+        mock_authc.get_user.return_value = MagicMock(username="camara", role="AGENT")
+        result = CampagneQueries().agents_campagne(MagicMock(), campagne_id="camp-1")
+        self.assertEqual(len(result), 1)
+        a = result[0]
+        self.assertEqual(a.username, "camara")
+        self.assertEqual(a.role, "AGENT")
+        self.assertEqual(a.statut, "INACTIF")  # aucun relevé => pas d'activité
+        self.assertEqual(a.zones[0].nb_abonnes, 10)
+        self.assertEqual(a.zones[0].pct, 80.0)  # 8 / 10
+
+    @patch("schema.campagne_queries.auth_client")
+    @patch("schema.campagne_queries.abonne_client")
+    @patch("schema.campagne_queries.campagne_client")
+    @patch("schema.campagne_queries.require_auth")
+    @patch("schema.campagne_queries.require_role")
+    def test_repartition_par_zone(self, mock_role, mock_auth, mock_camp, mock_ab, mock_authc) -> None:
+        mock_auth.return_value = MagicMock(role="ADMIN", user_id="admin-1")
+        z1 = MagicMock(quartier="Plateau", camp=3, nb_releves=10)
+        z2 = MagicMock(quartier="Centre", camp=1, nb_releves=6)
+        agent = MagicMock(agent_id="agent-1", zones=[z1, z2], nb_releves=16, derniere_activite="")
+        mock_camp.list_agents_campagne.return_value = MagicMock(agents=[agent])
+        mock_ab.list_zones.return_value = MagicMock(
+            zones=[
+                MagicMock(quartier="Plateau", camp=3, nb_abonnes=10),
+                MagicMock(quartier="Centre", camp=1, nb_abonnes=8),
+            ]
+        )
+        mock_authc.get_user.return_value = MagicMock(username="camara", role="AGENT")
+        result = CampagneQueries().repartition_par_zone(MagicMock(), campagne_id="camp-1")
+        # trié par (quartier, camp) : Centre avant Plateau
+        self.assertEqual([(r.quartier, r.camp) for r in result], [("Centre", 1), ("Plateau", 3)])
+        self.assertEqual(result[0].agent_username, "camara")
+        self.assertEqual(result[1].pct, 100.0)  # Plateau 10/10
+
+    @patch("schema.campagne_queries.abonne_client")
+    @patch("schema.campagne_queries.require_auth")
+    @patch("schema.campagne_queries.require_role")
+    def test_zones_disponibles(self, mock_role, mock_auth, mock_ab) -> None:
+        mock_auth.return_value = MagicMock(role="ADMIN", user_id="admin-1")
+        mock_ab.list_zones.return_value = MagicMock(zones=[MagicMock(quartier="Centre", camp=1, nb_abonnes=5)])
+        result = CampagneQueries().zones_disponibles(MagicMock())
+        self.assertEqual((result[0].quartier, result[0].camp, result[0].nb_abonnes), ("Centre", 1, 5))
+
+    @patch("schema.campagne_mutations._enrichir_agents")
+    @patch("schema.campagne_queries.campagne_client")
+    @patch("schema.campagne_mutations.campagne_client")
+    @patch("schema.campagne_mutations.require_auth")
+    @patch("schema.campagne_mutations.require_role")
+    def test_affecter_zones_mutation(
+        self, mock_role, mock_auth, mock_mut_client, mock_query_client, mock_enrich
+    ) -> None:
+        from schema.campagne_types import ZoneInput
+
+        mock_auth.return_value = MagicMock(role="ADMIN", user_id="admin-1")
+        mock_mut_client.affecter_zones.return_value = MagicMock(agents=["raw"])
+        mock_enrich.return_value = [MagicMock(agent_id="agent-1")]
+        result = CampagneMutations().affecter_zones(
+            MagicMock(),
+            campagne_id="camp-1",
+            agent_id="agent-1",
+            zones=[ZoneInput(quartier="Plateau", camp=3), ZoneInput(quartier="Centre", camp=1)],
+        )
+        self.assertEqual(result[0].agent_id, "agent-1")
+        _, kwargs = mock_mut_client.affecter_zones.call_args
+        self.assertEqual(kwargs["campagne_id"], "camp-1")
+        self.assertEqual(kwargs["agent_id"], "agent-1")
+        self.assertEqual(len(kwargs["zones"]), 2)
