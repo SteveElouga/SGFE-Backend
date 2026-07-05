@@ -20,6 +20,8 @@ import notification_service_pb2 as notification_pb
 import notification_service_pb2_grpc as notification_pb_grpc
 import paiement_service_pb2 as paiement_pb
 import paiement_service_pb2_grpc as paiement_pb_grpc
+import reporting_service_pb2 as reporting_pb
+import reporting_service_pb2_grpc as reporting_pb_grpc
 
 
 class AuthServiceClient:
@@ -337,6 +339,24 @@ class NotificationServiceClient:
         return self._stub.TesterEnvoi(notification_pb.TesterEnvoiRequest(phone_number=phone_number))
 
 
+class ReportingServiceClient:
+    """Client gRPC vers reporting-service:50057 (voir proto/reporting_service.proto)."""
+
+    def __init__(self) -> None:
+        address = f"{settings.REPORTING_GRPC_HOST}:{settings.REPORTING_GRPC_PORT}"
+        self._channel = grpc.insecure_channel(address)
+        self._stub = reporting_pb_grpc.ReportingServiceStub(self._channel)
+
+    def get_dashboard(self) -> reporting_pb.DashboardResponse:
+        return self._stub.GetDashboard(reporting_pb.EmptyRequest())
+
+    def get_stats_campagne(self, campagne_id: str) -> reporting_pb.StatsCampagneResponse:
+        return self._stub.GetStatsCampagne(reporting_pb.CampagneIdRequest(campagne_id=campagne_id))
+
+    def get_stats_globales(self) -> reporting_pb.StatsGlobalesResponse:
+        return self._stub.GetStatsGlobales(reporting_pb.EmptyRequest())
+
+
 auth_client = AuthServiceClient()
 abonne_client = AbonneServiceClient()
 config_client = ConfigServiceClient()
@@ -344,3 +364,4 @@ campagne_client = CampagneServiceClient()
 facturation_client = FacturationServiceClient()
 paiement_client = PaiementServiceClient()
 notification_client = NotificationServiceClient()
+reporting_client = ReportingServiceClient()

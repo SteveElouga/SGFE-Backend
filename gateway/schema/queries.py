@@ -7,6 +7,7 @@ from schema.config_queries import ConfigQueries
 from schema.facturation_queries import FacturationQueries
 from schema.notification_queries import NotificationQueries
 from schema.paiement_queries import PaiementQueries
+from schema.reporting_queries import ReportingQueries
 
 
 @strawberry.type
@@ -18,5 +19,6 @@ class Query(
     FacturationQueries,
     PaiementQueries,
     NotificationQueries,
+    ReportingQueries,
 ):
     pass
