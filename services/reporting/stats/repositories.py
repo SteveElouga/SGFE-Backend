@@ -12,6 +12,9 @@ class StatsCampagneRepository:
         """Lève ObjectDoesNotExist si absente."""
         return StatsCampagne.objects.get(campagne_id=campagne_id)
 
+    def get_or_none(self, campagne_id: str) -> StatsCampagne | None:
+        return StatsCampagne.objects.filter(campagne_id=campagne_id).first()
+
     def get_derniere(self) -> StatsCampagne | None:
         """La campagne la plus récemment mise à jour = « campagne en cours »."""
         return StatsCampagne.objects.order_by("-updated_at").first()

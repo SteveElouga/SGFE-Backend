@@ -40,6 +40,17 @@ class PaiementRepository:
             qs = qs.filter(abonne_id=abonne_id)
         return list(qs)
 
+    def list_by_campagne(self, campagne_id: str) -> list[Paiement]:
+        """Liste les paiements des factures rattachées à une campagne.
+
+        Le modèle Paiement ne porte pas la campagne : le rattachement passe par
+        SoldeFacture (qui porte `campagne_id` depuis l'initialisation du solde).
+        On récupère donc les factures de la campagne puis leurs paiements,
+        triés du plus ancien au plus récent (ordre naturel pour un export).
+        """
+        facture_ids = SoldeFacture.objects.filter(campagne_id=campagne_id).values_list("facture_id", flat=True)
+        return list(Paiement.objects.filter(facture_id__in=facture_ids).order_by("date_paiement", "created_at"))
+
 
 class SoldeFactureRepository:
     """Accès base de données pour les soldes de factures."""

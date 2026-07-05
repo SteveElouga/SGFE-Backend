@@ -125,6 +125,10 @@ class PaiementService:
         """Liste les paiements, filtrés par facture et/ou abonné."""
         return self._paiement_repo.list_by_facture_and_abonne(facture_id, abonne_id)
 
+    def list_paiements_par_campagne(self, campagne_id: str) -> list[Paiement]:
+        """Liste tous les paiements des factures d'une campagne (export CSV)."""
+        return self._paiement_repo.list_by_campagne(campagne_id)
+
     def list_impayes(self) -> list[SoldeFacture]:
         """
         Retourne les factures dont la date limite est dépassée et qui ne sont pas PAYEE.

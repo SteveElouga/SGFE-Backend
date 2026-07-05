@@ -304,6 +304,31 @@ class TestListPaiements(TestCase):
         self.assertEqual(len(result), 2)
 
 
+class TestListPaiementsParCampagne(TestCase):
+    """Tests de PaiementService.list_paiements_par_campagne (export CSV écran 13)."""
+
+    def setUp(self) -> None:
+        self.svc = PaiementService()
+        repo = SoldeFactureRepository()
+        # Deux factures de la campagne A, une de la campagne B.
+        repo.create("fac-a1", "ab-1", Decimal("500"), date(2026, 7, 1), campagne_id="camp-A")
+        repo.create("fac-a2", "ab-2", Decimal("300"), date(2026, 7, 1), campagne_id="camp-A")
+        repo.create("fac-b1", "ab-3", Decimal("200"), date(2026, 7, 1), campagne_id="camp-B")
+
+    def test_filtre_par_campagne(self) -> None:
+        self.svc.enregistrer_paiement("fac-a1", "ab-1", 100.0, date.today(), ModePaiement.ESPECES, "", "u-1")
+        self.svc.enregistrer_paiement("fac-a2", "ab-2", 50.0, date.today(), ModePaiement.ESPECES, "", "u-1")
+        self.svc.enregistrer_paiement("fac-b1", "ab-3", 20.0, date.today(), ModePaiement.ESPECES, "", "u-1")
+
+        result = self.svc.list_paiements_par_campagne("camp-A")
+        self.assertEqual(len(result), 2)
+        self.assertEqual({p.facture_id for p in result}, {"fac-a1", "fac-a2"})
+
+    def test_campagne_sans_paiement_retourne_vide(self) -> None:
+        result = self.svc.list_paiements_par_campagne("camp-A")
+        self.assertEqual(result, [])
+
+
 class TestListImpayes(TestCase):
     """Tests de PaiementService.list_impayes."""
 

@@ -120,3 +120,19 @@ class DashboardTests(TestCase):
     def test_stats_campagne_inconnue_leve(self):
         with self.assertRaises(ObjectDoesNotExist):
             self.agg.get_stats_campagne(str(uuid.uuid4()))
+
+    def test_stats_completes_agrege_les_3_domaines(self):
+        cid = str(uuid.uuid4())
+        self.agg.update_stats_campagne(cid, "Juin", 50, 40, 1200)
+        self.agg.update_stats_facturation(cid, 20, 150000, "GENEREE")
+        self.agg.update_stats_paiements(cid, 90000, "PAIEMENT")
+        d = self.agg.get_stats_completes(cid)
+        self.assertEqual(d.campagne.nom_campagne, "Juin")
+        self.assertEqual(d.facturation.total_factures, 20)
+        self.assertEqual(d.paiements.montant_encaisse, Decimal("90000"))
+
+    def test_stats_completes_campagne_inconnue_ne_leve_pas(self):
+        d = self.agg.get_stats_completes(str(uuid.uuid4()))
+        self.assertIsNone(d.campagne)
+        self.assertIsNone(d.facturation)
+        self.assertIsNone(d.paiements)

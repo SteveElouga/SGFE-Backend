@@ -29,8 +29,8 @@ class ReportingServiceServicer(pb_grpc.ReportingServiceServicer):
     def __init__(self) -> None:
         self._agg = AgregateurDashboard()
 
-    def GetDashboard(self, request, context):
-        d = self._agg.get_dashboard()
+    def _dashboard_to_proto(self, d) -> pb.DashboardResponse:
+        """Construit un DashboardResponse à partir d'un Dashboard (sous-blocs None → vides)."""
         return pb.DashboardResponse(
             campagne_en_cours=(
                 pb.StatsCampagneResponse(**stats_campagne_to_dict(d.campagne))
@@ -47,6 +47,14 @@ class ReportingServiceServicer(pb_grpc.ReportingServiceServicer):
                 if d.paiements is not None
                 else pb.StatsPaiementsResponse()
             ),
+        )
+
+    def GetDashboard(self, request, context):
+        return self._dashboard_to_proto(self._agg.get_dashboard())
+
+    def GetStatsCompletes(self, request, context):
+        return self._dashboard_to_proto(
+            self._agg.get_stats_completes(request.campagne_id)
         )
 
     def GetStatsCampagne(self, request, context):

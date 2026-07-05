@@ -451,3 +451,35 @@ class BilanImpayesService:
         pdf_bytes = generer_bilan_pdf_bytes(context)
         filename = f"bilan-impayes-{date_arrete.isoformat()}.pdf"
         return pdf_bytes, filename
+
+
+class SyntheseCampagneService:
+    """Génère le PDF « Synthèse de campagne » (écran 13, back-office ADMIN/COMPTABLE).
+
+    Reprend les statistiques agrégées des trois domaines (relevés, facturation,
+    paiements) fournies par le Reporting Service et les met en page via
+    WeasyPrint. Lève ObjectDoesNotExist si la campagne n'a aucune statistique
+    (Reporting injoignable ou campagne inconnue) — converti en NOT_FOUND côté
+    gRPC.
+    """
+
+    def __init__(self, reporting_client=None, config_client=None) -> None:
+        from .grpc_clients import ConfigServiceClient, ReportingServiceClient
+
+        self._reporting_client = reporting_client or ReportingServiceClient()
+        self._config_client = config_client or ConfigServiceClient()
+
+    def generer_synthese_campagne_pdf(self, campagne_id: str) -> tuple[bytes, str]:
+        """Retourne (pdf_bytes, filename) de la synthèse de la campagne."""
+        from .synthese_generator import build_synthese_context, generer_synthese_pdf_bytes
+
+        stats = self._reporting_client.get_stats_completes(campagne_id)
+        if not stats or stats.get("campagne") is None:
+            raise ObjectDoesNotExist(f"Aucune statistique pour la campagne : {campagne_id}")
+
+        societe = self._config_client.get_infos_societe()
+        date_edition = datetime.date.today()
+        context = build_synthese_context(stats, societe, campagne_id, date_edition)
+        pdf_bytes = generer_synthese_pdf_bytes(context)
+        filename = f"synthese-{campagne_id}-{date_edition.isoformat()}.pdf"
+        return pdf_bytes, filename

@@ -1,0 +1,137 @@
+{% comment %}
+============================================================================
+TEMPLATE SYNTHÈSE DE CAMPAGNE — AquaBill (WeasyPrint) — écran 13
+----------------------------------------------------------------------------
+Rendu via render_to_string('synthese_campagne.html', context) puis WeasyPrint.
+Toutes les valeurs numériques sont fournies DÉJÀ FORMATÉES en chaînes par
+synthese_generator.build_synthese_context.
+
+CONTRAT DE CONTEXTE :
+societe          .nom .adresse .telephone
+campagne_id      nom_campagne
+date_edition     "JJ/MM/AAAA"     numero_synthese "SYNTH-AAAA-MM-JJ"
+campagne         .total_abonnes .nb_releves .nb_en_attente
+                 .pourcentage_progression .consommation_totale
+facturation      .total_factures .montant_total_facture .nb_factures_envoyees
+                 .nb_factures_payees .nb_impayes
+paiements        .montant_encaisse .montant_impaye .nb_impayes .taux_recouvrement
+============================================================================
+{% endcomment %}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    @font-face { font-family: 'Montserrat'; font-weight: 400;
+      src: url('fonts/Montserrat-Regular.woff2') format('woff2'); }
+    @font-face { font-family: 'Montserrat'; font-weight: 500;
+      src: url('fonts/Montserrat-Medium.woff2') format('woff2'); }
+    @font-face { font-family: 'Montserrat'; font-weight: 600;
+      src: url('fonts/Montserrat-SemiBold.woff2') format('woff2'); }
+    @font-face { font-family: 'Montserrat'; font-weight: 700;
+      src: url('fonts/Montserrat-Bold.woff2') format('woff2'); }
+    @font-face { font-family: 'Montserrat'; font-weight: 800;
+      src: url('fonts/Montserrat-ExtraBold.woff2') format('woff2'); }
+
+    @page { size: A4; margin: 0.6in; }
+
+    * { box-sizing: border-box; }
+    body { font-family: 'Montserrat', 'Helvetica Neue', Arial, sans-serif; color: #0f172a; font-size: 11px; margin: 0; }
+
+    .head { display: flex; justify-content: space-between; align-items: flex-start; }
+    .brand { display: flex; gap: 13px; align-items: center; }
+    .brand__name { font-size: 21px; font-weight: 800; color: #0f1c3d; }
+    .brand__meta { font-size: 11.5px; color: #64748b; margin-top: 4px; line-height: 1.6; }
+    .doc-title { font-size: 26px; font-weight: 800; color: #0f1c3d; letter-spacing: 1px; }
+    .doc-num { font-size: 13px; font-weight: 700; color: #1a56db; margin-top: 4px; }
+    .doc-meta { font-size: 11.5px; color: #64748b; margin-top: 8px; line-height: 1.7; }
+    .rule { height: 4px; background: linear-gradient(90deg,#0f1c3d 0%,#1a56db 60%,#0e9f6e 100%); border-radius: 2px; margin: 18px 0 20px; }
+
+    .campagne-band { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 18px; margin-bottom: 6px; }
+    .campagne-band__lbl { font-size: 10px; font-weight: 700; color: #94a3b8; letter-spacing: 1.2px; text-transform: uppercase; }
+    .campagne-band__nom { font-size: 17px; font-weight: 800; color: #0f1c3d; margin-top: 3px; }
+
+    .section-title { font-size: 10px; font-weight: 700; color: #94a3b8; letter-spacing: 1.4px;
+      text-transform: uppercase; margin: 24px 0 10px; }
+
+    .kpis { display: flex; gap: 12px; }
+    .kpi { flex: 1; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; }
+    .kpi--accent { border-top: 3px solid #1a56db; }
+    .kpi--green { border-top: 3px solid #0e9f6e; }
+    .kpi--red { border-top: 3px solid #ef4444; }
+    .kpi__num { font-size: 24px; font-weight: 800; color: #0f172a; }
+    .kpi__num--accent { color: #1a56db; }
+    .kpi__num--green { color: #0e9f6e; }
+    .kpi__num--danger { color: #dc2626; }
+    .kpi__num--warn { color: #b45309; }
+    .kpi__label { font-size: 11px; font-weight: 500; color: #94a3b8; margin-top: 3px; }
+
+    .note { font-size: 9.5px; color: #94a3b8; margin-top: 8px; }
+
+    .foot { width: 100%; border-top: 2px solid #0f1c3d; padding-top: 9px; margin-top: 30px;
+      font-size: 9.5px; color: #94a3b8; }
+    .foot td { padding: 0; font-size: 9.5px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+
+  <div class="head">
+    <div class="brand">
+      <svg width="48" height="48" viewBox="0 0 38 38" fill="none"><path d="M19 3C19 3 8 15.5 8 23C8 30.18 13.04 34 19 34C24.96 34 30 30.18 30 23C30 15.5 19 3 19 3Z" fill="#0f1c3d" fill-opacity=".95"/><path d="M19 16C19 16 14 21.5 14 25C14 27.76 16.24 30 19 30C21.76 30 24 27.76 24 25C24 21.5 19 16 19 16Z" fill="#0e9f6e" fill-opacity=".85"/></svg>
+      <div>
+        <div class="brand__name">{{ societe.nom }}</div>
+        <div class="brand__meta">{{ societe.adresse }}<br>{{ societe.telephone }}</div>
+      </div>
+    </div>
+    <div style="text-align:right">
+      <div class="doc-title">SYNTHÈSE CAMPAGNE</div>
+      <div class="doc-num">{{ numero_synthese }}</div>
+      <div class="doc-meta">Éditée le : <b style="color:#0f172a">{{ date_edition }}</b></div>
+    </div>
+  </div>
+  <div class="rule"></div>
+
+  <div class="campagne-band">
+    <div class="campagne-band__lbl">Campagne</div>
+    <div class="campagne-band__nom">{{ nom_campagne }}</div>
+  </div>
+
+  <div class="section-title">Relevés</div>
+  <div class="kpis">
+    <div class="kpi kpi--accent"><div class="kpi__num">{{ campagne.total_abonnes }}</div><div class="kpi__label">abonnés à relever</div></div>
+    <div class="kpi"><div class="kpi__num kpi__num--green">{{ campagne.nb_releves }}</div><div class="kpi__label">relevés effectués</div></div>
+    <div class="kpi"><div class="kpi__num kpi__num--warn">{{ campagne.nb_en_attente }}</div><div class="kpi__label">en attente</div></div>
+    <div class="kpi"><div class="kpi__num kpi__num--accent">{{ campagne.pourcentage_progression }}</div><div class="kpi__label">progression</div></div>
+  </div>
+  <div class="kpis" style="margin-top:12px">
+    <div class="kpi kpi--green"><div class="kpi__num kpi__num--green">{{ campagne.consommation_totale }}</div><div class="kpi__label">consommation totale relevée</div></div>
+  </div>
+
+  <div class="section-title">Facturation</div>
+  <div class="kpis">
+    <div class="kpi kpi--accent"><div class="kpi__num">{{ facturation.total_factures }}</div><div class="kpi__label">factures générées</div></div>
+    <div class="kpi"><div class="kpi__num">{{ facturation.nb_factures_envoyees }}</div><div class="kpi__label">envoyées (WhatsApp)</div></div>
+    <div class="kpi"><div class="kpi__num kpi__num--green">{{ facturation.nb_factures_payees }}</div><div class="kpi__label">payées</div></div>
+    <div class="kpi kpi--red"><div class="kpi__num kpi__num--danger">{{ facturation.nb_impayes }}</div><div class="kpi__label">impayées</div></div>
+  </div>
+  <div class="kpis" style="margin-top:12px">
+    <div class="kpi kpi--accent"><div class="kpi__num kpi__num--accent">{{ facturation.montant_total_facture }}</div><div class="kpi__label">montant total facturé</div></div>
+  </div>
+
+  <div class="section-title">Paiements</div>
+  <div class="kpis">
+    <div class="kpi kpi--green"><div class="kpi__num kpi__num--green">{{ paiements.montant_encaisse }}</div><div class="kpi__label">montant encaissé</div></div>
+    <div class="kpi kpi--red"><div class="kpi__num kpi__num--danger">{{ paiements.montant_impaye }}</div><div class="kpi__label">reste à recouvrer</div></div>
+    <div class="kpi"><div class="kpi__num kpi__num--warn">{{ paiements.nb_impayes }}</div><div class="kpi__label">factures impayées</div></div>
+    <div class="kpi kpi--accent"><div class="kpi__num kpi__num--accent">{{ paiements.taux_recouvrement }}</div><div class="kpi__label">taux de recouvrement</div></div>
+  </div>
+
+  <div class="note">Montants en FCFA · Données agrégées par le service de reporting à la date d'édition.</div>
+
+  <table class="foot"><tr>
+    <td style="text-align:left">{{ societe.nom }} — Système de facturation d'eau AquaBill</td>
+    <td style="text-align:right">Synthèse générée le {{ date_edition }} — Document interne</td>
+  </tr></table>
+
+</body>
+</html>

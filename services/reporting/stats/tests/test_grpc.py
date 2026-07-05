@@ -74,6 +74,22 @@ class ReportingServicerTests(TestCase):
         self.assertEqual(d.campagne_en_cours.nom_campagne, "")
         self.assertEqual(d.facturation_en_cours.total_factures, 0)
 
+    def test_get_stats_completes_cible_une_campagne(self):
+        self._seed()
+        d = self.servicer.GetStatsCompletes(
+            pb.CampagneIdRequest(campagne_id=self.cid), _ctx()
+        )
+        self.assertEqual(d.campagne_en_cours.nom_campagne, "Juin 2026")
+        self.assertEqual(d.facturation_en_cours.total_factures, 42)
+        self.assertAlmostEqual(d.paiements_en_cours.montant_encaisse, 52500.0)
+
+    def test_get_stats_completes_campagne_inconnue_retourne_vide(self):
+        d = self.servicer.GetStatsCompletes(
+            pb.CampagneIdRequest(campagne_id=str(uuid.uuid4())), _ctx()
+        )
+        self.assertEqual(d.campagne_en_cours.campagne_id, "")
+        self.assertEqual(d.facturation_en_cours.total_factures, 0)
+
     def test_get_stats_globales(self):
         self._seed()
         g = self.servicer.GetStatsGlobales(pb.EmptyRequest(), _ctx())
