@@ -57,7 +57,7 @@ Enum GraphQL `Role` : `ADMIN`, `AGENT`, `COMPTABLE`, `SUPERVISEUR`.
 | Action | ADMIN | AGENT | COMPTABLE | SUPERVISEUR |
 |---|:---:|:---:|:---:|:---:|
 | Gérer les abonnés | ✅ | ❌ | ❌ | ❌ |
-| Créer/clôturer une campagne | ✅ | ❌ | ❌ | ✅ (les siennes) |
+| Créer/démarrer/clôturer une campagne | ✅ | ❌ | ❌ | ✅ (les siennes) |
 | Saisir / corriger un index | ✅ | ✅ | ❌ | ✅ (ses campagnes) |
 | Voir la progression / la tournée | ✅ | ✅ | ❌ | ✅ (ses campagnes) |
 | Consulter/générer les factures | ✅ | ❌ | ✅ | ❌ |
