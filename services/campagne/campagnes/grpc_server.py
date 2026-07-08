@@ -6,7 +6,7 @@ from pathlib import Path
 
 import grpc
 from django.conf import settings
-from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.core.exceptions import ObjectDoesNotExist
 
 # Le fichier _grpc.py généré fait un `import campagne_service_pb2` bare —
 # il faut que le dossier proto/ soit dans sys.path avant l'import.
@@ -17,6 +17,7 @@ import campagne_service_pb2_grpc as pb_grpc
 
 from campagnes.event_publisher import publish_progression_event
 from campagnes.grpc_clients import FacturationServiceClient, ReportingServiceClient
+from campagnes.grpc_interceptors import ErrorHandlingInterceptor
 from campagnes.models import StatutReleve
 from campagnes.repositories import (
     CampagneAgentRepository,
@@ -30,7 +31,12 @@ logger = logging.getLogger(__name__)
 
 
 class CampagneServicer(pb_grpc.CampagneServiceServicer):
-    """Implémentation de tous les RPCs du CampagneService."""
+    """Implémentation de tous les RPCs du CampagneService.
+
+    Le mapping exception -> code gRPC (ObjectDoesNotExist->NOT_FOUND,
+    ValidationError->INVALID_ARGUMENT) est centralisé dans
+    ErrorHandlingInterceptor (voir grpc_interceptors.py) — pas de try/except ici.
+    """
 
     def __init__(self) -> None:
         self._campagne_svc = CampagneService()
@@ -51,24 +57,18 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.CampagneResponse:
         """Crée une nouvelle campagne de relevé."""
-        try:
-            campagne = self._campagne_svc.creer_campagne(
-                nom=request.nom,
-                periode_mois=request.periode_mois,
-                periode_annee=request.periode_annee,
-                created_by=request.created_by,
-                date_planifiee=request.date_planifiee or None,
-                numero_mobile_money=request.numero_mobile_money,
-                generer_factures_auto=request.generer_factures_auto,
-                envoyer_whatsapp_auto=request.envoyer_whatsapp_auto,
-                demarrer_maintenant=request.demarrer_maintenant,
-            )
-            return campagne_to_proto(campagne)
-        except ValidationError as exc:
-            context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
-        except Exception as exc:
-            logger.exception("CreateCampagne échoué")
-            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+        campagne = self._campagne_svc.creer_campagne(
+            nom=request.nom,
+            periode_mois=request.periode_mois,
+            periode_annee=request.periode_annee,
+            created_by=request.created_by,
+            date_planifiee=request.date_planifiee or None,
+            numero_mobile_money=request.numero_mobile_money,
+            generer_factures_auto=request.generer_factures_auto,
+            envoyer_whatsapp_auto=request.envoyer_whatsapp_auto,
+            demarrer_maintenant=request.demarrer_maintenant,
+        )
+        return campagne_to_proto(campagne)
 
     def GetCampagne(
         self,
@@ -76,14 +76,8 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.CampagneResponse:
         """Retourne les détails d'une campagne."""
-        try:
-            campagne = self._campagne_svc.get_campagne(request.campagne_id)
-            return campagne_to_proto(campagne)
-        except ObjectDoesNotExist as exc:
-            context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
-        except Exception as exc:
-            logger.exception("GetCampagne échoué")
-            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+        campagne = self._campagne_svc.get_campagne(request.campagne_id)
+        return campagne_to_proto(campagne)
 
     def ListCampagnes(
         self,
@@ -91,15 +85,11 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.ListCampagnesResponse:
         """Liste les campagnes — filtre optionnel par créateur (SUPERVISEUR) ou agent affecté (AGENT)."""
-        try:
-            campagnes = self._campagne_svc.list_campagnes(
-                created_by=request.created_by,
-                agent_id=request.agent_id,
-            )
-            return pb.ListCampagnesResponse(campagnes=[campagne_to_proto(c) for c in campagnes])
-        except Exception as exc:
-            logger.exception("ListCampagnes échoué")
-            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+        campagnes = self._campagne_svc.list_campagnes(
+            created_by=request.created_by,
+            agent_id=request.agent_id,
+        )
+        return pb.ListCampagnesResponse(campagnes=[campagne_to_proto(c) for c in campagnes])
 
     def AssignerAgent(
         self,
@@ -107,15 +97,9 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.CampagneResponse:
         """Affecte un agent à une campagne — idempotent."""
-        try:
-            campagne = self._campagne_repo.get_by_id(request.campagne_id)
-            self._agent_repo.assigner(campagne=campagne, agent_id=request.agent_id)
-            return campagne_to_proto(campagne)
-        except ObjectDoesNotExist as exc:
-            context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
-        except Exception as exc:
-            logger.exception("AssignerAgent échoué")
-            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+        campagne = self._campagne_repo.get_by_id(request.campagne_id)
+        self._agent_repo.assigner(campagne=campagne, agent_id=request.agent_id)
+        return campagne_to_proto(campagne)
 
     def AffecterZones(
         self,
@@ -123,17 +107,9 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.ListAgentsCampagneResponse:
         """Affecte un agent à un ensemble de zones (remplace ses zones actuelles)."""
-        try:
-            zones = [(z.quartier, z.camp) for z in request.zones]
-            agents = self._campagne_svc.affecter_zones(request.campagne_id, request.agent_id, zones)
-            return pb.ListAgentsCampagneResponse(agents=[agent_affecte_to_proto(a) for a in agents])
-        except ObjectDoesNotExist as exc:
-            context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
-        except ValidationError as exc:
-            context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
-        except Exception as exc:
-            logger.exception("AffecterZones échoué")
-            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+        zones = [(z.quartier, z.camp) for z in request.zones]
+        agents = self._campagne_svc.affecter_zones(request.campagne_id, request.agent_id, zones)
+        return pb.ListAgentsCampagneResponse(agents=[agent_affecte_to_proto(a) for a in agents])
 
     def ListAgentsCampagne(
         self,
@@ -141,14 +117,8 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.ListAgentsCampagneResponse:
         """Liste les agents affectés à une campagne (global et/ou par zone) + stats."""
-        try:
-            agents = self._campagne_svc.list_agents_campagne(request.campagne_id)
-            return pb.ListAgentsCampagneResponse(agents=[agent_affecte_to_proto(a) for a in agents])
-        except ObjectDoesNotExist as exc:
-            context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
-        except Exception as exc:
-            logger.exception("ListAgentsCampagne échoué")
-            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+        agents = self._campagne_svc.list_agents_campagne(request.campagne_id)
+        return pb.ListAgentsCampagneResponse(agents=[agent_affecte_to_proto(a) for a in agents])
 
     def CloturerCampagne(
         self,
@@ -156,32 +126,24 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.CampagneResponse:
         """Clôture une campagne EN_COURS et notifie Facturation Service."""
-        try:
-            campagne = self._campagne_svc.cloturer_campagne(request.campagne_id)
-            if campagne.generer_factures_auto:
-                self._facturation_client.notifier_campagne_cloturee(
-                    str(campagne.id),
-                    numero_mobile_money=campagne.numero_mobile_money,
-                    envoyer_whatsapp_auto=campagne.envoyer_whatsapp_auto,
-                )
-            # Pousse les stats de campagne au Reporting Service (CampagneCloturee,
-            # read model aval, dégradation gracieuse — ADR-019).
-            stats = self._campagne_svc.get_stats_reporting(str(campagne.id))
-            self._reporting_client.update_stats_campagne(
-                campagne_id=str(campagne.id),
-                nom_campagne=stats["nom_campagne"],
-                total_abonnes=stats["total_abonnes"],
-                nb_releves=stats["nb_releves"],
-                consommation_totale=stats["consommation_totale"],
+        campagne = self._campagne_svc.cloturer_campagne(request.campagne_id)
+        if campagne.generer_factures_auto:
+            self._facturation_client.notifier_campagne_cloturee(
+                str(campagne.id),
+                numero_mobile_money=campagne.numero_mobile_money,
+                envoyer_whatsapp_auto=campagne.envoyer_whatsapp_auto,
             )
-            return campagne_to_proto(campagne)
-        except ObjectDoesNotExist as exc:
-            context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
-        except ValidationError as exc:
-            context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
-        except Exception as exc:
-            logger.exception("CloturerCampagne échoué")
-            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+        # Pousse les stats de campagne au Reporting Service (CampagneCloturee,
+        # read model aval, dégradation gracieuse — ADR-019).
+        stats = self._campagne_svc.get_stats_reporting(str(campagne.id))
+        self._reporting_client.update_stats_campagne(
+            campagne_id=str(campagne.id),
+            nom_campagne=stats["nom_campagne"],
+            total_abonnes=stats["total_abonnes"],
+            nb_releves=stats["nb_releves"],
+            consommation_totale=stats["consommation_totale"],
+        )
+        return campagne_to_proto(campagne)
 
     def GetProgression(
         self,
@@ -189,27 +151,21 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.ProgressionResponse:
         """Retourne la progression d'une campagne (nb relevés par statut)."""
-        try:
-            counts = self._campagne_svc.get_progression(request.campagne_id)
-            nb_releves = counts.get(StatutReleve.RELEVE, 0)
-            nb_non_releve = counts.get(StatutReleve.NON_RELEVE, 0)
-            nb_estime = counts.get(StatutReleve.ESTIME, 0)
-            nb_a_relever = counts.get(StatutReleve.A_RELEVER, 0)
-            total = nb_releves + nb_non_releve + nb_estime + nb_a_relever
-            nb_traites = nb_releves + nb_non_releve + nb_estime
-            pourcentage = (nb_traites / total * 100) if total > 0 else 0.0
-            return pb.ProgressionResponse(
-                campagne_id=request.campagne_id,
-                total_abonnes=total,
-                nb_releves=nb_releves,
-                nb_en_attente=nb_a_relever,
-                pourcentage=pourcentage,
-            )
-        except ObjectDoesNotExist as exc:
-            context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
-        except Exception as exc:
-            logger.exception("GetProgression échoué")
-            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+        counts = self._campagne_svc.get_progression(request.campagne_id)
+        nb_releves = counts.get(StatutReleve.RELEVE, 0)
+        nb_non_releve = counts.get(StatutReleve.NON_RELEVE, 0)
+        nb_estime = counts.get(StatutReleve.ESTIME, 0)
+        nb_a_relever = counts.get(StatutReleve.A_RELEVER, 0)
+        total = nb_releves + nb_non_releve + nb_estime + nb_a_relever
+        nb_traites = nb_releves + nb_non_releve + nb_estime
+        pourcentage = (nb_traites / total * 100) if total > 0 else 0.0
+        return pb.ProgressionResponse(
+            campagne_id=request.campagne_id,
+            total_abonnes=total,
+            nb_releves=nb_releves,
+            nb_en_attente=nb_a_relever,
+            pourcentage=pourcentage,
+        )
 
     def GetResumeCloture(
         self,
@@ -217,22 +173,16 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.ResumeClotureResponse:
         """Aperçu de clôture prêt à afficher (modal de confirmation)."""
-        try:
-            r = self._campagne_svc.get_resume_cloture(request.campagne_id)
-            return pb.ResumeClotureResponse(
-                campagne_id=request.campagne_id,
-                total_abonnes=r["total_abonnes"],
-                nb_releves=r["nb_releves"],
-                nb_estimes=r["nb_estimes"],
-                nb_non_releves=r["nb_non_releves"],
-                nb_restants=r["nb_restants"],
-                nb_factures_a_generer=r["nb_factures_a_generer"],
-            )
-        except ObjectDoesNotExist as exc:
-            context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
-        except Exception as exc:
-            logger.exception("GetResumeCloture échoué")
-            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+        r = self._campagne_svc.get_resume_cloture(request.campagne_id)
+        return pb.ResumeClotureResponse(
+            campagne_id=request.campagne_id,
+            total_abonnes=r["total_abonnes"],
+            nb_releves=r["nb_releves"],
+            nb_estimes=r["nb_estimes"],
+            nb_non_releves=r["nb_non_releves"],
+            nb_restants=r["nb_restants"],
+            nb_factures_a_generer=r["nb_factures_a_generer"],
+        )
 
     # ------------------------------------------------------------------ #
     # Relevés
@@ -247,38 +197,30 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         Saisit le nouvel index d'un abonné pour une campagne.
         Crée le relevé si inexistant (avec ancien_index = dernier index connu ou 0).
         """
-        try:
-            releve = self._releve_repo.get_by_campagne_abonne(request.campagne_id, request.abonne_id)
-            if releve is None:
-                dernier_index = self._get_dernier_index_value(request.abonne_id)
-                # Passe par ajouter_abonne_campagne (et non un create() direct)
-                # pour bénéficier de la vérification du statut ACTIF de
-                # l'abonné, obligatoire avant tout ajout en campagne.
-                releve = self._campagne_svc.ajouter_abonne_campagne(
-                    campagne_id=request.campagne_id,
-                    abonne_id=request.abonne_id,
-                    ancien_index=dernier_index,
-                )
-            releve = self._releve_svc.saisir_index(
-                releve_id=str(releve.id),
-                nouveau_index=request.nouveau_index,
-                agent_id=request.agent_id,
-                observation=request.observation,
-                auteur_username=request.auteur_username,
-                auteur_role=request.auteur_role,
+        releve = self._releve_repo.get_by_campagne_abonne(request.campagne_id, request.abonne_id)
+        if releve is None:
+            dernier_index = self._get_dernier_index_value(request.abonne_id)
+            # Passe par ajouter_abonne_campagne (et non un create() direct)
+            # pour bénéficier de la vérification du statut ACTIF de
+            # l'abonné, obligatoire avant tout ajout en campagne.
+            releve = self._campagne_svc.ajouter_abonne_campagne(
+                campagne_id=request.campagne_id,
+                abonne_id=request.abonne_id,
+                ancien_index=dernier_index,
             )
-            # Notifie la gateway (souscription progressionUpdated) : l'avancement
-            # de la campagne vient de changer. agent_id permet de rafraîchir la
-            # carte de l'agent (statut/dernière activité) côté « détail campagne ».
-            publish_progression_event(request.campagne_id, agent_id=request.agent_id)
-            return releve_to_proto(releve)
-        except ObjectDoesNotExist as exc:
-            context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
-        except ValidationError as exc:
-            context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
-        except Exception as exc:
-            logger.exception("SaisirIndex échoué")
-            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+        releve = self._releve_svc.saisir_index(
+            releve_id=str(releve.id),
+            nouveau_index=request.nouveau_index,
+            agent_id=request.agent_id,
+            observation=request.observation,
+            auteur_username=request.auteur_username,
+            auteur_role=request.auteur_role,
+        )
+        # Notifie la gateway (souscription progressionUpdated) : l'avancement
+        # de la campagne vient de changer. agent_id permet de rafraîchir la
+        # carte de l'agent (statut/dernière activité) côté « détail campagne ».
+        publish_progression_event(request.campagne_id, agent_id=request.agent_id)
+        return releve_to_proto(releve)
 
     def CorrigerReleve(
         self,
@@ -294,28 +236,16 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         """
         releve = self._releve_repo.get_by_campagne_abonne(request.campagne_id, request.abonne_id)
         if releve is None:
-            context.abort(
-                grpc.StatusCode.NOT_FOUND,
-                f"Relevé introuvable pour l'abonné {request.abonne_id} dans la campagne.",
-            )
-            return
-        try:
-            releve = self._releve_svc.corriger_releve(
-                releve_id=str(releve.id),
-                nouveau_index=request.nouveau_index,
-                auteur_id=request.auteur_id,
-                auteur_username=request.auteur_username,
-                auteur_role=request.auteur_role,
-                observation=request.observation,
-            )
-            return releve_to_proto(releve)
-        except ObjectDoesNotExist as exc:
-            context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
-        except ValidationError as exc:
-            context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
-        except Exception as exc:
-            logger.exception("CorrigerReleve échoué")
-            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+            raise ObjectDoesNotExist(f"Relevé introuvable pour l'abonné {request.abonne_id} dans la campagne.")
+        releve = self._releve_svc.corriger_releve(
+            releve_id=str(releve.id),
+            nouveau_index=request.nouveau_index,
+            auteur_id=request.auteur_id,
+            auteur_username=request.auteur_username,
+            auteur_role=request.auteur_role,
+            observation=request.observation,
+        )
+        return releve_to_proto(releve)
 
     def MarquerNonReleve(
         self,
@@ -325,25 +255,13 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         """Marque un relevé comme NON_RELEVE ou ESTIME."""
         releve = self._releve_repo.get_by_campagne_abonne(request.campagne_id, request.abonne_id)
         if releve is None:
-            context.abort(
-                grpc.StatusCode.NOT_FOUND,
-                f"Relevé introuvable pour l'abonné {request.abonne_id} dans la campagne.",
-            )
-            return
-        try:
-            releve = self._releve_svc.marquer_non_releve(
-                str(releve.id),
-                statut=request.statut or "NON_RELEVE",
-                observation=request.observation,
-            )
-            return releve_to_proto(releve)
-        except ObjectDoesNotExist as exc:
-            context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
-        except ValidationError as exc:
-            context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
-        except Exception as exc:
-            logger.exception("MarquerNonReleve échoué")
-            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+            raise ObjectDoesNotExist(f"Relevé introuvable pour l'abonné {request.abonne_id} dans la campagne.")
+        releve = self._releve_svc.marquer_non_releve(
+            str(releve.id),
+            statut=request.statut or "NON_RELEVE",
+            observation=request.observation,
+        )
+        return releve_to_proto(releve)
 
     def GetReleve(
         self,
@@ -351,14 +269,8 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.ReleveResponse:
         """Retourne les détails d'un relevé."""
-        try:
-            releve = self._releve_svc.get_releve(request.releve_id)
-            return releve_to_proto(releve)
-        except ObjectDoesNotExist as exc:
-            context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
-        except Exception as exc:
-            logger.exception("GetReleve échoué")
-            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+        releve = self._releve_svc.get_releve(request.releve_id)
+        return releve_to_proto(releve)
 
     def ListReleves(
         self,
@@ -366,14 +278,8 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.ListRelevesResponse:
         """Liste tous les relevés d'une campagne."""
-        try:
-            releves = self._releve_svc.list_releves(request.campagne_id)
-            return pb.ListRelevesResponse(releves=[releve_to_proto(r) for r in releves])
-        except ObjectDoesNotExist as exc:
-            context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
-        except Exception as exc:
-            logger.exception("ListReleves échoué")
-            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+        releves = self._releve_svc.list_releves(request.campagne_id)
+        return pb.ListRelevesResponse(releves=[releve_to_proto(r) for r in releves])
 
     def GetDernierIndex(
         self,
@@ -381,17 +287,13 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.DernierIndexResponse:
         """Retourne le dernier index relevé pour un abonné (pour pré-remplissage)."""
-        try:
-            valeur = self._get_dernier_index_value(request.abonne_id)
-            est_initial = valeur < 1e-9
-            return pb.DernierIndexResponse(
-                abonne_id=request.abonne_id,
-                dernier_index=valeur,
-                est_index_initial=est_initial,
-            )
-        except Exception as exc:
-            logger.exception("GetDernierIndex échoué")
-            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+        valeur = self._get_dernier_index_value(request.abonne_id)
+        est_initial = valeur < 1e-9
+        return pb.DernierIndexResponse(
+            abonne_id=request.abonne_id,
+            dernier_index=valeur,
+            est_index_initial=est_initial,
+        )
 
     # ------------------------------------------------------------------ #
     # Helpers privés
@@ -415,9 +317,10 @@ def serve() -> None:
     """Démarre le serveur gRPC (appelé par la commande de management)."""
     import concurrent.futures
 
-    from django.conf import settings
-
-    server = grpc.server(concurrent.futures.ThreadPoolExecutor(max_workers=10))
+    server = grpc.server(
+        concurrent.futures.ThreadPoolExecutor(max_workers=10),
+        interceptors=[ErrorHandlingInterceptor()],
+    )
     pb_grpc.add_CampagneServiceServicer_to_server(CampagneServicer(), server)
     port = getattr(settings, "CAMPAGNE_GRPC_PORT", 50053)
     server.add_insecure_port(f"[::]:{port}")
