@@ -52,6 +52,19 @@ class CampagneMutations:
         return campagne_from_grpc(response)
 
     @strawberry.mutation
+    def demarrer_campagne(self, info: strawberry.types.Info, campagne_id: str) -> Campagne:
+        """Démarre une campagne PLANIFIEE (→ EN_COURS) — ADMIN (toutes), SUPERVISEUR (les siennes).
+
+        Permet de lancer une campagne à la demande, sans attendre le cron 7h
+        (qui ne démarre que les campagnes planifiées pour aujourd'hui/hier).
+        """
+        user = require_auth(info)
+        require_role(info, "ADMIN", "SUPERVISEUR")
+        _verifier_propriete_superviseur(user, campagne_id)
+        response = campagne_client.demarrer_campagne(campagne_id)
+        return campagne_from_grpc(response)
+
+    @strawberry.mutation
     def cloturer_campagne(self, info: strawberry.types.Info, campagne_id: str) -> Campagne:
         """Clôture une campagne EN_COURS — ADMIN (toutes), SUPERVISEUR (les siennes)."""
         user = require_auth(info)

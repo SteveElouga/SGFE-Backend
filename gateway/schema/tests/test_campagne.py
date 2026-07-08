@@ -203,6 +203,16 @@ class TestCampagneMutations(SimpleTestCase):
     @patch("schema.campagne_mutations.campagne_client")
     @patch("schema.campagne_mutations.require_auth")
     @patch("schema.campagne_mutations.require_role")
+    def test_demarrer_campagne(self, mock_role, mock_auth, mock_client) -> None:
+        mock_auth.return_value = MagicMock(role="ADMIN", user_id="user-001")
+        mock_client.demarrer_campagne.return_value = _campagne_response(statut="EN_COURS")
+        info = MagicMock()
+        result = CampagneMutations().demarrer_campagne(info, campagne_id="camp-001")
+        self.assertEqual(result.statut, "EN_COURS")
+
+    @patch("schema.campagne_mutations.campagne_client")
+    @patch("schema.campagne_mutations.require_auth")
+    @patch("schema.campagne_mutations.require_role")
     def test_affecter_agent_admin(self, mock_role, mock_auth, mock_client) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN", user_id="admin-001")
         mock_client.assigner_agent.return_value = _campagne_response()
