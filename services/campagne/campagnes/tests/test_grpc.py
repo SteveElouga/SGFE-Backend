@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import grpc
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.test import TestCase
 
 sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
@@ -32,9 +33,9 @@ def tearDownModule() -> None:
 
 
 def _mock_context() -> MagicMock:
-    ctx = MagicMock(spec=grpc.ServicerContext)
-    ctx.abort.side_effect = Exception("aborted")
-    return ctx
+    # Le mapping exception -> abort est fait par l'interceptor (voir
+    # test_grpc_interceptors.py) : les servicers propagent l'exception métier.
+    return MagicMock(spec=grpc.ServicerContext)
 
 
 class TestCreateCampagneRPC(TestCase):
@@ -55,17 +56,13 @@ class TestCreateCampagneRPC(TestCase):
 
     def test_create_campagne_nom_vide_abort(self) -> None:
         request = pb.CreateCampagneRequest(nom="", periode_mois=1, periode_annee=2026, created_by="user-001")
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.CreateCampagne(request, ctx)
-        ctx.abort.assert_called_once()
+        with self.assertRaises(ValidationError):
+            self.servicer.CreateCampagne(request, _mock_context())
 
     def test_create_campagne_mois_invalide_abort(self) -> None:
         request = pb.CreateCampagneRequest(nom="X", periode_mois=0, periode_annee=2026, created_by="user-001")
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.CreateCampagne(request, ctx)
-        ctx.abort.assert_called_once()
+        with self.assertRaises(ValidationError):
+            self.servicer.CreateCampagne(request, _mock_context())
 
 
 class TestGetCampagneRPC(TestCase):
@@ -82,10 +79,8 @@ class TestGetCampagneRPC(TestCase):
 
     def test_get_campagne_inexistante_abort(self) -> None:
         request = pb.CampagneIdRequest(campagne_id="00000000-0000-0000-0000-000000000000")
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.GetCampagne(request, ctx)
-        ctx.abort.assert_called_once_with(grpc.StatusCode.NOT_FOUND, ctx.abort.call_args[0][1])
+        with self.assertRaises(ObjectDoesNotExist):
+            self.servicer.GetCampagne(request, _mock_context())
 
 
 class TestListCampagnesRPC(TestCase):
@@ -142,10 +137,8 @@ class TestAssignerAgentRPC(TestCase):
 
     def test_assigner_agent_campagne_inexistante_abort(self) -> None:
         request = pb.AssignerAgentRequest(campagne_id="00000000-0000-0000-0000-000000000000", agent_id="agent-001")
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.AssignerAgent(request, ctx)
-        ctx.abort.assert_called_once_with(grpc.StatusCode.NOT_FOUND, ctx.abort.call_args[0][1])
+        with self.assertRaises(ObjectDoesNotExist):
+            self.servicer.AssignerAgent(request, _mock_context())
 
 
 class TestCloturerCampagneRPC(TestCase):
@@ -181,10 +174,8 @@ class TestCloturerCampagneRPC(TestCase):
         svc = CampagneService()
         c2 = svc.creer_campagne("C2", 2, 2026, created_by="user-A")
         request = pb.CampagneIdRequest(campagne_id=str(c2.id))
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.CloturerCampagne(request, ctx)
-        ctx.abort.assert_called_once()
+        with self.assertRaises(ValidationError):
+            self.servicer.CloturerCampagne(request, _mock_context())
 
 
 class TestSaisirIndexRPC(TestCase):
@@ -226,12 +217,9 @@ class TestSaisirIndexRPC(TestCase):
             nouveau_index=200.0,
             agent_id="agent-001",
         )
-        ctx = _mock_context()
         with patch.object(AbonneServiceClient, "get_abonne", return_value=SimpleNamespace(statut="SUSPENDU")):
-            with self.assertRaises(Exception):
-                self.servicer.SaisirIndex(request, ctx)
-        ctx.abort.assert_called_once()
-        self.assertEqual(ctx.abort.call_args[0][0], grpc.StatusCode.INVALID_ARGUMENT)
+            with self.assertRaises(ValidationError):
+                self.servicer.SaisirIndex(request, _mock_context())
 
     def test_saisir_index_inferieur_abort(self) -> None:
         request = pb.SaisirIndexRequest(
@@ -240,10 +228,8 @@ class TestSaisirIndexRPC(TestCase):
             nouveau_index=50.0,
             agent_id="agent-001",
         )
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.SaisirIndex(request, ctx)
-        ctx.abort.assert_called_once()
+        with self.assertRaises(ValidationError):
+            self.servicer.SaisirIndex(request, _mock_context())
 
 
 class TestCorrigerReleveRPC(TestCase):
@@ -295,11 +281,8 @@ class TestCorrigerReleveRPC(TestCase):
         self.assertEqual(response.nouveau_index, 175.0)
 
     def test_corriger_releve_introuvable_abort(self) -> None:
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.CorrigerReleve(self._corriger_request(abonne_id="inconnu"), ctx)
-        ctx.abort.assert_called_once()
-        self.assertEqual(ctx.abort.call_args[0][0], grpc.StatusCode.NOT_FOUND)
+        with self.assertRaises(ObjectDoesNotExist):
+            self.servicer.CorrigerReleve(self._corriger_request(abonne_id="inconnu"), _mock_context())
 
 
 class TestGetProgressionRPC(TestCase):
@@ -382,10 +365,8 @@ class TestMarquerNonReleveRPC(TestCase):
             abonne_id="abonne-001",
             statut="RELEVE",
         )
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.MarquerNonReleve(request, ctx)
-        ctx.abort.assert_called_once()
+        with self.assertRaises(ValidationError):
+            self.servicer.MarquerNonReleve(request, _mock_context())
 
     def test_marquer_releve_absent_abort(self) -> None:
         request = pb.MarquerNonReleveRequest(
@@ -393,10 +374,8 @@ class TestMarquerNonReleveRPC(TestCase):
             abonne_id="abonne-inconnu",
             statut="NON_RELEVE",
         )
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.MarquerNonReleve(request, ctx)
-        ctx.abort.assert_called_once_with(grpc.StatusCode.NOT_FOUND, ctx.abort.call_args[0][1])
+        with self.assertRaises(ObjectDoesNotExist):
+            self.servicer.MarquerNonReleve(request, _mock_context())
 
 
 class TestGetReleveRPC(TestCase):
@@ -420,10 +399,8 @@ class TestGetReleveRPC(TestCase):
 
     def test_get_releve_inexistant_abort(self) -> None:
         request = pb.ReleveIdRequest(releve_id="00000000-0000-0000-0000-000000000000")
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.GetReleve(request, ctx)
-        ctx.abort.assert_called_once_with(grpc.StatusCode.NOT_FOUND, ctx.abort.call_args[0][1])
+        with self.assertRaises(ObjectDoesNotExist):
+            self.servicer.GetReleve(request, _mock_context())
 
 
 class TestListRelevesRPC(TestCase):
@@ -443,10 +420,8 @@ class TestListRelevesRPC(TestCase):
 
     def test_list_releves_campagne_inexistante_abort(self) -> None:
         request = pb.CampagneIdRequest(campagne_id="00000000-0000-0000-0000-000000000000")
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.ListReleves(request, ctx)
-        ctx.abort.assert_called_once()
+        with self.assertRaises(ObjectDoesNotExist):
+            self.servicer.ListReleves(request, _mock_context())
 
 
 class TestGetDernierIndexRPC(TestCase):
@@ -515,8 +490,5 @@ class TestAffecterZonesRPC(TestCase):
             agent_id="agent-1",
             zones=[pb.Zone(quartier="Plateau", camp=3)],
         )
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.AffecterZones(request, ctx)
-        ctx.abort.assert_called_once()
-        self.assertEqual(ctx.abort.call_args[0][0], grpc.StatusCode.NOT_FOUND)
+        with self.assertRaises(ObjectDoesNotExist):
+            self.servicer.AffecterZones(request, _mock_context())
