@@ -383,6 +383,8 @@ services:
     depends_on:
       reporting-postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
       DJANGO_DEBUG: "True"
@@ -392,6 +394,7 @@ services:
       REPORTING_DB_USER: reporting_user
       REPORTING_DB_PASSWORD: devpassword
       REPORTING_GRPC_PORT: "50057"
+      REDIS_URL: "redis://redis:6379/0"
     ports:
       - "50057:50057"
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
