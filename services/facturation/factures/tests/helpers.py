@@ -16,7 +16,6 @@ def service_avec_clients_mockes() -> FactureService:
         notification_client=MagicMock(),
         abonne_client=MagicMock(),
         campagne_client=MagicMock(),
-        reporting_client=MagicMock(),
     )
     svc._abonne_client.get_abonne.return_value = None
     svc._campagne_client.get_campagne_nom.return_value = ""
