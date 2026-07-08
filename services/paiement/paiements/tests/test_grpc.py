@@ -1,4 +1,10 @@
-"""Tests du serveur gRPC du Paiement Service."""
+"""Tests du serveur gRPC du Paiement Service.
+
+Les servicers ne gèrent plus les erreurs eux-mêmes : le mapping exception ->
+code gRPC est centralisé dans ErrorHandlingInterceptor (testé dans
+test_grpc_interceptors.py). Les tests ci-dessous vérifient donc que le
+servicer **propage** l'exception métier attendue.
+"""
 
 import sys
 from datetime import date, timedelta
@@ -8,6 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import grpc
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.test import TestCase
 
 sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
@@ -21,10 +28,8 @@ from paiements.services import PaiementService
 
 
 def _mock_context() -> MagicMock:
-    """Crée un contexte gRPC mocké qui lève une exception sur abort."""
-    ctx = MagicMock(spec=grpc.ServicerContext)
-    ctx.abort.side_effect = Exception("aborted")
-    return ctx
+    """Contexte gRPC mocké (l'abort est fait par l'interceptor, pas le servicer)."""
+    return MagicMock(spec=grpc.ServicerContext)
 
 
 def _creer_solde(
@@ -76,32 +81,27 @@ class TestInitialiserSoldeRPC(TestCase):
         self.servicer.InitialiserSolde(request, _mock_context())
         self.assertEqual(SoldeFacture.objects.get(facture_id="facture-camp").campagne_id, "camp-42")
 
-    def test_initialiser_solde_montant_nul_abort(self) -> None:
-        """Un montant nul provoque un abort INVALID_ARGUMENT."""
+    def test_initialiser_solde_montant_nul_propage_validation_error(self) -> None:
+        """Un montant nul propage une ValidationError (-> INVALID_ARGUMENT via interceptor)."""
         request = pb.InitialiserSoldeRequest(
             facture_id="facture-002",
             abonne_id="abonne-001",
             montant_total=0.0,
             date_limite_paiement="2026-07-31",
         )
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.InitialiserSolde(request, ctx)
-        ctx.abort.assert_called_once()
-        self.assertEqual(ctx.abort.call_args[0][0], grpc.StatusCode.INVALID_ARGUMENT)
+        with self.assertRaises(ValidationError):
+            self.servicer.InitialiserSolde(request, _mock_context())
 
-    def test_initialiser_solde_date_invalide_abort(self) -> None:
-        """Une date mal formatée provoque un abort INVALID_ARGUMENT."""
+    def test_initialiser_solde_date_invalide_propage_value_error(self) -> None:
+        """Une date mal formatée propage une ValueError (-> INVALID_ARGUMENT via interceptor)."""
         request = pb.InitialiserSoldeRequest(
             facture_id="facture-003",
             abonne_id="abonne-001",
             montant_total=100.00,
             date_limite_paiement="pas-une-date",
         )
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.InitialiserSolde(request, ctx)
-        ctx.abort.assert_called_once()
+        with self.assertRaises(ValueError):
+            self.servicer.InitialiserSolde(request, _mock_context())
 
 
 class TestEnregistrerPaiementRPC(TestCase):
@@ -175,8 +175,7 @@ class TestEnregistrerPaiementRPC(TestCase):
         self.assertIn("PAIEMENT", types)
         self.assertIn("IMPAYE_RESOLU", types)
 
-    def test_enregistrer_paiement_montant_invalide_abort(self) -> None:
-        """Un montant nul provoque un abort INVALID_ARGUMENT."""
+    def test_enregistrer_paiement_montant_invalide_propage_validation_error(self) -> None:
         request = pb.EnregistrerPaiementRequest(
             facture_id="facture-001",
             abonne_id="abonne-001",
@@ -186,14 +185,10 @@ class TestEnregistrerPaiementRPC(TestCase):
             reference_transaction="",
             enregistre_par="user-001",
         )
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.EnregistrerPaiement(request, ctx)
-        ctx.abort.assert_called_once()
-        self.assertEqual(ctx.abort.call_args[0][0], grpc.StatusCode.INVALID_ARGUMENT)
+        with self.assertRaises(ValidationError):
+            self.servicer.EnregistrerPaiement(request, _mock_context())
 
-    def test_enregistrer_paiement_surpaiement_abort(self) -> None:
-        """Un surpaiement provoque un abort INVALID_ARGUMENT."""
+    def test_enregistrer_paiement_surpaiement_propage_validation_error(self) -> None:
         request = pb.EnregistrerPaiementRequest(
             facture_id="facture-001",
             abonne_id="abonne-001",
@@ -203,14 +198,10 @@ class TestEnregistrerPaiementRPC(TestCase):
             reference_transaction="",
             enregistre_par="user-001",
         )
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.EnregistrerPaiement(request, ctx)
-        ctx.abort.assert_called_once()
-        self.assertEqual(ctx.abort.call_args[0][0], grpc.StatusCode.INVALID_ARGUMENT)
+        with self.assertRaises(ValidationError):
+            self.servicer.EnregistrerPaiement(request, _mock_context())
 
-    def test_enregistrer_paiement_facture_inconnue_abort(self) -> None:
-        """Paiement sur facture inconnue provoque un abort NOT_FOUND."""
+    def test_enregistrer_paiement_facture_inconnue_propage_not_found(self) -> None:
         request = pb.EnregistrerPaiementRequest(
             facture_id="facture-inconnue",
             abonne_id="abonne-001",
@@ -220,14 +211,10 @@ class TestEnregistrerPaiementRPC(TestCase):
             reference_transaction="",
             enregistre_par="user-001",
         )
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.EnregistrerPaiement(request, ctx)
-        ctx.abort.assert_called_once()
-        self.assertEqual(ctx.abort.call_args[0][0], grpc.StatusCode.NOT_FOUND)
+        with self.assertRaises(ObjectDoesNotExist):
+            self.servicer.EnregistrerPaiement(request, _mock_context())
 
-    def test_enregistrer_paiement_mobile_money_sans_reference_abort(self) -> None:
-        """MOBILE_MONEY sans référence provoque un abort INVALID_ARGUMENT."""
+    def test_enregistrer_paiement_mobile_money_sans_reference_propage_validation_error(self) -> None:
         request = pb.EnregistrerPaiementRequest(
             facture_id="facture-001",
             abonne_id="abonne-001",
@@ -237,11 +224,8 @@ class TestEnregistrerPaiementRPC(TestCase):
             reference_transaction="",
             enregistre_par="user-001",
         )
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.EnregistrerPaiement(request, ctx)
-        ctx.abort.assert_called_once()
-        self.assertEqual(ctx.abort.call_args[0][0], grpc.StatusCode.INVALID_ARGUMENT)
+        with self.assertRaises(ValidationError):
+            self.servicer.EnregistrerPaiement(request, _mock_context())
 
 
 class TestGetSoldeRPC(TestCase):
@@ -259,14 +243,10 @@ class TestGetSoldeRPC(TestCase):
         self.assertEqual(response.facture_id, "facture-001")
         self.assertEqual(response.statut, StatutSolde.IMPAYEE)
 
-    def test_get_solde_facture_inconnue_abort(self) -> None:
-        """GetSolde avec facture inconnue provoque un abort NOT_FOUND."""
+    def test_get_solde_facture_inconnue_propage_not_found(self) -> None:
         request = pb.FactureIdRequest(facture_id="facture-inconnue")
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.GetSolde(request, ctx)
-        ctx.abort.assert_called_once()
-        self.assertEqual(ctx.abort.call_args[0][0], grpc.StatusCode.NOT_FOUND)
+        with self.assertRaises(ObjectDoesNotExist):
+            self.servicer.GetSolde(request, _mock_context())
 
 
 class TestListPaiementsRPC(TestCase):
@@ -279,7 +259,6 @@ class TestListPaiementsRPC(TestCase):
 
     def test_list_paiements_retourne_liste(self) -> None:
         """ListPaiements retourne les paiements de la facture."""
-        # Enregistrer un paiement
         svc = PaiementService()
         svc.enregistrer_paiement(
             "facture-001",
@@ -352,7 +331,6 @@ class TestListImpayesRPC(TestCase):
     def test_list_impayes_exclut_factures_payees(self) -> None:
         """ListImpayes exclut les factures dont le statut est PAYEE."""
         _creer_solde("facture-payee", date_limite=date.today() - timedelta(days=3))
-        # Payer la facture
         svc = PaiementService()
         svc.enregistrer_paiement(
             "facture-payee",
@@ -390,11 +368,7 @@ class TestGetSuiviImpayeRPC(TestCase):
         self.assertEqual(response.abonne_id, "abonne-001")
         self.assertEqual(response.etape_actuelle, 1)
 
-    def test_get_suivi_inexistant_abort(self) -> None:
-        """GetSuiviImpaye avec facture sans suivi provoque un abort NOT_FOUND."""
+    def test_get_suivi_inexistant_propage_not_found(self) -> None:
         request = pb.FactureIdRequest(facture_id="facture-sans-suivi")
-        ctx = _mock_context()
-        with self.assertRaises(Exception):
-            self.servicer.GetSuiviImpaye(request, ctx)
-        ctx.abort.assert_called_once()
-        self.assertEqual(ctx.abort.call_args[0][0], grpc.StatusCode.NOT_FOUND)
+        with self.assertRaises(ObjectDoesNotExist):
+            self.servicer.GetSuiviImpaye(request, _mock_context())
