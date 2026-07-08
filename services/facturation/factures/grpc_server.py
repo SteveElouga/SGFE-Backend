@@ -9,7 +9,6 @@ from pathlib import Path
 
 import grpc
 from django.conf import settings
-from django.core.exceptions import ObjectDoesNotExist, ValidationError
 
 sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 
@@ -18,6 +17,7 @@ import facturation_service_pb2_grpc as pb_grpc
 
 from .event_publisher import publish_facture_event, publish_tarif_event
 from .grpc_clients import CampagneServiceClient, ConfigServiceClient
+from .grpc_interceptors import ErrorHandlingInterceptor
 from .serializers import facture_to_proto, tarif_to_proto
 from .services import BilanImpayesService, FactureService, ReleveData, SyntheseCampagneService, TarifService
 
@@ -27,7 +27,13 @@ _GRPC_MAX_WORKERS = 10
 
 
 class FacturationServicer(pb_grpc.FacturationServiceServicer):
-    """Implémentation de tous les RPCs du FacturationService."""
+    """Implémentation de tous les RPCs du FacturationService.
+
+    Le mapping exception -> code gRPC (ObjectDoesNotExist->NOT_FOUND,
+    ValidationError->INVALID_ARGUMENT, PreconditionError->FAILED_PRECONDITION,
+    grpc.RpcError->UNAVAILABLE, FileNotFoundError->INTERNAL) est centralisé dans
+    ErrorHandlingInterceptor (voir grpc_interceptors.py) — pas de try/except ici.
+    """
 
     def __init__(self) -> None:
         self._tarif_svc = TarifService()
@@ -47,12 +53,8 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.TarifResponse:
         """Retourne le tarif actif (prix du m³)."""
-        try:
-            tarif = self._tarif_svc.get_tarif_actuel()
-            return tarif_to_proto(tarif)
-        except ObjectDoesNotExist:
-            context.abort(grpc.StatusCode.NOT_FOUND, "Aucun tarif actif configuré.")
-            return pb.TarifResponse()
+        tarif = self._tarif_svc.get_tarif_actuel()
+        return tarif_to_proto(tarif)
 
     def UpdateTarif(
         self,
@@ -60,24 +62,14 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.TarifResponse:
         """Crée un nouveau tarif actif en désactivant le précédent."""
-        try:
-            date_effet = (
-                datetime.date.fromisoformat(request.date_effet) if request.date_effet else datetime.date.today()
-            )
-            tarif = self._tarif_svc.update_tarif(
-                prix_m3=Decimal(str(request.prix_m3)),
-                date_effet=date_effet,
-            )
-            # Notifie la gateway (souscription tarifUpdated).
-            publish_tarif_event()
-            return tarif_to_proto(tarif)
-        except ValidationError as exc:
-            context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
-            return pb.TarifResponse()
-        except Exception as exc:
-            logger.exception("Erreur inattendue dans UpdateTarif")
-            context.abort(grpc.StatusCode.INTERNAL, f"Erreur interne : {exc}")
-            return pb.TarifResponse()
+        date_effet = datetime.date.fromisoformat(request.date_effet) if request.date_effet else datetime.date.today()
+        tarif = self._tarif_svc.update_tarif(
+            prix_m3=Decimal(str(request.prix_m3)),
+            date_effet=date_effet,
+        )
+        # Notifie la gateway (souscription tarifUpdated).
+        publish_tarif_event()
+        return tarif_to_proto(tarif)
 
     # ------------------------------------------------------------------ #
     # Factures
@@ -89,14 +81,9 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.GenererFacturesResponse:
         """Génère les factures pour tous les relevés RELEVE d'une campagne."""
-        try:
-            releves_raw = self._campagne_client.list_releves(request.campagne_id)
-        except grpc.RpcError as exc:
-            context.abort(
-                grpc.StatusCode.UNAVAILABLE,
-                f"Impossible de récupérer les relevés depuis Campagne Service : {exc}",
-            )
-            return pb.GenererFacturesResponse()
+        # Une RpcError ici (Campagne Service inaccessible) est mappée en
+        # UNAVAILABLE par l'interceptor.
+        releves_raw = self._campagne_client.list_releves(request.campagne_id)
 
         releves = [
             ReleveData(
@@ -112,22 +99,16 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
         delai = self._config_client.get_delai_paiement_jours()
         societe = self._config_client.get_infos_societe()
 
-        try:
-            factures = self._facture_svc.generer_factures(
-                campagne_id=request.campagne_id,
-                releves=releves,
-                delai_paiement_jours=delai,
-                societe=societe,
-                numero_mobile_money=request.numero_mobile_money,
-                envoyer_whatsapp_auto=request.envoyer_whatsapp_auto,
-            )
-        except ValidationError as exc:
-            context.abort(grpc.StatusCode.FAILED_PRECONDITION, str(exc))
-            return pb.GenererFacturesResponse()
-        except Exception as exc:
-            logger.exception("Erreur inattendue dans GenererFactures")
-            context.abort(grpc.StatusCode.INTERNAL, f"Erreur interne : {exc}")
-            return pb.GenererFacturesResponse()
+        # Une PreconditionError (ex. aucun tarif actif) est mappée en
+        # FAILED_PRECONDITION par l'interceptor.
+        factures = self._facture_svc.generer_factures(
+            campagne_id=request.campagne_id,
+            releves=releves,
+            delai_paiement_jours=delai,
+            societe=societe,
+            numero_mobile_money=request.numero_mobile_money,
+            envoyer_whatsapp_auto=request.envoyer_whatsapp_auto,
+        )
 
         # Notifie la gateway (souscription factureUpdated) : une facture par relevé.
         for f in factures:
@@ -140,31 +121,20 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
         request: pb.FactureIdRequest,
         context: grpc.ServicerContext,
     ) -> pb.FactureResponse:
-        try:
-            facture = self._facture_svc.get_facture(request.facture_id)
-            return facture_to_proto(facture)
-        except ObjectDoesNotExist:
-            context.abort(
-                grpc.StatusCode.NOT_FOUND,
-                f"Facture introuvable : {request.facture_id}",
-            )
-            return pb.FactureResponse()
+        facture = self._facture_svc.get_facture(request.facture_id)
+        return facture_to_proto(facture)
 
     def ListFactures(
         self,
         request: pb.ListFacturesRequest,
         context: grpc.ServicerContext,
     ) -> pb.ListFacturesResponse:
-        try:
-            factures = self._facture_svc.list_factures(
-                campagne_id=request.campagne_id,
-                abonne_id=request.abonne_id,
-                statut=request.statut,
-            )
-            return pb.ListFacturesResponse(factures=[facture_to_proto(f) for f in factures])
-        except ValidationError as exc:
-            context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
-            return pb.ListFacturesResponse()
+        factures = self._facture_svc.list_factures(
+            campagne_id=request.campagne_id,
+            abonne_id=request.abonne_id,
+            statut=request.statut,
+        )
+        return pb.ListFacturesResponse(factures=[facture_to_proto(f) for f in factures])
 
     def GetFacturesParCampagne(
         self,
@@ -179,18 +149,8 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
         request: pb.FactureIdRequest,
         context: grpc.ServicerContext,
     ) -> pb.PDFResponse:
-        try:
-            pdf_bytes, filename = self._facture_svc.get_pdf_bytes(request.facture_id)
-            return pb.PDFResponse(pdf_content=pdf_bytes, filename=filename)
-        except ObjectDoesNotExist:
-            context.abort(
-                grpc.StatusCode.NOT_FOUND,
-                f"Facture introuvable : {request.facture_id}",
-            )
-            return pb.PDFResponse()
-        except FileNotFoundError as exc:
-            context.abort(grpc.StatusCode.INTERNAL, str(exc))
-            return pb.PDFResponse()
+        pdf_bytes, filename = self._facture_svc.get_pdf_bytes(request.facture_id)
+        return pb.PDFResponse(pdf_content=pdf_bytes, filename=filename)
 
     def GenererBilanImpayesPDF(
         self,
@@ -198,13 +158,8 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.PDFResponse:
         """Génère le PDF du bilan des impayés (agrégat back-office)."""
-        try:
-            pdf_bytes, filename = self._bilan_svc.generer_bilan_impayes_pdf()
-            return pb.PDFResponse(pdf_content=pdf_bytes, filename=filename)
-        except Exception as exc:
-            logger.exception("GenererBilanImpayesPDF échoué")
-            context.abort(grpc.StatusCode.INTERNAL, str(exc))
-            return pb.PDFResponse()
+        pdf_bytes, filename = self._bilan_svc.generer_bilan_impayes_pdf()
+        return pb.PDFResponse(pdf_content=pdf_bytes, filename=filename)
 
     def GenererSyntheseCampagnePDF(
         self,
@@ -212,45 +167,27 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.PDFResponse:
         """Génère le PDF de synthèse d'une campagne (écran 13, stats 3 domaines)."""
-        try:
-            pdf_bytes, filename = self._synthese_svc.generer_synthese_campagne_pdf(request.campagne_id)
-            return pb.PDFResponse(pdf_content=pdf_bytes, filename=filename)
-        except ObjectDoesNotExist:
-            context.abort(
-                grpc.StatusCode.NOT_FOUND,
-                f"Aucune statistique pour la campagne : {request.campagne_id}",
-            )
-            return pb.PDFResponse()
-        except Exception as exc:
-            logger.exception("GenererSyntheseCampagnePDF échoué")
-            context.abort(grpc.StatusCode.INTERNAL, str(exc))
-            return pb.PDFResponse()
+        pdf_bytes, filename = self._synthese_svc.generer_synthese_campagne_pdf(request.campagne_id)
+        return pb.PDFResponse(pdf_content=pdf_bytes, filename=filename)
 
     def UpdateStatutFacture(
         self,
         request: pb.UpdateStatutRequest,
         context: grpc.ServicerContext,
     ) -> pb.FactureResponse:
-        try:
-            facture = self._facture_svc.update_statut(request.facture_id, request.statut)
-            # Notifie la gateway : couvre le passage IMPAYEE→PARTIELLE→PAYEE
-            # déclenché par un paiement, ainsi que relances/suspensions.
-            publish_facture_event(str(facture.id), str(facture.campagne_id), "FACTURE_UPDATED")
-            return facture_to_proto(facture)
-        except ObjectDoesNotExist:
-            context.abort(
-                grpc.StatusCode.NOT_FOUND,
-                f"Facture introuvable : {request.facture_id}",
-            )
-            return pb.FactureResponse()
-        except ValidationError as exc:
-            context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
-            return pb.FactureResponse()
+        facture = self._facture_svc.update_statut(request.facture_id, request.statut)
+        # Notifie la gateway : couvre le passage IMPAYEE→PARTIELLE→PAYEE
+        # déclenché par un paiement, ainsi que relances/suspensions.
+        publish_facture_event(str(facture.id), str(facture.campagne_id), "FACTURE_UPDATED")
+        return facture_to_proto(facture)
 
 
 def serve() -> None:
     """Démarre le serveur gRPC du Facturation Service."""
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=_GRPC_MAX_WORKERS))
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=_GRPC_MAX_WORKERS),
+        interceptors=[ErrorHandlingInterceptor()],
+    )
     pb_grpc.add_FacturationServiceServicer_to_server(FacturationServicer(), server)
     port = settings.FACTURATION_GRPC_PORT
     server.add_insecure_port(f"[::]:{port}")
