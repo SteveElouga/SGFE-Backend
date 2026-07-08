@@ -66,22 +66,27 @@ def _statut_tournee(derniere_activite: str) -> str:
     return "EN_RETARD"
 
 
-def _resoudre_user(agent_id: str) -> tuple[str, str]:
-    """Nom d'utilisateur + rôle d'un agent via Auth Service (best-effort)."""
+def _users_par_id() -> dict:
+    """Index {user_id: UserResponse} via UN seul appel ListUsers (best-effort).
+
+    Évite le N+1 : un GetUser par agent devient un unique ListUsers, indexé en
+    mémoire. Enrichissement non bloquant — dict vide si Auth est indisponible."""
     try:
-        user = auth_client.get_user(agent_id)
-        return user.username, user.role
-    except Exception:  # agent introuvable / Auth indisponible : enrichissement non bloquant
-        return "", ""
+        return {u.user_id: u for u in auth_client.list_users().users}
+    except Exception:
+        return {}
 
 
 def _enrichir_agents(grpc_agents) -> list[AgentAffecte]:
     """Complète les agents (issus de ListAgentsCampagne) avec le nombre d'abonnés
     par zone (ListZones), le nom/rôle (Auth) et le statut de tournée dérivé."""
     zones_abonnes = {(z.quartier, z.camp): z.nb_abonnes for z in abonne_client.list_zones().zones}
+    users_by_id = _users_par_id()
     agents: list[AgentAffecte] = []
     for a in grpc_agents:
-        username, role = _resoudre_user(a.agent_id)
+        user = users_by_id.get(a.agent_id)
+        username = user.username if user else ""
+        role = user.role if user else ""
         zones = []
         for z in a.zones:
             nb_ab = zones_abonnes.get((z.quartier, z.camp), 0)

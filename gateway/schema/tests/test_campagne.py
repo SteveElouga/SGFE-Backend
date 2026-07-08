@@ -344,7 +344,9 @@ class TestDetailCampagneZones(SimpleTestCase):
         agent = MagicMock(agent_id="agent-1", zones=[zone], nb_releves=8, derniere_activite="")
         mock_camp.list_agents_campagne.return_value = MagicMock(agents=[agent])
         mock_ab.list_zones.return_value = MagicMock(zones=[MagicMock(quartier="Plateau", camp=3, nb_abonnes=10)])
-        mock_authc.get_user.return_value = MagicMock(username="camara", role="AGENT")
+        mock_authc.list_users.return_value = MagicMock(
+            users=[MagicMock(user_id="agent-1", username="camara", role="AGENT")]
+        )
         result = CampagneQueries().agents_campagne(MagicMock(), campagne_id="camp-1")
         self.assertEqual(len(result), 1)
         a = result[0]
@@ -371,7 +373,9 @@ class TestDetailCampagneZones(SimpleTestCase):
                 MagicMock(quartier="Centre", camp=1, nb_abonnes=8),
             ]
         )
-        mock_authc.get_user.return_value = MagicMock(username="camara", role="AGENT")
+        mock_authc.list_users.return_value = MagicMock(
+            users=[MagicMock(user_id="agent-1", username="camara", role="AGENT")]
+        )
         result = CampagneQueries().repartition_par_zone(MagicMock(), campagne_id="camp-1")
         # trié par (quartier, camp) : Centre avant Plateau
         self.assertEqual([(r.quartier, r.camp) for r in result], [("Centre", 1), ("Plateau", 3)])
