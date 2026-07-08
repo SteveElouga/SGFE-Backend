@@ -46,17 +46,13 @@ class ReportingServicerTests(TestCase):
             _ctx(),
         )
         self.servicer.UpdateStatsPaiements(
-            pb.UpdateStatsPaiementsRequest(
-                campagne_id=self.cid, montant_paiement=52500, type_update="PAIEMENT"
-            ),
+            pb.UpdateStatsPaiementsRequest(campagne_id=self.cid, montant_paiement=52500, type_update="PAIEMENT"),
             _ctx(),
         )
 
     def test_update_puis_get_stats_campagne(self):
         self._seed()
-        resp = self.servicer.GetStatsCampagne(
-            pb.CampagneIdRequest(campagne_id=self.cid), _ctx()
-        )
+        resp = self.servicer.GetStatsCampagne(pb.CampagneIdRequest(campagne_id=self.cid), _ctx())
         self.assertEqual(resp.nom_campagne, "Juin 2026")
         self.assertEqual(resp.nb_en_attente, 10)
         self.assertAlmostEqual(resp.pourcentage_progression, 80.0)
@@ -76,17 +72,13 @@ class ReportingServicerTests(TestCase):
 
     def test_get_stats_completes_cible_une_campagne(self):
         self._seed()
-        d = self.servicer.GetStatsCompletes(
-            pb.CampagneIdRequest(campagne_id=self.cid), _ctx()
-        )
+        d = self.servicer.GetStatsCompletes(pb.CampagneIdRequest(campagne_id=self.cid), _ctx())
         self.assertEqual(d.campagne_en_cours.nom_campagne, "Juin 2026")
         self.assertEqual(d.facturation_en_cours.total_factures, 42)
         self.assertAlmostEqual(d.paiements_en_cours.montant_encaisse, 52500.0)
 
     def test_get_stats_completes_campagne_inconnue_retourne_vide(self):
-        d = self.servicer.GetStatsCompletes(
-            pb.CampagneIdRequest(campagne_id=str(uuid.uuid4())), _ctx()
-        )
+        d = self.servicer.GetStatsCompletes(pb.CampagneIdRequest(campagne_id=str(uuid.uuid4())), _ctx())
         self.assertEqual(d.campagne_en_cours.campagne_id, "")
         self.assertEqual(d.facturation_en_cours.total_factures, 0)
 
@@ -99,9 +91,7 @@ class ReportingServicerTests(TestCase):
 
     def test_get_stats_campagne_inconnue_leve(self):
         with self.assertRaises(ObjectDoesNotExist):
-            self.servicer.GetStatsCampagne(
-                pb.CampagneIdRequest(campagne_id=str(uuid.uuid4())), _ctx()
-            )
+            self.servicer.GetStatsCampagne(pb.CampagneIdRequest(campagne_id=str(uuid.uuid4())), _ctx())
 
     def test_update_retourne_success(self):
         resp = self.servicer.UpdateStatsCampagne(

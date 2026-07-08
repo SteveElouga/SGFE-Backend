@@ -69,9 +69,7 @@ class UpdateStatsPaiementsTests(TestCase):
 
     def test_paiement_calcule_taux_et_impaye(self):
         self.agg.update_stats_facturation(self.cid, 10, 100000, "GENEREE")
-        stats = self.agg.update_stats_paiements(
-            self.cid, montant_paiement=25000, type_update="PAIEMENT"
-        )
+        stats = self.agg.update_stats_paiements(self.cid, montant_paiement=25000, type_update="PAIEMENT")
         self.assertEqual(stats.montant_encaisse, Decimal("25000"))
         self.assertEqual(stats.montant_impaye, Decimal("75000"))
         self.assertEqual(stats.taux_recouvrement, Decimal("25.00"))

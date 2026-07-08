@@ -18,12 +18,8 @@ class StatsCampagne(models.Model):
     nb_en_attente = models.IntegerField(default=0)
     nb_estimes = models.IntegerField(default=0)
     nb_non_releves = models.IntegerField(default=0)
-    pourcentage_progression = models.DecimalField(
-        max_digits=5, decimal_places=2, default=0
-    )
-    consommation_totale = models.DecimalField(
-        max_digits=12, decimal_places=3, default=0
-    )
+    pourcentage_progression = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    consommation_totale = models.DecimalField(max_digits=12, decimal_places=3, default=0)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -38,9 +34,7 @@ class StatsFacturation(models.Model):
 
     campagne_id = models.UUIDField(primary_key=True)
     total_factures = models.IntegerField(default=0)
-    montant_total_facture = models.DecimalField(
-        max_digits=14, decimal_places=2, default=0
-    )
+    montant_total_facture = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     nb_factures_envoyees = models.IntegerField(default=0)
     nb_factures_payees = models.IntegerField(default=0)
     nb_factures_partielles = models.IntegerField(default=0)

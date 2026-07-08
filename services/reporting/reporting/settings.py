@@ -40,9 +40,7 @@ TEMPLATES = [
 WSGI_APPLICATION = "reporting.wsgi.application"
 
 if TESTING:
-    DATABASES = {
-        "default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}
-    }
+    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
 else:
     DATABASES = {
         "default": {
