@@ -69,3 +69,24 @@ class StatsPaiements(models.Model):
 
     def __str__(self) -> str:
         return f"StatsPaiements campagne={self.campagne_id} ({self.taux_recouvrement}%)"
+
+
+class ProcessedEvent(models.Model):
+    """Événements déjà appliqués — garantit l'idempotence du consumer.
+
+    Le flux Redis est en livraison **at-least-once** : un même événement peut
+    être redélivré (crash entre l'application et le XACK). Pour les stats à
+    incrément (`+= delta`), un rejeu doublerait le compteur — on déduplique donc
+    par `event_id` (généré par le producteur), appliqué dans la même transaction
+    que la mise à jour des stats.
+    """
+
+    event_id = models.CharField(max_length=64, primary_key=True)
+    event_type = models.CharField(max_length=40)
+    processed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "reporting_processed_events"
+
+    def __str__(self) -> str:
+        return f"{self.event_type} {self.event_id}"

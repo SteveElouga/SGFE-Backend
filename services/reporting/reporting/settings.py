@@ -65,3 +65,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- gRPC ---
 REPORTING_GRPC_PORT = env.int("REPORTING_GRPC_PORT", default=50057)
+
+# --- Redis (flux d'événements consommé par le read model) ---
+REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")

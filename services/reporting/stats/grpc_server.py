@@ -109,5 +109,10 @@ def serve() -> None:
     pb_grpc.add_ReportingServiceServicer_to_server(ReportingServiceServicer(), server)
     server.add_insecure_port(f"[::]:{settings.REPORTING_GRPC_PORT}")
     server.start()
+    # Alimente le read model : consomme le flux Redis d'événements dans un
+    # thread daemon (best-effort — n'empêche pas le démarrage si Redis est down).
+    from stats.event_consumer import start_consumer_thread
+
+    start_consumer_thread()
     print(f"Reporting gRPC server démarré sur le port {settings.REPORTING_GRPC_PORT}")
     server.wait_for_termination()
