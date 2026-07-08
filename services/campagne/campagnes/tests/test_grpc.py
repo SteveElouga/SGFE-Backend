@@ -179,6 +179,25 @@ class TestCloturerCampagneRPC(TestCase):
             self.servicer.CloturerCampagne(request, _mock_context())
 
 
+class TestDemarrerCampagneRPC(TestCase):
+    def setUp(self) -> None:
+        self.servicer = CampagneServicer()
+        self.svc = CampagneService()
+
+    def test_demarrer_planifiee_succes(self) -> None:
+        campagne = self.svc.creer_campagne("C1", 1, 2026, created_by="user-A")  # PLANIFIEE
+        request = pb.CampagneIdRequest(campagne_id=str(campagne.id))
+        response = self.servicer.DemarrerCampagne(request, _mock_context())
+        self.assertEqual(response.statut, StatutCampagne.EN_COURS)
+
+    def test_demarrer_deja_en_cours_abort(self) -> None:
+        campagne = self.svc.creer_campagne("C2", 2, 2026, created_by="user-A")
+        self.svc.demarrer_campagne(str(campagne.id))  # déjà EN_COURS
+        request = pb.CampagneIdRequest(campagne_id=str(campagne.id))
+        with self.assertRaises(ValidationError):
+            self.servicer.DemarrerCampagne(request, _mock_context())
+
+
 class TestSaisirIndexRPC(TestCase):
     def setUp(self) -> None:
         self.servicer = CampagneServicer()

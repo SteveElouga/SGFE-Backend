@@ -99,6 +99,11 @@ class CampagneServiceStub:
                 request_serializer=campagne__service__pb2.CampagneIdRequest.SerializeToString,
                 response_deserializer=campagne__service__pb2.ResumeClotureResponse.FromString,
                 _registered_method=True)
+        self.DemarrerCampagne = channel.unary_unary(
+                '/campagne.CampagneService/DemarrerCampagne',
+                request_serializer=campagne__service__pb2.CampagneIdRequest.SerializeToString,
+                response_deserializer=campagne__service__pb2.CampagneResponse.FromString,
+                _registered_method=True)
         self.CloturerCampagne = channel.unary_unary(
                 '/campagne.CampagneService/CloturerCampagne',
                 request_serializer=campagne__service__pb2.CampagneIdRequest.SerializeToString,
@@ -194,6 +199,13 @@ class CampagneServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def DemarrerCampagne(self, request, context):
+        """Démarre une campagne PLANIFIEE (→ EN_COURS) sans attendre le cron 7h.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def CloturerCampagne(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -273,6 +285,11 @@ def add_CampagneServiceServicer_to_server(servicer, server):
                     servicer.GetResumeCloture,
                     request_deserializer=campagne__service__pb2.CampagneIdRequest.FromString,
                     response_serializer=campagne__service__pb2.ResumeClotureResponse.SerializeToString,
+            ),
+            'DemarrerCampagne': grpc.unary_unary_rpc_method_handler(
+                    servicer.DemarrerCampagne,
+                    request_deserializer=campagne__service__pb2.CampagneIdRequest.FromString,
+                    response_serializer=campagne__service__pb2.CampagneResponse.SerializeToString,
             ),
             'CloturerCampagne': grpc.unary_unary_rpc_method_handler(
                     servicer.CloturerCampagne,
@@ -636,6 +653,33 @@ class CampagneService:
             '/campagne.CampagneService/GetResumeCloture',
             campagne__service__pb2.CampagneIdRequest.SerializeToString,
             campagne__service__pb2.ResumeClotureResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DemarrerCampagne(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/campagne.CampagneService/DemarrerCampagne',
+            campagne__service__pb2.CampagneIdRequest.SerializeToString,
+            campagne__service__pb2.CampagneResponse.FromString,
             options,
             channel_credentials,
             insecure,

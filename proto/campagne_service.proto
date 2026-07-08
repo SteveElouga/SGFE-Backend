@@ -17,6 +17,8 @@ service CampagneService {
   rpc ListReleves (CampagneIdRequest) returns (ListRelevesResponse);
   rpc GetProgression (CampagneIdRequest) returns (ProgressionResponse);
   rpc GetResumeCloture (CampagneIdRequest) returns (ResumeClotureResponse);
+  // Démarre une campagne PLANIFIEE (→ EN_COURS) sans attendre le cron 7h.
+  rpc DemarrerCampagne (CampagneIdRequest) returns (CampagneResponse);
   rpc CloturerCampagne (CampagneIdRequest) returns (CampagneResponse);
   rpc GetDernierIndex (AbonneIdRequest) returns (DernierIndexResponse);
 }

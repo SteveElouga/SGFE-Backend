@@ -397,7 +397,19 @@ snapshot `quartier`/`camp`), `CampagneAgent` (affectation globale), `Affectation
 - **Contrat** : `mutation cloturerCampagne(campagneId): Campagne!`. **ADMIN,
   SUPERVISEUR (les siennes)**.
 
-### C.12 Démarrage automatique (cron 7 h)
+### C.12 Démarrage à la demande (demarrerCampagne)
+- **But** : lancer une campagne **PLANIFIEE** (→ EN_COURS) immédiatement, sans
+  attendre le cron 7 h ni sa date planifiée (ex. démarrer aujourd'hui une
+  campagne prévue plus tard).
+- **Implémentation** : `campagne.DemarrerCampagne` — même transition que le cron,
+  déclenchée manuellement. Valide « seule une PLANIFIEE peut être démarrée »
+  (`INVALID_ARGUMENT` sinon).
+- **Plus-value** : débloque la saisie des relevés à la demande (sans lui, une
+  campagne planifiée pour une date future restait inatteignable par les agents).
+- **Contrat** : `mutation demarrerCampagne(campagneId): Campagne!`. **ADMIN
+  (toutes), SUPERVISEUR (les siennes)**.
+
+### C.13 Démarrage automatique (cron 7 h)
 - **But** : passer en EN_COURS les campagnes planifiées pour J/J-1.
 - **Implémentation** : `campagne_planifiee_job` (APScheduler, 7 h 00) — démarre
   **toutes** les campagnes planifiées de la date (rattrapage J-1).

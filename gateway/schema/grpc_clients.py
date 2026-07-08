@@ -204,6 +204,9 @@ class CampagneServiceClient:
     def get_resume_cloture(self, campagne_id: str) -> campagne_pb.ResumeClotureResponse:
         return self._stub.GetResumeCloture(campagne_pb.CampagneIdRequest(campagne_id=campagne_id))
 
+    def demarrer_campagne(self, campagne_id: str) -> campagne_pb.CampagneResponse:
+        return self._stub.DemarrerCampagne(campagne_pb.CampagneIdRequest(campagne_id=campagne_id))
+
     def cloturer_campagne(self, campagne_id: str) -> campagne_pb.CampagneResponse:
         return self._stub.CloturerCampagne(campagne_pb.CampagneIdRequest(campagne_id=campagne_id))
 

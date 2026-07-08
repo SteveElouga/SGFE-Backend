@@ -119,6 +119,21 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         agents = self._campagne_svc.list_agents_campagne(request.campagne_id)
         return pb.ListAgentsCampagneResponse(agents=[agent_affecte_to_proto(a) for a in agents])
 
+    def DemarrerCampagne(
+        self,
+        request: pb.CampagneIdRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.CampagneResponse:
+        """Démarre une campagne PLANIFIEE (→ EN_COURS) à la demande.
+
+        Même transition que le cron 7h, mais déclenchée manuellement (bouton
+        ADMIN/SUPERVISEUR) sans attendre la date planifiée. La validation
+        « seule une PLANIFIEE peut être démarrée » est faite par le service
+        (ValidationError → INVALID_ARGUMENT via l'ErrorHandlingInterceptor).
+        """
+        campagne = self._campagne_svc.demarrer_campagne(request.campagne_id)
+        return campagne_to_proto(campagne)
+
     def CloturerCampagne(
         self,
         request: pb.CampagneIdRequest,
