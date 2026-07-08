@@ -86,8 +86,6 @@ class ApplyEventTests(TestCase):
         self.assertFalse(StatsPaiements.objects.filter(campagne_id=CAMP).exists())
 
     def test_type_inconnu_marque_traite_sans_effet(self) -> None:
-        apply_event(
-            self.agg, {"event_id": "x1", "type": "INCONNU", "campagne_id": CAMP}
-        )
+        apply_event(self.agg, {"event_id": "x1", "type": "INCONNU", "campagne_id": CAMP})
         self.assertTrue(ProcessedEvent.objects.filter(event_id="x1").exists())
         self.assertFalse(StatsPaiements.objects.filter(campagne_id=CAMP).exists())

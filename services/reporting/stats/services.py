@@ -86,9 +86,7 @@ class AgregateurDashboard:
             (f.montant_total_facture for f in self._facturation.list_all()),
             Decimal("0"),
         )
-        montant_encaisse = sum(
-            (p.montant_encaisse for p in self._paiements.list_all()), Decimal("0")
-        )
+        montant_encaisse = sum((p.montant_encaisse for p in self._paiements.list_all()), Decimal("0"))
         return StatsGlobales(
             historique_campagnes=campagnes,
             consommation_totale_globale=conso,
@@ -114,9 +112,7 @@ class AgregateurDashboard:
         stats.nb_en_attente = max(0, total_abonnes - nb_releves)
         stats.consommation_totale = _dec(consommation_totale)
         stats.pourcentage_progression = (
-            (Decimal(nb_releves) / Decimal(total_abonnes) * 100).quantize(_CENT)
-            if total_abonnes > 0
-            else Decimal("0")
+            (Decimal(nb_releves) / Decimal(total_abonnes) * 100).quantize(_CENT) if total_abonnes > 0 else Decimal("0")
         )
         return self._campagne.save(stats)
 
@@ -132,16 +128,12 @@ class AgregateurDashboard:
             stats.total_factures += delta_factures
             stats.montant_total_facture += _dec(delta_montant)
             # Une facture nouvellement générée est impayée par défaut.
-            stats.nb_factures_impayees = max(
-                0, stats.nb_factures_impayees + delta_factures
-            )
+            stats.nb_factures_impayees = max(0, stats.nb_factures_impayees + delta_factures)
         elif type_update == "ENVOYEE":
             stats.nb_factures_envoyees += delta_factures
         elif type_update == "PAYEE":
             stats.nb_factures_payees += delta_factures
-            stats.nb_factures_impayees = max(
-                0, stats.nb_factures_impayees - delta_factures
-            )
+            stats.nb_factures_impayees = max(0, stats.nb_factures_impayees - delta_factures)
         return self._facturation.save(stats)
 
     def update_stats_paiements(
@@ -156,15 +148,11 @@ class AgregateurDashboard:
         # Dérivés recalculés à partir des stats de facturation (source de vérité
         # du montant total facturé et du nombre d'impayés).
         facturation = self._facturation.get_or_none(campagne_id)
-        total_facture = (
-            facturation.montant_total_facture if facturation else Decimal("0")
-        )
+        total_facture = facturation.montant_total_facture if facturation else Decimal("0")
         stats.montant_impaye = max(Decimal("0"), total_facture - stats.montant_encaisse)
         if facturation is not None:
             stats.nb_impayes = facturation.nb_factures_impayees
         stats.taux_recouvrement = (
-            (stats.montant_encaisse / total_facture * 100).quantize(_CENT)
-            if total_facture > 0
-            else Decimal("0")
+            (stats.montant_encaisse / total_facture * 100).quantize(_CENT) if total_facture > 0 else Decimal("0")
         )
         return self._paiements.save(stats)

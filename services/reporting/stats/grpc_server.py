@@ -53,9 +53,7 @@ class ReportingServiceServicer(pb_grpc.ReportingServiceServicer):
         return self._dashboard_to_proto(self._agg.get_dashboard())
 
     def GetStatsCompletes(self, request, context):
-        return self._dashboard_to_proto(
-            self._agg.get_stats_completes(request.campagne_id)
-        )
+        return self._dashboard_to_proto(self._agg.get_stats_completes(request.campagne_id))
 
     def GetStatsCampagne(self, request, context):
         stats = self._agg.get_stats_campagne(request.campagne_id)
@@ -65,8 +63,7 @@ class ReportingServiceServicer(pb_grpc.ReportingServiceServicer):
         g = self._agg.get_stats_globales()
         return pb.StatsGlobalesResponse(
             historique_campagnes=[
-                pb.StatsCampagneResponse(**stats_campagne_to_dict(c))
-                for c in g.historique_campagnes
+                pb.StatsCampagneResponse(**stats_campagne_to_dict(c)) for c in g.historique_campagnes
             ],
             consommation_totale_globale=float(g.consommation_totale_globale),
             montant_total_facture_global=float(g.montant_total_facture_global),

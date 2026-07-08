@@ -44,9 +44,7 @@ def apply_event(agg: AgregateurDashboard, event: dict) -> None:
         return
 
     with transaction.atomic():
-        _, created = ProcessedEvent.objects.get_or_create(
-            event_id=event_id, defaults={"event_type": event_type or ""}
-        )
+        _, created = ProcessedEvent.objects.get_or_create(event_id=event_id, defaults={"event_type": event_type or ""})
         if not created:
             return  # déjà appliqué (rejeu at-least-once)
 
@@ -78,9 +76,7 @@ def apply_event(agg: AgregateurDashboard, event: dict) -> None:
 def _connect():
     import redis
 
-    return redis.Redis.from_url(
-        settings.REDIS_URL, decode_responses=True, socket_connect_timeout=2
-    )
+    return redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=2)
 
 
 def _ensure_group(r) -> None:
@@ -101,9 +97,7 @@ def _handle_entries(r, agg: AgregateurDashboard, entries) -> None:
                 r.xack(STREAM_KEY, GROUP, msg_id)
             except Exception:
                 # Pas de XACK : l'entrée reste "pending" et sera redélivrée.
-                logger.exception(
-                    "Traitement de l'événement %s échoué (sera redélivré)", msg_id
-                )
+                logger.exception("Traitement de l'événement %s échoué (sera redélivré)", msg_id)
 
 
 def consume_forever(stop_event: "threading.Event | None" = None) -> None:
@@ -113,21 +107,15 @@ def consume_forever(stop_event: "threading.Event | None" = None) -> None:
     agg = AgregateurDashboard()
 
     # Rattrapage : entrées déjà délivrées mais non acquittées (crash précédent).
-    _handle_entries(
-        r, agg, r.xreadgroup(GROUP, CONSUMER_NAME, {STREAM_KEY: "0"}, count=200)
-    )
+    _handle_entries(r, agg, r.xreadgroup(GROUP, CONSUMER_NAME, {STREAM_KEY: "0"}, count=200))
 
     while stop_event is None or not stop_event.is_set():
         try:
-            entries = r.xreadgroup(
-                GROUP, CONSUMER_NAME, {STREAM_KEY: ">"}, count=50, block=2000
-            )
+            entries = r.xreadgroup(GROUP, CONSUMER_NAME, {STREAM_KEY: ">"}, count=50, block=2000)
             if entries:
                 _handle_entries(r, agg, entries)
         except Exception:
-            logger.exception(
-                "Erreur de lecture du flux reporting — nouvelle tentative dans 2s"
-            )
+            logger.exception("Erreur de lecture du flux reporting — nouvelle tentative dans 2s")
             time.sleep(2)
             try:
                 r = _connect()
@@ -144,9 +132,7 @@ def start_consumer_thread() -> "threading.Thread | None":
     sera simplement pas alimenté tant que Redis n'est pas joignable.
     """
     try:
-        thread = threading.Thread(
-            target=consume_forever, name="reporting-event-consumer", daemon=True
-        )
+        thread = threading.Thread(target=consume_forever, name="reporting-event-consumer", daemon=True)
         thread.start()
         logger.info("Consumer d'événements reporting démarré (flux %s)", STREAM_KEY)
         return thread
