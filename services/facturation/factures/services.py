@@ -11,6 +11,7 @@ from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import transaction
 
+from .exceptions import PreconditionError
 from .models import Facture, StatutFacture, Tarif
 from .pdf_generator import (
     PDF_TEMPLATE_VERSION,
@@ -114,7 +115,7 @@ class FactureService:
         try:
             tarif = self._tarif_repo.get_actif()
         except ObjectDoesNotExist as exc:
-            raise ValidationError("Aucun tarif actif — configurez un tarif avant de générer des factures.") from exc
+            raise PreconditionError("Aucun tarif actif — configurez un tarif avant de générer des factures.") from exc
 
         # Récupéré une seule fois pour toute la campagne (dégradation gracieuse
         # vers "" si Campagne Service est inaccessible — purement informatif).

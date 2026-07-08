@@ -5,17 +5,20 @@ import tempfile
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
+import grpc
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.test import TestCase
 
+from factures.exceptions import PreconditionError
 from factures.models import StatutFacture, Tarif
 from factures.pdf_generator import InfosSociete
 from factures.services import TarifService
 
 
 def _make_context():
-    ctx = MagicMock()
-    ctx.abort.side_effect = Exception("aborted")
-    return ctx
+    # Le mapping exception -> abort est fait par l'interceptor (testé dans
+    # test_grpc_interceptors.py) : le servicer propage l'exception métier.
+    return MagicMock()
 
 
 class GetTarifActuelTests(TestCase):
@@ -46,13 +49,11 @@ class GetTarifActuelTests(TestCase):
         self.assertAlmostEqual(response.prix_m3, 500.0)
         self.assertTrue(response.is_active)
 
-    def test_get_tarif_actuel_absent_abort(self):
+    def test_get_tarif_actuel_absent_propage_not_found(self):
         Tarif.objects.all().delete()
         pb = self._pb()
-        ctx = _make_context()
-        with self.assertRaises(Exception, msg="aborted"):
-            self.servicer.GetTarifActuel(pb.EmptyRequest(), ctx)
-        ctx.abort.assert_called_once()
+        with self.assertRaises(ObjectDoesNotExist):
+            self.servicer.GetTarifActuel(pb.EmptyRequest(), _make_context())
 
     def test_update_tarif_succes(self):
         pb = self._pb()
@@ -61,13 +62,11 @@ class GetTarifActuelTests(TestCase):
         self.assertAlmostEqual(response.prix_m3, 600.0)
         self.assertTrue(response.is_active)
 
-    def test_update_tarif_prix_invalide_abort(self):
+    def test_update_tarif_prix_invalide_propage_validation_error(self):
         pb = self._pb()
         request = pb.UpdateTarifRequest(prix_m3=0.0, date_effet="2025-08-01")
-        ctx = _make_context()
-        with self.assertRaises(Exception, msg="aborted"):
-            self.servicer.UpdateTarif(request, ctx)
-        ctx.abort.assert_called_once()
+        with self.assertRaises(ValidationError):
+            self.servicer.UpdateTarif(request, _make_context())
 
 
 class GenererFacturesTests(TestCase):
@@ -116,17 +115,13 @@ class GenererFacturesTests(TestCase):
         self.assertEqual(len(response.factures), 1)
         self.assertAlmostEqual(response.factures[0].montant, 7500.0)
 
-    def test_generer_factures_campagne_service_ko_abort(self):
-        import grpc
-
+    def test_generer_factures_campagne_service_ko_propage_rpc_error(self):
         self.servicer._campagne_client.list_releves.side_effect = grpc.RpcError()
         pb = self._pb()
-        ctx = _make_context()
-        with self.assertRaises(Exception, msg="aborted"):
-            self.servicer.GenererFactures(pb.GenererFacturesRequest(campagne_id="camp-002"), ctx)
-        ctx.abort.assert_called_once()
+        with self.assertRaises(grpc.RpcError):
+            self.servicer.GenererFactures(pb.GenererFacturesRequest(campagne_id="camp-002"), _make_context())
 
-    def test_generer_factures_sans_tarif_abort(self):
+    def test_generer_factures_sans_tarif_propage_precondition_error(self):
         Tarif.objects.all().delete()
         self.servicer._campagne_client.list_releves.return_value = [
             {
@@ -139,13 +134,12 @@ class GenererFacturesTests(TestCase):
             }
         ]
         pb = self._pb()
-        ctx = _make_context()
-        with self.assertRaises(Exception, msg="aborted"):
+        # PreconditionError -> FAILED_PRECONDITION via l'interceptor.
+        with self.assertRaises(PreconditionError):
             with tempfile.TemporaryDirectory() as tmpdir:
                 with patch("factures.services.settings") as mock_settings:
                     mock_settings.PDF_STORAGE_DIR = tmpdir
-                    self.servicer.GenererFactures(pb.GenererFacturesRequest(campagne_id="camp-003"), ctx)
-        ctx.abort.assert_called_once()
+                    self.servicer.GenererFactures(pb.GenererFacturesRequest(campagne_id="camp-003"), _make_context())
 
 
 class UpdateStatutFactureTests(TestCase):
@@ -199,20 +193,16 @@ class UpdateStatutFactureTests(TestCase):
         )
         self.assertEqual(response.statut, StatutFacture.PARTIELLE)
 
-    def test_update_statut_invalide_abort(self):
-        ctx = _make_context()
-        with self.assertRaises(Exception, msg="aborted"):
+    def test_update_statut_invalide_propage_validation_error(self):
+        with self.assertRaises(ValidationError):
             self.servicer.UpdateStatutFacture(
                 self._pb.UpdateStatutRequest(facture_id=self.facture_id, statut="INVALIDE"),
-                ctx,
+                _make_context(),
             )
-        ctx.abort.assert_called_once()
 
-    def test_get_facture_introuvable_abort(self):
-        ctx = _make_context()
-        with self.assertRaises(Exception, msg="aborted"):
+    def test_get_facture_introuvable_propage_not_found(self):
+        with self.assertRaises(ObjectDoesNotExist):
             self.servicer.GetFacture(
                 self._pb.FactureIdRequest(facture_id="00000000-0000-0000-0000-000000000000"),
-                ctx,
+                _make_context(),
             )
-        ctx.abort.assert_called_once()
