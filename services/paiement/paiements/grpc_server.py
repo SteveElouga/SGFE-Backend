@@ -14,8 +14,8 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 import paiement_service_pb2 as pb
 import paiement_service_pb2_grpc as pb_grpc
 
-from paiements.event_publisher import publish_paiement_event
-from paiements.grpc_clients import FacturationServiceClient, ReportingServiceClient
+from paiements.event_publisher import publish_paiement_event, publish_reporting_event
+from paiements.grpc_clients import FacturationServiceClient
 from paiements.grpc_interceptors import ErrorHandlingInterceptor
 from paiements.models import StatutSolde
 from paiements.serializers import paiement_to_proto, solde_to_proto, suivi_to_proto
@@ -35,7 +35,6 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
     def __init__(self) -> None:
         self._svc = PaiementService()
         self._facturation_client = FacturationServiceClient()
-        self._reporting_client = ReportingServiceClient()
 
     def InitialiserSolde(
         self,
@@ -86,15 +85,17 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
         self._svc.marquer_facture_payee_si_applicable(solde)
         self._svc.suspendre_relances_si_partiel(solde)
 
-        # Pousse les stats de paiement au Reporting Service (read model aval,
-        # dégradation gracieuse — ADR-019). campagne_id porté par le solde.
-        self._reporting_client.update_stats_paiements(
+        # Publie les stats de paiement sur le flux Reporting (read model aval,
+        # événementiel durable — ADR-019). campagne_id porté par le solde.
+        publish_reporting_event(
+            "PAIEMENT_STATS",
             campagne_id=solde.campagne_id,
             montant_paiement=float(request.montant),
             type_update="PAIEMENT",
         )
         if solde.statut == StatutSolde.PAYEE:
-            self._reporting_client.update_stats_paiements(
+            publish_reporting_event(
+                "PAIEMENT_STATS",
                 campagne_id=solde.campagne_id,
                 montant_paiement=0.0,
                 type_update="IMPAYE_RESOLU",

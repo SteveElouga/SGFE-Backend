@@ -133,9 +133,9 @@ class TestEnregistrerPaiementRPC(TestCase):
         self.assertAlmostEqual(response.montant, 100.00)
         self.assertEqual(response.enregistre_par, "user-001")
 
-    @patch("paiements.grpc_server.ReportingServiceClient")
+    @patch("paiements.grpc_server.publish_reporting_event")
     @patch("paiements.grpc_server.FacturationServiceClient")
-    def test_enregistrer_paiement_pousse_stats_reporting(self, mock_fact_cls, mock_rep_cls) -> None:
+    def test_enregistrer_paiement_publie_stats_reporting(self, mock_fact_cls, mock_pub) -> None:
         _creer_solde("facture-rep", "abonne-001", 300.00, campagne_id="camp-9")
         servicer = PaiementServicer()
         request = pb.EnregistrerPaiementRequest(
@@ -149,15 +149,16 @@ class TestEnregistrerPaiementRPC(TestCase):
         )
         servicer.EnregistrerPaiement(request, _mock_context())
 
-        servicer._reporting_client.update_stats_paiements.assert_called()
-        first = servicer._reporting_client.update_stats_paiements.call_args_list[0].kwargs
-        self.assertEqual(first["campagne_id"], "camp-9")
-        self.assertEqual(first["type_update"], "PAIEMENT")
-        self.assertAlmostEqual(first["montant_paiement"], 100.0)
+        mock_pub.assert_called()
+        args, kwargs = mock_pub.call_args_list[0]
+        self.assertEqual(args[0], "PAIEMENT_STATS")
+        self.assertEqual(kwargs["campagne_id"], "camp-9")
+        self.assertEqual(kwargs["type_update"], "PAIEMENT")
+        self.assertAlmostEqual(kwargs["montant_paiement"], 100.0)
 
-    @patch("paiements.grpc_server.ReportingServiceClient")
+    @patch("paiements.grpc_server.publish_reporting_event")
     @patch("paiements.grpc_server.FacturationServiceClient")
-    def test_enregistrer_paiement_total_emet_impaye_resolu(self, mock_fact_cls, mock_rep_cls) -> None:
+    def test_enregistrer_paiement_total_emet_impaye_resolu(self, mock_fact_cls, mock_pub) -> None:
         _creer_solde("facture-full", "abonne-001", 100.00, campagne_id="camp-9")
         servicer = PaiementServicer()
         request = pb.EnregistrerPaiementRequest(
@@ -171,7 +172,7 @@ class TestEnregistrerPaiementRPC(TestCase):
         )
         servicer.EnregistrerPaiement(request, _mock_context())
 
-        types = [c.kwargs["type_update"] for c in servicer._reporting_client.update_stats_paiements.call_args_list]
+        types = [c.kwargs["type_update"] for c in mock_pub.call_args_list]
         self.assertIn("PAIEMENT", types)
         self.assertIn("IMPAYE_RESOLU", types)
 

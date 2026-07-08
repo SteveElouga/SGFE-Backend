@@ -15,8 +15,8 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 import campagne_service_pb2 as pb
 import campagne_service_pb2_grpc as pb_grpc
 
-from campagnes.event_publisher import publish_progression_event
-from campagnes.grpc_clients import FacturationServiceClient, ReportingServiceClient
+from campagnes.event_publisher import publish_progression_event, publish_reporting_event
+from campagnes.grpc_clients import FacturationServiceClient
 from campagnes.grpc_interceptors import ErrorHandlingInterceptor
 from campagnes.models import StatutReleve
 from campagnes.repositories import (
@@ -45,7 +45,6 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         self._campagne_repo = CampagneRepository()
         self._agent_repo = CampagneAgentRepository()
         self._facturation_client = FacturationServiceClient()
-        self._reporting_client = ReportingServiceClient()
 
     # ------------------------------------------------------------------ #
     # Campagnes
@@ -133,10 +132,11 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
                 numero_mobile_money=campagne.numero_mobile_money,
                 envoyer_whatsapp_auto=campagne.envoyer_whatsapp_auto,
             )
-        # Pousse les stats de campagne au Reporting Service (CampagneCloturee,
-        # read model aval, dégradation gracieuse — ADR-019).
+        # Publie les stats de campagne sur le flux Reporting (CampagneCloturee,
+        # read model aval, événementiel durable — ADR-019).
         stats = self._campagne_svc.get_stats_reporting(str(campagne.id))
-        self._reporting_client.update_stats_campagne(
+        publish_reporting_event(
+            "CAMPAGNE_STATS",
             campagne_id=str(campagne.id),
             nom_campagne=stats["nom_campagne"],
             total_abonnes=stats["total_abonnes"],

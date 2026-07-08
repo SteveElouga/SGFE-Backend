@@ -159,14 +159,15 @@ class TestCloturerCampagneRPC(TestCase):
         self.assertEqual(response.statut, StatutCampagne.CLOTUREE)
         mock_notif.assert_called_once()
 
+    @patch("campagnes.grpc_server.publish_reporting_event")
     @patch("campagnes.grpc_server.FacturationServiceClient.notifier_campagne_cloturee", return_value=True)
-    def test_cloturer_pousse_stats_reporting(self, mock_notif) -> None:
-        self.servicer._reporting_client = MagicMock()
+    def test_cloturer_publie_stats_reporting(self, mock_notif, mock_pub) -> None:
         request = pb.CampagneIdRequest(campagne_id=str(self.campagne.id))
         self.servicer.CloturerCampagne(request, _mock_context())
 
-        self.servicer._reporting_client.update_stats_campagne.assert_called_once()
-        kwargs = self.servicer._reporting_client.update_stats_campagne.call_args.kwargs
+        mock_pub.assert_called_once()
+        args, kwargs = mock_pub.call_args
+        self.assertEqual(args[0], "CAMPAGNE_STATS")
         self.assertEqual(kwargs["campagne_id"], str(self.campagne.id))
         self.assertEqual(kwargs["nom_campagne"], "C1")
 

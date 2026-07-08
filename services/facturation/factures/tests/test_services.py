@@ -223,7 +223,8 @@ class FactureServiceTests(TestCase):
         updated = self.svc.update_statut(str(factures[0].id), StatutFacture.PARTIELLE)
         self.assertEqual(updated.statut, StatutFacture.PARTIELLE)
 
-    def test_generer_factures_pousse_stats_reporting_generee(self):
+    @patch("factures.services.publish_reporting_event")
+    def test_generer_factures_publie_stats_reporting_generee(self, mock_pub):
         releves = [self._make_releve("abo-001"), self._make_releve("abo-002", 200.0, 220.0)]
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch("factures.services.settings") as mock_settings:
@@ -232,15 +233,17 @@ class FactureServiceTests(TestCase):
                     campagne_id="camp-rep", releves=releves, delai_paiement_jours=5, societe=self.societe
                 )
 
-        self.svc._reporting_client.update_stats_facturation.assert_called_once()
-        kwargs = self.svc._reporting_client.update_stats_facturation.call_args.kwargs
+        mock_pub.assert_called_once()
+        args, kwargs = mock_pub.call_args
+        self.assertEqual(args[0], "FACTURATION_STATS")
         self.assertEqual(kwargs["campagne_id"], "camp-rep")
         self.assertEqual(kwargs["delta_factures"], 2)
         self.assertEqual(kwargs["type_update"], "GENEREE")
         # 15 m³ * 500 + 20 m³ * 500 = 17 500
         self.assertEqual(kwargs["delta_montant"], 17500.0)
 
-    def test_update_statut_payee_pousse_stats_reporting(self):
+    @patch("factures.services.publish_reporting_event")
+    def test_update_statut_payee_publie_stats_reporting(self, mock_pub):
         releve = self._make_releve()
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch("factures.services.settings") as mock_settings:
@@ -248,16 +251,18 @@ class FactureServiceTests(TestCase):
                 factures = self.svc.generer_factures(
                     campagne_id="camp-pay", releves=[releve], delai_paiement_jours=5, societe=self.societe
                 )
-        self.svc._reporting_client.reset_mock()
+        mock_pub.reset_mock()  # ignore l'événement GENEREE de la génération
 
         self.svc.update_statut(str(factures[0].id), StatutFacture.PAYEE)
 
-        self.svc._reporting_client.update_stats_facturation.assert_called_once()
-        kwargs = self.svc._reporting_client.update_stats_facturation.call_args.kwargs
+        mock_pub.assert_called_once()
+        args, kwargs = mock_pub.call_args
+        self.assertEqual(args[0], "FACTURATION_STATS")
         self.assertEqual(kwargs["type_update"], "PAYEE")
         self.assertEqual(kwargs["delta_factures"], 1)
 
-    def test_update_statut_partielle_ne_pousse_pas_payee(self):
+    @patch("factures.services.publish_reporting_event")
+    def test_update_statut_partielle_ne_publie_pas_payee(self, mock_pub):
         releve = self._make_releve()
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch("factures.services.settings") as mock_settings:
@@ -265,11 +270,11 @@ class FactureServiceTests(TestCase):
                 factures = self.svc.generer_factures(
                     campagne_id="camp-part", releves=[releve], delai_paiement_jours=5, societe=self.societe
                 )
-        self.svc._reporting_client.reset_mock()
+        mock_pub.reset_mock()
 
         self.svc.update_statut(str(factures[0].id), StatutFacture.PARTIELLE)
 
-        self.svc._reporting_client.update_stats_facturation.assert_not_called()
+        mock_pub.assert_not_called()
 
     def test_update_statut_invalide_leve_erreur(self):
         from django.core.exceptions import ValidationError

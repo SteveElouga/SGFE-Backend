@@ -11,6 +11,7 @@ from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import transaction
 
+from .event_publisher import publish_reporting_event
 from .exceptions import PreconditionError
 from .models import Facture, StatutFacture, Tarif
 from .pdf_generator import (
@@ -77,26 +78,25 @@ class FactureService:
         notification_client: "NotificationServiceClient | None" = None,
         abonne_client: "AbonneServiceClient | None" = None,
         campagne_client: "CampagneServiceClient | None" = None,
-        reporting_client=None,
     ) -> None:
         self._repo = FactureRepository()
         self._tarif_repo = TarifRepository()
         # Clients gRPC injectables (défaut = client réel) — permet des tests
         # isolés sans appel réseau. Import tardif : évite la circularité au
         # niveau module (grpc_clients importe des symboles de ce module).
+        # Les stats reporting ne passent plus par un client gRPC ici : elles
+        # sont publiées en événement (publish_reporting_event).
         from .grpc_clients import (
             AbonneServiceClient,
             CampagneServiceClient,
             NotificationServiceClient,
             PaiementServiceClient,
-            ReportingServiceClient,
         )
 
         self._paiement_client = paiement_client or PaiementServiceClient()
         self._notification_client = notification_client or NotificationServiceClient()
         self._abonne_client = abonne_client or AbonneServiceClient()
         self._campagne_client = campagne_client or CampagneServiceClient()
-        self._reporting_client = reporting_client or ReportingServiceClient()
 
     def generer_factures(
         self,
@@ -206,7 +206,8 @@ class FactureService:
         # pour tout le lot généré.
         if factures:
             total_montant = float(sum((f.montant for f in factures), Decimal("0")))
-            self._reporting_client.update_stats_facturation(
+            publish_reporting_event(
+                "FACTURATION_STATS",
                 campagne_id=campagne_id,
                 delta_factures=len(factures),
                 delta_montant=total_montant,
@@ -324,9 +325,10 @@ class FactureService:
         facture = self._repo.update_statut(facture, statut)
 
         # Une facture qui passe PAYEE (depuis un autre statut) est signalée au
-        # Reporting Service (read model aval, dégradation gracieuse — ADR-019).
+        # Reporting Service (read model aval, événementiel durable — ADR-019).
         if statut == StatutFacture.PAYEE and ancien_statut != StatutFacture.PAYEE:
-            self._reporting_client.update_stats_facturation(
+            publish_reporting_event(
+                "FACTURATION_STATS",
                 campagne_id=str(facture.campagne_id),
                 delta_factures=1,
                 delta_montant=0.0,
