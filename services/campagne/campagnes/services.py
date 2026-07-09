@@ -267,6 +267,29 @@ class ReleveService:
         self._repo = ReleveRepository()
         self._campagne_repo = CampagneRepository()
         self._audit_repo = ReleveAuditRepository()
+        self._zone_repo = AffectationZoneRepository()
+
+    def list_tournee(self, campagne_id: str, agent_id: str) -> list[Releve]:
+        """Tournée d'un agent : ce qu'il a **déjà saisi** + les abonnés **à
+        relever** de son périmètre.
+
+        Périmètre = ses **zones** affectées (quartier + camp) ; s'il n'a **aucune
+        zone** (agent affecté globalement à la campagne), sa tournée couvre **tous**
+        les abonnés à relever de la campagne. Sans cette logique, un écran filtrant
+        sur `agent_id` ne verrait jamais les relevés A_RELEVER (dont l'agent n'est
+        renseigné qu'à la saisie) — l'agent ne voyait donc rien à relever.
+        """
+        self._campagne_repo.get_by_id(campagne_id)  # lève ObjectDoesNotExist si introuvable
+        zones = {(z.quartier, z.camp) for z in self._zone_repo.list_for_agent(campagne_id, agent_id)}
+        tournee: list[Releve] = []
+        for releve in self._repo.list_by_campagne(campagne_id):
+            saisi_par_lui = releve.agent_id == agent_id
+            a_relever_dans_perimetre = releve.statut == StatutReleve.A_RELEVER and (
+                not zones or (releve.quartier, releve.camp) in zones
+            )
+            if saisi_par_lui or a_relever_dans_perimetre:
+                tournee.append(releve)
+        return tournee
 
     def saisir_index(
         self,

@@ -141,18 +141,21 @@ class TestCampagneQueries(SimpleTestCase):
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")
     @patch("schema.campagne_queries.require_role")
-    def test_releves_par_agent_filtre(self, mock_role, mock_auth, mock_client) -> None:
+    def test_releves_par_agent_utilise_la_tournee(self, mock_role, mock_auth, mock_client) -> None:
+        """Le resolver délègue le périmètre (zones/global) à ListRelevesTournee
+        côté campagne-service et renvoie ses relevés tels quels (plus de filtrage
+        client par agent_id, qui excluait les A_RELEVER)."""
         mock_auth.return_value = MagicMock(role="ADMIN", user_id="admin-001")
-        mock_client.list_releves.return_value = MagicMock(
+        mock_client.list_releves_tournee.return_value = MagicMock(
             releves=[
-                _releve_response(releve_id="r1", agent_id="agent-001"),
-                _releve_response(releve_id="r2", agent_id="agent-002"),
-                _releve_response(releve_id="r3", agent_id="agent-001"),
+                _releve_response(releve_id="r1", agent_id="agent-001", statut="RELEVE"),
+                _releve_response(releve_id="r2", agent_id="", statut="A_RELEVER"),
             ]
         )
         info = MagicMock()
         result = CampagneQueries().releves_par_agent(info, campagne_id="camp-001", agent_id="agent-001")
-        self.assertEqual([r.releve_id for r in result], ["r1", "r3"])
+        self.assertEqual([r.releve_id for r in result], ["r1", "r2"])
+        mock_client.list_releves_tournee.assert_called_once_with("camp-001", "agent-001")
 
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")

@@ -329,6 +329,16 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         releves = self._releve_svc.list_releves(request.campagne_id)
         return pb.ListRelevesResponse(releves=[releve_to_proto(r) for r in releves])
 
+    def ListRelevesTournee(
+        self,
+        request: pb.ListRelevesTourneeRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.ListRelevesResponse:
+        """Tournée d'un agent : ses relevés saisis + les abonnés à relever de son
+        périmètre (ses zones ; toute la campagne s'il n'a aucune zone affectée)."""
+        releves = self._releve_svc.list_tournee(request.campagne_id, request.agent_id)
+        return pb.ListRelevesResponse(releves=[releve_to_proto(r) for r in releves])
+
     def GetDernierIndex(
         self,
         request: pb.AbonneIdRequest,

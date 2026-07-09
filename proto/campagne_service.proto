@@ -18,6 +18,9 @@ service CampagneService {
   rpc MarquerNonReleve (MarquerNonReleveRequest) returns (ReleveResponse);
   rpc GetReleve (ReleveIdRequest) returns (ReleveResponse);
   rpc ListReleves (CampagneIdRequest) returns (ListRelevesResponse);
+  // Tournée d'un agent : ses relevés saisis + les abonnés à relever de son
+  // périmètre (ses zones ; ou toute la campagne s'il n'a aucune zone affectée).
+  rpc ListRelevesTournee (ListRelevesTourneeRequest) returns (ListRelevesResponse);
   rpc GetProgression (CampagneIdRequest) returns (ProgressionResponse);
   rpc GetResumeCloture (CampagneIdRequest) returns (ResumeClotureResponse);
   // Démarre une campagne PLANIFIEE (→ EN_COURS) sans attendre le cron 7h.
@@ -74,6 +77,10 @@ message ReleveIdRequest { string releve_id = 1; }
 message AjouterAbonnesCampagneRequest {
   string campagne_id = 1;
   repeated string abonne_ids = 2;
+}
+message ListRelevesTourneeRequest {
+  string campagne_id = 1;
+  string agent_id = 2;
 }
 message AjouterAbonnesResponse {
   int32 nb_ajoutes = 1;  // relevés A_RELEVER créés

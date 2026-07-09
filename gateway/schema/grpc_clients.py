@@ -203,6 +203,11 @@ class CampagneServiceClient:
     def list_releves(self, campagne_id: str) -> campagne_pb.ListRelevesResponse:
         return self._stub.ListReleves(campagne_pb.CampagneIdRequest(campagne_id=campagne_id))
 
+    def list_releves_tournee(self, campagne_id: str, agent_id: str) -> campagne_pb.ListRelevesResponse:
+        return self._stub.ListRelevesTournee(
+            campagne_pb.ListRelevesTourneeRequest(campagne_id=campagne_id, agent_id=agent_id)
+        )
+
     def get_progression(self, campagne_id: str) -> campagne_pb.ProgressionResponse:
         return self._stub.GetProgression(campagne_pb.CampagneIdRequest(campagne_id=campagne_id))
 

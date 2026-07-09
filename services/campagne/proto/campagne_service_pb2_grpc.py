@@ -94,6 +94,11 @@ class CampagneServiceStub:
                 request_serializer=campagne__service__pb2.CampagneIdRequest.SerializeToString,
                 response_deserializer=campagne__service__pb2.ListRelevesResponse.FromString,
                 _registered_method=True)
+        self.ListRelevesTournee = channel.unary_unary(
+                '/campagne.CampagneService/ListRelevesTournee',
+                request_serializer=campagne__service__pb2.ListRelevesTourneeRequest.SerializeToString,
+                response_deserializer=campagne__service__pb2.ListRelevesResponse.FromString,
+                _registered_method=True)
         self.GetProgression = channel.unary_unary(
                 '/campagne.CampagneService/GetProgression',
                 request_serializer=campagne__service__pb2.CampagneIdRequest.SerializeToString,
@@ -200,6 +205,14 @@ class CampagneServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListRelevesTournee(self, request, context):
+        """Tournée d'un agent : ses relevés saisis + les abonnés à relever de son
+        périmètre (ses zones ; ou toute la campagne s'il n'a aucune zone affectée).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def GetProgression(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -292,6 +305,11 @@ def add_CampagneServiceServicer_to_server(servicer, server):
             'ListReleves': grpc.unary_unary_rpc_method_handler(
                     servicer.ListReleves,
                     request_deserializer=campagne__service__pb2.CampagneIdRequest.FromString,
+                    response_serializer=campagne__service__pb2.ListRelevesResponse.SerializeToString,
+            ),
+            'ListRelevesTournee': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListRelevesTournee,
+                    request_deserializer=campagne__service__pb2.ListRelevesTourneeRequest.FromString,
                     response_serializer=campagne__service__pb2.ListRelevesResponse.SerializeToString,
             ),
             'GetProgression': grpc.unary_unary_rpc_method_handler(
@@ -643,6 +661,33 @@ class CampagneService:
             target,
             '/campagne.CampagneService/ListReleves',
             campagne__service__pb2.CampagneIdRequest.SerializeToString,
+            campagne__service__pb2.ListRelevesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListRelevesTournee(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/campagne.CampagneService/ListRelevesTournee',
+            campagne__service__pb2.ListRelevesTourneeRequest.SerializeToString,
             campagne__service__pb2.ListRelevesResponse.FromString,
             options,
             channel_credentials,

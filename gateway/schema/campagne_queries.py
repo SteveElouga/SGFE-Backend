@@ -149,19 +149,24 @@ class CampagneQueries:
 
     @strawberry.field
     def releves_par_agent(self, info: strawberry.types.Info, campagne_id: str, agent_id: str) -> list[Releve]:
-        """Relevés saisis par un agent dans une campagne (écran « tournée agent »).
+        """Tournée d'un agent dans une campagne (écran « tournée agent »).
+
+        Renvoie ses relevés **déjà saisis** **+** les abonnés **à relever** de son
+        périmètre (ses **zones** ; ou **toute la campagne** s'il n'a aucune zone
+        affectée). Sans les A_RELEVER, l'agent ne verrait jamais ce qu'il doit
+        relever (ceux-ci n'ont d'`agent_id` qu'après saisie).
 
         ADMIN (toutes), SUPERVISEUR (les siennes), AGENT (sa propre tournée
-        uniquement). Le filtrage par agent est fait ici, côté Gateway, pour ne
-        pas altérer le RPC ListReleves consommé par Facturation.
+        uniquement). Le périmètre (zones vs global) est résolu par campagne-service
+        (`ListRelevesTournee`), qui a accès aux affectations de zones.
         """
         user = require_auth(info)
         require_role(info, "ADMIN", "AGENT", "SUPERVISEUR")
         _verifier_acces_campagne(user, campagne_id)
         if user.role == "AGENT" and agent_id != user.user_id:
             raise PermissionError("Accès refusé : vous ne pouvez consulter que votre propre tournée.")
-        response = campagne_client.list_releves(campagne_id)
-        return [releve_from_grpc(r) for r in response.releves if r.agent_id == agent_id]
+        response = campagne_client.list_releves_tournee(campagne_id, agent_id)
+        return [releve_from_grpc(r) for r in response.releves]
 
     @strawberry.field
     def agents_campagne(self, info: strawberry.types.Info, campagne_id: str) -> list[AgentAffecte]:

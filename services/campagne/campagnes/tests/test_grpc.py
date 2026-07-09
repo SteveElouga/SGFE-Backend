@@ -241,6 +241,63 @@ class TestAjouterAbonnesCampagneRPC(TestCase):
             self.servicer.AjouterAbonnesCampagne(req, _mock_context())
 
 
+class TestListRelevesTourneeRPC(TestCase):
+    def setUp(self) -> None:
+        from campagnes.models import Releve
+
+        self.servicer = CampagneServicer()
+        self.campagne = CampagneService().creer_campagne("CT", 1, 2026, created_by="user-A")
+        c = self.campagne
+        # 2 abonnés à relever, dans 2 zones distinctes
+        Releve.objects.create(
+            campagne=c, abonne_id="ab-z1", ancien_index=0, statut=StatutReleve.A_RELEVER, quartier="Q1", camp=1
+        )
+        Releve.objects.create(
+            campagne=c, abonne_id="ab-z2", ancien_index=0, statut=StatutReleve.A_RELEVER, quartier="Q2", camp=2
+        )
+        # 1 relevé saisi par NOTRE agent (AGENT-1), 1 par un autre (AGENT-2)
+        Releve.objects.create(
+            campagne=c,
+            abonne_id="ab-mine",
+            ancien_index=0,
+            nouveau_index=10,
+            statut=StatutReleve.RELEVE,
+            agent_id="AGENT-1",
+            quartier="Q3",
+            camp=3,
+        )
+        Releve.objects.create(
+            campagne=c,
+            abonne_id="ab-other",
+            ancien_index=0,
+            nouveau_index=5,
+            statut=StatutReleve.RELEVE,
+            agent_id="AGENT-2",
+            quartier="Q1",
+            camp=1,
+        )
+
+    def _tournee(self, agent_id: str) -> set:
+        req = pb.ListRelevesTourneeRequest(campagne_id=str(self.campagne.id), agent_id=agent_id)
+        resp = self.servicer.ListRelevesTournee(req, _mock_context())
+        return {r.abonne_id for r in resp.releves}
+
+    def test_agent_global_voit_tous_les_a_relever_plus_ses_saisis(self) -> None:
+        # AGENT-1 n'a AUCUNE zone → périmètre = toute la campagne
+        abos = self._tournee("AGENT-1")
+        self.assertEqual(abos, {"ab-z1", "ab-z2", "ab-mine"})
+        self.assertNotIn("ab-other", abos)  # saisi par un autre agent → exclu
+
+    def test_agent_avec_zone_voit_seulement_sa_zone(self) -> None:
+        from campagnes.models import AffectationZone
+
+        AffectationZone.objects.create(campagne=self.campagne, agent_id="AGENT-1", quartier="Q1", camp=1)
+        abos = self._tournee("AGENT-1")
+        self.assertIn("ab-z1", abos)  # A_RELEVER de sa zone Q1
+        self.assertIn("ab-mine", abos)  # ses saisis, quelle que soit la zone
+        self.assertNotIn("ab-z2", abos)  # A_RELEVER hors de sa zone → exclu
+
+
 class TestSaisirIndexRPC(TestCase):
     def setUp(self) -> None:
         self.servicer = CampagneServicer()
