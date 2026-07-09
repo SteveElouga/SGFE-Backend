@@ -402,6 +402,14 @@ snapshot `quartier`/`camp`), `CampagneAgent` (affectation globale), `Affectation
   n'aurait jamais montré les A_RELEVER (dont l'agent n'est renseigné qu'à la
   saisie) — l'agent ne voyait rien à relever. Un AGENT ne consulte que **sa**
   propre tournée (garde côté Gateway).
+- **Enrichissement identité abonné** : un relevé ne porte que `abonne_id` (règle
+  « pas de FK inter-services »). Pour que l'écran affiche des **noms** et non des
+  UUID, la Gateway joint chaque relevé à Abonné Service et expose
+  `abonneNom`, `abonnePrenom`, `numeroAbonne`, `abonneAdresse`, `numeroCompteur`
+  (+ `quartier`/`camp`, snapshot du compteur). La jointure fait **un seul**
+  `ListAbonnes` indexé en mémoire (idiome anti-N+1, cf. `_abonnes_par_id`) et est
+  **best-effort** : si Abonné Service est indisponible, les champs restent vides
+  et la requête n'échoue pas. Vaut pour `releves` **et** `relevesParAgent`.
 
 ### C.11 Progression & résumé de clôture
 - **But** : suivre l'avancement, préparer la clôture.
