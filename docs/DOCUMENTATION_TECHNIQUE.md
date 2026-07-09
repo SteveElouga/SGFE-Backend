@@ -391,10 +391,17 @@ snapshot `quartier`/`camp`), `CampagneAgent` (affectation globale), `Affectation
   (`statut` = NON_RELEVE | ESTIME).
 
 ### C.10 Consultation des relevés
-- **Contrat** : `query releves(campagneId): [Releve!]!` ·
-  `query relevesParAgent(campagneId, agentId): [Releve!]!` (filtrage côté Gateway ;
-  un AGENT ne consulte que **sa** propre tournée) ·
-  `query dernierIndex(abonneId): DernierIndex!` (pré-remplissage saisie).
+- **Contrat** : `query releves(campagneId): [Releve!]!` (tous les relevés de la
+  campagne) · `query relevesParAgent(campagneId, agentId): [Releve!]!` · `query
+  dernierIndex(abonneId): DernierIndex!` (pré-remplissage saisie).
+- **Tournée agent** (`relevesParAgent`) : renvoie les relevés **déjà saisis** par
+  l'agent **+** les abonnés **à relever** (`A_RELEVER`) de son **périmètre** — ses
+  **zones** affectées, ou **toute la campagne** s'il n'a aucune zone (agent affecté
+  globalement). Le périmètre est calculé par `campagne.ListRelevesTournee` (qui a
+  accès aux affectations de zones). **Sans cela**, un filtre sur `agent_id`
+  n'aurait jamais montré les A_RELEVER (dont l'agent n'est renseigné qu'à la
+  saisie) — l'agent ne voyait rien à relever. Un AGENT ne consulte que **sa**
+  propre tournée (garde côté Gateway).
 
 ### C.11 Progression & résumé de clôture
 - **But** : suivre l'avancement, préparer la clôture.

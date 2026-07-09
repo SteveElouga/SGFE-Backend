@@ -298,3 +298,6 @@ class AffectationZoneRepository:
 
     def list_by_campagne(self, campagne_id: str) -> list[AffectationZone]:
         return list(AffectationZone.objects.filter(campagne_id=campagne_id).order_by("agent_id", "quartier", "camp"))
+
+    def list_for_agent(self, campagne_id: str, agent_id: str) -> list[AffectationZone]:
+        return list(AffectationZone.objects.filter(campagne_id=campagne_id, agent_id=agent_id))
