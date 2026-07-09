@@ -6,7 +6,7 @@ from pathlib import Path
 
 import grpc
 from django.conf import settings
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 
 # Le fichier _grpc.py généré fait un `import campagne_service_pb2` bare —
 # il faut que le dossier proto/ soit dans sys.path avant l'import.
@@ -18,7 +18,7 @@ import campagne_service_pb2_grpc as pb_grpc
 from campagnes.event_publisher import publish_progression_event, publish_reporting_event
 from campagnes.grpc_clients import FacturationServiceClient
 from campagnes.grpc_interceptors import ErrorHandlingInterceptor
-from campagnes.models import StatutReleve
+from campagnes.models import StatutCampagne, StatutReleve
 from campagnes.repositories import (
     CampagneAgentRepository,
     CampagneRepository,
@@ -202,6 +202,39 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
     # ------------------------------------------------------------------ #
     # Relevés
     # ------------------------------------------------------------------ #
+
+    def AjouterAbonnesCampagne(
+        self,
+        request: pb.AjouterAbonnesCampagneRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.AjouterAbonnesResponse:
+        """Rattache des abonnés à une campagne en pré-créant leurs relevés A_RELEVER.
+
+        C'est le lien manquant entre « abonnés sélectionnés » et la campagne :
+        sans lui, aucun relevé n'existe avant la première saisie et « abonnés à
+        relever » vaut 0. Lot robuste : la campagne est validée une fois
+        (NOT_FOUND si absente, INVALID_ARGUMENT si clôturée), puis chaque abonné
+        déjà inscrit ou non ACTIF est simplement ignoré (le lot ne casse pas).
+        """
+        campagne = self._campagne_svc.get_campagne(request.campagne_id)
+        if campagne.statut == StatutCampagne.CLOTUREE:
+            raise ValidationError("Impossible d'ajouter des abonnés à une campagne clôturée.")
+
+        nb_ajoutes = 0
+        nb_ignores = 0
+        for abonne_id in request.abonne_ids:
+            try:
+                dernier_index = self._get_dernier_index_value(abonne_id)
+                self._campagne_svc.ajouter_abonne_campagne(
+                    campagne_id=request.campagne_id,
+                    abonne_id=abonne_id,
+                    ancien_index=dernier_index,
+                )
+                nb_ajoutes += 1
+            except ValidationError:
+                # Abonné déjà inscrit à la campagne ou non ACTIF → ignoré.
+                nb_ignores += 1
+        return pb.AjouterAbonnesResponse(nb_ajoutes=nb_ajoutes, nb_ignores=nb_ignores)
 
     def SaisirIndex(
         self,

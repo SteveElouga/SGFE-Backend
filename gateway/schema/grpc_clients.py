@@ -177,6 +177,11 @@ class CampagneServiceClient:
     def assigner_agent(self, campagne_id: str, agent_id: str) -> campagne_pb.CampagneResponse:
         return self._stub.AssignerAgent(campagne_pb.AssignerAgentRequest(campagne_id=campagne_id, agent_id=agent_id))
 
+    def ajouter_abonnes_campagne(self, campagne_id: str, abonne_ids: list[str]) -> campagne_pb.AjouterAbonnesResponse:
+        return self._stub.AjouterAbonnesCampagne(
+            campagne_pb.AjouterAbonnesCampagneRequest(campagne_id=campagne_id, abonne_ids=abonne_ids)
+        )
+
     def affecter_zones(self, **kwargs) -> campagne_pb.ListAgentsCampagneResponse:
         return self._stub.AffecterZones(campagne_pb.AffecterZonesRequest(**kwargs))
 

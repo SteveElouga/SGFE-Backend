@@ -10,6 +10,9 @@ service CampagneService {
   rpc AffecterZones (AffecterZonesRequest) returns (ListAgentsCampagneResponse);
   // Liste les agents affectés à une campagne (global et/ou par zone) + stats.
   rpc ListAgentsCampagne (CampagneIdRequest) returns (ListAgentsCampagneResponse);
+  // Rattache des abonnés à une campagne : pré-crée un relevé A_RELEVER pour
+  // chacun (sélection des abonnés à relever). Idempotent (déjà inscrit → ignoré).
+  rpc AjouterAbonnesCampagne (AjouterAbonnesCampagneRequest) returns (AjouterAbonnesResponse);
   rpc SaisirIndex (SaisirIndexRequest) returns (ReleveResponse);
   rpc CorrigerReleve (CorrigerReleveRequest) returns (ReleveResponse);
   rpc MarquerNonReleve (MarquerNonReleveRequest) returns (ReleveResponse);
@@ -67,6 +70,15 @@ message MarquerNonReleveRequest {
 
 message CampagneIdRequest { string campagne_id = 1; }
 message ReleveIdRequest { string releve_id = 1; }
+
+message AjouterAbonnesCampagneRequest {
+  string campagne_id = 1;
+  repeated string abonne_ids = 2;
+}
+message AjouterAbonnesResponse {
+  int32 nb_ajoutes = 1;  // relevés A_RELEVER créés
+  int32 nb_ignores = 2;  // abonnés déjà inscrits ou non ACTIF
+}
 message AbonneIdRequest { string abonne_id = 1; }
 
 message CampagneResponse {

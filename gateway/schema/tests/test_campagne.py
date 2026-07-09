@@ -221,6 +221,20 @@ class TestCampagneMutations(SimpleTestCase):
         self.assertEqual(result.campagne_id, "camp-001")
         mock_client.assigner_agent.assert_called_once_with(campagne_id="camp-001", agent_id="agent-001")
 
+    @patch("schema.campagne_mutations.campagne_client")
+    @patch("schema.campagne_mutations.require_auth")
+    @patch("schema.campagne_mutations.require_role")
+    def test_ajouter_abonnes_campagne(self, mock_role, mock_auth, mock_client) -> None:
+        mock_auth.return_value = MagicMock(role="ADMIN", user_id="admin-001")
+        mock_client.ajouter_abonnes_campagne.return_value = MagicMock(nb_ajoutes=2, nb_ignores=1)
+        info = MagicMock()
+        result = CampagneMutations().ajouter_abonnes_campagne(
+            info, campagne_id="camp-001", abonne_ids=["ab-1", "ab-2", "ab-3"]
+        )
+        self.assertEqual(result.nb_ajoutes, 2)
+        self.assertEqual(result.nb_ignores, 1)
+        mock_client.ajouter_abonnes_campagne.assert_called_once_with("camp-001", ["ab-1", "ab-2", "ab-3"])
+
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_mutations.campagne_client")
     @patch("schema.campagne_mutations.require_auth")

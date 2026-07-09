@@ -198,6 +198,49 @@ class TestDemarrerCampagneRPC(TestCase):
             self.servicer.DemarrerCampagne(request, _mock_context())
 
 
+class TestAjouterAbonnesCampagneRPC(TestCase):
+    def setUp(self) -> None:
+        self.servicer = CampagneServicer()
+        self.svc = CampagneService()
+        self.campagne = self.svc.creer_campagne("CA", 1, 2026, created_by="user-A")
+
+    def test_ajouter_succes_alimente_la_progression(self) -> None:
+        cid = str(self.campagne.id)
+        req = pb.AjouterAbonnesCampagneRequest(campagne_id=cid, abonne_ids=["ab-1", "ab-2"])
+        resp = self.servicer.AjouterAbonnesCampagne(req, _mock_context())
+        self.assertEqual(resp.nb_ajoutes, 2)
+        self.assertEqual(resp.nb_ignores, 0)
+        # Le compteur « abonnés à relever » reflète désormais les 2 abonnés.
+        prog = self.servicer.GetProgression(pb.CampagneIdRequest(campagne_id=cid), _mock_context())
+        self.assertEqual(prog.total_abonnes, 2)
+        self.assertEqual(prog.nb_en_attente, 2)
+
+    def test_ajouter_ignore_les_doublons(self) -> None:
+        cid = str(self.campagne.id)
+        self.svc.ajouter_abonne_campagne(cid, "ab-1", ancien_index=0.0)  # déjà inscrit
+        req = pb.AjouterAbonnesCampagneRequest(campagne_id=cid, abonne_ids=["ab-1", "ab-2"])
+        resp = self.servicer.AjouterAbonnesCampagne(req, _mock_context())
+        self.assertEqual(resp.nb_ajoutes, 1)  # ab-2 seulement
+        self.assertEqual(resp.nb_ignores, 1)  # ab-1 déjà présent
+
+    def test_ajouter_ignore_abonne_non_actif(self) -> None:
+        cid = str(self.campagne.id)
+        with patch.object(AbonneServiceClient, "get_abonne", return_value=SimpleNamespace(statut="SUSPENDU")):
+            req = pb.AjouterAbonnesCampagneRequest(campagne_id=cid, abonne_ids=["ab-x"])
+            resp = self.servicer.AjouterAbonnesCampagne(req, _mock_context())
+        self.assertEqual(resp.nb_ajoutes, 0)
+        self.assertEqual(resp.nb_ignores, 1)
+
+    def test_ajouter_campagne_cloturee_abort(self) -> None:
+        from campagnes.models import Campagne
+
+        cid = str(self.campagne.id)
+        Campagne.objects.filter(id=cid).update(statut=StatutCampagne.CLOTUREE)
+        req = pb.AjouterAbonnesCampagneRequest(campagne_id=cid, abonne_ids=["ab-1"])
+        with self.assertRaises(ValidationError):
+            self.servicer.AjouterAbonnesCampagne(req, _mock_context())
+
+
 class TestSaisirIndexRPC(TestCase):
     def setUp(self) -> None:
         self.servicer = CampagneServicer()

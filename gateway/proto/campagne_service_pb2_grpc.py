@@ -64,6 +64,11 @@ class CampagneServiceStub:
                 request_serializer=campagne__service__pb2.CampagneIdRequest.SerializeToString,
                 response_deserializer=campagne__service__pb2.ListAgentsCampagneResponse.FromString,
                 _registered_method=True)
+        self.AjouterAbonnesCampagne = channel.unary_unary(
+                '/campagne.CampagneService/AjouterAbonnesCampagne',
+                request_serializer=campagne__service__pb2.AjouterAbonnesCampagneRequest.SerializeToString,
+                response_deserializer=campagne__service__pb2.AjouterAbonnesResponse.FromString,
+                _registered_method=True)
         self.SaisirIndex = channel.unary_unary(
                 '/campagne.CampagneService/SaisirIndex',
                 request_serializer=campagne__service__pb2.SaisirIndexRequest.SerializeToString,
@@ -152,6 +157,14 @@ class CampagneServiceServicer:
 
     def ListAgentsCampagne(self, request, context):
         """Liste les agents affectés à une campagne (global et/ou par zone) + stats.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AjouterAbonnesCampagne(self, request, context):
+        """Rattache des abonnés à une campagne : pré-crée un relevé A_RELEVER pour
+        chacun (sélection des abonnés à relever). Idempotent (déjà inscrit → ignoré).
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -250,6 +263,11 @@ def add_CampagneServiceServicer_to_server(servicer, server):
                     servicer.ListAgentsCampagne,
                     request_deserializer=campagne__service__pb2.CampagneIdRequest.FromString,
                     response_serializer=campagne__service__pb2.ListAgentsCampagneResponse.SerializeToString,
+            ),
+            'AjouterAbonnesCampagne': grpc.unary_unary_rpc_method_handler(
+                    servicer.AjouterAbonnesCampagne,
+                    request_deserializer=campagne__service__pb2.AjouterAbonnesCampagneRequest.FromString,
+                    response_serializer=campagne__service__pb2.AjouterAbonnesResponse.SerializeToString,
             ),
             'SaisirIndex': grpc.unary_unary_rpc_method_handler(
                     servicer.SaisirIndex,
@@ -464,6 +482,33 @@ class CampagneService:
             '/campagne.CampagneService/ListAgentsCampagne',
             campagne__service__pb2.CampagneIdRequest.SerializeToString,
             campagne__service__pb2.ListAgentsCampagneResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AjouterAbonnesCampagne(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/campagne.CampagneService/AjouterAbonnesCampagne',
+            campagne__service__pb2.AjouterAbonnesCampagneRequest.SerializeToString,
+            campagne__service__pb2.AjouterAbonnesResponse.FromString,
             options,
             channel_credentials,
             insecure,
