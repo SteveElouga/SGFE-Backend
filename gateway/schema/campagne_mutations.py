@@ -7,6 +7,7 @@ from proto import campagne_service_pb2 as campagne_pb
 
 from .campagne_types import (
     AgentAffecte,
+    AjouterAbonnesResult,
     Campagne,
     CorrigerReleveInput,
     CreateCampagneInput,
@@ -50,6 +51,26 @@ class CampagneMutations:
         _verifier_propriete_superviseur(user, campagne_id)
         response = campagne_client.assigner_agent(campagne_id=campagne_id, agent_id=agent_id)
         return campagne_from_grpc(response)
+
+    @strawberry.mutation
+    def ajouter_abonnes_campagne(
+        self,
+        info: strawberry.types.Info,
+        campagne_id: str,
+        abonne_ids: list[str],
+    ) -> AjouterAbonnesResult:
+        """Rattache des abonnés (sélectionnés) à une campagne — ADMIN (toutes),
+        SUPERVISEUR (les siennes).
+
+        Pré-crée un relevé A_RELEVER par abonné : c'est ce qui alimente le nombre
+        d'« abonnés à relever ». Idempotent : un abonné déjà inscrit ou non ACTIF
+        est ignoré (voir `nbIgnores`).
+        """
+        user = require_auth(info)
+        require_role(info, "ADMIN", "SUPERVISEUR")
+        _verifier_propriete_superviseur(user, campagne_id)
+        r = campagne_client.ajouter_abonnes_campagne(campagne_id, abonne_ids)
+        return AjouterAbonnesResult(nb_ajoutes=r.nb_ajoutes, nb_ignores=r.nb_ignores)
 
     @strawberry.mutation
     def demarrer_campagne(self, info: strawberry.types.Info, campagne_id: str) -> Campagne:

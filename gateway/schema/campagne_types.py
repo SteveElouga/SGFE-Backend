@@ -71,6 +71,14 @@ class Progression:
 
 
 @strawberry.type
+class AjouterAbonnesResult:
+    """Résultat de l'ajout d'abonnés à une campagne (pré-création des relevés)."""
+
+    nb_ajoutes: int  # relevés A_RELEVER créés
+    nb_ignores: int  # abonnés déjà inscrits ou non ACTIF
+
+
+@strawberry.type
 class ResumeCloture:
     """Aperçu prêt à afficher avant la clôture d'une campagne (modal de confirmation)."""
 

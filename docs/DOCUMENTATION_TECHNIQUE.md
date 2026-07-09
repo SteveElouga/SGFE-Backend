@@ -341,7 +341,24 @@ snapshot `quartier`/`camp`), `CampagneAgent` (affectation globale), `Affectation
 - **Rôles** : ADMIN, AGENT, SUPERVISEUR (les siennes).
 - **Temps réel** : rafraîchies via `progressionUpdated` (l'événement porte l'agent).
 
-### C.6 Saisie d'un index (saisirIndex)
+### C.6 Ajout des abonnés à relever (ajouterAbonnesCampagne)
+- **But** : rattacher à une campagne les **abonnés sélectionnés** qui devront être
+  relevés — c'est ce qui alimente le nombre d'« abonnés à relever ».
+- **Implémentation** : `campagne.AjouterAbonnesCampagne` — **pré-crée un relevé
+  `A_RELEVER`** par abonné (avec `ancien_index` = dernier index connu ou 0 et la
+  **zone** du compteur en snapshot). Lot **robuste et idempotent** : la campagne
+  est validée une fois (`NOT_FOUND` si absente, `INVALID_ARGUMENT` si clôturée),
+  puis chaque abonné **déjà inscrit ou non ACTIF est ignoré** (le lot ne casse
+  pas). Sans cet appel, aucun relevé n'existe avant la première saisie et
+  « abonnés à relever » vaut **0**.
+- **Dépendances** : abonne (contrôle ACTIF + zone du compteur).
+- **Plus-value** : compose la tournée d'une campagne dès sa création, avant toute
+  saisie ; débloque l'affichage de l'avancement.
+- **Contrat** : `mutation ajouterAbonnesCampagne(campagneId: ID!, abonneIds: [String!]!):
+  AjouterAbonnesResult!` (`{ nbAjoutes nbIgnores }`). **ADMIN (toutes), SUPERVISEUR
+  (les siennes)**.
+
+### C.7 Saisie d'un index (saisirIndex)
 - **But** : enregistrer le nouvel index relevé d'un abonné.
 - **Implémentation** : `campagne.SaisirIndex` — crée le relevé à la volée si absent
   (après **contrôle du statut ACTIF** de l'abonné via `abonne.GetAbonne`), copie la
@@ -354,7 +371,7 @@ snapshot `quartier`/`camp`), `CampagneAgent` (affectation globale), `Affectation
   (`{ campagneId abonneId nouveauIndex observation }`).
 - **Rôles** : ADMIN, AGENT, SUPERVISEUR (les siennes).
 
-### C.7 Correction d'un index (corrigerReleve) + journal d'audit
+### C.8 Correction d'un index (corrigerReleve) + journal d'audit
 - **But** : rectifier un index **déjà relevé**, y compris après clôture.
 - **Implémentation** : `campagne.CorrigerReleve` — préserve l'agent d'origine et la
   date de relevé, recalcule la consommation, ajoute une entrée d'audit
@@ -367,19 +384,19 @@ snapshot `quartier`/`camp`), `CampagneAgent` (affectation globale), `Affectation
 - **Note** : la **propagation financière** d'une correction post-clôture
   (régénération facture / recalcul solde) n'est pas encore implémentée.
 
-### C.8 Marquer non relevé / estimé (marquerNonReleve)
+### C.9 Marquer non relevé / estimé (marquerNonReleve)
 - **But** : gérer un compteur inaccessible ou illisible.
 - **Implémentation** : `campagne.MarquerNonReleve` → statut NON_RELEVE ou ESTIME.
 - **Contrat** : `mutation marquerNonReleve(input: MarquerNonReleveInput!): Releve!`
   (`statut` = NON_RELEVE | ESTIME).
 
-### C.9 Consultation des relevés
+### C.10 Consultation des relevés
 - **Contrat** : `query releves(campagneId): [Releve!]!` ·
   `query relevesParAgent(campagneId, agentId): [Releve!]!` (filtrage côté Gateway ;
   un AGENT ne consulte que **sa** propre tournée) ·
   `query dernierIndex(abonneId): DernierIndex!` (pré-remplissage saisie).
 
-### C.10 Progression & résumé de clôture
+### C.11 Progression & résumé de clôture
 - **But** : suivre l'avancement, préparer la clôture.
 - **Contrat** : `query progression(campagneId): Progression!`
   (`{ totalAbonnes nbReleves nbEnAttente pourcentage }`) ·
@@ -388,7 +405,7 @@ snapshot `quartier`/`camp`), `CampagneAgent` (affectation globale), `Affectation
   SUPERVISEUR**).
 - **Temps réel** : `subscription progressionUpdated(campagneId): Progression!`.
 
-### C.11 Clôture de campagne (cloturerCampagne)
+### C.12 Clôture de campagne (cloturerCampagne)
 - **But** : figer la campagne et déclencher la facturation.
 - **Implémentation** : `campagne.CloturerCampagne` (EN_COURS→CLOTUREE) → si
   `generer_factures_auto`, **notifie facturation** (CampagneCloturee) ; publie un
@@ -397,7 +414,7 @@ snapshot `quartier`/`camp`), `CampagneAgent` (affectation globale), `Affectation
 - **Contrat** : `mutation cloturerCampagne(campagneId): Campagne!`. **ADMIN,
   SUPERVISEUR (les siennes)**.
 
-### C.12 Démarrage à la demande (demarrerCampagne)
+### C.13 Démarrage à la demande (demarrerCampagne)
 - **But** : lancer une campagne **PLANIFIEE** (→ EN_COURS) immédiatement, sans
   attendre le cron 7 h ni sa date planifiée (ex. démarrer aujourd'hui une
   campagne prévue plus tard).
@@ -409,7 +426,7 @@ snapshot `quartier`/`camp`), `CampagneAgent` (affectation globale), `Affectation
 - **Contrat** : `mutation demarrerCampagne(campagneId): Campagne!`. **ADMIN
   (toutes), SUPERVISEUR (les siennes)**.
 
-### C.13 Démarrage automatique (cron 7 h)
+### C.14 Démarrage automatique (cron 7 h)
 - **But** : passer en EN_COURS les campagnes planifiées pour J/J-1.
 - **Implémentation** : `campagne_planifiee_job` (APScheduler, 7 h 00) — démarre
   **toutes** les campagnes planifiées de la date (rattrapage J-1).
