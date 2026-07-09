@@ -77,6 +77,40 @@ def _users_par_id() -> dict:
         return {}
 
 
+def _abonnes_par_id() -> dict:
+    """Index {abonne_id: AbonneResponse} via UN seul appel ListAbonnes (best-effort).
+
+    Même idiome anti-N+1 que `_users_par_id` : un `GetAbonne` par relevé
+    deviendrait N appels ; on récupère tous les abonnés une fois et on indexe en
+    mémoire. Dict vide si Abonné Service est indisponible."""
+    try:
+        return {a.abonne_id: a for a in abonne_client.list_abonnes().abonnes}
+    except Exception:
+        return {}
+
+
+def _enrichir_releves(releves: list[Releve]) -> list[Releve]:
+    """Complète chaque relevé avec l'identité de l'abonné (nom, prénom, numéro,
+    adresse, numéro de compteur) issue d'Abonné Service, pour que l'écran affiche
+    des noms et non des UUID. Le relevé ne porte que `abonne_id` (règle « pas de
+    FK inter-services ») : la jointure se fait ici, côté Gateway. Best-effort —
+    si Abonné est indisponible, les champs restent vides et le relevé est renvoyé
+    tel quel (jamais d'échec de la requête)."""
+    if not releves:
+        return releves
+    abonnes = _abonnes_par_id()
+    for releve in releves:
+        abonne = abonnes.get(releve.abonne_id)
+        if abonne is None:
+            continue
+        releve.abonne_nom = abonne.nom
+        releve.abonne_prenom = abonne.prenom
+        releve.numero_abonne = abonne.numero_abonne
+        releve.abonne_adresse = abonne.adresse
+        releve.numero_compteur = abonne.compteur.numero_compteur
+    return releves
+
+
 def _enrichir_agents(grpc_agents) -> list[AgentAffecte]:
     """Complète les agents (issus de ListAgentsCampagne) avec le nombre d'abonnés
     par zone (ListZones), le nom/rôle (Auth) et le statut de tournée dérivé."""
@@ -145,7 +179,7 @@ class CampagneQueries:
         require_role(info, "ADMIN", "AGENT", "SUPERVISEUR")
         _verifier_acces_campagne(user, campagne_id)
         response = campagne_client.list_releves(campagne_id)
-        return [releve_from_grpc(r) for r in response.releves]
+        return _enrichir_releves([releve_from_grpc(r) for r in response.releves])
 
     @strawberry.field
     def releves_par_agent(self, info: strawberry.types.Info, campagne_id: str, agent_id: str) -> list[Releve]:
@@ -166,7 +200,7 @@ class CampagneQueries:
         if user.role == "AGENT" and agent_id != user.user_id:
             raise PermissionError("Accès refusé : vous ne pouvez consulter que votre propre tournée.")
         response = campagne_client.list_releves_tournee(campagne_id, agent_id)
-        return [releve_from_grpc(r) for r in response.releves]
+        return _enrichir_releves([releve_from_grpc(r) for r in response.releves])
 
     @strawberry.field
     def agents_campagne(self, info: strawberry.types.Info, campagne_id: str) -> list[AgentAffecte]:

@@ -138,24 +138,63 @@ class TestCampagneQueries(SimpleTestCase):
         self.assertAlmostEqual(result.dernier_index, 120.0)
         self.assertFalse(result.est_index_initial)
 
+    @patch("schema.campagne_queries.abonne_client")
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")
     @patch("schema.campagne_queries.require_role")
-    def test_releves_par_agent_utilise_la_tournee(self, mock_role, mock_auth, mock_client) -> None:
+    def test_releves_par_agent_utilise_la_tournee(self, mock_role, mock_auth, mock_client, mock_abonne) -> None:
         """Le resolver délègue le périmètre (zones/global) à ListRelevesTournee
         côté campagne-service et renvoie ses relevés tels quels (plus de filtrage
         client par agent_id, qui excluait les A_RELEVER)."""
         mock_auth.return_value = MagicMock(role="ADMIN", user_id="admin-001")
         mock_client.list_releves_tournee.return_value = MagicMock(
             releves=[
-                _releve_response(releve_id="r1", agent_id="agent-001", statut="RELEVE"),
-                _releve_response(releve_id="r2", agent_id="", statut="A_RELEVER"),
+                _releve_response(releve_id="r1", abonne_id="ab-1", agent_id="agent-001", statut="RELEVE"),
+                _releve_response(releve_id="r2", abonne_id="ab-2", agent_id="", statut="A_RELEVER"),
             ]
         )
+        mock_abonne.list_abonnes.return_value = MagicMock(abonnes=[])
         info = MagicMock()
         result = CampagneQueries().releves_par_agent(info, campagne_id="camp-001", agent_id="agent-001")
         self.assertEqual([r.releve_id for r in result], ["r1", "r2"])
         mock_client.list_releves_tournee.assert_called_once_with("camp-001", "agent-001")
+
+    @patch("schema.campagne_queries.abonne_client")
+    @patch("schema.campagne_queries.campagne_client")
+    @patch("schema.campagne_queries.require_auth")
+    @patch("schema.campagne_queries.require_role")
+    def test_releves_par_agent_enrichit_identite_abonne(self, mock_role, mock_auth, mock_client, mock_abonne) -> None:
+        """La tournée est enrichie avec le nom/adresse/compteur de l'abonné (via
+        Abonné Service, un seul ListAbonnes) : l'écran affiche des noms, pas des
+        UUID. Un abonné inconnu laisse les champs vides sans faire échouer."""
+        mock_auth.return_value = MagicMock(role="ADMIN", user_id="admin-001")
+        mock_client.list_releves_tournee.return_value = MagicMock(
+            releves=[
+                _releve_response(releve_id="r1", abonne_id="ab-1", statut="A_RELEVER"),
+                _releve_response(releve_id="r2", abonne_id="inconnu", statut="A_RELEVER"),
+            ]
+        )
+        mock_abonne.list_abonnes.return_value = MagicMock(
+            abonnes=[
+                MagicMock(
+                    abonne_id="ab-1",
+                    nom="Ntsama",
+                    prenom="Marie",
+                    numero_abonne="AB-0001",
+                    adresse="BEEDI",
+                    compteur=MagicMock(numero_compteur=42),
+                )
+            ]
+        )
+        info = MagicMock()
+        result = CampagneQueries().releves_par_agent(info, campagne_id="camp-001", agent_id="agent-001")
+        mock_abonne.list_abonnes.assert_called_once_with()  # un seul appel (anti N+1)
+        r1 = next(r for r in result if r.releve_id == "r1")
+        self.assertEqual(r1.abonne_nom, "Ntsama")
+        self.assertEqual(r1.numero_abonne, "AB-0001")
+        self.assertEqual(r1.numero_compteur, 42)
+        r2 = next(r for r in result if r.releve_id == "r2")
+        self.assertEqual(r2.abonne_nom, "")  # abonné absent → champs vides, pas d'erreur
 
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")

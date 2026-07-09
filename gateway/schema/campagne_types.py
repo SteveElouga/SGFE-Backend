@@ -59,6 +59,17 @@ class Releve:
     saisi_le: str
     # Journal complet SAISIE/CORRECTION, du plus ancien au plus récent (P2).
     audit: list[ReleveAudit]
+    # Zone du compteur (snapshot posé à la création du relevé).
+    quartier: str = ""
+    camp: int = 0
+    # Identité de l'abonné — enrichie par la Gateway via Abonné Service pour que
+    # l'écran affiche des noms/adresses et non des UUID. Reste vide si Abonné
+    # Service est indisponible (enrichissement best-effort, non bloquant).
+    abonne_nom: str = ""
+    abonne_prenom: str = ""
+    numero_abonne: str = ""
+    abonne_adresse: str = ""
+    numero_compteur: int = 0
 
 
 @strawberry.type
@@ -230,4 +241,6 @@ def releve_from_grpc(r: campagne_pb.ReleveResponse) -> Releve:
         saisi_par=saisie.auteur if saisie else None,
         saisi_le=saisie.horodatage if saisie else "",
         audit=audit,
+        quartier=r.quartier,
+        camp=r.camp,
     )
