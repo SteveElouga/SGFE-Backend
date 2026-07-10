@@ -320,6 +320,7 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
             str(releve.id),
             statut=request.statut or "NON_RELEVE",
             observation=request.observation,
+            agent_id=request.agent_id,
         )
         return releve_to_proto(releve)
 
