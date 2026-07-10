@@ -327,6 +327,18 @@ class TestReleveService(TestCase):
         with self.assertRaises(ValidationError):
             self.svc.corriger_releve(str(self.releve.id), nouveau_index=50.0, auteur_id="admin-001")
 
+    def test_corriger_releve_audit_conserve_la_valeur_remplacee(self) -> None:
+        """L'audit CORRECTION trace la valeur relevée AVANT correction (l'index
+        remplacé), et non l'index compteur de base — sinon le journal est
+        trompeur et la valeur remplacée est perdue."""
+        # ancien_index (compteur) = 100 ; saisie initiale = 150 ; correction = 180.
+        self.svc.saisir_index(str(self.releve.id), nouveau_index=150.0, agent_id="agent-001")
+        releve = self.svc.corriger_releve(str(self.releve.id), nouveau_index=180.0, auteur_id="admin-001")
+        correction = releve.audits.all()[1]
+        self.assertEqual(correction.action, "CORRECTION")
+        self.assertEqual(correction.ancien_index, 150.0)  # la valeur remplacée, pas 100
+        self.assertEqual(correction.nouvel_index, 180.0)
+
     # --- marquer non relevé / estimé ---
 
     def test_marquer_non_releve_succes(self) -> None:
@@ -497,6 +509,37 @@ class TestAffectationZone(TestCase):
         releve = self._ajouter("ab-1", "Plateau", 3)
         self.assertEqual(releve.quartier, "Plateau")
         self.assertEqual(releve.camp, 3)
+
+    def test_agent_ne_peut_pas_saisir_hors_de_ses_zones(self) -> None:
+        """Cloisonnement en écriture : un AGENT ne peut saisir un relevé hors de
+        ses zones affectées (symétrique du filtrage de tournée)."""
+        r_hors = self._ajouter("ab-hors", "Centre", 1, ancien_index=10.0)
+        self.svc.affecter_zones(str(self.campagne.id), "agent-1", [("Plateau", 3)])
+        with self.assertRaises(ValidationError):
+            self.releve_svc.saisir_index(str(r_hors.id), nouveau_index=20.0, agent_id="agent-1", auteur_role="AGENT")
+
+    def test_agent_peut_saisir_dans_sa_zone(self) -> None:
+        r_dans = self._ajouter("ab-dans", "Plateau", 3, ancien_index=10.0)
+        self.svc.affecter_zones(str(self.campagne.id), "agent-1", [("Plateau", 3)])
+        releve = self.releve_svc.saisir_index(
+            str(r_dans.id), nouveau_index=20.0, agent_id="agent-1", auteur_role="AGENT"
+        )
+        self.assertEqual(releve.statut, StatutReleve.RELEVE)
+
+    def test_agent_sans_zone_couvre_toute_la_campagne(self) -> None:
+        """Un agent affecté globalement mais sans zone n'est pas restreint."""
+        r = self._ajouter("ab-x", "Centre", 1, ancien_index=10.0)
+        releve = self.releve_svc.saisir_index(str(r.id), nouveau_index=20.0, agent_id="agent-1", auteur_role="AGENT")
+        self.assertEqual(releve.statut, StatutReleve.RELEVE)
+
+    def test_admin_non_restreint_par_les_zones(self) -> None:
+        """ADMIN/SUPERVISEUR ne sont jamais restreints au périmètre de zones."""
+        r_hors = self._ajouter("ab-hors2", "Centre", 1, ancien_index=10.0)
+        self.svc.affecter_zones(str(self.campagne.id), "agent-1", [("Plateau", 3)])
+        releve = self.releve_svc.saisir_index(
+            str(r_hors.id), nouveau_index=20.0, agent_id="agent-1", auteur_role="ADMIN"
+        )
+        self.assertEqual(releve.statut, StatutReleve.RELEVE)
 
     def test_affecter_zones_cree_affectation_globale(self) -> None:
         agents = self.svc.affecter_zones(str(self.campagne.id), "agent-1", [("Plateau", 3), ("Centre", 1)])

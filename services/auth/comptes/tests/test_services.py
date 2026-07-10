@@ -1,7 +1,7 @@
 from datetime import timedelta
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken as RefreshTokenJWT
 
@@ -65,6 +65,22 @@ class AuthServiceTests(TestCase):
 
         with self.assertRaises(AuthenticationError):
             self.auth.login("comptable1", "secret123")
+
+    def test_login_messages_generiques_anti_enumeration(self):
+        """Anti-énumération : identifiant inconnu, mauvais mot de passe et compte
+        verrouillé renvoient le MÊME message (aucun oracle d'existence/état)."""
+        with self.assertRaises(AuthenticationError) as inconnu:
+            self.auth.login("nexistepas", "secret123")
+        with self.assertRaises(AuthenticationError) as mauvais:
+            self.auth.login("comptable1", "mauvais")
+        user = self.user_admin.users.get_by_username("comptable1")
+        user.locked_until = timezone.now() + timedelta(minutes=15)
+        self.user_admin.users.save(user)
+        with self.assertRaises(AuthenticationError) as verrouille:
+            self.auth.login("comptable1", "secret123")
+
+        messages = {str(inconnu.exception), str(mauvais.exception), str(verrouille.exception)}
+        self.assertEqual(len(messages), 1, f"Messages distincts → oracle d'énumération : {messages}")
 
     def test_validate_token_returns_user(self):
         access, _, _ = self.auth.login("comptable1", "secret123")
@@ -553,3 +569,42 @@ class PhoneOtpServiceTests(TestCase):
         self.service.send_otp(self.user)
         valid_tokens = PhoneOtpToken.objects.filter(user=self.user, used_at__isnull=True)
         self.assertEqual(valid_tokens.count(), 1)
+
+    def _otp_du_dernier_envoi(self) -> str:
+        """Extrait le code OTP en clair du dernier message WhatsApp simulé."""
+        import re
+
+        return re.search(r"\*(\d{6})\*", self.mock_whatsapp.call_args.kwargs["message"]).group(1)
+
+    @override_settings(MAX_OTP_ATTEMPTS=3)
+    def test_verify_otp_compte_les_echecs(self):
+        """Chaque code erroné incrémente le compteur de tentatives du token ;
+        en-deçà du plafond le token reste valide."""
+        self.service.send_otp(self.user)
+        for _ in range(2):
+            with self.assertRaises(AuthenticationError):
+                self.service.verify_otp_and_set_password("+237690000040", "000000", "newpass")
+        token = PhoneOtpToken.objects.filter(user=self.user).latest("created_at")
+        self.assertEqual(token.attempts, 2)
+        self.assertTrue(token.is_valid())
+
+    @override_settings(MAX_OTP_ATTEMPTS=3)
+    def test_verify_otp_bloque_le_bruteforce_apres_plafond(self):
+        """Au-delà de MAX_OTP_ATTEMPTS codes erronés le token est invalidé : même
+        le bon code est ensuite refusé (empêche le brute-force du code à 6 chiffres)."""
+        self.service.send_otp(self.user)
+        raw_otp = self._otp_du_dernier_envoi()
+
+        for _ in range(3):
+            with self.assertRaises(AuthenticationError):
+                self.service.verify_otp_and_set_password("+237690000040", "000000", "newpass")
+
+        token = PhoneOtpToken.objects.filter(user=self.user).latest("created_at")
+        self.assertFalse(token.is_valid())  # invalidé : used_at posé au plafond
+
+        # Le bon code ne fonctionne plus (plus aucun token valide) → pas de prise
+        # de contrôle possible par force brute.
+        with self.assertRaises(AuthenticationError):
+            self.service.verify_otp_and_set_password("+237690000040", raw_otp, "newpassword123")
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.check_password("newpassword123"))

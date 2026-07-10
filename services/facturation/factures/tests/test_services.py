@@ -116,6 +116,73 @@ class FactureServiceTests(TestCase):
         self.assertEqual(len(factures), 1)
         self.assertEqual(factures[0].abonne_id, "abo-001")
 
+    def test_generer_factures_retente_sur_collision_numero(self):
+        """Régression ANO-007 / #11 : une collision de numéro séquentiel (course
+        concurrente sur la 1re facture d'un mois, où le verrou FOR UPDATE ne
+        protège rien) est réessayée avec un numéro recalculé, au lieu de remonter
+        une IntegrityError brute."""
+        # Une facture occupe déjà le numéro que la 1re tentative va tenter de
+        # réutiliser → collision, puis retry avec le numéro suivant.
+        Facture.objects.create(
+            numero_facture="FACT-2025-07-0001",
+            abonne_id="autre-abonne",
+            campagne_id="camp-autre",
+            ancien_index=Decimal("0"),
+            nouveau_index=Decimal("1"),
+            consommation=Decimal("1"),
+            prix_m3=Decimal("500.00"),
+            montant=Decimal("500.00"),
+            date_releve=datetime.date(2025, 7, 1),
+            date_limite_paiement=datetime.date(2025, 7, 6),
+            numero_mobile_money="",
+            statut=StatutFacture.IMPAYEE,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("factures.services.settings") as mock_settings:
+                mock_settings.PDF_STORAGE_DIR = tmpdir
+                mock_settings.DEFAULT_DELAI_PAIEMENT_JOURS = 5
+                with patch.object(
+                    self.svc._repo,
+                    "build_numero",
+                    side_effect=["FACT-2025-07-0001", "FACT-2025-07-0002"],
+                ):
+                    factures = self.svc.generer_factures(
+                        campagne_id="camp-001",
+                        releves=[self._make_releve("abo-001")],
+                        delai_paiement_jours=5,
+                        societe=self.societe,
+                    )
+
+        self.assertEqual(len(factures), 1)
+        self.assertEqual(factures[0].numero_facture, "FACT-2025-07-0002")
+
+    def test_generer_factures_montant_recalcule_depuis_index(self):
+        """Défense en profondeur : le montant dérive des index (nouveau - ancien),
+        jamais du champ `consommation` reçu (qui pourrait être incohérent)."""
+        releve = ReleveData(
+            abonne_id="abo-001",
+            ancien_index=100.0,
+            nouveau_index=150.0,
+            consommation=500.0,  # incohérent : 50 m³ attendus depuis les index
+            date_releve="2025-07-15",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("factures.services.settings") as mock_settings:
+                mock_settings.PDF_STORAGE_DIR = tmpdir
+                mock_settings.DEFAULT_DELAI_PAIEMENT_JOURS = 5
+                factures = self.svc.generer_factures(
+                    campagne_id="camp-recalc",
+                    releves=[releve],
+                    delai_paiement_jours=5,
+                    societe=self.societe,
+                )
+
+        self.assertEqual(len(factures), 1)
+        # 50 m³ × 500 = 25000, et non 500 × 500 = 250000.
+        self.assertEqual(factures[0].consommation, Decimal("50.000"))
+        self.assertEqual(factures[0].montant, Decimal("25000.00"))
+
     def test_generer_factures_calcul_montant(self):
         releve = self._make_releve("abo-001", 100.0, 110.0)
 
