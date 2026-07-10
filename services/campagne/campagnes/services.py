@@ -269,6 +269,23 @@ class ReleveService:
         self._audit_repo = ReleveAuditRepository()
         self._zone_repo = AffectationZoneRepository()
 
+    def _verifier_perimetre_agent(self, releve: Releve, agent_id: str, auteur_role: str) -> None:
+        """Refuse à un AGENT d'écrire un relevé hors de ses zones affectées.
+
+        Cloisonnement symétrique de la tournée (``list_tournee``) : la lecture
+        est déjà filtrée par zones ; sans ce contrôle en écriture, un agent
+        pourrait saisir un relevé d'une zone affectée à un autre agent. ADMIN et
+        SUPERVISEUR ne sont pas restreints. Un agent SANS zone affectée couvre
+        toute la campagne (même règle que ``list_tournee``).
+        """
+        if auteur_role != "AGENT":
+            return
+        zones = {(z.quartier, z.camp) for z in self._zone_repo.list_for_agent(releve.campagne_id, agent_id)}
+        if not zones:
+            return
+        if (releve.quartier, releve.camp) not in zones:
+            raise ValidationError("Ce relevé est hors de votre périmètre de zones affectées.")
+
     def list_tournee(self, campagne_id: str, agent_id: str) -> list[Releve]:
         """Tournée d'un agent : ce qu'il a **déjà saisi** + les abonnés **à
         relever** de son périmètre.
@@ -301,6 +318,7 @@ class ReleveService:
         auteur_role: str = "",
     ) -> Releve:
         releve = self._repo.get_by_id(releve_id)
+        self._verifier_perimetre_agent(releve, agent_id, auteur_role)
         if releve.campagne.statut != StatutCampagne.EN_COURS:
             raise ValidationError("Le relevé ne peut être saisi que sur une campagne EN_COURS.")
         if releve.statut == StatutReleve.RELEVE:
@@ -350,6 +368,11 @@ class ReleveService:
             raise ValidationError(
                 f"Le nouvel index ne peut pas être inférieur à l'ancien index ({releve.ancien_index})."
             )
+        # Valeur relevée AVANT la correction : c'est elle que l'action remplace
+        # (l'« index avant l'action » au sens du proto), pas l'index compteur de
+        # base. À capturer avant corriger() qui écrase releve.nouveau_index —
+        # sinon la valeur remplacée est perdue et l'audit devient trompeur.
+        index_avant_correction = releve.nouveau_index
         with transaction.atomic():
             releve = self._repo.corriger(
                 releve=releve,
@@ -362,7 +385,7 @@ class ReleveService:
                 auteur_id=auteur_id,
                 auteur_username=auteur_username,
                 auteur_role=auteur_role,
-                ancien_index=releve.ancien_index,
+                ancien_index=index_avant_correction,
                 nouvel_index=nouveau_index,
             )
         return releve
