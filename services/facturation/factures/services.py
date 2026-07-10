@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
 from .event_publisher import publish_reporting_event
 from .exceptions import PreconditionError
@@ -33,6 +33,12 @@ if TYPE_CHECKING:  # imports réservés au typage — non exécutés (évite la 
     )
 
 logger = logging.getLogger(__name__)
+
+# Tentatives d'allocation d'un numéro de facture séquentiel en cas de collision
+# concurrente : le verrou FOR UPDATE ne protège pas la toute première facture
+# d'un mois (aucune ligne à verrouiller), on réessaie alors avec un numéro
+# recalculé (l'autre transaction a committé le sien entre-temps) — cf. ANO-007.
+_MAX_NUMERO_RETRIES = 5
 
 
 @dataclass
@@ -154,31 +160,50 @@ class FactureService:
                 date_releve = datetime.datetime.fromisoformat(releve.date_releve).date()
             date_limite = date_releve + datetime.timedelta(days=delai_paiement_jours)
 
-            consommation = Decimal(str(releve.consommation)).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
+            # Consommation recalculée depuis les index (règle métier
+            # `consommation = nouveau_index - ancien_index`) plutôt que reprise
+            # du champ `releve.consommation` reçu : le montant facturé ne dépend
+            # ainsi que des index imprimés sur la facture, et une éventuelle
+            # incohérence amont ne peut pas facturer un montant décorrélé des
+            # index (défense en profondeur, cohérente avec ANO-008).
+            consommation = (Decimal(str(releve.nouveau_index)) - Decimal(str(releve.ancien_index))).quantize(
+                Decimal("0.001"), rounding=ROUND_HALF_UP
+            )
             montant = (consommation * tarif.prix_m3).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             annee = date_releve.year
             mois = date_releve.month
 
-            with transaction.atomic():
-                # build_numero(for_update=True) verrouille la dernière facture
-                # du mois jusqu'au commit de cette transaction, pour éviter
-                # que deux générations concurrentes calculent le même numéro
-                # séquentiel (voir ANO-007).
-                numero = self._repo.build_numero(annee, mois, for_update=True)
-                facture = self._repo.create(
-                    abonne_id=releve.abonne_id,
-                    campagne_id=campagne_id,
-                    ancien_index=Decimal(str(releve.ancien_index)),
-                    nouveau_index=Decimal(str(releve.nouveau_index)),
-                    consommation=consommation,
-                    prix_m3=tarif.prix_m3,
-                    montant=montant,
-                    date_releve=date_releve,
-                    date_limite_paiement=date_limite,
-                    numero_facture=numero,
-                    numero_mobile_money=numero_mobile_money,
-                )
-                self._regenerer_et_persister(facture, societe=societe, campagne_nom=campagne_nom)
+            # build_numero(for_update=True) verrouille la dernière facture du mois
+            # jusqu'au commit, mais ce verrou ne protège PAS la toute première
+            # facture du mois (aucune ligne à verrouiller). On réessaie donc sur
+            # collision du numéro unique (ANO-007) : au tour suivant, le max du
+            # mois a avancé et build_numero renvoie le numéro suivant.
+            for tentative in range(_MAX_NUMERO_RETRIES):
+                try:
+                    with transaction.atomic():
+                        numero = self._repo.build_numero(annee, mois, for_update=True)
+                        facture = self._repo.create(
+                            abonne_id=releve.abonne_id,
+                            campagne_id=campagne_id,
+                            ancien_index=Decimal(str(releve.ancien_index)),
+                            nouveau_index=Decimal(str(releve.nouveau_index)),
+                            consommation=consommation,
+                            prix_m3=tarif.prix_m3,
+                            montant=montant,
+                            date_releve=date_releve,
+                            date_limite_paiement=date_limite,
+                            numero_facture=numero,
+                            numero_mobile_money=numero_mobile_money,
+                        )
+                        self._regenerer_et_persister(facture, societe=societe, campagne_nom=campagne_nom)
+                    break
+                except IntegrityError:
+                    if tentative == _MAX_NUMERO_RETRIES - 1:
+                        raise
+                    logger.warning(
+                        "Collision de numéro de facture — nouvelle tentative",
+                        extra={"annee": annee, "mois": mois, "tentative": tentative + 1},
+                    )
 
             # Initialise le solde dans Paiement Service (dégradation gracieuse si KO)
             self._paiement_client.initialiser_solde(
