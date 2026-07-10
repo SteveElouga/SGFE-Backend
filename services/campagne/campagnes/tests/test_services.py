@@ -541,6 +541,27 @@ class TestAffectationZone(TestCase):
         )
         self.assertEqual(releve.statut, StatutReleve.RELEVE)
 
+    def test_agent_ne_peut_pas_marquer_non_releve_hors_zone(self) -> None:
+        """Cloisonnement en écriture aussi pour marquer_non_releve (#4) : un AGENT
+        avec des zones ne peut pas marquer ESTIME/NON_RELEVE hors de son périmètre."""
+        r_hors = self._ajouter("ab-hors3", "Centre", 1, ancien_index=10.0)
+        self.svc.affecter_zones(str(self.campagne.id), "agent-1", [("Plateau", 3)])
+        with self.assertRaises(ValidationError):
+            self.releve_svc.marquer_non_releve(str(r_hors.id), statut=StatutReleve.ESTIME, agent_id="agent-1")
+
+    def test_marquer_non_releve_dans_zone_ok(self) -> None:
+        r_dans = self._ajouter("ab-dans2", "Plateau", 3, ancien_index=10.0)
+        self.svc.affecter_zones(str(self.campagne.id), "agent-1", [("Plateau", 3)])
+        releve = self.releve_svc.marquer_non_releve(str(r_dans.id), statut=StatutReleve.ESTIME, agent_id="agent-1")
+        self.assertEqual(releve.statut, StatutReleve.ESTIME)
+
+    def test_auteur_sans_zone_peut_marquer_partout(self) -> None:
+        """Auteur sans zone affectée (ADMIN/agent global) non restreint pour marquer."""
+        r_hors = self._ajouter("ab-hors4", "Centre", 1, ancien_index=10.0)
+        self.svc.affecter_zones(str(self.campagne.id), "agent-1", [("Plateau", 3)])
+        releve = self.releve_svc.marquer_non_releve(str(r_hors.id), statut=StatutReleve.NON_RELEVE, agent_id="admin-x")
+        self.assertEqual(releve.statut, StatutReleve.NON_RELEVE)
+
     def test_affecter_zones_cree_affectation_globale(self) -> None:
         agents = self.svc.affecter_zones(str(self.campagne.id), "agent-1", [("Plateau", 3), ("Centre", 1)])
         self.assertTrue(CampagneAgentRepository().est_affecte(str(self.campagne.id), "agent-1"))

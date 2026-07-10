@@ -85,6 +85,50 @@ class TestFacturationQueries(SimpleTestCase):
         result = FacturationQueries().factures_par_campagne(info, campagne_id="camp-001")
         self.assertEqual(len(result), 1)
 
+    @patch("schema.facturation_queries.campagne_client")
+    @patch("schema.facturation_queries.abonne_client")
+    @patch("schema.facturation_queries.facturation_client")
+    @patch("schema.facturation_queries.require_auth")
+    @patch("schema.facturation_queries.require_role")
+    def test_factures_enrichies_nom_abonne_et_campagne(
+        self, mock_role, mock_auth, mock_fact, mock_abonne, mock_campagne
+    ) -> None:
+        """Le COMPTABLE (sans accès Abonné/Campagne) obtient nom d'abonné +
+        nom/période de campagne directement sur la facture (enrichissement gateway)."""
+        mock_auth.return_value = MagicMock(role="COMPTABLE")
+        mock_fact.list_factures.return_value = MagicMock(factures=[_facture_response()])
+        mock_abonne.list_abonnes.return_value = MagicMock(
+            abonnes=[MagicMock(abonne_id="abonne-001", nom="Mbarga", prenom="Paul", numero_abonne="AB-0001")]
+        )
+        mock_campagne.list_campagnes.return_value = MagicMock(
+            campagnes=[MagicMock(campagne_id="camp-001", nom="Août 2026", periode_mois=8, periode_annee=2026)]
+        )
+        result = FacturationQueries().factures(MagicMock())
+        self.assertEqual(result[0].abonne_nom, "Paul Mbarga")
+        self.assertEqual(result[0].abonne_numero, "AB-0001")
+        self.assertEqual(result[0].campagne_nom, "Août 2026")
+        self.assertEqual(result[0].campagne_periode_mois, 8)
+        self.assertEqual(result[0].campagne_periode_annee, 2026)
+
+    @patch("schema.facturation_queries.campagne_client")
+    @patch("schema.facturation_queries.abonne_client")
+    @patch("schema.facturation_queries.facturation_client")
+    @patch("schema.facturation_queries.require_auth")
+    @patch("schema.facturation_queries.require_role")
+    def test_factures_enrichissement_degrade_si_service_indispo(
+        self, mock_role, mock_auth, mock_fact, mock_abonne, mock_campagne
+    ) -> None:
+        """Si Abonné/Campagne est indisponible, la facture est renvoyée sans
+        libellés (best-effort) — jamais d'échec de la requête."""
+        mock_auth.return_value = MagicMock(role="COMPTABLE")
+        mock_fact.list_factures.return_value = MagicMock(factures=[_facture_response()])
+        mock_abonne.list_abonnes.side_effect = RuntimeError("Abonné indisponible")
+        mock_campagne.list_campagnes.side_effect = RuntimeError("Campagne indisponible")
+        result = FacturationQueries().factures(MagicMock())
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].abonne_nom, "")
+        self.assertEqual(result[0].campagne_nom, "")
+
 
 class TestFacturationMutations(SimpleTestCase):
     @patch("schema.facturation_mutations.facturation_client")

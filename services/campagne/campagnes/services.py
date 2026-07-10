@@ -269,21 +269,29 @@ class ReleveService:
         self._audit_repo = ReleveAuditRepository()
         self._zone_repo = AffectationZoneRepository()
 
+    def _hors_perimetre_zone(self, releve: Releve, agent_id: str) -> bool:
+        """Vrai si le relevé est hors des zones affectées à ``agent_id``.
+
+        Un auteur SANS zone affectée n'est pas restreint : agent global, ou
+        ADMIN/SUPERVISEUR (à qui l'on n'attribue jamais de zone) → couvre toute
+        la campagne, comme ``list_tournee``.
+        """
+        if not agent_id:
+            return False
+        zones = {(z.quartier, z.camp) for z in self._zone_repo.list_for_agent(releve.campagne_id, agent_id)}
+        if not zones:
+            return False
+        return (releve.quartier, releve.camp) not in zones
+
     def _verifier_perimetre_agent(self, releve: Releve, agent_id: str, auteur_role: str) -> None:
         """Refuse à un AGENT d'écrire un relevé hors de ses zones affectées.
 
         Cloisonnement symétrique de la tournée (``list_tournee``) : la lecture
         est déjà filtrée par zones ; sans ce contrôle en écriture, un agent
-        pourrait saisir un relevé d'une zone affectée à un autre agent. ADMIN et
-        SUPERVISEUR ne sont pas restreints. Un agent SANS zone affectée couvre
-        toute la campagne (même règle que ``list_tournee``).
+        pourrait agir sur un relevé d'une zone affectée à un autre agent. ADMIN
+        et SUPERVISEUR ne sont pas restreints (aucune zone affectée).
         """
-        if auteur_role != "AGENT":
-            return
-        zones = {(z.quartier, z.camp) for z in self._zone_repo.list_for_agent(releve.campagne_id, agent_id)}
-        if not zones:
-            return
-        if (releve.quartier, releve.camp) not in zones:
+        if auteur_role == "AGENT" and self._hors_perimetre_zone(releve, agent_id):
             raise ValidationError("Ce relevé est hors de votre périmètre de zones affectées.")
 
     def list_tournee(self, campagne_id: str, agent_id: str) -> list[Releve]:
@@ -395,10 +403,17 @@ class ReleveService:
         releve_id: str,
         statut: str = StatutReleve.NON_RELEVE,
         observation: str = "",
+        agent_id: str = "",
     ) -> Releve:
         if statut not in (StatutReleve.NON_RELEVE, StatutReleve.ESTIME):
             raise ValidationError(f"Statut invalide : {statut}. Valeurs attendues : NON_RELEVE, ESTIME.")
         releve = self._repo.get_by_id(releve_id)
+        # Cloisonnement en écriture, symétrique de saisir_index : un AGENT ne
+        # peut pas marquer NON_RELEVE/ESTIME un relevé hors de ses zones (les
+        # ESTIME sont facturés). Auteur sans zone (ADMIN/SUPERVISEUR/agent
+        # global) → non restreint.
+        if self._hors_perimetre_zone(releve, agent_id):
+            raise ValidationError("Ce relevé est hors de votre périmètre de zones affectées.")
         if releve.campagne.statut != StatutCampagne.EN_COURS:
             raise ValidationError("Le relevé ne peut être modifié que sur une campagne EN_COURS.")
         if releve.statut == StatutReleve.RELEVE:
