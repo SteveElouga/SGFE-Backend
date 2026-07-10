@@ -104,6 +104,9 @@ JWT_REFRESH_TOKEN_LIFETIME = timedelta(days=env.int("JWT_REFRESH_TOKEN_EXPIRE_DA
 # --- Sécurité ---
 MAX_LOGIN_ATTEMPTS = env.int("MAX_LOGIN_ATTEMPTS", default=5)
 LOCKOUT_DURATION_MINUTES = env.int("LOCKOUT_DURATION_MINUTES", default=15)
+# Nombre de codes OTP erronés tolérés par token avant invalidation : borne le
+# brute-force du code à 6 chiffres (10^6 combinaisons) sur la fenêtre de validité.
+MAX_OTP_ATTEMPTS = env.int("MAX_OTP_ATTEMPTS", default=5)
 BCRYPT_ROUNDS = env.int("BCRYPT_ROUNDS", default=12)
 
 SIMPLE_JWT = {

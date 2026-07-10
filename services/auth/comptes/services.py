@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from django.conf import settings
-from django.contrib.auth.hashers import check_password
+from django.contrib.auth.hashers import check_password, make_password
 from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
 from rest_framework_simplejwt.exceptions import TokenError
@@ -21,6 +21,11 @@ from comptes.whatsapp_client import whatsapp_client
 
 _MSG_INVALID_CREDENTIALS = "Identifiants invalides"
 
+# Hash factice servant à égaliser le temps de réponse du login quand
+# l'identifiant est inconnu : on exécute quand même un check_password (coût
+# bcrypt) pour ne pas offrir d'oracle temporel d'énumération des comptes.
+_DUMMY_PASSWORD_HASH = make_password("anti-timing-enumeration")
+
 
 class AuthenticationError(Exception):
     """Échec d'authentification (identifiants invalides, compte verrouillé/inactif)."""
@@ -34,21 +39,34 @@ class AuthService:
         self.revoked_tokens = RevokedTokenRepository()
 
     def login(self, identifier: str, password: str) -> tuple[str, str, int]:
-        """Authentifie un utilisateur par son username ou son numéro de téléphone."""
+        """Authentifie un utilisateur par son username ou son numéro de téléphone.
+
+        Anti-énumération : un identifiant inconnu, un mauvais mot de passe et un
+        compte verrouillé renvoient le MÊME message générique (et le même coût de
+        calcul), pour ne révéler ni l'existence d'un compte ni son état. Le
+        verrouillage continue de bloquer les tentatives (défense anti-bruteforce).
+        Seul un compte désactivé par un admin est signalé explicitement — et
+        uniquement après vérification du mot de passe, donc sans valeur
+        d'énumération (il faut déjà connaître le mot de passe).
+        """
         try:
             user = self.users.get_by_username_or_phone(identifier)
         except ObjectDoesNotExist as exc:
+            # Égalise le temps de réponse avec le cas « compte connu, mauvais
+            # mot de passe » (pas d'oracle temporel d'énumération).
+            check_password(password, _DUMMY_PASSWORD_HASH)
             raise AuthenticationError(_MSG_INVALID_CREDENTIALS) from exc
 
         if user.locked_until and user.locked_until > timezone.now():
-            raise AuthenticationError("Compte verrouillé temporairement")
-
-        if not user.is_active:
-            raise AuthenticationError("Compte désactivé")
+            # Verrou actif : on bloque sans révéler l'état « verrouillé ».
+            raise AuthenticationError(_MSG_INVALID_CREDENTIALS)
 
         if not check_password(password, user.password):
             self._enregistrer_echec(user)
             raise AuthenticationError(_MSG_INVALID_CREDENTIALS)
+
+        if not user.is_active:
+            raise AuthenticationError("Compte désactivé")
 
         user.failed_attempts = 0
         user.locked_until = None
@@ -359,6 +377,10 @@ class PhoneOtpService:
             raise AuthenticationError("Code OTP invalide ou expiré")
 
         if not otp_token.check_otp(otp_code):
+            # Comptabilise l'échec et invalide le token au-delà du plafond :
+            # sans cela le code à 6 chiffres serait brute-forçable pendant toute
+            # la fenêtre de validité (aucun verrou côté vérification OTP).
+            otp_token.register_failed_attempt(settings.MAX_OTP_ATTEMPTS)
             raise AuthenticationError("Code OTP invalide ou expiré")
 
         from django.db import transaction

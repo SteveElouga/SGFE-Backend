@@ -137,6 +137,11 @@ class PhoneOtpToken(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
     used_at = models.DateTimeField(null=True, blank=True)
+    # Nombre de codes erronés soumis pour ce token. Au-delà de
+    # settings.MAX_OTP_ATTEMPTS le token est invalidé, ce qui empêche le
+    # brute-force du code à 6 chiffres (le login dispose d'un verrou équivalent
+    # via User.failed_attempts / locked_until).
+    attempts = models.IntegerField(default=0)
 
     class Meta:
         db_table = "phone_otp_tokens"
@@ -153,3 +158,10 @@ class PhoneOtpToken(models.Model):
     def mark_used(self) -> None:
         self.used_at = timezone.now()
         self.save(update_fields=["used_at"])
+
+    def register_failed_attempt(self, max_attempts: int) -> None:
+        """Comptabilise un code erroné ; invalide le token dès le plafond atteint."""
+        self.attempts += 1
+        if self.attempts >= max_attempts:
+            self.used_at = timezone.now()
+        self.save(update_fields=["attempts", "used_at"])
