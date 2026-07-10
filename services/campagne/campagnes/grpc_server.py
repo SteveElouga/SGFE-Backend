@@ -7,6 +7,7 @@ from pathlib import Path
 import grpc
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.db import IntegrityError
 
 # Le fichier _grpc.py généré fait un `import campagne_service_pb2` bare —
 # il faut que le dossier proto/ soit dans sys.path avant l'import.
@@ -231,8 +232,9 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
                     ancien_index=dernier_index,
                 )
                 nb_ajoutes += 1
-            except ValidationError:
-                # Abonné déjà inscrit à la campagne ou non ACTIF → ignoré.
+            except (ValidationError, IntegrityError):
+                # Abonné déjà inscrit (y compris via une course concurrente) ou
+                # non ACTIF → ignoré, le lot ne casse pas.
                 nb_ignores += 1
         return pb.AjouterAbonnesResponse(nb_ajoutes=nb_ajoutes, nb_ignores=nb_ignores)
 
@@ -251,11 +253,21 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
             # Passe par ajouter_abonne_campagne (et non un create() direct)
             # pour bénéficier de la vérification du statut ACTIF de
             # l'abonné, obligatoire avant tout ajout en campagne.
-            releve = self._campagne_svc.ajouter_abonne_campagne(
-                campagne_id=request.campagne_id,
-                abonne_id=request.abonne_id,
-                ancien_index=dernier_index,
-            )
+            try:
+                releve = self._campagne_svc.ajouter_abonne_campagne(
+                    campagne_id=request.campagne_id,
+                    abonne_id=request.abonne_id,
+                    ancien_index=dernier_index,
+                )
+            except IntegrityError:
+                # Course : un SaisirIndex concurrent (double-tap / retry réseau)
+                # a créé le relevé entre le get et le create (contrainte unique
+                # sur (campagne, abonne_id)). On récupère le relevé existant
+                # plutôt que de laisser remonter une IntegrityError non mappée
+                # (UNKNOWN côté client) — la saisie ci-dessous reste idempotente.
+                releve = self._releve_repo.get_by_campagne_abonne(request.campagne_id, request.abonne_id)
+                if releve is None:
+                    raise
         releve = self._releve_svc.saisir_index(
             releve_id=str(releve.id),
             nouveau_index=request.nouveau_index,
