@@ -103,6 +103,35 @@ class TestEnvoiServiceEnvoyerFacture(TestCase):
         self.assertIn("inaccessible", envoi.erreur)
         self.assertEqual(envoi.tentatives, 1)
 
+    @patch("notifications.services.notifier_admins")
+    @patch("notifications.services.whatsapp_client")
+    @patch("notifications.services.config_client")
+    @patch("notifications.services.abonne_client")
+    @patch("notifications.services.facturation_client")
+    def test_envoyer_facture_amont_ko_degrade_en_echec(self, mock_fact, mock_abonne, mock_config, mock_wa, mock_notify):
+        """Si un service amont (Facturation/Abonné) est injoignable (RpcError),
+        l'envoi est marqué ECHEC sans lever d'exception gRPC brute."""
+        import grpc
+
+        class _RpcError(grpc.RpcError):
+            def details(self) -> str:
+                return "UNAVAILABLE: facturation-service"
+
+        facture_id = str(uuid.uuid4())
+        abonne_id = str(uuid.uuid4())
+        mock_fact.get_facture.side_effect = _RpcError()
+
+        service = EnvoiService()
+        envoi = service.envoyer_facture(facture_id, abonne_id)  # ne doit pas lever
+
+        self.assertEqual(envoi.statut, StatutEnvoi.ECHEC)
+        self.assertEqual(envoi.facture_id, facture_id)
+        self.assertEqual(envoi.abonne_id, abonne_id)
+        self.assertEqual(envoi.type_envoi, TypeEnvoi.FACTURE)
+        self.assertIn("UNAVAILABLE", envoi.erreur)
+        mock_wa.send.assert_not_called()
+        mock_notify.assert_called_once()
+
     @patch("notifications.services.whatsapp_client")
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")

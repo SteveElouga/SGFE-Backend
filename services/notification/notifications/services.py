@@ -7,6 +7,7 @@ TokenService : gestion des tokens d'accès à l'espace abonné.
 import logging
 from datetime import date, timedelta
 
+import grpc
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -117,9 +118,15 @@ class EnvoiService:
         Cela permet une dégradation gracieuse : la facture existe même si le
         message n'a pas été remis.
         """
-        # Récupération des données depuis les services amont
-        facture = facturation_client.get_facture(facture_id)
-        abonne = abonne_client.get_abonne(abonne_id)
+        # Récupération des données depuis les services amont. Si Facturation ou
+        # Abonné est injoignable, on dégrade en un Envoi ECHEC (contrat du
+        # servicer : jamais de RpcError brute remontée à l'appelant) au lieu de
+        # laisser l'appel échouer en UNKNOWN avant même de créer l'Envoi.
+        try:
+            facture = facturation_client.get_facture(facture_id)
+            abonne = abonne_client.get_abonne(abonne_id)
+        except grpc.RpcError as exc:
+            return self._echec_amont(facture_id, abonne_id, TypeEnvoi.FACTURE, exc)
         validite_jours = config_client.get_token_validite_jours()
 
         prenom_nom = f"{abonne.prenom} {abonne.nom.upper()}"
@@ -195,8 +202,13 @@ class EnvoiService:
         if etape not in _ETAPE_TO_TYPE:
             raise ValidationError(f"Étape de relance invalide : {etape}. Les étapes valides sont 0, 1, 2, 3 et 4.")
 
-        facture = facturation_client.get_facture(facture_id)
-        abonne = abonne_client.get_abonne(abonne_id)
+        # Même dégradation gracieuse que envoyer_facture : un service amont
+        # injoignable donne un Envoi ECHEC, pas une RpcError brute.
+        try:
+            facture = facturation_client.get_facture(facture_id)
+            abonne = abonne_client.get_abonne(abonne_id)
+        except grpc.RpcError as exc:
+            return self._echec_amont(facture_id, abonne_id, _ETAPE_TO_TYPE[etape], exc)
 
         prenom_nom = f"{abonne.prenom} {abonne.nom.upper()}"
         telephone = abonne.telephone_whatsapp
@@ -321,6 +333,38 @@ class EnvoiService:
                 entite_id=envoi.facture_id,
             )
         self._envois.save(envoi)
+        return envoi
+
+    def _echec_amont(self, facture_id: str, abonne_id: str, type_envoi: str, exc: grpc.RpcError) -> Envoi:
+        """Enregistre un Envoi ECHEC quand un service amont (Facturation/Abonné)
+        est injoignable, au lieu de laisser remonter une RpcError brute.
+
+        Garantit le contrat de dégradation gracieuse du servicer : l'appelant
+        reçoit toujours un EnvoiResponse (ici ECHEC), jamais une erreur gRPC.
+        """
+        details = exc.details() if hasattr(exc, "details") else str(exc)
+        erreur = f"Service amont injoignable : {details}"
+        envoi = self._envois.create(
+            facture_id=facture_id,
+            abonne_id=abonne_id,
+            type_envoi=type_envoi,
+            telephone="",
+        )
+        envoi.statut = StatutEnvoi.ECHEC
+        envoi.erreur = erreur
+        self._envois.save(envoi)
+        logger.warning(
+            "Échec récupération des données amont — envoi marqué ECHEC",
+            extra={"facture_id": facture_id, "abonne_id": abonne_id, "erreur": erreur},
+        )
+        try:
+            notifier_admins(
+                evenement="ECHEC_WHATSAPP",
+                detail=f"Échec envoi (données amont indisponibles) facture {facture_id} : {erreur}",
+                entite_id=facture_id,
+            )
+        except Exception:
+            logger.warning("Notification admin de l'échec amont impossible", exc_info=True)
         return envoi
 
 
