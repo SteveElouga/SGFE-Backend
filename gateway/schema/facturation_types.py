@@ -22,6 +22,15 @@ class Facture:
     date_generation: str
     pdf_path: str
     numero_mobile_money: str
+    # Champs enrichis côté Gateway (jointure best-effort) pour les écrans qui
+    # n'ont pas accès aux services Abonné/Campagne — typiquement le COMPTABLE,
+    # à qui les queries `abonnes`/`campagnes` sont refusées : il obtient ainsi
+    # le nom de l'abonné et le nom/période de la campagne sans appel séparé.
+    abonne_nom: str = ""
+    abonne_numero: str = ""
+    campagne_nom: str = ""
+    campagne_periode_mois: int = 0
+    campagne_periode_annee: int = 0
 
 
 @strawberry.type
