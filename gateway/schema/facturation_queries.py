@@ -53,9 +53,13 @@ def _enrichir_factures(factures: list[Facture]) -> list[Facture]:
 class FacturationQueries:
     @strawberry.field
     def tarif_actuel(self, info: strawberry.types.Info) -> Tarif:
-        """Tarif actif (prix du m³) — ADMIN, COMPTABLE."""
+        """Tarif actif (prix du m³) — ADMIN, COMPTABLE, SUPERVISEUR.
+
+        Le SUPERVISEUR le lit pour l'aperçu de clôture de ses campagnes (le tarif
+        est affiché dans le récapitulatif avant génération des factures).
+        """
         require_auth(info)
-        require_role(info, "ADMIN", "COMPTABLE")
+        require_role(info, "ADMIN", "COMPTABLE", "SUPERVISEUR")
         return tarif_from_grpc(facturation_client.get_tarif_actuel())
 
     @strawberry.field
