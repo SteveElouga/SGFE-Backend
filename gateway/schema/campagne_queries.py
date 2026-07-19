@@ -28,7 +28,10 @@ def _verifier_acces_campagne(user: object, campagne_id: str) -> None:
     """
     role = getattr(user, "role", None)
     if role == "SUPERVISEUR":
-        campagne = campagne_from_grpc(campagne_client.get_campagne(campagne_id))
+        # On lit created_by directement sur la réponse gRPC (CampagneResponse)
+        # plutôt que via le type GraphQL Campagne : le champ reste interne et
+        # n'est pas exposé dans le schéma public (aucun impact frontend).
+        campagne = campagne_client.get_campagne(campagne_id)
         if campagne.created_by != user.user_id:
             raise PermissionError("Accès refusé : cette campagne ne vous appartient pas.")
     elif role == "AGENT":

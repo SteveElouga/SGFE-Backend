@@ -64,6 +64,11 @@ class CampagneServiceStub:
                 request_serializer=campagne__service__pb2.CampagneIdRequest.SerializeToString,
                 response_deserializer=campagne__service__pb2.ListAgentsCampagneResponse.FromString,
                 _registered_method=True)
+        self.AjouterAbonnesCampagne = channel.unary_unary(
+                '/campagne.CampagneService/AjouterAbonnesCampagne',
+                request_serializer=campagne__service__pb2.AjouterAbonnesCampagneRequest.SerializeToString,
+                response_deserializer=campagne__service__pb2.AjouterAbonnesResponse.FromString,
+                _registered_method=True)
         self.SaisirIndex = channel.unary_unary(
                 '/campagne.CampagneService/SaisirIndex',
                 request_serializer=campagne__service__pb2.SaisirIndexRequest.SerializeToString,
@@ -89,6 +94,11 @@ class CampagneServiceStub:
                 request_serializer=campagne__service__pb2.CampagneIdRequest.SerializeToString,
                 response_deserializer=campagne__service__pb2.ListRelevesResponse.FromString,
                 _registered_method=True)
+        self.ListRelevesTournee = channel.unary_unary(
+                '/campagne.CampagneService/ListRelevesTournee',
+                request_serializer=campagne__service__pb2.ListRelevesTourneeRequest.SerializeToString,
+                response_deserializer=campagne__service__pb2.ListRelevesResponse.FromString,
+                _registered_method=True)
         self.GetProgression = channel.unary_unary(
                 '/campagne.CampagneService/GetProgression',
                 request_serializer=campagne__service__pb2.CampagneIdRequest.SerializeToString,
@@ -98,6 +108,11 @@ class CampagneServiceStub:
                 '/campagne.CampagneService/GetResumeCloture',
                 request_serializer=campagne__service__pb2.CampagneIdRequest.SerializeToString,
                 response_deserializer=campagne__service__pb2.ResumeClotureResponse.FromString,
+                _registered_method=True)
+        self.DemarrerCampagne = channel.unary_unary(
+                '/campagne.CampagneService/DemarrerCampagne',
+                request_serializer=campagne__service__pb2.CampagneIdRequest.SerializeToString,
+                response_deserializer=campagne__service__pb2.CampagneResponse.FromString,
                 _registered_method=True)
         self.CloturerCampagne = channel.unary_unary(
                 '/campagne.CampagneService/CloturerCampagne',
@@ -152,6 +167,14 @@ class CampagneServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def AjouterAbonnesCampagne(self, request, context):
+        """Rattache des abonnés à une campagne : pré-crée un relevé A_RELEVER pour
+        chacun (sélection des abonnés à relever). Idempotent (déjà inscrit → ignoré).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def SaisirIndex(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -182,6 +205,14 @@ class CampagneServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListRelevesTournee(self, request, context):
+        """Tournée d'un agent : ses relevés saisis + les abonnés à relever de son
+        périmètre (ses zones ; ou toute la campagne s'il n'a aucune zone affectée).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def GetProgression(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -190,6 +221,13 @@ class CampagneServiceServicer:
 
     def GetResumeCloture(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DemarrerCampagne(self, request, context):
+        """Démarre une campagne PLANIFIEE (→ EN_COURS) sans attendre le cron 7h.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -239,6 +277,11 @@ def add_CampagneServiceServicer_to_server(servicer, server):
                     request_deserializer=campagne__service__pb2.CampagneIdRequest.FromString,
                     response_serializer=campagne__service__pb2.ListAgentsCampagneResponse.SerializeToString,
             ),
+            'AjouterAbonnesCampagne': grpc.unary_unary_rpc_method_handler(
+                    servicer.AjouterAbonnesCampagne,
+                    request_deserializer=campagne__service__pb2.AjouterAbonnesCampagneRequest.FromString,
+                    response_serializer=campagne__service__pb2.AjouterAbonnesResponse.SerializeToString,
+            ),
             'SaisirIndex': grpc.unary_unary_rpc_method_handler(
                     servicer.SaisirIndex,
                     request_deserializer=campagne__service__pb2.SaisirIndexRequest.FromString,
@@ -264,6 +307,11 @@ def add_CampagneServiceServicer_to_server(servicer, server):
                     request_deserializer=campagne__service__pb2.CampagneIdRequest.FromString,
                     response_serializer=campagne__service__pb2.ListRelevesResponse.SerializeToString,
             ),
+            'ListRelevesTournee': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListRelevesTournee,
+                    request_deserializer=campagne__service__pb2.ListRelevesTourneeRequest.FromString,
+                    response_serializer=campagne__service__pb2.ListRelevesResponse.SerializeToString,
+            ),
             'GetProgression': grpc.unary_unary_rpc_method_handler(
                     servicer.GetProgression,
                     request_deserializer=campagne__service__pb2.CampagneIdRequest.FromString,
@@ -273,6 +321,11 @@ def add_CampagneServiceServicer_to_server(servicer, server):
                     servicer.GetResumeCloture,
                     request_deserializer=campagne__service__pb2.CampagneIdRequest.FromString,
                     response_serializer=campagne__service__pb2.ResumeClotureResponse.SerializeToString,
+            ),
+            'DemarrerCampagne': grpc.unary_unary_rpc_method_handler(
+                    servicer.DemarrerCampagne,
+                    request_deserializer=campagne__service__pb2.CampagneIdRequest.FromString,
+                    response_serializer=campagne__service__pb2.CampagneResponse.SerializeToString,
             ),
             'CloturerCampagne': grpc.unary_unary_rpc_method_handler(
                     servicer.CloturerCampagne,
@@ -458,6 +511,33 @@ class CampagneService:
             _registered_method=True)
 
     @staticmethod
+    def AjouterAbonnesCampagne(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/campagne.CampagneService/AjouterAbonnesCampagne',
+            campagne__service__pb2.AjouterAbonnesCampagneRequest.SerializeToString,
+            campagne__service__pb2.AjouterAbonnesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def SaisirIndex(request,
             target,
             options=(),
@@ -593,6 +673,33 @@ class CampagneService:
             _registered_method=True)
 
     @staticmethod
+    def ListRelevesTournee(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/campagne.CampagneService/ListRelevesTournee',
+            campagne__service__pb2.ListRelevesTourneeRequest.SerializeToString,
+            campagne__service__pb2.ListRelevesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def GetProgression(request,
             target,
             options=(),
@@ -636,6 +743,33 @@ class CampagneService:
             '/campagne.CampagneService/GetResumeCloture',
             campagne__service__pb2.CampagneIdRequest.SerializeToString,
             campagne__service__pb2.ResumeClotureResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DemarrerCampagne(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/campagne.CampagneService/DemarrerCampagne',
+            campagne__service__pb2.CampagneIdRequest.SerializeToString,
+            campagne__service__pb2.CampagneResponse.FromString,
             options,
             channel_credentials,
             insecure,
