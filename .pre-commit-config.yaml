@@ -1,12 +1,29 @@
+# Hooks Git du dépôt — installer avec :  make install-hooks   (ou ./scripts/install-hooks.sh)
+# `default_install_hook_types` installe les 3 types (pre-commit, commit-msg, pre-push)
+# en une seule commande `pre-commit install`.
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+
 exclude: '(_pb2\.py|_pb2_grpc\.py|/migrations/)'
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.20
     hooks:
+      # --- Au commit : lint + format avec correction automatique ---
       - id: ruff
         args: [--fix]
       - id: ruff-format
+      # --- Au push : garde-fou STRICT (aucune correction, échoue si non conforme) ---
+      - id: ruff
+        alias: ruff-strict-pre-push
+        name: ruff (strict, pre-push)
+        args: [--no-fix]
+        stages: [pre-push]
+      - id: ruff-format
+        alias: ruff-format-check-pre-push
+        name: ruff-format --check (pre-push)
+        args: [--check]
+        stages: [pre-push]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -19,8 +36,7 @@ repos:
         args: [--maxkb=1000]
       - id: check-case-conflict
 
-  # Valide le message de commit (Conventional Commits) — nécessite
-  # `pre-commit install --hook-type commit-msg` en plus de l'install standard.
+  # Valide le message de commit (Conventional Commits)
   - repo: https://github.com/commitizen-tools/commitizen
     rev: v4.16.4
     hooks:
