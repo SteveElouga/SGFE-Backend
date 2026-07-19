@@ -3,7 +3,7 @@
 from django.test import SimpleTestCase
 
 from campagnes.models import Campagne, Releve, StatutCampagne, StatutReleve
-from campagnes.serializers import releve_to_proto
+from campagnes.serializers import campagne_to_proto, releve_to_proto
 
 
 class ReleveToProtoTests(SimpleTestCase):
@@ -53,3 +53,38 @@ class ReleveToProtoTests(SimpleTestCase):
         )
         response = releve_to_proto(releve)
         self.assertEqual(response.date_releve, "")
+
+
+class CampagneToProtoTests(SimpleTestCase):
+    def test_campagne_to_proto_serialise_created_by(self):
+        """Régression bug SUPERVISEUR : created_by doit exister dans
+        CampagneResponse et être peuplé par le sérialiseur. Sinon
+        _verifier_acces_campagne (gateway) lit campagne.created_by sur une
+        réponse gRPC qui ne porte pas le champ → AttributeError, et tout accès
+        du SUPERVISEUR à une campagne plante. Ce test échoue franchement si le
+        champ proto ou sa sérialisation manque."""
+        campagne = Campagne(
+            nom="C",
+            periode_mois=7,
+            periode_annee=2026,
+            statut=StatutCampagne.EN_COURS,
+            numero_mobile_money="",
+            generer_factures_auto=False,
+            envoyer_whatsapp_auto=False,
+            created_by="user-A",
+        )
+        response = campagne_to_proto(campagne)
+        self.assertEqual(response.created_by, "user-A")
+
+    def test_campagne_to_proto_created_by_absent_donne_chaine_vide(self):
+        """Un created_by non renseigné se sérialise en chaîne vide (défaut
+        proto3), jamais en None — pas de plantage côté gateway."""
+        campagne = Campagne(
+            nom="C",
+            periode_mois=7,
+            periode_annee=2026,
+            statut=StatutCampagne.EN_COURS,
+            created_by="",
+        )
+        response = campagne_to_proto(campagne)
+        self.assertEqual(response.created_by, "")
