@@ -1,6 +1,6 @@
 # Reporting Service — requirements autonome
 
-Django==5.2.15
+Django==5.2.16
 grpcio==1.81.1
 grpcio-tools==1.81.1
 protobuf==6.33.6
