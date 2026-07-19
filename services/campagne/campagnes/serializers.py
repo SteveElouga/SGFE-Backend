@@ -39,6 +39,7 @@ def campagne_to_proto(campagne: Campagne) -> pb.CampagneResponse:
         numero_mobile_money=campagne.numero_mobile_money,
         generer_factures_auto=campagne.generer_factures_auto,
         envoyer_whatsapp_auto=campagne.envoyer_whatsapp_auto,
+        created_by=campagne.created_by,
     )
 
 

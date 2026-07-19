@@ -100,6 +100,7 @@ message CampagneResponse {
   string numero_mobile_money = 9;
   bool generer_factures_auto = 10;
   bool envoyer_whatsapp_auto = 11;
+  string created_by = 12;
 }
 
 // Une entrée du journal d'audit d'un relevé (saisie initiale ou correction).
