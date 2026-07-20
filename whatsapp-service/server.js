@@ -18,12 +18,15 @@ const REDIS_URL = process.env.REDIS_URL || 'redis://redis:6379/0';
 // du QR ; au-delà, la session persistée survit à tout redémarrage du container.
 const BACKUP_INTERVAL_MS = Number(process.env.WHATSAPP_BACKUP_INTERVAL_MS) || 300000;
 
+// Fail-closed : sans clé d'authentification interne, /qr, /send et /send-with-pdf
+// seraient exposés sans protection. On refuse donc de démarrer le service (ANO-005).
 if (!INTERNAL_API_KEY) {
-    console.warn(
-        '[WhatsApp] WHATSAPP_INTERNAL_API_KEY non définie — /qr, /send et /send-with-pdf ' +
-        'sont accessibles sans authentification. À définir avant tout déploiement au-delà ' +
-        'du réseau Docker local (voir ANO-005).'
+    console.error(
+        '[WhatsApp] FATAL : WHATSAPP_INTERNAL_API_KEY absente ou vide. Le service refuse ' +
+        "de démarrer sans clé d'authentification interne. Définissez-la dans l'environnement " +
+        '(y compris en local) avant de lancer le service.'
     );
+    process.exit(1);
 }
 
 /**
@@ -32,8 +35,7 @@ if (!INTERNAL_API_KEY) {
  * Comparaison en temps constant pour éviter les attaques par timing.
  */
 function requireApiKey(req, res, next) {
-    if (!INTERNAL_API_KEY) return next(); // non configurée — dégradation dev uniquement
-
+    // La clé est garantie présente (fail-closed au démarrage) — on la valide toujours.
     const provided = Buffer.from(req.get('X-Internal-Api-Key') || '');
     const expected = Buffer.from(INTERNAL_API_KEY);
     const valid = provided.length === expected.length && crypto.timingSafeEqual(provided, expected);
@@ -173,7 +175,10 @@ async function scheduleRestart(clientRef) {
 // ── Endpoints ─────────────────────────────────────────────────────────────────
 
 app.get('/health', (_req, res) => {
-    res.json({ ready: isReady });
+    // 503 tant que WhatsApp n'est pas connecté (init, QR à scanner, déconnexion) ;
+    // 200 seulement quand le client peut réellement envoyer. Un orchestrateur ne doit
+    // pas considérer le service « sain » s'il est incapable d'envoyer un message.
+    res.status(isReady ? 200 : 503).json({ ready: isReady });
 });
 
 app.get('/qr', requireApiKey, async (_req, res) => {
