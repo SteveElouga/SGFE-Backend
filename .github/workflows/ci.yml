@@ -12,12 +12,12 @@ permissions:
   contents: read
 
 # Secrets FACTICES — uniquement pour permettre aux tests CI de démarrer (les
-# settings exigent désormais DJANGO_SECRET_KEY / JWT_SECRET_KEY, sans valeur par
-# défaut). Jamais de vraies valeurs ici : les vrais secrets vivent dans
-# l'environnement de déploiement (coffre / secrets manager).
+# settings exigent désormais DJANGO_SECRET_KEY, sans valeur par défaut). Jamais
+# de vraies valeurs ici : les vrais secrets vivent dans l'environnement de
+# déploiement (coffre / secrets manager). Le JWT RS256 utilise une paire de clés
+# éphémère générée en mémoire pendant les tests (voir services/auth/auth/settings.py).
 env:
   DJANGO_SECRET_KEY: ci-not-a-real-secret-key-for-tests-only
-  JWT_SECRET_KEY: ci-not-a-real-jwt-key-for-tests-only
 
 jobs:
   changes:
