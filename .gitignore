@@ -43,3 +43,7 @@ k8s/secrets/*.yaml
 
 # Logs
 *.log
+
+# Clés JWT RS256 (générées via scripts/gen-jwt-keys.sh) — JAMAIS committées
+**/keys/*.pem
+**/keys/*.key

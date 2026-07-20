@@ -95,11 +95,45 @@ AUTH_GRPC_PORT = env.int("AUTH_GRPC_PORT", default=50051)
 # --- Redis (pub/sub : notifie la gateway des mutations utilisateur) ---
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 
-# --- JWT ---
-JWT_SECRET_KEY = env("JWT_SECRET_KEY")
-JWT_ALGORITHM = env("JWT_ALGORITHM", default="HS256")
+# --- JWT (RS256 asymétrique) ---
+# auth signe avec la clé PRIVÉE et valide avec la PUBLIQUE. La gateway et les
+# autres services ne décodent jamais le token : ils délèguent la validation à
+# auth via le RPC ValidateToken. Les clés vivent hors du dépôt (gitignorées) ;
+# en test, une paire éphémère en mémoire évite toute dépendance à un fichier.
 JWT_ACCESS_TOKEN_LIFETIME = timedelta(hours=env.int("JWT_ACCESS_TOKEN_EXPIRE_HOURS", default=24))
 JWT_REFRESH_TOKEN_LIFETIME = timedelta(days=env.int("JWT_REFRESH_TOKEN_EXPIRE_DAYS", default=7))
+
+if TESTING:
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    _jwt_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    JWT_PRIVATE_KEY = _jwt_key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode()
+    JWT_PUBLIC_KEY = (
+        _jwt_key.public_key()
+        .public_bytes(
+            serialization.Encoding.PEM,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        .decode()
+    )
+else:
+    _priv = Path(env("JWT_PRIVATE_KEY_PATH", default=str(BASE_DIR / "keys" / "jwt_private.pem")))
+    _pub = Path(env("JWT_PUBLIC_KEY_PATH", default=str(BASE_DIR / "keys" / "jwt_public.pem")))
+    try:
+        JWT_PRIVATE_KEY = _priv.read_text()
+        JWT_PUBLIC_KEY = _pub.read_text()
+    except FileNotFoundError as exc:
+        from django.core.exceptions import ImproperlyConfigured
+
+        raise ImproperlyConfigured(
+            f"Clé JWT introuvable ({exc.filename}). Générez la paire RSA depuis "
+            "la racine du backend : ./scripts/gen-jwt-keys.sh"
+        ) from exc
 
 # --- Sécurité ---
 MAX_LOGIN_ATTEMPTS = env.int("MAX_LOGIN_ATTEMPTS", default=5)
@@ -112,8 +146,9 @@ BCRYPT_ROUNDS = env.int("BCRYPT_ROUNDS", default=12)
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": JWT_ACCESS_TOKEN_LIFETIME,
     "REFRESH_TOKEN_LIFETIME": JWT_REFRESH_TOKEN_LIFETIME,
-    "ALGORITHM": JWT_ALGORITHM,
-    "SIGNING_KEY": JWT_SECRET_KEY,
+    "ALGORITHM": "RS256",
+    "SIGNING_KEY": JWT_PRIVATE_KEY,
+    "VERIFYING_KEY": JWT_PUBLIC_KEY,
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",
 }
