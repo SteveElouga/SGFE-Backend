@@ -12,8 +12,8 @@ TESTING = "test" in sys.argv
 env = environ.Env()
 environ.Env.read_env(BASE_DIR / ".env")
 
-SECRET_KEY = env("DJANGO_SECRET_KEY", default="django-insecure-dev-key-change-me")
-DEBUG = env.bool("DJANGO_DEBUG", default=True)
+SECRET_KEY = env("DJANGO_SECRET_KEY")
+DEBUG = env.bool("DJANGO_DEBUG", default=False)
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 
 INSTALLED_APPS = [
@@ -96,7 +96,7 @@ AUTH_GRPC_PORT = env.int("AUTH_GRPC_PORT", default=50051)
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 
 # --- JWT ---
-JWT_SECRET_KEY = env("JWT_SECRET_KEY", default=SECRET_KEY)
+JWT_SECRET_KEY = env("JWT_SECRET_KEY")
 JWT_ALGORITHM = env("JWT_ALGORITHM", default="HS256")
 JWT_ACCESS_TOKEN_LIFETIME = timedelta(hours=env.int("JWT_ACCESS_TOKEN_EXPIRE_HOURS", default=24))
 JWT_REFRESH_TOKEN_LIFETIME = timedelta(days=env.int("JWT_REFRESH_TOKEN_EXPIRE_DAYS", default=7))

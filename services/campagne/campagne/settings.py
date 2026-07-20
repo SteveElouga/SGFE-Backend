@@ -11,8 +11,8 @@ TESTING = "test" in sys.argv
 env = environ.Env()
 environ.Env.read_env(BASE_DIR / ".env")
 
-SECRET_KEY = env("DJANGO_SECRET_KEY", default="django-insecure-dev-key-change-me")
-DEBUG = env.bool("DJANGO_DEBUG", default=True)
+SECRET_KEY = env("DJANGO_SECRET_KEY")
+DEBUG = env.bool("DJANGO_DEBUG", default=False)
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 
 INSTALLED_APPS = [
@@ -82,5 +82,4 @@ REPORTING_GRPC_HOST = env("REPORTING_GRPC_HOST", default="localhost")
 REPORTING_GRPC_PORT = env.int("REPORTING_GRPC_PORT", default=50057)
 
 # --- JWT (validation interne) ---
-JWT_SECRET_KEY = env("JWT_SECRET_KEY", default="changeme")
 JWT_ALGORITHM = env("JWT_ALGORITHM", default="HS256")
