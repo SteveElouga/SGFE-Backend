@@ -19,8 +19,25 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+# --- En-têtes de sécurité ---
+# Django pose nosniff / Referrer-Policy / X-Frame-Options / HSTS ; le CSP est
+# posé au niveau nginx (edge), Django ne le gérant pas nativement.
+SECURE_CONTENT_TYPE_NOSNIFF = True  # X-Content-Type-Options: nosniff
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+X_FRAME_OPTIONS = "DENY"
+# Derrière nginx (qui pose X-Forwarded-Proto), Django reconnaît le HTTPS d'origine.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+# HSTS uniquement en prod (HTTPS) — en dev on laisse inactif pour ne pas
+# verrouiller le navigateur sur https://localhost.
+if not DEBUG:
+    SECURE_HSTS_SECONDS = 31_536_000  # 1 an
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
 
 ROOT_URLCONF = "gateway.urls"
 
