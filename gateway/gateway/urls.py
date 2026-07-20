@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.urls import path
 from django.views.decorators.csrf import csrf_exempt
 from strawberry.django.views import AsyncGraphQLView
@@ -8,7 +9,16 @@ from schema.rapports_views import factures_csv, paiements_csv, synthese_pdf
 from schema.schema import schema
 
 urlpatterns = [
-    path("graphql", csrf_exempt(AsyncGraphQLView.as_view(schema=schema, graphql_ide="graphiql"))),
+    # GraphiQL activé uniquement en dev ; désactivé en prod (graphql_ide=None).
+    path(
+        "graphql",
+        csrf_exempt(
+            AsyncGraphQLView.as_view(
+                schema=schema,
+                graphql_ide="graphiql" if settings.DEBUG else None,
+            )
+        ),
+    ),
     # PDF facture back-office (JWT + rôle ADMIN/COMPTABLE)
     path("factures/<str:facture_id>/pdf/", facture_pdf, name="facture_pdf"),
     # PDF bilan des impayés back-office (JWT + rôle ADMIN/COMPTABLE)
