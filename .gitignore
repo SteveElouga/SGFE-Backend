@@ -47,3 +47,6 @@ k8s/secrets/*.yaml
 # Clés JWT RS256 (générées via scripts/gen-jwt-keys.sh) — JAMAIS committées
 **/keys/*.pem
 **/keys/*.key
+
+# Sauvegardes PostgreSQL locales (dumps) — jamais committées
+/backups/

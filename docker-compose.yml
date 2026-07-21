@@ -410,6 +410,38 @@ services:
     ports:
       - "8080:80"
 
+  # Sauvegardes PostgreSQL automatiques : pg_dump quotidien des 8 bases, gzip +
+  # rétention (voir scripts/backup-databases.sh). Tourne sur le réseau interne
+  # (accès aux bases par nom). En prod/Azure, remplacé par des backups managés
+  # (Flexible Server + PITR).
+  db-backup:
+    image: postgres:16-alpine
+    depends_on:
+      auth-postgres:
+        condition: service_healthy
+      abonne-postgres:
+        condition: service_healthy
+      campagne-postgres:
+        condition: service_healthy
+      facturation-postgres:
+        condition: service_healthy
+      paiement-postgres:
+        condition: service_healthy
+      notification-postgres:
+        condition: service_healthy
+      config-postgres:
+        condition: service_healthy
+      reporting-postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      RETENTION_DAYS: "7"
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup-databases.sh:/backup.sh:ro
+    entrypoint: ["/bin/sh", "-c", "while true; do sh /backup.sh || true; sleep 86400; done"]
+    restart: unless-stopped
+
 volumes:
   auth_postgres_data:
   abonne_postgres_data:
