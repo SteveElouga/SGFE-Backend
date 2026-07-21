@@ -5,8 +5,6 @@ services:
     # survivent à un redémarrage de Redis. Sans ce montage, le volume redis_data
     # déclaré plus bas restait inutilisé et les données étaient éphémères.
     command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -28,8 +26,6 @@ services:
       retries: 10
     volumes:
       - auth_postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
 
   whatsapp-service:
     build: ./whatsapp-service
@@ -76,8 +72,6 @@ services:
       WHATSAPP_SERVICE_URL: http://whatsapp-service:3000
       WHATSAPP_INTERNAL_API_KEY: ${WHATSAPP_INTERNAL_API_KEY:-whatsapp-dev-placeholder-do-not-use-in-production}
       PHONE_OTP_VALIDITY_MINUTES: "10"
-    ports:
-      - "50051:50051"
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
   abonne-postgres:
@@ -93,8 +87,6 @@ services:
       retries: 10
     volumes:
       - abonne_postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5433:5432"
 
   campagne-postgres:
     image: postgres:16-alpine
@@ -109,8 +101,6 @@ services:
       retries: 10
     volumes:
       - campagne_postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5434:5432"
 
   facturation-postgres:
     image: postgres:16-alpine
@@ -125,8 +115,6 @@ services:
       retries: 10
     volumes:
       - facturation_postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5435:5432"
 
   facturation-service:
     build: ./services/facturation
@@ -163,8 +151,6 @@ services:
       JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
       PDF_STORAGE_DIR: /app/pdfs
       REDIS_URL: "redis://redis:6379/0"
-    ports:
-      - "50054:50054"
     volumes:
       - facturation_pdfs:/app/pdfs
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
@@ -182,8 +168,6 @@ services:
       retries: 10
     volumes:
       - paiement_postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5437:5432"
 
   paiement-service:
     build: ./services/paiement
@@ -221,8 +205,6 @@ services:
       REPORTING_GRPC_HOST: reporting-service
       REPORTING_GRPC_PORT: "50057"
       JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
-    ports:
-      - "50055:50055"
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
   notification-postgres:
@@ -238,8 +220,6 @@ services:
       retries: 10
     volumes:
       - notification_postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5438:5432"
 
   notification-service:
     build: ./services/notification
@@ -272,8 +252,6 @@ services:
       WHATSAPP_SERVICE_URL: http://whatsapp-service:3000
       WHATSAPP_INTERNAL_API_KEY: ${WHATSAPP_INTERNAL_API_KEY:-whatsapp-dev-placeholder-do-not-use-in-production}
       FRONTEND_URL: http://localhost:4200
-    ports:
-      - "50056:50056"
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
   abonne-service:
@@ -293,8 +271,6 @@ services:
       ABONNE_DB_PASSWORD: devpassword
       ABONNE_GRPC_PORT: "50052"
       REDIS_URL: "redis://redis:6379/0"
-    ports:
-      - "50052:50052"
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
   campagne-service:
@@ -321,8 +297,6 @@ services:
       REPORTING_GRPC_HOST: reporting-service
       REPORTING_GRPC_PORT: "50057"
       JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
-    ports:
-      - "50053:50053"
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
   config-postgres:
@@ -338,8 +312,6 @@ services:
       retries: 10
     volumes:
       - config_postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5436:5432"
 
   config-service:
     build: ./services/config
@@ -358,8 +330,6 @@ services:
       CONFIG_DB_PASSWORD: devpassword
       CONFIG_GRPC_PORT: "50058"
       REDIS_URL: "redis://redis:6379/0"
-    ports:
-      - "50058:50058"
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
   reporting-postgres:
@@ -375,8 +345,6 @@ services:
       retries: 10
     volumes:
       - reporting_postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5439:5432"
 
   reporting-service:
     build: ./services/reporting
@@ -395,8 +363,6 @@ services:
       REPORTING_DB_PASSWORD: devpassword
       REPORTING_GRPC_PORT: "50057"
       REDIS_URL: "redis://redis:6379/0"
-    ports:
-      - "50057:50057"
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
   gateway:
