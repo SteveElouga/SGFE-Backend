@@ -573,6 +573,57 @@ Prêts à être implémentés immédiatement (petits correctifs à fort impact),
 
 > Dites simplement **« go »** (et confirmez : branche Git dans vos dépôts, ou diffs à relire ici) et j'attaque ces correctifs. Les chantiers lourds (mTLS, Key Vault/CSI, Flexible Server, outbox, avoir/remboursement, observabilité) feront chacun l'objet d'une spec/ADR avant implémentation.
 
+### 10.7 Conception — propagation d'identité → journal d'audit immuable (dernier P0)
+
+> **Statut (juillet 2026)** : les 7 quick wins §10.6 **et** tout le volet « P0 sans Azure » (isolation réseau, rate limiting, sauvegardes PostgreSQL, cible de déploiement, espace abonné, + access token court, retry‑401 REST, garde‑fou `.env`, nettoyage bcrypt) sont **livrés et mergés**. Le **dernier item P0** est ce couple **propagation d'identité → journal d'audit** (CC7.2/CC7.3 SOC 2, « qui a fait quoi »). Cette section fige la conception ; rien n'est encore implémenté.
+
+**État des lieux (code réel).**
+
+- La gateway **connaît** déjà l'appelant : `require_auth`/`require_role` (`gateway/schema/context.py:89‑107`) valident le JWT via `auth_client.validate_token` et renvoient un `UserPayload` (`user_id`, `username`, `role`).
+- Mais le « qui » est propagé **au cas par cas dans les messages** de requête : `created_by` (campagne), `caller_id` (`deactivate_user`), `auteur_id/username/role` (`SaisirIndex`/`CorrigerReleve`). Aucune métadonnée gRPC n'est posée aujourd'hui (`grpc_clients.py`).
+- Un **embryon d'audit** existe : `ReleveAudit` (action / auteur / horodatage) embarqué dans `ReleveResponse` et stocké avec le relevé dans la base **campagne**. Seuls les relevés sont audités (§5.2).
+- Les 8 services enregistrent déjà un intercepteur serveur uniforme (`ErrorHandlingInterceptor`) dans `grpc.server(interceptors=[…])` — **le point d'extension existe partout**.
+
+**Décision 1 — où poser le journal : une table `audit_log` append‑only *par service*, écrite dans la *même transaction* que le changement métier.** Pas de service d'audit central comme magasin d'écriture.
+
+- *Rationale* : la valeur d'un journal immuable est que **tout changement d'état ait son entrée, sans perte ni fantôme**. En « une base par service » sans transaction distribuée, seule l'écriture **dans la même base/transaction** garantit l'atomicité audit ↔ changement. Un service central reçoit l'événement par le réseau (deux commits) → risque de divergence, sauf pattern *outbox*… qui écrit en local d'abord de toute façon.
+- *Compromis assumé* : « tout ce qu'a fait X » demande d'interroger 8 bases. On ne centralise **pas** maintenant ; si le besoin de requêtes transverses arrive, on ajoute **plus tard** une agrégation en lecture côté `reporting-service` (qui agrège déjà des stats cross‑service). Écriture locale (intégrité) maintenant, lecture centrale (confort) plus tard, jamais d'écriture centrale.
+
+**Décision 2 — propagation d'identité : uniforme via métadonnées gRPC** (et non plus des champs ad‑hoc). La gateway attache `x-user-id` / `x-user-name` / `x-user-role` (+ `x-request-id` pour corréler) sur **chaque** appel sortant ; chaque service gagne un `IdentityInterceptor` (serveur) **posé à côté du `ErrorHandlingInterceptor`** qui range l'identité dans un `contextvar` lu au moment d'écrire l'audit. Aucun champ identité n'est ajouté aux messages.
+
+**Note de confiance.** Les services **font confiance à la gateway** (ils ne revalident pas le JWT). Le « qui » audité n'est fiable que parce que (a) seule la gateway atteint les services (**isolation réseau — déjà faite**) et (b) le **mTLS** (différé, cible Azure) liera cryptographiquement « l'appelant = la gateway ». L'intégrité de l'audit dépend de ce canal.
+
+**Immuabilité.** Applicatif : **INSERT seulement**. Base (défense en profondeur) : migration qui **REVOKE UPDATE/DELETE** sur la table pour le rôle du service. Option anti‑altération (P2) : **chaînage de hash** (chaque ligne hache la précédente) → suppression/édition détectable. Non requis pour la v1.
+
+**Périmètre d'audit** : les **écritures**, jamais les lectures — par ordre de sensibilité : paiement → facturation → relevés → abonné → comptes → tarifs/config.
+
+**Découpage (une branche par étape).**
+
+| # | Étape | Portée |
+|---|-------|--------|
+| 1 | **Plomberie identité** (métadonnées + `IdentityInterceptor` par service + accès contexte) | Aucun changement fonctionnel — préalable, passe **en premier** |
+| 2 | **`audit_log` + écriture sur mutation, une PR par service** | Commencer par **paiement** puis **facturation** ; puis campagne (fusionner `ReleveAudit`), abonné, auth, config |
+| 3 | **Immuabilité niveau base** (REVOKE) + option chaînage | Défense en profondeur |
+| 4 | **Agrégation reporting + API GraphQL de lecture (ADMIN)** | Confort de requête transverse — *plus tard* |
+
+**Étape 1 détaillée — fichiers & tests (à implémenter, non fait).**
+
+*Gateway :*
+- `gateway/schema/identity_context.py` **(nouveau)** — un `ContextVar` `current_identity` + `set_identity(user_id, username, role)` / `get_identity()`.
+- `gateway/schema/context.py` — dans `require_auth`, après `validate_token`, appeler `set_identity(...)` (une seule ligne ; l'identité vaut pour la durée de la requête).
+- `gateway/schema/grpc_clients.py` — un `IdentityClientInterceptor(grpc.UnaryUnaryClientInterceptor)` qui lit `get_identity()` et **ajoute les métadonnées** `x-user-id/name/role` (+ `x-request-id`) ; envelopper chaque canal : `grpc.intercept_channel(channel, IdentityClientInterceptor())` dans chaque `__init__` de client (ou une fabrique commune). Appel **anonyme** (identité absente : login, espace abonné public) → aucune métadonnée, comportement normal.
+
+*Chaque service (patron copié, comme `ErrorHandlingInterceptor`) :*
+- `services/<svc>/<app>/grpc_interceptors.py` — ajouter `IdentityInterceptor(grpc.ServerInterceptor)` : lit les métadonnées de `handler_call_details`, pose un `contextvar` `caller_identity` autour de l'appel, le remet à zéro ensuite ; + un accesseur `get_caller()`.
+- `services/<svc>/<app>/grpc_server.py` — `interceptors=[ErrorHandlingInterceptor(), IdentityInterceptor()]`.
+
+*Tests :*
+- Gateway : `IdentityClientInterceptor` — contextvar peuplé ⇒ métadonnées présentes ; contextvar vide ⇒ appel sans métadonnées (anonyme).
+- Service : `IdentityInterceptor` — métadonnées présentes ⇒ `get_caller()` renvoie l'identité ; absentes ⇒ identité vide.
+- Intégration légère (réutiliser le test SUPERVISEUR existant campagne↔gateway) : asserter que le service **reçoit** l'identité.
+
+*Points de vigilance :* (1) `ContextVar` à travers le pool de threads gRPC de la gateway — l'appel part dans le thread du resolver, propagation OK, **à valider par un test** ; (2) **rétro‑compat** : les champs explicites existants (`created_by`, `auteur_*`, `caller_id`) restent en place — ils migreront vers le mécanisme uniforme dans les PR d'étape 2, pas maintenant (zéro régression) ; (3) sync (WSGI, queries/mutations) **et** async (ASGI, subscriptions) : vérifier la propagation dans les deux.
+
 ---
 
 ## Annexe — Méthodologie & périmètre
