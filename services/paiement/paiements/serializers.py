@@ -24,6 +24,10 @@ def paiement_to_proto(p: Paiement) -> pb.PaiementResponse:
         created_at=p.created_at.isoformat() if p.created_at else "",
         enregistre_par=p.enregistre_par or "",
         abonne_id=str(p.abonne_id) if p.abonne_id else "",
+        annule=p.annule,
+        annule_le=p.annule_le.isoformat() if p.annule_le else "",
+        annule_par=p.annule_par or "",
+        motif_annulation=p.motif_annulation or "",
     )
 
 

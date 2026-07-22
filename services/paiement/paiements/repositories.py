@@ -36,6 +36,24 @@ class PaiementRepository:
         l'idempotence de l'enregistrement (rejeu d'une même transaction)."""
         return Paiement.objects.filter(reference_transaction=reference_transaction).first()
 
+    def get_by_id(self, paiement_id: str) -> Paiement:
+        """Paiement par id — lève ObjectDoesNotExist si introuvable."""
+        try:
+            return Paiement.objects.get(pk=paiement_id)
+        except Paiement.DoesNotExist:
+            raise ObjectDoesNotExist(f"Paiement introuvable : {paiement_id}")
+
+    def marquer_annule(self, paiement: Paiement, motif: str, annule_par: str) -> Paiement:
+        """Annulation douce d'un paiement : le marque annulé + traçabilité."""
+        from django.utils import timezone
+
+        paiement.annule = True
+        paiement.annule_le = timezone.now()
+        paiement.annule_par = annule_par
+        paiement.motif_annulation = motif
+        paiement.save(update_fields=["annule", "annule_le", "annule_par", "motif_annulation"])
+        return paiement
+
     def list_by_facture_and_abonne(self, facture_id: str, abonne_id: str) -> list[Paiement]:
         """Liste les paiements filtrés par facture et/ou abonné."""
         qs = Paiement.objects.all()
@@ -109,6 +127,26 @@ class SoldeFactureRepository:
         solde.solde_restant = Decimal(str(solde.montant_total)) - solde.montant_paye
 
         # Calcul du statut selon les règles métier
+        if solde.montant_paye <= 0:
+            solde.statut = StatutSolde.IMPAYEE
+        elif solde.montant_paye >= Decimal(str(solde.montant_total)):
+            solde.statut = StatutSolde.PAYEE
+        else:
+            solde.statut = StatutSolde.PARTIELLE
+
+        solde.save(update_fields=["montant_paye", "solde_restant", "statut", "updated_at"])
+        return solde
+
+    def update_after_annulation(self, solde: SoldeFacture, montant_annule: object) -> SoldeFacture:
+        """Rétablit le solde après annulation d'un paiement (retire le montant versé)."""
+        from decimal import Decimal
+
+        montant_d = Decimal(str(montant_annule))
+        solde.montant_paye = Decimal(str(solde.montant_paye)) - montant_d
+        if solde.montant_paye < 0:
+            solde.montant_paye = Decimal("0")
+        solde.solde_restant = Decimal(str(solde.montant_total)) - solde.montant_paye
+
         if solde.montant_paye <= 0:
             solde.statut = StatutSolde.IMPAYEE
         elif solde.montant_paye >= Decimal(str(solde.montant_total)):

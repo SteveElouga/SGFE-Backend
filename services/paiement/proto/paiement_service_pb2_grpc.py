@@ -44,6 +44,11 @@ class PaiementServiceStub:
                 request_serializer=paiement__service__pb2.EnregistrerPaiementRequest.SerializeToString,
                 response_deserializer=paiement__service__pb2.PaiementResponse.FromString,
                 _registered_method=True)
+        self.AnnulerPaiement = channel.unary_unary(
+                '/paiement.PaiementService/AnnulerPaiement',
+                request_serializer=paiement__service__pb2.AnnulerPaiementRequest.SerializeToString,
+                response_deserializer=paiement__service__pb2.PaiementResponse.FromString,
+                _registered_method=True)
         self.GetSolde = channel.unary_unary(
                 '/paiement.PaiementService/GetSolde',
                 request_serializer=paiement__service__pb2.FactureIdRequest.SerializeToString,
@@ -82,6 +87,13 @@ class PaiementServiceServicer:
 
     def EnregistrerPaiement(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AnnulerPaiement(self, request, context):
+        """Annule un paiement enregistré par erreur (rétablit le solde) — avec traçabilité.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -129,6 +141,11 @@ def add_PaiementServiceServicer_to_server(servicer, server):
             'EnregistrerPaiement': grpc.unary_unary_rpc_method_handler(
                     servicer.EnregistrerPaiement,
                     request_deserializer=paiement__service__pb2.EnregistrerPaiementRequest.FromString,
+                    response_serializer=paiement__service__pb2.PaiementResponse.SerializeToString,
+            ),
+            'AnnulerPaiement': grpc.unary_unary_rpc_method_handler(
+                    servicer.AnnulerPaiement,
+                    request_deserializer=paiement__service__pb2.AnnulerPaiementRequest.FromString,
                     response_serializer=paiement__service__pb2.PaiementResponse.SerializeToString,
             ),
             'GetSolde': grpc.unary_unary_rpc_method_handler(
@@ -210,6 +227,33 @@ class PaiementService:
             target,
             '/paiement.PaiementService/EnregistrerPaiement',
             paiement__service__pb2.EnregistrerPaiementRequest.SerializeToString,
+            paiement__service__pb2.PaiementResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AnnulerPaiement(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/paiement.PaiementService/AnnulerPaiement',
+            paiement__service__pb2.AnnulerPaiementRequest.SerializeToString,
             paiement__service__pb2.PaiementResponse.FromString,
             options,
             channel_credentials,

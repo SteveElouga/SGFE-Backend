@@ -38,3 +38,21 @@ class PaiementMutations:
             # supplémentaire vers Auth Service pour ce cas précis.
             operateur=user.username,
         )
+
+    @strawberry.mutation
+    def annuler_paiement(
+        self,
+        info: strawberry.types.Info,
+        paiement_id: str,
+        motif: str,
+    ) -> Paiement:
+        """Annule un paiement enregistré par erreur (rétablit le solde) — ADMIN, COMPTABLE."""
+        user = require_role(info, "ADMIN", "COMPTABLE")
+        return paiement_from_grpc(
+            paiement_client.annuler_paiement(
+                paiement_id=paiement_id,
+                motif=motif,
+                annule_par=str(user.user_id),
+            ),
+            operateur=user.username,
+        )

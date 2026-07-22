@@ -313,6 +313,15 @@ class PaiementServiceClient:
             )
         )
 
+    def annuler_paiement(self, paiement_id: str, motif: str, annule_par: str) -> paiement_pb.PaiementResponse:
+        return self._stub.AnnulerPaiement(
+            paiement_pb.AnnulerPaiementRequest(
+                paiement_id=paiement_id,
+                motif=motif,
+                annule_par=annule_par,
+            )
+        )
+
     def list_impayes(self) -> paiement_pb.ListImpayesResponse:
         return self._stub.ListImpayes(paiement_pb.EmptyRequest())
 

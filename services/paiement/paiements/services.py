@@ -134,6 +134,22 @@ class PaiementService:
 
         return paiement, solde
 
+    def annuler_paiement(self, paiement_id: str, motif: str, annule_par: str) -> tuple[Paiement, SoldeFacture]:
+        """Annule un paiement (annulation douce) et rétablit le solde de la facture.
+
+        Le paiement reste en base, marqué annulé (traçabilité qui/quand/pourquoi).
+        Un paiement déjà annulé est refusé (pas de double rétablissement du solde).
+        """
+        with transaction.atomic():
+            paiement = self._paiement_repo.get_by_id(paiement_id)
+            if paiement.annule:
+                raise ValidationError("Ce paiement est déjà annulé.")
+            # Verrou du solde pour sérialiser avec les versements concurrents.
+            solde = self._solde_repo.get_by_facture_id(paiement.facture_id, for_update=True)
+            solde = self._solde_repo.update_after_annulation(solde, paiement.montant)
+            paiement = self._paiement_repo.marquer_annule(paiement, motif=motif, annule_par=annule_par)
+        return paiement, solde
+
     def get_solde(self, facture_id: str) -> SoldeFacture:
         """Retourne le solde courant d'une facture."""
         return self._solde_repo.get_by_facture_id(facture_id)
