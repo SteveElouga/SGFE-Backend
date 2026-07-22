@@ -1,0 +1,91 @@
+# docker-compose.prod.yml — surcouche de PRODUCTION (horizon ② : VM Azure en
+# Docker Compose). À superposer au compose de base :
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Rôle : durcissement RUNTIME — redémarrage automatique de tous les conteneurs,
+# limites mémoire, et DEBUG=False sur les services Django. Voir DEPLOYMENT.md.
+#
+# ⚠️ SECRETS : le docker-compose.yml de base contient des valeurs DEV EN DUR
+# (DJANGO_SECRET_KEY placeholder, mots de passe `devpassword`, clé whatsapp
+# placeholder). Elles NE conviennent PAS en production : fournir de vrais secrets
+# (voir DEPLOYMENT.md). L'externalisation vers un coffre (Azure Key Vault) est
+# l'item P0 dédié, traité à la migration Azure.
+
+x-prod: &prod
+  restart: unless-stopped
+  deploy:
+    resources:
+      limits:
+        memory: 768M
+
+services:
+  # --- Infra & bases : redémarrage + limite mémoire ---
+  redis:
+    <<: *prod
+  auth-postgres:
+    <<: *prod
+  abonne-postgres:
+    <<: *prod
+  campagne-postgres:
+    <<: *prod
+  facturation-postgres:
+    <<: *prod
+  paiement-postgres:
+    <<: *prod
+  notification-postgres:
+    <<: *prod
+  config-postgres:
+    <<: *prod
+  reporting-postgres:
+    <<: *prod
+  nginx:
+    <<: *prod
+  db-backup:
+    <<: *prod
+
+  # --- WhatsApp : Chromium (puppeteer) → plus de mémoire ---
+  whatsapp-service:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+
+  # --- Services Django : durcissement + DEBUG=False ---
+  auth-service:
+    <<: *prod
+    environment:
+      DJANGO_DEBUG: "False"
+  abonne-service:
+    <<: *prod
+    environment:
+      DJANGO_DEBUG: "False"
+  campagne-service:
+    <<: *prod
+    environment:
+      DJANGO_DEBUG: "False"
+  facturation-service:
+    <<: *prod
+    environment:
+      DJANGO_DEBUG: "False"
+  paiement-service:
+    <<: *prod
+    environment:
+      DJANGO_DEBUG: "False"
+  notification-service:
+    <<: *prod
+    environment:
+      DJANGO_DEBUG: "False"
+  config-service:
+    <<: *prod
+    environment:
+      DJANGO_DEBUG: "False"
+  reporting-service:
+    <<: *prod
+    environment:
+      DJANGO_DEBUG: "False"
+  gateway:
+    <<: *prod
+    environment:
+      DJANGO_DEBUG: "False"

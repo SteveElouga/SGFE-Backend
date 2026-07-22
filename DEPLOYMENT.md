@@ -1,0 +1,53 @@
+# Déploiement — SGFE Backend
+
+Trois horizons (voir `AUDIT_SGFE.md` §10) : **① local** (Docker Compose) · **② VM Azure** (Docker Compose) · **③ AKS** (Kubernetes, plus tard). Ce guide couvre ① et ②.
+
+## Prérequis
+
+1. **Clés JWT RS256** (auth-service) — à générer une fois :
+
+   ```sh
+   ./scripts/gen-jwt-keys.sh
+   ```
+
+   Les clés (`services/auth/keys/*.pem`, gitignorées) sont montées en lecture seule dans le conteneur auth. **Sans elles, l'auth-service refuse de démarrer** (fail-fast RS256).
+
+2. **Secrets** — ⚠️ le `docker-compose.yml` de base contient des valeurs **DEV en dur** (placeholder `DJANGO_SECRET_KEY`, mots de passe `devpassword`, clé whatsapp placeholder). Elles **ne conviennent pas en production**. Fournir de vrais secrets :
+
+   - `DJANGO_SECRET_KEY` — un par service : `python3 -c "import secrets; print(secrets.token_urlsafe(64))"`
+   - mots de passe PostgreSQL (`POSTGRES_PASSWORD` / `<SVC>_DB_PASSWORD`)
+   - `WHATSAPP_INTERNAL_API_KEY`, `BREVO_API_KEY`
+
+   Aujourd'hui : remplacer les valeurs dans le compose / via un `.env` de prod. À terme (Azure) : **Azure Key Vault** — c'est l'item P0 « externaliser les secrets ».
+
+## Lancement
+
+- **Local (dev)** :
+
+  ```sh
+  docker compose up -d --build
+  ```
+
+- **Production (VM Azure)** — avec la surcouche de durcissement :
+
+  ```sh
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+  ```
+
+  La surcouche `docker-compose.prod.yml` ajoute : `restart: unless-stopped`, des **limites mémoire**, et `DEBUG=False` sur les services Django.
+
+## Migrations
+
+**Automatiques** : chaque service Django lance `python manage.py migrate` à son démarrage (`command:` dans le compose). Aucune étape manuelle.
+
+## Réseau & point d'entrée
+
+Seul **nginx** est exposé (`:8080` → gateway). Les ports internes (gRPC `50051-50058`, PostgreSQL `5432-5439`, Redis) **ne sont pas publiés** (isolation réseau). Un rate limiting par IP est posé sur la gateway. En production, **placer un TLS devant nginx** (Let's Encrypt, ou Azure App Gateway / Front Door).
+
+## Sauvegardes
+
+Le service `db-backup` fait un `pg_dump` quotidien gzip des **8 bases** (rétention 7 j) dans `./backups/`. Restauration : voir l'en-tête de `scripts/backup-databases.sh`. À la migration Azure : bascule vers les backups managés (Flexible Server + PITR).
+
+## Limites de ressources
+
+Les limites mémoire de `docker-compose.prod.yml` (768 Mo par service, 2 Go pour whatsapp/Chromium) sont des **points de départ** — à ajuster avec des métriques réelles.
