@@ -50,6 +50,13 @@ class PaiementService:
         if montant_d <= 0:
             raise ValidationError("Le montant total doit être supérieur à zéro.")
 
+        # Idempotent : si le solde existe déjà (ré-initialisation, réconciliation
+        # d'une facture orpheline), on le renvoie tel quel — on n'écrase JAMAIS
+        # les versements déjà enregistrés.
+        existant = self._solde_repo.get_if_exists(facture_id)
+        if existant is not None:
+            return existant
+
         return self._solde_repo.create(
             facture_id=facture_id,
             abonne_id=abonne_id,

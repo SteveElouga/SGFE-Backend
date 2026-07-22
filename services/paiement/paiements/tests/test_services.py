@@ -48,6 +48,25 @@ class TestInitialiserSolde(TestCase):
         self.assertEqual(solde.solde_restant, Decimal("300.00"))
         self.assertEqual(solde.montant_total, Decimal("300.00"))
 
+    def test_initialiser_solde_idempotent(self) -> None:
+        """Ré-initialiser un solde existant (réconciliation d'une facture orpheline)
+        ne crée pas de doublon et n'écrase pas le montant déjà enregistré."""
+        s1 = self.svc.initialiser_solde(
+            facture_id="facture-001",
+            abonne_id="abonne-001",
+            montant_total=300.00,
+            date_limite_paiement=date(2026, 7, 1),
+        )
+        s2 = self.svc.initialiser_solde(
+            facture_id="facture-001",
+            abonne_id="abonne-001",
+            montant_total=999.00,  # valeur différente : ne doit PAS écraser l'existant
+            date_limite_paiement=date(2026, 8, 1),
+        )
+        self.assertEqual(s1.facture_id, s2.facture_id)
+        self.assertEqual(SoldeFacture.objects.count(), 1)  # aucun doublon
+        self.assertEqual(s2.montant_total, Decimal("300.00"))  # inchangé
+
     def test_initialiser_solde_montant_nul_leve_erreur(self) -> None:
         """Un montant total nul ou négatif lève une ValidationError."""
         with self.assertRaises(ValidationError):

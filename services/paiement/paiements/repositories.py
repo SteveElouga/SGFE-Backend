@@ -95,6 +95,11 @@ class SoldeFactureRepository:
         except SoldeFacture.DoesNotExist:
             raise ObjectDoesNotExist(f"Solde introuvable pour la facture : {facture_id}")
 
+    def get_if_exists(self, facture_id: str) -> "SoldeFacture | None":
+        """Solde de la facture, ou None — support de l'initialisation idempotente
+        (ré-init / réconciliation d'une facture orpheline)."""
+        return SoldeFacture.objects.filter(pk=facture_id).first()
+
     def update_after_paiement(self, solde: SoldeFacture, montant_verse: object) -> SoldeFacture:
         """Met à jour le solde après un versement et recalcule le statut."""
         from decimal import Decimal
