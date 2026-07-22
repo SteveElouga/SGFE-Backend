@@ -102,6 +102,27 @@ class TestEnregistrerPaiement(TestCase):
         self.assertEqual(solde.montant_paye, Decimal("100.00"))
         self.assertEqual(solde.solde_restant, Decimal("200.00"))
 
+    def test_idempotence_meme_reference_ne_double_pas(self) -> None:
+        """Rejeu d'un paiement avec la même référence : pas de double-versement."""
+        from paiements.models import Paiement
+
+        args = dict(
+            facture_id="facture-001",
+            abonne_id="abonne-001",
+            montant=100.00,
+            date_paiement=date(2026, 6, 20),
+            mode_paiement=ModePaiement.MOBILE_MONEY,
+            reference_transaction="TX-123",
+            enregistre_par="user-001",
+        )
+        p1, _ = self.svc.enregistrer_paiement(**args)
+        p2, solde = self.svc.enregistrer_paiement(**args)  # rejeu (réseau / double-clic)
+
+        self.assertEqual(p1.id, p2.id)  # même paiement renvoyé, pas un nouveau
+        self.assertEqual(Paiement.objects.count(), 1)  # aucun doublon en base
+        self.assertEqual(solde.montant_paye, Decimal("100.00"))  # crédité UNE seule fois
+        self.assertEqual(solde.solde_restant, Decimal("200.00"))
+
     def test_paiement_total_statut_payee(self) -> None:
         """Un versement total passe le solde en PAYEE."""
         paiement, solde = self.svc.enregistrer_paiement(
