@@ -6,6 +6,16 @@ default_install_hook_types: [pre-commit, commit-msg, pre-push]
 exclude: '(_pb2\.py|_pb2_grpc\.py|/migrations/)'
 
 repos:
+  # Garde-fou secrets : refuse tout fichier .env au commit (seul .env.example est suivi).
+  - repo: local
+    hooks:
+      - id: forbid-dotenv
+        name: "Interdiction de committer un .env (secrets)"
+        language: fail
+        entry: "Refus : un fichier .env contient des secrets et ne doit jamais etre commite. Utilisez .env.example. Deja suivi ? git rm --cached <fichier>."
+        files: '(^|/)\.env(\.[^/]*)?$'
+        exclude: '\.example$'
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.20
     hooks:
