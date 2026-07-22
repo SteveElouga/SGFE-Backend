@@ -73,6 +73,11 @@ services:
       WHATSAPP_INTERNAL_API_KEY: ${WHATSAPP_INTERNAL_API_KEY:-whatsapp-dev-placeholder-do-not-use-in-production}
       PHONE_OTP_VALIDITY_MINUTES: "10"
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
+    volumes:
+      # Clés JWT RS256 (gitignorées) : à générer via ./scripts/gen-jwt-keys.sh en
+      # local, fournies par le secrets manager en prod. Sans elles, l'auth-service
+      # refuse de démarrer (fail-fast RS256).
+      - ./services/auth/keys:/app/keys:ro
 
   abonne-postgres:
     image: postgres:16-alpine
