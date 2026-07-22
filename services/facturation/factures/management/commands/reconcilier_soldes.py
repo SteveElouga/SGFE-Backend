@@ -10,13 +10,14 @@ Paiement Service. C'est sûr car `InitialiserSolde` est **idempotent** : un sold
 déjà présent est laissé intact (versements préservés), seuls les soldes manquants
 sont créés.
 
-⚠️ À lancer quand le Paiement Service est joignable (sinon les appels sont
-ignorés en dégradation gracieuse et rien n'est recréé).
+Si le Paiement Service est injoignable, ses appels sont ignorés (dégradation
+gracieuse côté client) : la commande le détecte et **échoue explicitement**
+plutôt que de faire croire à une réconciliation réussie.
 
     python manage.py reconcilier_soldes
 """
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from factures.grpc_clients import PaiementServiceClient
 from factures.repositories import FactureRepository
@@ -28,17 +29,26 @@ class Command(BaseCommand):
     def handle(self, *args, **options) -> None:
         client = PaiementServiceClient()
         factures = FactureRepository().list_by_filters()  # toutes les factures
-        for facture in factures:
+        # initialiser_solde renvoie True si OK, False en dégradation gracieuse (paiement KO).
+        ok = sum(
             client.initialiser_solde(
-                facture_id=str(facture.id),
-                abonne_id=facture.abonne_id,
-                montant_total=float(facture.montant),
-                date_limite_paiement=facture.date_limite_paiement.isoformat(),
-                campagne_id=facture.campagne_id,
+                facture_id=str(f.id),
+                abonne_id=f.abonne_id,
+                montant_total=float(f.montant),
+                date_limite_paiement=f.date_limite_paiement.isoformat(),
+                campagne_id=f.campagne_id,
+            )
+            for f in factures
+        )
+        total = len(factures)
+        if ok < total:
+            raise CommandError(
+                f"{total - ok}/{total} factures NON réconciliées — Paiement Service "
+                "injoignable ? Vérifie qu'il tourne (docker compose up -d) puis relance."
             )
         self.stdout.write(
             self.style.SUCCESS(
-                f"Réconciliation terminée : {len(factures)} factures traitées "
+                f"Réconciliation terminée : {ok}/{total} factures traitées "
                 "(soldes manquants recréés, existants inchangés)."
             )
         )
