@@ -107,6 +107,30 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
 
         return paiement_to_proto(paiement)
 
+    def AnnulerPaiement(
+        self,
+        request: pb.AnnulerPaiementRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.PaiementResponse:
+        """Annule un paiement enregistré par erreur et rétablit le solde de la facture."""
+        paiement, solde = self._svc.annuler_paiement(
+            paiement_id=request.paiement_id,
+            motif=request.motif,
+            annule_par=request.annule_par,
+        )
+        # Synchronise le statut de facture rétabli vers Facturation (dégradation gracieuse)
+        try:
+            self._facturation_client.update_statut_facture(
+                facture_id=paiement.facture_id,
+                statut=solde.statut,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Sync statut facture (annulation) échouée — dégradation gracieuse",
+                extra={"facture_id": paiement.facture_id, "error": str(exc)},
+            )
+        return paiement_to_proto(paiement)
+
     def GetSolde(
         self,
         request: pb.FactureIdRequest,

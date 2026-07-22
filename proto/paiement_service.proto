@@ -4,6 +4,8 @@ package paiement;
 service PaiementService {
   rpc InitialiserSolde (InitialiserSoldeRequest) returns (SoldeResponse);
   rpc EnregistrerPaiement (EnregistrerPaiementRequest) returns (PaiementResponse);
+  // Annule un paiement enregistré par erreur (rétablit le solde) — avec traçabilité.
+  rpc AnnulerPaiement (AnnulerPaiementRequest) returns (PaiementResponse);
   rpc GetSolde (FactureIdRequest) returns (SoldeResponse);
   rpc ListPaiements (ListPaiementsRequest) returns (ListPaiementsResponse);
   // Liste les paiements de toutes les factures d'une campagne (export CSV
@@ -33,6 +35,12 @@ message EnregistrerPaiementRequest {
   string enregistre_par = 7;
 }
 
+message AnnulerPaiementRequest {
+  string paiement_id = 1;
+  string motif = 2;
+  string annule_par = 3;
+}
+
 message FactureIdRequest { string facture_id = 1; }
 message CampagneIdRequest { string campagne_id = 1; }
 
@@ -53,6 +61,11 @@ message PaiementResponse {
   // d'utilisateur affichable côté Gateway — voir schema/paiement_types.py).
   string enregistre_par = 8;
   string abonne_id = 9;
+  // Annulation (traçabilité) : annule=true si le paiement a été annulé.
+  bool annule = 10;
+  string annule_le = 11;
+  string annule_par = 12;
+  string motif_annulation = 13;
 }
 
 message SoldeResponse {

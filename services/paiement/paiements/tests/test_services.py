@@ -142,6 +142,29 @@ class TestEnregistrerPaiement(TestCase):
         self.assertEqual(solde.montant_paye, Decimal("100.00"))  # crédité UNE seule fois
         self.assertEqual(solde.solde_restant, Decimal("200.00"))
 
+    def test_annuler_paiement_retablit_le_solde(self) -> None:
+        """Annuler un paiement le marque annulé et rétablit le solde ; 2e annulation refusée."""
+        from paiements.models import Paiement
+
+        p, _ = self.svc.enregistrer_paiement(
+            facture_id="facture-001",
+            abonne_id="abonne-001",
+            montant=100.00,
+            date_paiement=date(2026, 6, 20),
+            mode_paiement=ModePaiement.ESPECES,
+            reference_transaction="",
+            enregistre_par="user-001",
+        )
+        p2, solde = self.svc.annuler_paiement(paiement_id=str(p.id), motif="erreur de saisie", annule_par="admin-1")
+        self.assertTrue(p2.annule)
+        self.assertEqual(p2.annule_par, "admin-1")
+        self.assertEqual(solde.montant_paye, Decimal("0.00"))  # solde rétabli
+        self.assertEqual(solde.solde_restant, Decimal("300.00"))
+        self.assertEqual(solde.statut, StatutSolde.IMPAYEE)
+        self.assertEqual(Paiement.objects.count(), 1)  # annulation douce : le paiement reste
+        with self.assertRaises(ValidationError):  # double annulation refusée
+            self.svc.annuler_paiement(paiement_id=str(p.id), motif="x", annule_par="admin-1")
+
     def test_paiement_total_statut_payee(self) -> None:
         """Un versement total passe le solde en PAYEE."""
         paiement, solde = self.svc.enregistrer_paiement(

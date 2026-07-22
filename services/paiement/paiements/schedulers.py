@@ -7,10 +7,14 @@ from apscheduler.triggers.cron import CronTrigger
 
 logger = logging.getLogger(__name__)
 
+# Verrou consultatif PostgreSQL du cron impayés : une seule instance escalade à la
+# fois, même en cas de réplication (anti relances/suspensions dupliquées).
+_IMPAYE_LOCK_KEY = 4210001
+
 _scheduler: BackgroundScheduler | None = None
 
 
-def impaye_checker_job() -> None:
+def impaye_checker_job() -> None:  # pragma: no cover
     """
     Cron 8h00 : vérifie toutes les factures impayées et escalade les relances.
 
@@ -26,14 +30,25 @@ def impaye_checker_job() -> None:
 
     django.setup()
 
+    from django.db import connection
+
     from paiements.services import ImpayeService
 
-    svc = ImpayeService()
+    # Verrou consultatif : si une autre instance le détient déjà, on passe notre tour.
+    with connection.cursor() as cur:
+        cur.execute("SELECT pg_try_advisory_lock(%s)", [_IMPAYE_LOCK_KEY])
+        if not cur.fetchone()[0]:
+            logger.info("ImpayeCheckerJob ignoré — verrou détenu par une autre instance.")
+            return
+
     try:
-        svc.verifier_et_escalader()
+        ImpayeService().verifier_et_escalader()
         logger.info("ImpayeCheckerJob terminé avec succès.")
     except Exception as exc:
         logger.exception("ImpayeCheckerJob échoué : %s", exc)
+    finally:
+        with connection.cursor() as cur:
+            cur.execute("SELECT pg_advisory_unlock(%s)", [_IMPAYE_LOCK_KEY])
 
 
 def start_scheduler() -> None:

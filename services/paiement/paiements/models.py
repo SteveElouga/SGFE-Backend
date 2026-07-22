@@ -32,6 +32,12 @@ class Paiement(models.Model):
     # ID utilisateur Auth Service qui a enregistré le paiement
     enregistre_par = models.CharField(max_length=36)
     created_at = models.DateTimeField(auto_now_add=True)
+    # Annulation douce : le paiement reste en base, marqué annulé (traçabilité
+    # qui/quand/pourquoi). Un paiement annulé ne compte plus dans le solde.
+    annule = models.BooleanField(default=False)
+    annule_le = models.DateTimeField(null=True, blank=True)
+    annule_par = models.CharField(max_length=36, blank=True, default="")
+    motif_annulation = models.CharField(max_length=255, blank=True, default="")
 
     class Meta:
         db_table = "paiements"

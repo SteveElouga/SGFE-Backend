@@ -29,6 +29,11 @@ class Paiement:
     # paiement. Renseigné uniquement par la souscription paiementCree (l'événement
     # Redis auto-porteur le transporte) ; vide via les queries gRPC classiques.
     statut_facture: str = ""
+    # Annulation (traçabilité) — annule=true si le paiement a été annulé.
+    annule: bool = False
+    annule_le: str = ""
+    annule_par: str = ""
+    motif_annulation: str = ""
 
 
 @strawberry.type
@@ -61,6 +66,10 @@ def paiement_from_grpc(r, operateur: str = "") -> Paiement:
         reference_transaction=r.reference_transaction,
         created_at=r.created_at,
         operateur=operateur,
+        annule=r.annule,
+        annule_le=r.annule_le,
+        annule_par=r.annule_par,
+        motif_annulation=r.motif_annulation,
     )
 
 

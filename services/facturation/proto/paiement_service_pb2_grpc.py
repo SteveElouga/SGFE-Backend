@@ -44,6 +44,11 @@ class PaiementServiceStub:
                 request_serializer=paiement__service__pb2.EnregistrerPaiementRequest.SerializeToString,
                 response_deserializer=paiement__service__pb2.PaiementResponse.FromString,
                 _registered_method=True)
+        self.AnnulerPaiement = channel.unary_unary(
+                '/paiement.PaiementService/AnnulerPaiement',
+                request_serializer=paiement__service__pb2.AnnulerPaiementRequest.SerializeToString,
+                response_deserializer=paiement__service__pb2.PaiementResponse.FromString,
+                _registered_method=True)
         self.GetSolde = channel.unary_unary(
                 '/paiement.PaiementService/GetSolde',
                 request_serializer=paiement__service__pb2.FactureIdRequest.SerializeToString,
@@ -52,6 +57,11 @@ class PaiementServiceStub:
         self.ListPaiements = channel.unary_unary(
                 '/paiement.PaiementService/ListPaiements',
                 request_serializer=paiement__service__pb2.ListPaiementsRequest.SerializeToString,
+                response_deserializer=paiement__service__pb2.ListPaiementsResponse.FromString,
+                _registered_method=True)
+        self.ListPaiementsParCampagne = channel.unary_unary(
+                '/paiement.PaiementService/ListPaiementsParCampagne',
+                request_serializer=paiement__service__pb2.CampagneIdRequest.SerializeToString,
                 response_deserializer=paiement__service__pb2.ListPaiementsResponse.FromString,
                 _registered_method=True)
         self.ListImpayes = channel.unary_unary(
@@ -81,6 +91,13 @@ class PaiementServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def AnnulerPaiement(self, request, context):
+        """Annule un paiement enregistré par erreur (rétablit le solde) — avec traçabilité.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def GetSolde(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -89,6 +106,14 @@ class PaiementServiceServicer:
 
     def ListPaiements(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListPaiementsParCampagne(self, request, context):
+        """Liste les paiements de toutes les factures d'une campagne (export CSV
+        back-office, écran 13). Le rattachement passe par SoldeFacture.campagne_id.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -118,6 +143,11 @@ def add_PaiementServiceServicer_to_server(servicer, server):
                     request_deserializer=paiement__service__pb2.EnregistrerPaiementRequest.FromString,
                     response_serializer=paiement__service__pb2.PaiementResponse.SerializeToString,
             ),
+            'AnnulerPaiement': grpc.unary_unary_rpc_method_handler(
+                    servicer.AnnulerPaiement,
+                    request_deserializer=paiement__service__pb2.AnnulerPaiementRequest.FromString,
+                    response_serializer=paiement__service__pb2.PaiementResponse.SerializeToString,
+            ),
             'GetSolde': grpc.unary_unary_rpc_method_handler(
                     servicer.GetSolde,
                     request_deserializer=paiement__service__pb2.FactureIdRequest.FromString,
@@ -126,6 +156,11 @@ def add_PaiementServiceServicer_to_server(servicer, server):
             'ListPaiements': grpc.unary_unary_rpc_method_handler(
                     servicer.ListPaiements,
                     request_deserializer=paiement__service__pb2.ListPaiementsRequest.FromString,
+                    response_serializer=paiement__service__pb2.ListPaiementsResponse.SerializeToString,
+            ),
+            'ListPaiementsParCampagne': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListPaiementsParCampagne,
+                    request_deserializer=paiement__service__pb2.CampagneIdRequest.FromString,
                     response_serializer=paiement__service__pb2.ListPaiementsResponse.SerializeToString,
             ),
             'ListImpayes': grpc.unary_unary_rpc_method_handler(
@@ -204,6 +239,33 @@ class PaiementService:
             _registered_method=True)
 
     @staticmethod
+    def AnnulerPaiement(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/paiement.PaiementService/AnnulerPaiement',
+            paiement__service__pb2.AnnulerPaiementRequest.SerializeToString,
+            paiement__service__pb2.PaiementResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def GetSolde(request,
             target,
             options=(),
@@ -246,6 +308,33 @@ class PaiementService:
             target,
             '/paiement.PaiementService/ListPaiements',
             paiement__service__pb2.ListPaiementsRequest.SerializeToString,
+            paiement__service__pb2.ListPaiementsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListPaiementsParCampagne(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/paiement.PaiementService/ListPaiementsParCampagne',
+            paiement__service__pb2.CampagneIdRequest.SerializeToString,
             paiement__service__pb2.ListPaiementsResponse.FromString,
             options,
             channel_credentials,
