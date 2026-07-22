@@ -145,7 +145,11 @@ LOCKOUT_DURATION_MINUTES = env.int("LOCKOUT_DURATION_MINUTES", default=15)
 # Nombre de codes OTP erronés tolérés par token avant invalidation : borne le
 # brute-force du code à 6 chiffres (10^6 combinaisons) sur la fenêtre de validité.
 MAX_OTP_ATTEMPTS = env.int("MAX_OTP_ATTEMPTS", default=5)
-BCRYPT_ROUNDS = env.int("BCRYPT_ROUNDS", default=12)
+
+# Mots de passe : hacheur par défaut de Django (PBKDF2-HMAC-SHA256, ~600k itérations)
+# — robuste et sans dépendance native. L'ancien BCRYPT_ROUNDS a été retiré : jamais
+# câblé à un PASSWORD_HASHERS, il n'avait aucun effet (les mots de passe étaient déjà
+# hachés en PBKDF2). Pour passer à bcrypt/argon2, définir explicitement PASSWORD_HASHERS.
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": JWT_ACCESS_TOKEN_LIFETIME,
