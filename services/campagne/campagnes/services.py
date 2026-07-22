@@ -1,5 +1,6 @@
 """Logique métier du Campagne Service."""
 
+import logging
 from typing import Optional
 
 import grpc
@@ -15,6 +16,8 @@ from .repositories import (
     ReleveAuditRepository,
     ReleveRepository,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class CampagneService:
@@ -193,7 +196,13 @@ class CampagneService:
                     updated = self._repo.update_statut(campagne, StatutCampagne.EN_COURS)
                     demarrees.append(updated)
                 except Exception:
-                    pass
+                    # Ne pas bloquer les autres campagnes du lot, mais ne plus
+                    # avaler l'échec silencieusement (diagnostic du cron 7h).
+                    logger.exception(
+                        "Échec du démarrage automatique de la campagne %s (%s)",
+                        campagne.id,
+                        campagne.nom,
+                    )
         return demarrees
 
     def affecter_zones(
