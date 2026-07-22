@@ -100,7 +100,11 @@ REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 # autres services ne décodent jamais le token : ils délèguent la validation à
 # auth via le RPC ValidateToken. Les clés vivent hors du dépôt (gitignorées) ;
 # en test, une paire éphémère en mémoire évite toute dépendance à un fichier.
-JWT_ACCESS_TOKEN_LIFETIME = timedelta(hours=env.int("JWT_ACCESS_TOKEN_EXPIRE_HOURS", default=24))
+# Access token court (15 min par défaut) : réduit fortement la fenêtre d'exploitation
+# d'un token volé. Le refresh token (cookie HttpOnly, 7 j) le renouvelle en silence —
+# le front rejoue toute requête GraphQL sur UNAUTHENTICATED (auth-error.link). Réglable
+# via l'env (JWT_ACCESS_TOKEN_EXPIRE_MINUTES) sans changer le code.
+JWT_ACCESS_TOKEN_LIFETIME = timedelta(minutes=env.int("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", default=15))
 JWT_REFRESH_TOKEN_LIFETIME = timedelta(days=env.int("JWT_REFRESH_TOKEN_EXPIRE_DAYS", default=7))
 
 if TESTING:
