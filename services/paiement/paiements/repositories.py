@@ -31,6 +31,11 @@ class PaiementRepository:
             enregistre_par=enregistre_par,
         )
 
+    def get_by_reference(self, reference_transaction: str) -> Paiement | None:
+        """Paiement portant cette référence de transaction, ou None — support de
+        l'idempotence de l'enregistrement (rejeu d'une même transaction)."""
+        return Paiement.objects.filter(reference_transaction=reference_transaction).first()
+
     def list_by_facture_and_abonne(self, facture_id: str, abonne_id: str) -> list[Paiement]:
         """Liste les paiements filtrés par facture et/ou abonné."""
         qs = Paiement.objects.all()

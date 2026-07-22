@@ -96,6 +96,16 @@ class PaiementService:
             # sérialiser les versements concurrents sur une même facture.
             solde = self._solde_repo.get_by_facture_id(facture_id, for_update=True)
 
+            # Idempotence : si un paiement portant cette référence existe déjà
+            # (rejeu réseau, double-clic), on renvoie l'existant SANS re-créditer.
+            # La référence (MoMo/virement) est l'identifiant naturel de la
+            # transaction ; la contrainte unique partielle en base est le filet ultime.
+            reference = (reference_transaction or "").strip()
+            if reference:
+                existant = self._paiement_repo.get_by_reference(reference)
+                if existant is not None:
+                    return existant, solde
+
             # Vérification du surpaiement
             solde_restant = Decimal(str(solde.solde_restant))
             if montant_d > solde_restant:
@@ -108,7 +118,7 @@ class PaiementService:
                 montant=montant_d,
                 date_paiement=date_paiement,
                 mode_paiement=mode_paiement,
-                reference_transaction=reference_transaction or "",
+                reference_transaction=reference,
                 enregistre_par=enregistre_par,
             )
 

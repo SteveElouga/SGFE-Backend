@@ -37,6 +37,17 @@ class Paiement(models.Model):
         db_table = "paiements"
         indexes = [models.Index(fields=["facture_id"])]
         ordering = ["-created_at"]
+        constraints = [
+            # Idempotence : une référence de transaction (MoMo/virement) ne peut
+            # correspondre qu'à UN seul paiement — filet anti double-versement
+            # (rejeu réseau, double-clic). Les paiements ESPÈCES (référence vide)
+            # ne sont pas contraints.
+            models.UniqueConstraint(
+                fields=["reference_transaction"],
+                condition=~models.Q(reference_transaction=""),
+                name="unique_reference_transaction_non_vide",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"Paiement {self.montant} — facture {self.facture_id}"
