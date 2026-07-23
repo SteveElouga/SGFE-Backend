@@ -34,12 +34,16 @@ def impaye_checker_job() -> None:  # pragma: no cover
 
     from paiements.services import ImpayeService
 
-    # Verrou consultatif : si une autre instance le détient déjà, on passe notre tour.
-    with connection.cursor() as cur:
-        cur.execute("SELECT pg_try_advisory_lock(%s)", [_IMPAYE_LOCK_KEY])
-        if not cur.fetchone()[0]:
-            logger.info("ImpayeCheckerJob ignoré — verrou détenu par une autre instance.")
-            return
+    # Verrou consultatif PostgreSQL : une seule instance escalade à la fois
+    # (anti relances/suspensions dupliquées en réplication). SQLite (tests) n'a
+    # pas pg_try_advisory_lock → on saute simplement le verrou.
+    use_lock = connection.vendor == "postgresql"
+    if use_lock:
+        with connection.cursor() as cur:
+            cur.execute("SELECT pg_try_advisory_lock(%s)", [_IMPAYE_LOCK_KEY])
+            if not cur.fetchone()[0]:
+                logger.info("ImpayeCheckerJob ignoré — verrou détenu par une autre instance.")
+                return
 
     try:
         ImpayeService().verifier_et_escalader()
@@ -47,8 +51,9 @@ def impaye_checker_job() -> None:  # pragma: no cover
     except Exception as exc:
         logger.exception("ImpayeCheckerJob échoué : %s", exc)
     finally:
-        with connection.cursor() as cur:
-            cur.execute("SELECT pg_advisory_unlock(%s)", [_IMPAYE_LOCK_KEY])
+        if use_lock:
+            with connection.cursor() as cur:
+                cur.execute("SELECT pg_advisory_unlock(%s)", [_IMPAYE_LOCK_KEY])
 
 
 def start_scheduler() -> None:
