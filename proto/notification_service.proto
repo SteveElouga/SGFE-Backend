@@ -4,6 +4,8 @@ package notification;
 service NotificationService {
   rpc EnvoyerFacture (EnvoyerFactureRequest) returns (EnvoiResponse);
   rpc ReenvoyerFacture (FactureIdRequest) returns (EnvoiResponse);
+  // Confirmation de paiement : envoie le reçu (PDF) à l'abonné après un versement.
+  rpc EnvoyerRecu (EnvoyerRecuRequest) returns (EnvoiResponse);
   rpc EnvoyerRelance (EnvoyerRelanceRequest) returns (EnvoiResponse);
   rpc GetEnvoi (EnvoiIdRequest) returns (EnvoiResponse);
   rpc ListEnvois (ListEnvoisRequest) returns (ListEnvoisResponse);
@@ -19,6 +21,14 @@ service NotificationService {
 message EnvoyerFactureRequest {
   string facture_id = 1;
   string abonne_id = 2;
+}
+
+message EnvoyerRecuRequest {
+  string paiement_id = 1;
+  string facture_id = 2;
+  string abonne_id = 3;
+  double montant = 4;
+  double solde_restant = 5;
 }
 
 message EnvoyerRelanceRequest {

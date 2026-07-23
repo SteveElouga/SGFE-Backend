@@ -126,6 +126,44 @@ class NotificationServiceClient:
                 extra={"error": str(exc)},
             )
 
+    def envoyer_recu(
+        self,
+        paiement_id: str,
+        facture_id: str,
+        abonne_id: str,
+        montant: float,
+        solde_restant: float,
+    ) -> None:
+        """
+        Déclenche l'envoi du reçu de paiement (PDF) à l'abonné via WhatsApp.
+        Dégradation gracieuse : un échec ne remonte jamais — il ne doit pas
+        faire échouer l'enregistrement du paiement.
+        """
+        try:
+            self._stub.EnvoyerRecu(
+                self._pb.EnvoyerRecuRequest(
+                    paiement_id=paiement_id,
+                    facture_id=facture_id,
+                    abonne_id=abonne_id,
+                    montant=montant,
+                    solde_restant=solde_restant,
+                )
+            )
+            logger.info(
+                "Reçu de paiement envoyé",
+                extra={"paiement_id": paiement_id, "facture_id": facture_id},
+            )
+        except grpc.RpcError as exc:
+            logger.warning(
+                "EnvoyerRecu échoué — dégradation gracieuse",
+                extra={"paiement_id": paiement_id, "abonne_id": abonne_id, "error": str(exc)},
+            )
+        except Exception as exc:
+            logger.warning(
+                "EnvoyerRecu erreur inattendue — dégradation gracieuse",
+                extra={"error": str(exc)},
+            )
+
 
 class AbonneServiceClient:
     """Client gRPC vers Abonné Service (port 50052)."""

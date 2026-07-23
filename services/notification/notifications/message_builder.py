@@ -52,6 +52,40 @@ def build_message_facture(
     )
 
 
+def build_message_recu(
+    prenom_nom: str,
+    periode: str,
+    montant: float,
+    solde_restant: float,
+) -> str:
+    """Construit le message WhatsApp de confirmation de paiement (reçu joint).
+
+    Args:
+        prenom_nom: Prénom et NOM de l'abonné (ex. "Jean DUPONT").
+        periode: Mois et année de la facture réglée (ex. "Juin 2026").
+        montant: Montant du versement reçu, en FCFA.
+        solde_restant: Solde restant dû après ce versement, en FCFA.
+
+    Returns:
+        Message WhatsApp formaté.
+    """
+    montant_str = f"{montant:.0f}" if montant == int(montant) else f"{montant}"
+    if solde_restant <= 0:
+        situation = "✅ Votre facture est soldée. Merci !"
+    else:
+        solde_str = f"{solde_restant:.0f}" if solde_restant == int(solde_restant) else f"{solde_restant}"
+        situation = f"Solde restant dû : {solde_str} FCFA"
+
+    return (
+        f"Bonjour {prenom_nom},\n\n"
+        f"Nous confirmons la réception de votre paiement - {periode}\n\n"
+        f"Montant réglé : {montant_str} FCFA\n"
+        f"{situation}\n\n"
+        f"📄 Votre reçu officiel est en pièce jointe.\n\n"
+        f"Merci de votre confiance."
+    )
+
+
 def build_message_relance_1(
     prenom_nom: str,
     periode: str,

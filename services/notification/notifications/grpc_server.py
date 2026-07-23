@@ -82,6 +82,21 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
         )
         return envoi_to_proto(envoi)
 
+    def EnvoyerRecu(self, request, context):
+        """Envoie le reçu de paiement (PDF) à l'abonné après un versement.
+
+        En cas d'échec WhatsApp, retourne un EnvoiResponse ECHEC sans lever
+        d'erreur gRPC (dégradation gracieuse).
+        """
+        envoi = self._envoi_service.envoyer_recu(
+            paiement_id=request.paiement_id,
+            facture_id=request.facture_id,
+            abonne_id=request.abonne_id,
+            montant=request.montant,
+            solde_restant=request.solde_restant,
+        )
+        return envoi_to_proto(envoi)
+
     def GetEnvoi(self, request, context):
         """Récupère un envoi par son UUID. Lève NOT_FOUND si absent."""
         envoi = self._envoi_service.get_envoi(envoi_id=request.envoi_id)

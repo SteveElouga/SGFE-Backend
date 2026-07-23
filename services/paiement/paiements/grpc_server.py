@@ -15,7 +15,7 @@ import paiement_service_pb2 as pb
 import paiement_service_pb2_grpc as pb_grpc
 
 from paiements.event_publisher import publish_paiement_event, publish_reporting_event
-from paiements.grpc_clients import FacturationServiceClient
+from paiements.grpc_clients import FacturationServiceClient, NotificationServiceClient
 from paiements.grpc_interceptors import ErrorHandlingInterceptor
 from paiements.models import StatutSolde
 from paiements.serializers import paiement_to_proto, solde_to_proto, suivi_to_proto
@@ -35,6 +35,7 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
     def __init__(self) -> None:
         self._svc = PaiementService()
         self._facturation_client = FacturationServiceClient()
+        self._notification_client = NotificationServiceClient()
 
     def InitialiserSolde(
         self,
@@ -84,6 +85,17 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
         # Résolution ou suspension des relances
         self._svc.marquer_facture_payee_si_applicable(solde)
         self._svc.suspendre_relances_si_partiel(solde)
+
+        # Envoi automatique du reçu de paiement à l'abonné (WhatsApp + PDF).
+        # Le client garantit une dégradation gracieuse : un échec notification
+        # n'impacte jamais l'enregistrement du paiement déjà committé.
+        self._notification_client.envoyer_recu(
+            paiement_id=str(paiement.id),
+            facture_id=paiement.facture_id,
+            abonne_id=paiement.abonne_id,
+            montant=float(paiement.montant),
+            solde_restant=float(solde.solde_restant),
+        )
 
         # Publie les stats de paiement sur le flux Reporting (read model aval,
         # événementiel durable — ADR-019). campagne_id porté par le solde.

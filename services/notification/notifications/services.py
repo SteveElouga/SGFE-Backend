@@ -16,6 +16,7 @@ from notifications.brevo_client import envoyer_email_admin
 from notifications.grpc_clients import abonne_client, config_client, facturation_client
 from notifications.message_builder import (
     build_message_facture,
+    build_message_recu,
     build_message_relance_1,
     build_message_relance_2,
     build_message_relance_3,
@@ -166,6 +167,51 @@ class EnvoiService:
 
         # Récupération du PDF depuis Facturation Service (dégradation gracieuse si KO)
         pdf_bytes, pdf_filename = facturation_client.get_facture_pdf(facture_id)
+
+        return self._tenter_envoi(envoi, telephone, message, pdf_bytes=pdf_bytes, pdf_filename=pdf_filename)
+
+    def envoyer_recu(
+        self,
+        paiement_id: str,
+        facture_id: str,
+        abonne_id: str,
+        montant: float,
+        solde_restant: float,
+    ) -> Envoi:
+        """Envoie le reçu de paiement (PDF) à l'abonné après un versement.
+
+        Confirmation WhatsApp avec le reçu en pièce jointe. Même dégradation
+        gracieuse que envoyer_facture : un service amont injoignable donne un
+        Envoi ECHEC (jamais de RpcError brute), et un reçu PDF indisponible
+        (Facturation KO) n'empêche pas l'envoi du message de confirmation.
+        """
+        try:
+            facture = facturation_client.get_facture(facture_id)
+            abonne = abonne_client.get_abonne(abonne_id)
+        except grpc.RpcError as exc:
+            return self._echec_amont(facture_id, abonne_id, TypeEnvoi.RECU, exc)
+
+        prenom_nom = f"{abonne.prenom} {abonne.nom.upper()}"
+        telephone = abonne.telephone_whatsapp
+        periode = _periode_from_date(facture.date_releve)
+
+        message = build_message_recu(
+            prenom_nom=prenom_nom,
+            periode=periode,
+            montant=montant,
+            solde_restant=solde_restant,
+        )
+
+        envoi = self._envois.create(
+            facture_id=facture_id,
+            abonne_id=abonne_id,
+            type_envoi=TypeEnvoi.RECU,
+            telephone=telephone,
+        )
+
+        # Reçu PDF depuis Facturation (dégradation gracieuse : si indisponible,
+        # generer_recu_paiement_pdf renvoie (b"", "") et le message part seul).
+        pdf_bytes, pdf_filename = facturation_client.generer_recu_paiement_pdf(paiement_id, facture_id)
 
         return self._tenter_envoi(envoi, telephone, message, pdf_bytes=pdf_bytes, pdf_filename=pdf_filename)
 
