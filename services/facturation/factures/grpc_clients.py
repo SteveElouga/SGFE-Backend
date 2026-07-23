@@ -313,6 +313,57 @@ class PaiementServiceClient:
             )
             return None
 
+    def get_solde(self, facture_id: str) -> dict | None:
+        """Retourne la situation du solde d'une facture (total, payé, restant, statut).
+
+        Dégradation gracieuse : None si Paiement Service est inaccessible.
+        """
+        try:
+            s = self._stub.GetSolde(self._pb.FactureIdRequest(facture_id=facture_id))
+            return {
+                "facture_id": s.facture_id,
+                "montant_total": s.montant_total,
+                "montant_paye": s.montant_paye,
+                "solde_restant": s.solde_restant,
+                "statut": s.statut,
+            }
+        except Exception as exc:
+            logger.warning(
+                "Paiement Service inaccessible — GetSolde ignoré",
+                extra={"facture_id": facture_id, "error": str(exc)},
+            )
+            return None
+
+    def list_paiements(self, facture_id: str, abonne_id: str = "") -> list[dict]:
+        """Retourne les versements enregistrés pour une facture (le plus récent
+        des champs `annule` permet de distinguer les paiements annulés).
+
+        Dégradation gracieuse : liste vide si Paiement Service est inaccessible.
+        """
+        try:
+            resp = self._stub.ListPaiements(self._pb.ListPaiementsRequest(facture_id=facture_id, abonne_id=abonne_id))
+            return [
+                {
+                    "paiement_id": p.paiement_id,
+                    "facture_id": p.facture_id,
+                    "abonne_id": p.abonne_id,
+                    "montant": p.montant,
+                    "date_paiement": p.date_paiement,
+                    "mode_paiement": p.mode_paiement,
+                    "reference_transaction": p.reference_transaction,
+                    "created_at": p.created_at,
+                    "enregistre_par": p.enregistre_par,
+                    "annule": p.annule,
+                }
+                for p in resp.paiements
+            ]
+        except Exception as exc:
+            logger.warning(
+                "Paiement Service inaccessible — ListPaiements vide",
+                extra={"facture_id": facture_id, "error": str(exc)},
+            )
+            return []
+
 
 class ReportingServiceClient:
     """Client gRPC vers Reporting Service (port 50057) — pousse les stats de facturation.

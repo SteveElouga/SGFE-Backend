@@ -270,6 +270,11 @@ class FacturationServiceClient:
     def generer_synthese_campagne_pdf(self, campagne_id: str) -> facturation_pb.PDFResponse:
         return self._stub.GenererSyntheseCampagnePDF(facturation_pb.CampagneIdRequest(campagne_id=campagne_id))
 
+    def generer_recu_paiement_pdf(self, paiement_id: str, facture_id: str) -> facturation_pb.PDFResponse:
+        return self._stub.GenererRecuPaiementPDF(
+            facturation_pb.GenererRecuRequest(paiement_id=paiement_id, facture_id=facture_id)
+        )
+
     def update_statut_facture(self, facture_id: str, statut: str) -> facturation_pb.FactureResponse:
         return self._stub.UpdateStatutFacture(facturation_pb.UpdateStatutRequest(facture_id=facture_id, statut=statut))
 
