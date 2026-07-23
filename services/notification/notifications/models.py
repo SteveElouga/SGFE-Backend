@@ -23,6 +23,7 @@ class TypeEnvoi(models.TextChoices):
     AVERTISSEMENT = "AVERTISSEMENT", "Avertissement"
     SUSPENSION = "SUSPENSION", "Suspension"
     RETABLISSEMENT = "RETABLISSEMENT", "Rétablissement"
+    RECU = "RECU", "Reçu"
 
 
 class Envoi(models.Model):

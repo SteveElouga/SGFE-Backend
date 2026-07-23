@@ -60,6 +60,23 @@ class FacturationServiceClient:
             logger.warning("Impossible de récupérer le PDF facture %s : %s", facture_id, exc)
             return b"", ""
 
+    def generer_recu_paiement_pdf(self, paiement_id: str, facture_id: str) -> tuple[bytes, str]:
+        """Récupère le reçu PDF d'un versement depuis Facturation Service.
+
+        Returns:
+            Tuple (pdf_content: bytes, filename: str).
+            Retourne (b"", "") en cas d'erreur — dégradation gracieuse (le message
+            de confirmation est tout de même envoyé sans la pièce jointe).
+        """
+        try:
+            response = self._stub.GenererRecuPaiementPDF(
+                self._pb.GenererRecuRequest(paiement_id=paiement_id, facture_id=facture_id)
+            )
+            return response.pdf_content, response.filename
+        except grpc.RpcError as exc:
+            logger.warning("Impossible de récupérer le reçu PDF (paiement %s) : %s", paiement_id, exc)
+            return b"", ""
+
 
 class AbonneServiceClient:
     """Client gRPC vers Abonné Service (port 50052)."""

@@ -133,6 +133,31 @@ class TestEnregistrerPaiementRPC(TestCase):
         self.assertAlmostEqual(response.montant, 100.00)
         self.assertEqual(response.enregistre_par, "user-001")
 
+    @patch("paiements.grpc_server.NotificationServiceClient")
+    @patch("paiements.grpc_server.FacturationServiceClient")
+    def test_enregistrer_paiement_declenche_envoi_recu(self, mock_fact_cls, mock_notif_cls) -> None:
+        """Après enregistrement, le reçu part automatiquement à l'abonné (WhatsApp)."""
+        _creer_solde("facture-recu", "abonne-001", 300.00)
+        servicer = PaiementServicer()
+        request = pb.EnregistrerPaiementRequest(
+            facture_id="facture-recu",
+            abonne_id="abonne-001",
+            montant=120.00,
+            date_paiement="2026-06-20",
+            mode_paiement="MOBILE_MONEY",
+            reference_transaction="MM-1",
+            enregistre_par="user-001",
+        )
+        response = servicer.EnregistrerPaiement(request, _mock_context())
+
+        mock_notif_cls.return_value.envoyer_recu.assert_called_once()
+        kwargs = mock_notif_cls.return_value.envoyer_recu.call_args.kwargs
+        self.assertEqual(kwargs["paiement_id"], response.paiement_id)
+        self.assertEqual(kwargs["facture_id"], "facture-recu")
+        self.assertEqual(kwargs["abonne_id"], "abonne-001")
+        self.assertAlmostEqual(kwargs["montant"], 120.00)
+        self.assertAlmostEqual(kwargs["solde_restant"], 180.00)  # 300 - 120
+
     @patch("paiements.grpc_server.publish_reporting_event")
     @patch("paiements.grpc_server.FacturationServiceClient")
     def test_enregistrer_paiement_publie_stats_reporting(self, mock_fact_cls, mock_pub) -> None:
