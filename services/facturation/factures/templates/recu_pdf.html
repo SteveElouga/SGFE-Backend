@@ -1,0 +1,231 @@
+{% comment %}
+============================================================================
+TEMPLATE REÇU DE PAIEMENT — AquaBill (WeasyPrint)
+----------------------------------------------------------------------------
+À rendre via render_to_string('recu_pdf.html', context) puis
+HTML(string=...).write_pdf(). Compatible WeasyPrint 69 :
+  - aucun JavaScript (layout 100% statique) ;
+  - flexbox + tables uniquement (pas de CSS Grid) ;
+  - police embarquée localement (voir @font-face), aucune dépendance réseau.
+  - format A5 (148×210mm), marges 11mm, aligné sur la maquette du designer.
+
+CONTRAT DE CONTEXTE (valeurs numériques DÉJÀ FORMATÉES en chaînes,
+séparateur de milliers = espace, ex. « 21 500 FCFA ») :
+
+societe        .nom .adresse_ligne1 .telephone
+recu           .numero .date
+abonne         .nom_complet .numero .lieu
+enregistrement .date_heure .par .facture_ref
+versement      .montant .montant_lettres .mode .reference .a_reference
+situation      .montant_total .total_verse .nb_versements_label .solde_restant
+               .solde_positif .statut_label .statut_texte .statut_fond
+               .statut_bordure
+note           (chaîne, adaptée partiel / soldé)
+============================================================================
+{% endcomment %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Reçu {{ recu.numero }}</title>
+  <style>
+    /* Montserrat embarquée localement (OFL) — fichiers dans templates/fonts/,
+       résolus via le base_url passé à WeasyPrint. Rendu offline déterministe. */
+    @font-face { font-family: 'Montserrat'; font-weight: 400;
+      src: url('fonts/Montserrat-Regular.woff2') format('woff2'); }
+    @font-face { font-family: 'Montserrat'; font-weight: 500;
+      src: url('fonts/Montserrat-Medium.woff2') format('woff2'); }
+    @font-face { font-family: 'Montserrat'; font-weight: 600;
+      src: url('fonts/Montserrat-SemiBold.woff2') format('woff2'); }
+    @font-face { font-family: 'Montserrat'; font-weight: 700;
+      src: url('fonts/Montserrat-Bold.woff2') format('woff2'); }
+    @font-face { font-family: 'Montserrat'; font-weight: 800;
+      src: url('fonts/Montserrat-ExtraBold.woff2') format('woff2'); }
+
+    @page {
+      size: A5;
+      margin: 11mm 11mm 16mm;
+      @bottom-center { content: element(pageBottom); }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: 'Montserrat', 'Helvetica Neue', Arial, sans-serif;
+      color: #0f172a; margin: 0; font-size: 10.5px; line-height: 1.4;
+    }
+
+    /* ── En-tête ──────────────────────────────────────────────────────────── */
+    .header { display: flex; justify-content: space-between; align-items: flex-start; }
+    .brand { display: flex; gap: 10px; align-items: center; }
+    .brand__name { font-size: 16px; font-weight: 800; color: #0f1c3d; }
+    .brand__meta { font-size: 9.5px; color: #64748b; margin-top: 2px; line-height: 1.5; }
+    .doc { text-align: right; }
+    .doc__badge {
+      display: inline-block; background: #f0fdf4; border: 1.5px solid #0e9f6e;
+      border-radius: 8px; padding: 5px 12px; font-size: 13px; font-weight: 800;
+      color: #15803d; letter-spacing: 1.5px;
+    }
+    .doc__num { font-size: 11px; font-weight: 700; color: #0e9f6e; margin-top: 5px; }
+
+    .rule { height: 3px; border-radius: 2px; margin: 14px 0 16px;
+      background: linear-gradient(90deg, #0f1c3d 0%, #0e9f6e 100%); }
+
+    /* ── Cartes abonné / enregistrement ───────────────────────────────────── */
+    .cards { display: flex; gap: 10px; }
+    .card { flex: 1; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; }
+    .card__label { font-size: 8.5px; font-weight: 700; color: #94a3b8;
+      letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 7px; }
+    .card__title { font-size: 13px; font-weight: 700; color: #0f172a; margin-bottom: 2px; }
+    .card__body { font-size: 10px; color: #64748b; line-height: 1.7; }
+
+    /* ── Bloc montant reçu ────────────────────────────────────────────────── */
+    .amount { display: flex; justify-content: space-between; align-items: center;
+      background: #f0fdf4; border: 1.5px solid #0e9f6e; border-radius: 12px;
+      padding: 16px 18px; margin-top: 14px; }
+    .amount__label { font-size: 9px; font-weight: 700; color: #15803d;
+      letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 5px; }
+    .amount__value { font-size: 28px; font-weight: 800; color: #15803d; }
+    .amount__value span { font-size: 14px; font-weight: 600; }
+    .amount__words { font-size: 9.5px; font-weight: 500; color: #4d7c0f; margin-top: 4px; }
+    .amount__right { text-align: right; }
+    .amount__mode { display: inline-block; background: #fff; border: 1px solid #bbf7d0;
+      border-radius: 8px; padding: 7px 12px; margin-bottom: 6px;
+      font-size: 11px; font-weight: 600; color: #15803d; }
+    .amount__ref { font-size: 9px; color: #64748b; }
+    .amount__ref b { color: #0f172a; }
+
+    /* ── Table situation de la facture ────────────────────────────────────── */
+    .situation { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    .situation th { padding: 8px 14px; font-size: 8.5px; font-weight: 700; color: #fff;
+      letter-spacing: 1px; text-transform: uppercase; background: #0f1c3d; }
+    .situation th.l { text-align: left; }
+    .situation th.r { text-align: right; }
+    .situation td { padding: 10px 14px; font-size: 11px; border-bottom: 1px solid #e2e8f0; }
+    .situation td.lbl { color: #64748b; font-weight: 500; }
+    .situation td.val { text-align: right; font-weight: 600; color: #0f172a; }
+    .situation tr.paid td.val { color: #15803d; }
+    .situation tr.total td.lbl { font-weight: 700; color: #0f172a; }
+    .situation tr.total td { border-bottom: none; }
+    .situation tr.total td.val { font-size: 13px; font-weight: 800; }
+    .situation tr.total td.val.due { color: #dc2626; }
+    .situation tr.total td.val.ok { color: #15803d; }
+
+    .status { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+    .status__note { font-size: 9px; color: #94a3b8; }
+    .status__badge { border-radius: 6px; padding: 4px 12px; font-size: 9.5px; font-weight: 700;
+      letter-spacing: .5px; text-transform: uppercase; }
+
+    /* ── Signatures ───────────────────────────────────────────────────────── */
+    .signs { display: flex; gap: 12px; margin-top: 20px; }
+    .sign { flex: 1; border: 1.5px dashed #cbd5e1; border-radius: 10px; height: 76px; padding: 10px 12px; }
+    .sign span { font-size: 9px; font-weight: 600; color: #94a3b8;
+      letter-spacing: 1px; text-transform: uppercase; }
+
+    /* ── Note ─────────────────────────────────────────────────────────────── */
+    .note { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+      padding: 11px 14px; margin-top: 14px; font-size: 9.5px; color: #64748b; line-height: 1.7; }
+
+    /* ── Pied de page répété (ancré en bas de chaque page) ─────────────────── */
+    .foot { position: running(pageBottom); display: flex; justify-content: space-between;
+      align-items: center; border-top: 2px solid #0e9f6e; padding-top: 7px; }
+    .foot span { font-size: 8.5px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+
+  <!-- En-tête : société + badge REÇU -->
+  <div class="header">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 38 38" fill="none">
+        <path d="M19 3C19 3 8 15.5 8 23C8 30.18 13.04 34 19 34C24.96 34 30 30.18 30 23C30 15.5 19 3 19 3Z" fill="#0f1c3d" fill-opacity=".95"/>
+        <path d="M19 16C19 16 14 21.5 14 25C14 27.76 16.24 30 19 30C21.76 30 24 27.76 24 25C24 21.5 19 16 19 16Z" fill="#0e9f6e" fill-opacity=".85"/>
+      </svg>
+      <div>
+        <div class="brand__name">{{ societe.nom }}</div>
+        <div class="brand__meta">
+          {% if societe.adresse_ligne1 %}{{ societe.adresse_ligne1 }}{% endif %}{% if societe.telephone %} · {{ societe.telephone }}{% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="doc">
+      <div class="doc__badge">REÇU</div>
+      <div class="doc__num">{{ recu.numero }}</div>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <!-- Cartes : reçu de / enregistré -->
+  <div class="cards">
+    <div class="card">
+      <div class="card__label">Reçu de</div>
+      <div class="card__title">{{ abonne.nom_complet }}</div>
+      <div class="card__body">Abonné N° {{ abonne.numero }}{% if abonne.lieu %}<br>{{ abonne.lieu }}{% endif %}</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Enregistré</div>
+      <div class="card__title">{{ enregistrement.date_heure }}</div>
+      <div class="card__body">Par : {{ enregistrement.par }}<br>Facture : {{ enregistrement.facture_ref }}</div>
+    </div>
+  </div>
+
+  <!-- Montant reçu -->
+  <div class="amount">
+    <div>
+      <div class="amount__label">Montant reçu</div>
+      <div class="amount__value">{{ versement.montant }} <span>FCFA</span></div>
+      <div class="amount__words">{{ versement.montant_lettres }}</div>
+    </div>
+    <div class="amount__right">
+      <div class="amount__mode">{{ versement.mode }}</div>
+      {% if versement.a_reference %}<div class="amount__ref">Réf. transaction : <b>{{ versement.reference }}</b></div>{% endif %}
+    </div>
+  </div>
+
+  <!-- Situation de la facture -->
+  <table class="situation">
+    <thead>
+      <tr>
+        <th class="l">Situation de la facture</th>
+        <th class="r">Montant</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="lbl">Montant total de la facture</td>
+        <td class="val">{{ situation.montant_total }}</td>
+      </tr>
+      <tr class="paid">
+        <td class="lbl">Total versé à ce jour ({{ situation.nb_versements_label }})</td>
+        <td class="val">{{ situation.total_verse }}</td>
+      </tr>
+      <tr class="total">
+        <td class="lbl">Solde restant dû</td>
+        <td class="val {% if situation.solde_positif %}due{% else %}ok{% endif %}">{{ situation.solde_restant }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="status">
+    <span class="status__note">Statut mis à jour automatiquement après ce versement</span>
+    <span class="status__badge" style="color:{{ situation.statut_texte }};background:{{ situation.statut_fond }};border:1px solid {{ situation.statut_bordure }}">{{ situation.statut_label }}</span>
+  </div>
+
+  <!-- Signatures -->
+  <div class="signs">
+    <div class="sign"><span>Signature du comptable</span></div>
+    <div class="sign"><span>Signature de l'abonné</span></div>
+  </div>
+
+  <!-- Note -->
+  <div class="note">{{ note }}</div>
+
+  <!-- Pied de page répété -->
+  <div class="foot">
+    <span>{{ societe.nom }} — Reçu généré par AquaBill</span>
+    <span>{{ recu.numero }} · {{ recu.date }}</span>
+  </div>
+
+</body>
+</html>

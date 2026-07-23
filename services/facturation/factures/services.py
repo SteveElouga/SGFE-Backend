@@ -511,3 +511,93 @@ class SyntheseCampagneService:
         pdf_bytes = generer_synthese_pdf_bytes(context)
         filename = f"synthese-{campagne_id}-{date_edition.isoformat()}.pdf"
         return pdf_bytes, filename
+
+
+class RecuPaiementService:
+    """Génère le PDF « Reçu de paiement » d'un versement (ADMIN/COMPTABLE).
+
+    Assemble le versement + la situation du solde (Paiement Service, RPC
+    ListPaiements/GetSolde existants), l'identité de l'abonné (Abonné Service),
+    la facture (base locale) et les infos société (Config Service), puis met en
+    page via WeasyPrint. Lève ObjectDoesNotExist si le paiement est introuvable
+    (converti en NOT_FOUND côté gRPC) — un reçu ne peut exister sans son
+    versement. Dégradation gracieuse pour les données annexes (identité,
+    société) : les champs manquants sont laissés vides.
+    """
+
+    def __init__(self, paiement_client=None, abonne_client=None, config_client=None) -> None:
+        self._repo = FactureRepository()
+        from .grpc_clients import AbonneServiceClient, ConfigServiceClient, PaiementServiceClient
+
+        self._paiement_client = paiement_client or PaiementServiceClient()
+        self._abonne_client = abonne_client or AbonneServiceClient()
+        self._config_client = config_client or ConfigServiceClient()
+
+    @staticmethod
+    def _numero_recu(facture, versement: dict, paiements: list[dict]) -> str:
+        """Numéro de reçu stable : REC-<suffixe facture>-<rang chronologique>.
+
+        Le rang est calculé sur l'ensemble des versements de la facture triés par
+        date de création (annulés inclus) afin qu'il ne change jamais pour un
+        versement donné, même si un versement antérieur est annulé plus tard.
+        """
+        numero = facture.numero_facture or ""
+        suffixe = numero.split("-", 1)[1] if "-" in numero else numero
+        ordonnes = sorted(paiements, key=lambda p: p.get("created_at") or "")
+        rang = next(
+            (i for i, p in enumerate(ordonnes, start=1) if p["paiement_id"] == versement["paiement_id"]),
+            1,
+        )
+        return f"REC-{suffixe}-{rang}"
+
+    @staticmethod
+    def _heure(created_at: str) -> str:
+        """Extrait « HHhMM » d'un horodatage ISO ('' si illisible)."""
+        hhmm = (created_at or "")[11:16]
+        if len(hhmm) == 5 and hhmm[2] == ":":
+            return f"{hhmm[:2]}h{hhmm[3:]}"
+        return ""
+
+    def generer_recu_pdf(self, paiement_id: str, facture_id: str) -> tuple[bytes, str]:
+        """Retourne (pdf_bytes, filename) du reçu du versement `paiement_id`."""
+        from .pdf_generator import _periode_fr
+        from .recu_generator import DonneesRecu, build_recu_context, generer_recu_pdf_bytes
+
+        paiements = self._paiement_client.list_paiements(facture_id)
+        versement = next((p for p in paiements if p.get("paiement_id") == paiement_id), None)
+        if versement is None:
+            raise ObjectDoesNotExist(f"Paiement introuvable : {paiement_id}")
+
+        solde = self._paiement_client.get_solde(facture_id) or {}
+        nb_versements = sum(1 for p in paiements if not p.get("annule"))
+
+        facture = self._repo.get_by_id(facture_id)  # ObjectDoesNotExist si absente
+        abonne_id = versement.get("abonne_id") or ""
+        identite = self._abonne_client.get_abonne(abonne_id) if abonne_id else None
+        societe = self._config_client.get_infos_societe()
+
+        donnees = DonneesRecu(
+            numero_recu=self._numero_recu(facture, versement, paiements),
+            date_paiement=versement.get("date_paiement") or "",
+            montant=Decimal(str(versement.get("montant") or 0)),
+            mode_paiement=versement.get("mode_paiement") or "",
+            reference_transaction=versement.get("reference_transaction") or "",
+            enregistre_par=versement.get("enregistre_par") or "",
+            montant_total=Decimal(str(solde.get("montant_total") or facture.montant)),
+            total_verse=Decimal(str(solde.get("montant_paye") or 0)),
+            nb_versements=nb_versements or 1,
+            solde_restant=Decimal(str(solde.get("solde_restant") or 0)),
+            statut=solde.get("statut") or facture.statut,
+            numero_facture=facture.numero_facture,
+            facture_periode=_periode_fr(facture.date_releve.isoformat()),
+            abonne_nom=identite.nom if identite else "",
+            abonne_prenom=identite.prenom if identite else "",
+            numero_abonne=identite.numero_abonne if identite else "",
+            quartier=identite.quartier if identite else "",
+            camp=identite.camp if identite else "",
+            abonne_id=abonne_id,
+            heure_paiement=self._heure(versement.get("created_at") or ""),
+        )
+        context = build_recu_context(donnees, societe)
+        pdf_bytes = generer_recu_pdf_bytes(context)
+        return pdf_bytes, f"{donnees.numero_recu}.pdf"

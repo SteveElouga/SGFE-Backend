@@ -191,3 +191,37 @@ def synthese_pdf(request: HttpRequest) -> FileResponse | JsonResponse:
         as_attachment=False,
         filename=pdf_resp.filename or f"synthese-{campagne_id}.pdf",
     )
+
+
+def recu_paiement_pdf(request: HttpRequest, paiement_id: str) -> FileResponse | JsonResponse:
+    """Exporte le reçu PDF d'un versement — ADMIN, COMPTABLE.
+
+    Chemin : `/paiements/<paiement_id>/recu/pdf/?facture_id=<uuid>`. Le
+    Facturation Service assemble le versement + la situation du solde (Paiement
+    Service), l'identité de l'abonné (Abonné Service) et la facture (base locale)
+    puis rend un document A5 (WeasyPrint).
+    """
+    if request.method != "GET":
+        return JsonResponse({"erreur": "Méthode non autorisée."}, status=405)
+    erreur = _authoriser(request)
+    if erreur is not None:
+        return erreur
+
+    facture_id = request.GET.get("facture_id", "").strip()
+    if not facture_id:
+        return JsonResponse({"erreur": "Paramètre facture_id requis."}, status=400)
+
+    try:
+        pdf_resp = facturation_client.generer_recu_paiement_pdf(paiement_id, facture_id)
+    except grpc.RpcError as exc:
+        if exc.code() == grpc.StatusCode.NOT_FOUND:
+            return JsonResponse({"erreur": "Paiement introuvable."}, status=404)
+        logger.error("GenererRecuPaiementPDF gRPC error", extra={"paiement_id": paiement_id, "error": str(exc)})
+        return JsonResponse({"erreur": "Reçu indisponible."}, status=503)
+
+    return FileResponse(
+        io.BytesIO(pdf_resp.pdf_content),
+        content_type="application/pdf",
+        as_attachment=False,
+        filename=pdf_resp.filename or f"recu-{paiement_id}.pdf",
+    )

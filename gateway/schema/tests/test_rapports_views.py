@@ -190,3 +190,61 @@ class SynthesePdfViewTests(SimpleTestCase):
         ):
             response = self.client.get(self._URL, {"campagne_id": _CID}, **_AUTH)
         self.assertEqual(response.status_code, 503)
+
+
+class RecuPaiementPdfViewTests(SimpleTestCase):
+    _URL = "/paiements/pay-1/recu/pdf/"
+    _FID = {"facture_id": "fac-1"}
+
+    def test_sans_token_retourne_401(self):
+        response = self.client.get(self._URL, self._FID)
+        self.assertEqual(response.status_code, 401)
+
+    def test_role_insuffisant_retourne_403(self):
+        with patch.object(auth_client, "validate_token", return_value=make_user(role="AGENT")):
+            response = self.client.get(self._URL, self._FID, **_AUTH)
+        self.assertEqual(response.status_code, 403)
+
+    def test_facture_id_manquant_retourne_400(self):
+        with patch.object(auth_client, "validate_token", return_value=make_user()):
+            response = self.client.get(self._URL, **_AUTH)
+        self.assertEqual(response.status_code, 400)
+
+    def test_comptable_recupere_le_pdf(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=make_user(role="COMPTABLE")),
+            patch.object(
+                facturation_client,
+                "generer_recu_paiement_pdf",
+                return_value=Mock(pdf_content=b"%PDF recu", filename="REC-2026-06-0002-1.pdf"),
+            ) as mock_gen,
+        ):
+            response = self.client.get(self._URL, self._FID, **_AUTH)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertEqual(b"".join(response.streaming_content), b"%PDF recu")
+        mock_gen.assert_called_once_with("pay-1", "fac-1")
+
+    def test_paiement_introuvable_retourne_404(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
+            patch.object(
+                facturation_client,
+                "generer_recu_paiement_pdf",
+                side_effect=_FakeRpcError(grpc.StatusCode.NOT_FOUND),
+            ),
+        ):
+            response = self.client.get(self._URL, self._FID, **_AUTH)
+        self.assertEqual(response.status_code, 404)
+
+    def test_erreur_service_retourne_503(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
+            patch.object(
+                facturation_client,
+                "generer_recu_paiement_pdf",
+                side_effect=_FakeRpcError(grpc.StatusCode.INTERNAL),
+            ),
+        ):
+            response = self.client.get(self._URL, self._FID, **_AUTH)
+        self.assertEqual(response.status_code, 503)

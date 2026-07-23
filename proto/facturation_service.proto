@@ -10,6 +10,8 @@ service FacturationService {
   rpc GenererBilanImpayesPDF (EmptyRequest) returns (PDFResponse);
   // Synthèse chiffrée d'une campagne (stats 3 domaines via Reporting) — écran 13.
   rpc GenererSyntheseCampagnePDF (CampagneIdRequest) returns (PDFResponse);
+  // Reçu d'un versement (document A5) — back-office ADMIN/COMPTABLE.
+  rpc GenererRecuPaiementPDF (GenererRecuRequest) returns (PDFResponse);
   rpc UpdateStatutFacture (UpdateStatutRequest) returns (FactureResponse);
   rpc GetTarifActuel (EmptyRequest) returns (TarifResponse);
   rpc UpdateTarif (UpdateTarifRequest) returns (TarifResponse);
@@ -24,6 +26,10 @@ message GenererFacturesRequest {
 
 message FactureIdRequest { string facture_id = 1; }
 message CampagneIdRequest { string campagne_id = 1; }
+message GenererRecuRequest {
+  string paiement_id = 1;
+  string facture_id = 2;
+}
 
 message ListFacturesRequest {
   string campagne_id = 1;

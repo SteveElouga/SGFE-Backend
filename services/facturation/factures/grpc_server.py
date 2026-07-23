@@ -19,7 +19,14 @@ from .event_publisher import publish_facture_event, publish_tarif_event
 from .grpc_clients import CampagneServiceClient, ConfigServiceClient
 from .grpc_interceptors import ErrorHandlingInterceptor
 from .serializers import facture_to_proto, tarif_to_proto
-from .services import BilanImpayesService, FactureService, ReleveData, SyntheseCampagneService, TarifService
+from .services import (
+    BilanImpayesService,
+    FactureService,
+    RecuPaiementService,
+    ReleveData,
+    SyntheseCampagneService,
+    TarifService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +47,7 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
         self._facture_svc = FactureService()
         self._bilan_svc = BilanImpayesService()
         self._synthese_svc = SyntheseCampagneService()
+        self._recu_svc = RecuPaiementService()
         self._campagne_client = CampagneServiceClient()
         self._config_client = ConfigServiceClient()
 
@@ -168,6 +176,15 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
     ) -> pb.PDFResponse:
         """Génère le PDF de synthèse d'une campagne (écran 13, stats 3 domaines)."""
         pdf_bytes, filename = self._synthese_svc.generer_synthese_campagne_pdf(request.campagne_id)
+        return pb.PDFResponse(pdf_content=pdf_bytes, filename=filename)
+
+    def GenererRecuPaiementPDF(
+        self,
+        request: pb.GenererRecuRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.PDFResponse:
+        """Génère le PDF du reçu d'un versement (document A5, ADMIN/COMPTABLE)."""
+        pdf_bytes, filename = self._recu_svc.generer_recu_pdf(request.paiement_id, request.facture_id)
         return pb.PDFResponse(pdf_content=pdf_bytes, filename=filename)
 
     def UpdateStatutFacture(
