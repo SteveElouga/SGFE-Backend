@@ -24,9 +24,12 @@ WORKDIR /app
 # Bibliothèques natives requises par WeasyPrint à l'exécution (Pango/Cairo/
 # GDK-PixBuf) + polices pour que le texte du PDF soit rendu (Liberation Sans
 # donne un rendu proche de la maquette, DejaVu couvre les glyphes manquants).
-# apt-get upgrade applique aussi les correctifs de sécurité publiés depuis la
-# construction de l'image de base (cohérent avec les autres services).
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+# `apt-get upgrade` est placé APRÈS l'install : plusieurs de ces paquets tirent
+# des dépendances transitives (ex. libtiff6 via libgdk-pixbuf) qui, upgradées
+# avant leur installation, resteraient à la version vulnérable de l'image de
+# base — l'upgrade final applique donc les correctifs de sécurité à TOUT ce qui
+# est installé (corrige notamment CVE-2026-12912 sur libtiff6).
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libpango-1.0-0 \
     libpangoft2-1.0-0 \
     libpangocairo-1.0-0 \
@@ -35,6 +38,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     libffi8 \
     fonts-dejavu-core \
     fonts-liberation2 \
+    && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --uid 1000 appuser
