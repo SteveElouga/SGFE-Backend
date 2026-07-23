@@ -9,6 +9,10 @@ class ModePaiement(models.TextChoices):
     ESPECES = "ESPECES", "Espèces"
     MOBILE_MONEY = "MOBILE_MONEY", "Mobile Money"
     VIREMENT = "VIREMENT", "Virement bancaire"
+    # Imputation automatique d'un avoir (report de trop-perçu) — jamais saisi
+    # manuellement par un comptable, généré par le service à l'initialisation
+    # d'une facture.
+    AVOIR = "AVOIR", "Avoir (report de trop-perçu)"
 
 
 class StatutSolde(models.TextChoices):
@@ -84,6 +88,26 @@ class SoldeFacture(models.Model):
 
     def __str__(self) -> str:
         return f"Solde facture {self.facture_id} — {self.statut} ({self.solde_restant} restant)"
+
+
+class AvoirAbonne(models.Model):
+    """Crédit (avoir) disponible d'un abonné — une ligne par abonné.
+
+    Alimenté par les trop-perçus (versement supérieur au solde restant) et
+    imputé automatiquement sur les prochaines factures de l'abonné, à leur
+    initialisation. La contrainte de clé primaire sur `abonne_id` garantit un
+    unique solde de crédit par abonné.
+    """
+
+    abonne_id = models.CharField(max_length=36, primary_key=True)
+    montant = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "avoirs_abonnes"
+
+    def __str__(self) -> str:
+        return f"Avoir abonné {self.abonne_id} — {self.montant} FCFA"
 
 
 class SuiviImpaye(models.Model):

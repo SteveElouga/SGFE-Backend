@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.test import TestCase
 
-from paiements.models import ModePaiement, SoldeFacture, StatutSolde, SuiviImpaye
+from paiements.models import AvoirAbonne, ModePaiement, SoldeFacture, StatutSolde, SuiviImpaye
 from paiements.repositories import SoldeFactureRepository
 from paiements.services import ImpayeService, PaiementService
 
@@ -227,18 +227,72 @@ class TestEnregistrerPaiement(TestCase):
                 enregistre_par="user-001",
             )
 
-    def test_surpaiement_leve_erreur(self) -> None:
-        """Un montant supérieur au solde restant lève une ValidationError."""
-        with self.assertRaises(ValidationError):
-            self.svc.enregistrer_paiement(
-                facture_id="facture-001",
-                abonne_id="abonne-001",
-                montant=400.00,
-                date_paiement=date(2026, 6, 20),
-                mode_paiement=ModePaiement.ESPECES,
-                reference_transaction="",
-                enregistre_par="user-001",
-            )
+    def test_surpaiement_solde_la_facture_et_credite_lavoir(self) -> None:
+        """Un versement supérieur au solde restant est accepté : la facture est
+        soldée avec la part imputable, l'excédent est porté au crédit de l'abonné."""
+        paiement, solde = self.svc.enregistrer_paiement(
+            facture_id="facture-001",
+            abonne_id="abonne-001",
+            montant=400.00,  # solde restant 300 → excédent de 100
+            date_paiement=date(2026, 6, 20),
+            mode_paiement=ModePaiement.ESPECES,
+            reference_transaction="",
+            enregistre_par="user-001",
+        )
+        self.assertEqual(paiement.montant, Decimal("400.00"))  # montant réellement reçu
+        self.assertEqual(solde.solde_restant, Decimal("0"))  # jamais négatif
+        self.assertEqual(solde.statut, StatutSolde.PAYEE)
+        self.assertEqual(AvoirAbonne.objects.get(abonne_id="abonne-001").montant, Decimal("100.00"))
+
+    def test_avoir_reporte_integralement_sur_la_prochaine_facture(self) -> None:
+        """Un avoir disponible est imputé à l'initialisation de la facture
+        suivante, tracé comme un versement de mode AVOIR."""
+        self.svc.enregistrer_paiement(
+            facture_id="facture-001",
+            abonne_id="abonne-001",
+            montant=400.00,
+            date_paiement=date(2026, 6, 20),
+            mode_paiement=ModePaiement.ESPECES,
+            reference_transaction="",
+            enregistre_par="user-001",
+        )  # → 100 d'avoir pour abonne-001
+        solde = self.svc.initialiser_solde(
+            facture_id="facture-002",
+            abonne_id="abonne-001",
+            montant_total=60.00,
+            date_limite_paiement=date(2026, 8, 1),
+        )
+        self.assertEqual(solde.solde_restant, Decimal("0"))
+        self.assertEqual(solde.statut, StatutSolde.PAYEE)
+        avoir_paiements = [
+            p for p in self.svc.list_paiements(facture_id="facture-002") if p.mode_paiement == ModePaiement.AVOIR
+        ]
+        self.assertEqual(len(avoir_paiements), 1)
+        self.assertEqual(avoir_paiements[0].montant, Decimal("60.00"))
+        self.assertEqual(AvoirAbonne.objects.get(abonne_id="abonne-001").montant, Decimal("40.00"))  # 100 - 60
+
+    def test_avoir_insuffisant_rend_la_facture_partielle(self) -> None:
+        """Un avoir inférieur au montant de la facture la rend partielle et
+        épuise le crédit."""
+        self.svc.enregistrer_paiement(
+            facture_id="facture-001",
+            abonne_id="abonne-001",
+            montant=400.00,
+            date_paiement=date(2026, 6, 20),
+            mode_paiement=ModePaiement.ESPECES,
+            reference_transaction="",
+            enregistre_par="user-001",
+        )  # → 100 d'avoir
+        solde = self.svc.initialiser_solde(
+            facture_id="facture-003",
+            abonne_id="abonne-001",
+            montant_total=250.00,
+            date_limite_paiement=date(2026, 8, 1),
+        )
+        self.assertEqual(solde.montant_paye, Decimal("100.00"))
+        self.assertEqual(solde.solde_restant, Decimal("150.00"))
+        self.assertEqual(solde.statut, StatutSolde.PARTIELLE)
+        self.assertEqual(AvoirAbonne.objects.get(abonne_id="abonne-001").montant, Decimal("0"))
 
     def test_reference_obligatoire_mobile_money(self) -> None:
         """La référence de transaction est obligatoire pour MOBILE_MONEY."""
