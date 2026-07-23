@@ -5,7 +5,7 @@ import strawberry.types
 
 from .context import require_role
 from .grpc_clients import paiement_client
-from .paiement_types import Paiement, paiement_from_grpc
+from .paiement_types import Avoir, Paiement, avoir_from_grpc, paiement_from_grpc
 
 
 @strawberry.type
@@ -55,4 +55,24 @@ class PaiementMutations:
                 annule_par=str(user.user_id),
             ),
             operateur=user.username,
+        )
+
+    @strawberry.mutation
+    def crediter_avoir(
+        self,
+        info: strawberry.types.Info,
+        abonne_id: str,
+        montant: float,
+        motif: str,
+    ) -> Avoir:
+        """Émet un avoir manuel (note de rectification) sur le compte d'un abonné —
+        reporté automatiquement sur ses prochaines factures — ADMIN, COMPTABLE."""
+        user = require_role(info, "ADMIN", "COMPTABLE")
+        return avoir_from_grpc(
+            paiement_client.crediter_avoir(
+                abonne_id=abonne_id,
+                montant=montant,
+                motif=motif,
+                cree_par=str(user.user_id),
+            )
         )

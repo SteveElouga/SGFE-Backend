@@ -52,3 +52,22 @@ def suivi_to_proto(s: SuiviImpaye) -> pb.SuiviImpayeResponse:
         etape_actuelle=s.etape_actuelle,
         resolu_le=s.resolu_le.isoformat() if s.resolu_le else "",
     )
+
+
+def avoir_to_proto(abonne_id: str, montant: object, mouvements: list) -> pb.AvoirResponse:
+    """Construit le message AvoirResponse (solde d'avoir + journal des mouvements)."""
+    return pb.AvoirResponse(
+        abonne_id=str(abonne_id),
+        montant=float(montant),
+        mouvements=[
+            pb.MouvementAvoir(
+                montant=float(m.montant),
+                type_mouvement=m.type_mouvement,
+                motif=m.motif or "",
+                facture_id=m.facture_id or "",
+                cree_par=m.cree_par or "",
+                created_at=m.created_at.isoformat() if m.created_at else "",
+            )
+            for m in mouvements
+        ],
+    )

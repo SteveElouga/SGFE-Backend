@@ -110,6 +110,40 @@ class AvoirAbonne(models.Model):
         return f"Avoir abonné {self.abonne_id} — {self.montant} FCFA"
 
 
+class TypeMouvementAvoir(models.TextChoices):
+    TROP_PERCU = "TROP_PERCU", "Trop-perçu"  # crédit auto (surpaiement)
+    RECTIFICATION = "RECTIFICATION", "Rectification"  # crédit manuel (correction / geste commercial)
+    IMPUTATION = "IMPUTATION", "Imputation"  # débit (avoir appliqué à une facture)
+
+
+class MouvementAvoir(models.Model):
+    """Ligne du journal des mouvements d'avoir d'un abonné (audit du crédit).
+
+    `montant` est toujours positif ; le sens est porté par `type_mouvement`
+    (TROP_PERCU / RECTIFICATION = crédit ; IMPUTATION = débit sur une facture).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    abonne_id = models.CharField(max_length=36)
+    montant = models.DecimalField(max_digits=12, decimal_places=2)
+    type_mouvement = models.CharField(max_length=20, choices=TypeMouvementAvoir.choices)
+    # Obligatoire pour une RECTIFICATION (correction de facture, geste commercial).
+    motif = models.CharField(max_length=255, blank=True, default="")
+    # Renseigné pour une IMPUTATION (facture sur laquelle l'avoir a été appliqué).
+    facture_id = models.CharField(max_length=36, blank=True, default="")
+    # Utilisateur Auth Service pour une RECTIFICATION, "system" pour les mouvements automatiques.
+    cree_par = models.CharField(max_length=36, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "mouvements_avoir"
+        indexes = [models.Index(fields=["abonne_id"])]
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Mouvement avoir {self.type_mouvement} {self.montant} — abonné {self.abonne_id}"
+
+
 class SuiviImpaye(models.Model):
     """Suivi des étapes de relance pour une facture impayée."""
 

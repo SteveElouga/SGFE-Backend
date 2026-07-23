@@ -101,3 +101,39 @@ def suivi_from_grpc(r) -> SuiviImpaye:
         etape_actuelle=r.etape_actuelle,
         resolu_le=r.resolu_le,
     )
+
+
+@strawberry.type
+class MouvementAvoir:
+    montant: float
+    # TROP_PERCU (surpaiement) | RECTIFICATION (avoir manuel) | IMPUTATION (appliqué à une facture)
+    type_mouvement: str
+    motif: str
+    facture_id: str
+    cree_par: str
+    created_at: str
+
+
+@strawberry.type
+class Avoir:
+    abonne_id: str
+    montant: float  # solde d'avoir disponible
+    mouvements: list[MouvementAvoir]
+
+
+def avoir_from_grpc(r) -> Avoir:
+    return Avoir(
+        abonne_id=r.abonne_id,
+        montant=r.montant,
+        mouvements=[
+            MouvementAvoir(
+                montant=m.montant,
+                type_mouvement=m.type_mouvement,
+                motif=m.motif,
+                facture_id=m.facture_id,
+                cree_par=m.cree_par,
+                created_at=m.created_at,
+            )
+            for m in r.mouvements
+        ],
+    )

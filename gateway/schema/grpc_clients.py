@@ -333,6 +333,19 @@ class PaiementServiceClient:
     def get_suivi_impaye(self, facture_id: str) -> paiement_pb.SuiviImpayeResponse:
         return self._stub.GetSuiviImpaye(paiement_pb.FactureIdRequest(facture_id=facture_id))
 
+    def crediter_avoir(self, abonne_id: str, montant: float, motif: str, cree_par: str) -> paiement_pb.AvoirResponse:
+        return self._stub.CrediterAvoir(
+            paiement_pb.CrediterAvoirRequest(
+                abonne_id=abonne_id,
+                montant=montant,
+                motif=motif,
+                cree_par=cree_par,
+            )
+        )
+
+    def get_avoir_abonne(self, abonne_id: str) -> paiement_pb.AvoirResponse:
+        return self._stub.GetAvoirAbonne(paiement_pb.AbonneIdRequest(abonne_id=abonne_id))
+
 
 class NotificationServiceClient:
     """Client gRPC vers notification-service:50056 (voir proto/notification_service.proto)."""
