@@ -18,7 +18,7 @@ from paiements.event_publisher import publish_paiement_event, publish_reporting_
 from paiements.grpc_clients import FacturationServiceClient, NotificationServiceClient
 from paiements.grpc_interceptors import ErrorHandlingInterceptor
 from paiements.models import StatutSolde
-from paiements.serializers import paiement_to_proto, solde_to_proto, suivi_to_proto
+from paiements.serializers import avoir_to_proto, paiement_to_proto, solde_to_proto, suivi_to_proto
 from paiements.services import PaiementService
 
 logger = logging.getLogger(__name__)
@@ -142,6 +142,30 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
                 extra={"facture_id": paiement.facture_id, "error": str(exc)},
             )
         return paiement_to_proto(paiement)
+
+    def CrediterAvoir(
+        self,
+        request: pb.CrediterAvoirRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.AvoirResponse:
+        """Émet un avoir manuel (note de rectification) sur le compte de l'abonné."""
+        self._svc.crediter_avoir_manuel(
+            abonne_id=request.abonne_id,
+            montant=request.montant,
+            motif=request.motif,
+            cree_par=request.cree_par,
+        )
+        montant, mouvements = self._svc.get_avoir_abonne(request.abonne_id)
+        return avoir_to_proto(request.abonne_id, montant, mouvements)
+
+    def GetAvoirAbonne(
+        self,
+        request: pb.AbonneIdRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.AvoirResponse:
+        """Retourne le solde d'avoir + le journal des mouvements d'un abonné."""
+        montant, mouvements = self._svc.get_avoir_abonne(request.abonne_id)
+        return avoir_to_proto(request.abonne_id, montant, mouvements)
 
     def GetSolde(
         self,

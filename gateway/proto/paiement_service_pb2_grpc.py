@@ -74,6 +74,16 @@ class PaiementServiceStub:
                 request_serializer=paiement__service__pb2.FactureIdRequest.SerializeToString,
                 response_deserializer=paiement__service__pb2.SuiviImpayeResponse.FromString,
                 _registered_method=True)
+        self.CrediterAvoir = channel.unary_unary(
+                '/paiement.PaiementService/CrediterAvoir',
+                request_serializer=paiement__service__pb2.CrediterAvoirRequest.SerializeToString,
+                response_deserializer=paiement__service__pb2.AvoirResponse.FromString,
+                _registered_method=True)
+        self.GetAvoirAbonne = channel.unary_unary(
+                '/paiement.PaiementService/GetAvoirAbonne',
+                request_serializer=paiement__service__pb2.AbonneIdRequest.SerializeToString,
+                response_deserializer=paiement__service__pb2.AvoirResponse.FromString,
+                _registered_method=True)
 
 
 class PaiementServiceServicer:
@@ -130,6 +140,20 @@ class PaiementServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CrediterAvoir(self, request, context):
+        """Avoir (crédit) de l'abonné : émission d'un avoir manuel (rectification) et
+        consultation du solde + journal des mouvements.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAvoirAbonne(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_PaiementServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -172,6 +196,16 @@ def add_PaiementServiceServicer_to_server(servicer, server):
                     servicer.GetSuiviImpaye,
                     request_deserializer=paiement__service__pb2.FactureIdRequest.FromString,
                     response_serializer=paiement__service__pb2.SuiviImpayeResponse.SerializeToString,
+            ),
+            'CrediterAvoir': grpc.unary_unary_rpc_method_handler(
+                    servicer.CrediterAvoir,
+                    request_deserializer=paiement__service__pb2.CrediterAvoirRequest.FromString,
+                    response_serializer=paiement__service__pb2.AvoirResponse.SerializeToString,
+            ),
+            'GetAvoirAbonne': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAvoirAbonne,
+                    request_deserializer=paiement__service__pb2.AbonneIdRequest.FromString,
+                    response_serializer=paiement__service__pb2.AvoirResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -390,6 +424,60 @@ class PaiementService:
             '/paiement.PaiementService/GetSuiviImpaye',
             paiement__service__pb2.FactureIdRequest.SerializeToString,
             paiement__service__pb2.SuiviImpayeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CrediterAvoir(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/paiement.PaiementService/CrediterAvoir',
+            paiement__service__pb2.CrediterAvoirRequest.SerializeToString,
+            paiement__service__pb2.AvoirResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAvoirAbonne(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/paiement.PaiementService/GetAvoirAbonne',
+            paiement__service__pb2.AbonneIdRequest.SerializeToString,
+            paiement__service__pb2.AvoirResponse.FromString,
             options,
             channel_credentials,
             insecure,

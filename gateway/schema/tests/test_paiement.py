@@ -47,6 +47,20 @@ def _suivi_response(**kwargs) -> MagicMock:
     return MagicMock(**defaults)
 
 
+def _avoir_response(**kwargs) -> MagicMock:
+    mouvement = MagicMock(
+        montant=100.0,
+        type_mouvement="RECTIFICATION",
+        motif="Geste commercial",
+        facture_id="",
+        cree_par="user-001",
+        created_at="2026-07-02T10:00:00",
+    )
+    defaults = dict(abonne_id="abonne-001", montant=100.0, mouvements=[mouvement])
+    defaults.update(kwargs)
+    return MagicMock(**defaults)
+
+
 class TestPaiementQueries(SimpleTestCase):
     @patch("schema.paiement_queries.paiement_client")
     @patch("schema.paiement_queries.require_auth")
@@ -131,6 +145,18 @@ class TestPaiementQueries(SimpleTestCase):
         result = PaiementQueries().suivi_impaye(info, facture_id="facture-001")
         self.assertEqual(result.etape_actuelle, 2)
 
+    @patch("schema.paiement_queries.paiement_client")
+    @patch("schema.paiement_queries.require_auth")
+    @patch("schema.paiement_queries.require_role")
+    def test_avoir_abonne(self, mock_role, mock_auth, mock_client) -> None:
+        mock_auth.return_value = MagicMock(role="COMPTABLE")
+        mock_client.get_avoir_abonne.return_value = _avoir_response(montant=100.0)
+        info = MagicMock()
+        result = PaiementQueries().avoir_abonne(info, abonne_id="abonne-001")
+        self.assertEqual(result.montant, 100.0)
+        self.assertEqual(len(result.mouvements), 1)
+        self.assertEqual(result.mouvements[0].type_mouvement, "RECTIFICATION")
+
 
 class TestPaiementMutations(SimpleTestCase):
     @patch("schema.paiement_mutations.paiement_client")
@@ -160,6 +186,23 @@ class TestPaiementMutations(SimpleTestCase):
             mode_paiement="MOBILE_MONEY",
             reference_transaction="TXN123",
             enregistre_par="user-001",
+        )
+
+    @patch("schema.paiement_mutations.paiement_client")
+    @patch("schema.paiement_mutations.require_role")
+    def test_crediter_avoir(self, mock_role, mock_client) -> None:
+        mock_role.return_value = MagicMock(role="ADMIN", user_id="user-001", username="admin")
+        mock_client.crediter_avoir.return_value = _avoir_response(montant=250.0)
+        info = MagicMock()
+        result = PaiementMutations().crediter_avoir(
+            info, abonne_id="abonne-001", montant=250.0, motif="Erreur d'index corrigée"
+        )
+        self.assertEqual(result.montant, 250.0)
+        mock_client.crediter_avoir.assert_called_once_with(
+            abonne_id="abonne-001",
+            montant=250.0,
+            motif="Erreur d'index corrigée",
+            cree_par="user-001",
         )
 
     @patch("schema.paiement_mutations.paiement_client")

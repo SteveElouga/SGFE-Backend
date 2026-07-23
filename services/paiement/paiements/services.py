@@ -12,9 +12,18 @@ from .grpc_clients import (
     ConfigServiceClient,
     NotificationServiceClient,
 )
-from .models import ModePaiement, Paiement, SoldeFacture, StatutSolde, SuiviImpaye
+from .models import (
+    AvoirAbonne,
+    ModePaiement,
+    Paiement,
+    SoldeFacture,
+    StatutSolde,
+    SuiviImpaye,
+    TypeMouvementAvoir,
+)
 from .repositories import (
     AvoirAbonneRepository,
+    MouvementAvoirRepository,
     PaiementRepository,
     SoldeFactureRepository,
     SuiviImpayeRepository,
@@ -31,6 +40,7 @@ class PaiementService:
         self._solde_repo = SoldeFactureRepository()
         self._suivi_repo = SuiviImpayeRepository()
         self._avoir_repo = AvoirAbonneRepository()
+        self._mouvement_repo = MouvementAvoirRepository()
 
     def initialiser_solde(
         self,
@@ -95,6 +105,32 @@ class PaiementService:
         )
         self._solde_repo.update_after_paiement(solde, a_imputer)
         self._avoir_repo.consommer(avoir, a_imputer)
+        self._mouvement_repo.create(abonne_id, a_imputer, TypeMouvementAvoir.IMPUTATION, facture_id=solde.facture_id)
+
+    def crediter_avoir_manuel(self, abonne_id: str, montant: float, motif: str, cree_par: str) -> AvoirAbonne:
+        """Émet un avoir manuel (note de rectification : facture corrigée à la
+        baisse, erreur d'index, geste commercial). Le crédit alimente l'avoir de
+        l'abonné — reporté automatiquement sur ses prochaines factures — et est
+        tracé au journal (qui, combien, pourquoi)."""
+        montant_d = Decimal(str(montant))
+        if montant_d <= 0:
+            raise ValidationError("Le montant de l'avoir doit être supérieur à zéro.")
+        if not motif or not motif.strip():
+            raise ValidationError("Le motif de la rectification est obligatoire.")
+
+        with transaction.atomic():
+            avoir = self._avoir_repo.crediter(abonne_id, montant_d)
+            self._mouvement_repo.create(
+                abonne_id, montant_d, TypeMouvementAvoir.RECTIFICATION, motif=motif.strip(), cree_par=cree_par
+            )
+        return avoir
+
+    def get_avoir_abonne(self, abonne_id: str) -> tuple[Decimal, list]:
+        """Retourne (solde d'avoir disponible, journal des mouvements) d'un abonné."""
+        avoir = self._avoir_repo.get_if_exists(abonne_id)
+        montant = Decimal(str(avoir.montant)) if avoir else Decimal("0")
+        mouvements = self._mouvement_repo.list_by_abonne(abonne_id)
+        return montant, mouvements
 
     def enregistrer_paiement(
         self,
@@ -169,6 +205,7 @@ class PaiementService:
             solde = self._solde_repo.update_after_paiement(solde, part_imputee)
             if excedent > 0:
                 self._avoir_repo.crediter(abonne_id, excedent)
+                self._mouvement_repo.create(abonne_id, excedent, TypeMouvementAvoir.TROP_PERCU)
 
         return paiement, solde
 

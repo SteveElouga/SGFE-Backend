@@ -7,7 +7,16 @@ import strawberry.types
 
 from .context import require_auth, require_role
 from .grpc_clients import auth_client, paiement_client
-from .paiement_types import SoldeFacture, Paiement, SuiviImpaye, paiement_from_grpc, solde_from_grpc, suivi_from_grpc
+from .paiement_types import (
+    Avoir,
+    Paiement,
+    SoldeFacture,
+    SuiviImpaye,
+    avoir_from_grpc,
+    paiement_from_grpc,
+    solde_from_grpc,
+    suivi_from_grpc,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,3 +78,10 @@ class PaiementQueries:
         require_auth(info)
         require_role(info, "ADMIN", "COMPTABLE")
         return suivi_from_grpc(paiement_client.get_suivi_impaye(facture_id))
+
+    @strawberry.field
+    def avoir_abonne(self, info: strawberry.types.Info, abonne_id: str) -> Avoir:
+        """Solde d'avoir (crédit) d'un abonné + journal des mouvements — ADMIN, COMPTABLE."""
+        require_auth(info)
+        require_role(info, "ADMIN", "COMPTABLE")
+        return avoir_from_grpc(paiement_client.get_avoir_abonne(abonne_id))

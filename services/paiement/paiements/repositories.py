@@ -4,7 +4,7 @@ from datetime import date
 
 from django.core.exceptions import ObjectDoesNotExist
 
-from .models import AvoirAbonne, Paiement, SoldeFacture, StatutSolde, SuiviImpaye
+from .models import AvoirAbonne, MouvementAvoir, Paiement, SoldeFacture, StatutSolde, SuiviImpaye
 
 
 class PaiementRepository:
@@ -222,3 +222,30 @@ class AvoirAbonneRepository:
         avoir.montant = restant if restant > 0 else Decimal("0")
         avoir.save(update_fields=["montant", "updated_at"])
         return avoir
+
+
+class MouvementAvoirRepository:
+    """Accès base de données pour le journal des mouvements d'avoir."""
+
+    def create(
+        self,
+        abonne_id: str,
+        montant: object,
+        type_mouvement: str,
+        motif: str = "",
+        facture_id: str = "",
+        cree_par: str = "",
+    ) -> MouvementAvoir:
+        """Enregistre un mouvement d'avoir (crédit ou imputation)."""
+        return MouvementAvoir.objects.create(
+            abonne_id=abonne_id,
+            montant=montant,
+            type_mouvement=type_mouvement,
+            motif=motif,
+            facture_id=facture_id,
+            cree_par=cree_par,
+        )
+
+    def list_by_abonne(self, abonne_id: str) -> list[MouvementAvoir]:
+        """Journal des mouvements d'un abonné, du plus récent au plus ancien."""
+        return list(MouvementAvoir.objects.filter(abonne_id=abonne_id))
