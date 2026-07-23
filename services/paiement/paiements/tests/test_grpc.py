@@ -214,18 +214,23 @@ class TestEnregistrerPaiementRPC(TestCase):
         with self.assertRaises(ValidationError):
             self.servicer.EnregistrerPaiement(request, _mock_context())
 
-    def test_enregistrer_paiement_surpaiement_propage_validation_error(self) -> None:
+    def test_enregistrer_paiement_surpaiement_accepte_et_credite_avoir(self) -> None:
+        """Un surpaiement est accepté (facture soldée) et l'excédent est porté
+        au crédit (avoir) de l'abonné — plus de ValidationError."""
+        from paiements.models import AvoirAbonne
+
         request = pb.EnregistrerPaiementRequest(
             facture_id="facture-001",
             abonne_id="abonne-001",
-            montant=500.00,
+            montant=500.00,  # solde restant 300 → excédent 200
             date_paiement="2026-06-20",
             mode_paiement="ESPECES",
             reference_transaction="",
             enregistre_par="user-001",
         )
-        with self.assertRaises(ValidationError):
-            self.servicer.EnregistrerPaiement(request, _mock_context())
+        response = self.servicer.EnregistrerPaiement(request, _mock_context())
+        self.assertAlmostEqual(response.montant, 500.00)
+        self.assertEqual(str(AvoirAbonne.objects.get(abonne_id="abonne-001").montant), "200.00")
 
     def test_enregistrer_paiement_facture_inconnue_propage_not_found(self) -> None:
         request = pb.EnregistrerPaiementRequest(

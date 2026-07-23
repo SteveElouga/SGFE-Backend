@@ -14,6 +14,7 @@ from .grpc_clients import (
 )
 from .models import ModePaiement, Paiement, SoldeFacture, StatutSolde, SuiviImpaye
 from .repositories import (
+    AvoirAbonneRepository,
     PaiementRepository,
     SoldeFactureRepository,
     SuiviImpayeRepository,
@@ -29,6 +30,7 @@ class PaiementService:
         self._paiement_repo = PaiementRepository()
         self._solde_repo = SoldeFactureRepository()
         self._suivi_repo = SuiviImpayeRepository()
+        self._avoir_repo = AvoirAbonneRepository()
 
     def initialiser_solde(
         self,
@@ -57,13 +59,42 @@ class PaiementService:
         if existant is not None:
             return existant
 
-        return self._solde_repo.create(
-            facture_id=facture_id,
+        with transaction.atomic():
+            solde = self._solde_repo.create(
+                facture_id=facture_id,
+                abonne_id=abonne_id,
+                campagne_id=campagne_id,
+                montant_total=montant_d,
+                date_limite_paiement=date_limite_paiement,
+            )
+            # Report automatique de l'avoir disponible de l'abonné (trop-perçus
+            # antérieurs) sur cette nouvelle facture.
+            self._appliquer_avoir(solde, abonne_id)
+        return solde
+
+    def _appliquer_avoir(self, solde: SoldeFacture, abonne_id: str) -> None:
+        """Impute l'avoir disponible de l'abonné sur le solde d'une facture
+        nouvellement créée. L'imputation est enregistrée comme un versement de
+        mode AVOIR (traçable dans l'historique des paiements) puis décrémente
+        l'avoir. À appeler dans une transaction (verrou pris sur l'avoir)."""
+        avoir = self._avoir_repo.get_for_update(abonne_id)
+        if avoir is None:
+            return
+        a_imputer = min(Decimal(str(avoir.montant)), Decimal(str(solde.solde_restant)))
+        if a_imputer <= 0:
+            return
+
+        self._paiement_repo.create(
+            facture_id=solde.facture_id,
             abonne_id=abonne_id,
-            campagne_id=campagne_id,
-            montant_total=montant_d,
-            date_limite_paiement=date_limite_paiement,
+            montant=a_imputer,
+            date_paiement=date.today(),
+            mode_paiement=ModePaiement.AVOIR,
+            reference_transaction="",
+            enregistre_par="system",
         )
+        self._solde_repo.update_after_paiement(solde, a_imputer)
+        self._avoir_repo.consommer(avoir, a_imputer)
 
     def enregistrer_paiement(
         self,
@@ -80,8 +111,10 @@ class PaiementService:
 
         Règles :
         - montant > 0
-        - montant <= solde_restant (pas de surpaiement)
         - reference_transaction obligatoire pour MOBILE_MONEY et VIREMENT
+        - un surpaiement (montant > solde restant) est accepté : la facture est
+          soldée avec la part imputable et l'excédent est porté au crédit
+          (avoir) de l'abonné, reporté sur ses prochaines factures.
         """
         # Validation du montant
         montant_d = Decimal(str(montant))
@@ -113,12 +146,15 @@ class PaiementService:
                 if existant is not None:
                     return existant, solde
 
-            # Vérification du surpaiement
+            # Trop-perçu : un versement supérieur au solde restant est accepté.
+            # La facture est soldée avec la part imputable et l'excédent est
+            # porté au crédit (avoir) de l'abonné — le solde d'une facture ne
+            # devient jamais négatif.
             solde_restant = Decimal(str(solde.solde_restant))
-            if montant_d > solde_restant:
-                raise ValidationError(f"Le montant versé ({montant_d}) dépasse le solde restant ({solde_restant}).")
+            part_imputee = min(montant_d, solde_restant) if solde_restant > 0 else Decimal("0")
+            excedent = montant_d - part_imputee
 
-            # Enregistrement du paiement
+            # Enregistrement du paiement (montant réellement reçu)
             paiement = self._paiement_repo.create(
                 facture_id=facture_id,
                 abonne_id=abonne_id,
@@ -129,8 +165,10 @@ class PaiementService:
                 enregistre_par=enregistre_par,
             )
 
-            # Mise à jour du solde
-            solde = self._solde_repo.update_after_paiement(solde, montant_d)
+            # Mise à jour du solde (part imputée) + report de l'excédent en avoir.
+            solde = self._solde_repo.update_after_paiement(solde, part_imputee)
+            if excedent > 0:
+                self._avoir_repo.crediter(abonne_id, excedent)
 
         return paiement, solde
 

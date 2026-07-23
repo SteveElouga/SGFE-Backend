@@ -4,7 +4,7 @@ from datetime import date
 
 from django.core.exceptions import ObjectDoesNotExist
 
-from .models import Paiement, SoldeFacture, StatutSolde, SuiviImpaye
+from .models import AvoirAbonne, Paiement, SoldeFacture, StatutSolde, SuiviImpaye
 
 
 class PaiementRepository:
@@ -191,3 +191,34 @@ class SuiviImpayeRepository:
         """Persiste les modifications d'un suivi."""
         suivi.save()
         return suivi
+
+
+class AvoirAbonneRepository:
+    """Accès base de données pour les avoirs (crédits) des abonnés."""
+
+    def get_if_exists(self, abonne_id: str) -> AvoirAbonne | None:
+        """Avoir de l'abonné, ou None s'il n'en a aucun."""
+        return AvoirAbonne.objects.filter(pk=abonne_id).first()
+
+    def get_for_update(self, abonne_id: str) -> AvoirAbonne | None:
+        """Avoir verrouillé (SELECT ... FOR UPDATE) — à appeler dans une
+        transaction pour sérialiser l'imputation concurrente du crédit."""
+        return AvoirAbonne.objects.select_for_update().filter(pk=abonne_id).first()
+
+    def crediter(self, abonne_id: str, montant: object) -> AvoirAbonne:
+        """Ajoute `montant` au crédit de l'abonné (crée la ligne au besoin)."""
+        from decimal import Decimal
+
+        avoir, _ = AvoirAbonne.objects.get_or_create(abonne_id=abonne_id, defaults={"montant": Decimal("0")})
+        avoir.montant = Decimal(str(avoir.montant)) + Decimal(str(montant))
+        avoir.save(update_fields=["montant", "updated_at"])
+        return avoir
+
+    def consommer(self, avoir: AvoirAbonne, montant: object) -> AvoirAbonne:
+        """Décrémente le crédit de `montant` (borné à zéro)."""
+        from decimal import Decimal
+
+        restant = Decimal(str(avoir.montant)) - Decimal(str(montant))
+        avoir.montant = restant if restant > 0 else Decimal("0")
+        avoir.save(update_fields=["montant", "updated_at"])
+        return avoir
