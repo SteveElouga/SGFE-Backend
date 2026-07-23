@@ -31,6 +31,18 @@ from .repositories import (
 
 logger = logging.getLogger(__name__)
 
+# Modes de paiement saisissables manuellement par un comptable. AVOIR en est
+# exclu : il est réservé à l'imputation automatique d'un avoir (report de
+# trop-perçu), jamais enregistré à la main.
+_MODES_MANUELS = frozenset(
+    {
+        ModePaiement.ESPECES,
+        ModePaiement.MOBILE_MONEY,
+        ModePaiement.VIREMENT,
+        ModePaiement.CHEQUE,
+    }
+)
+
 
 class PaiementService:
     """Gestion des paiements et des soldes de factures."""
@@ -156,6 +168,11 @@ class PaiementService:
         montant_d = Decimal(str(montant))
         if montant_d <= 0:
             raise ValidationError("Le montant du paiement doit être supérieur à zéro.")
+
+        # Validation du mode : seuls les modes saisis manuellement sont acceptés
+        # (rejette un mode inconnu envoyé par le front, ou AVOIR réservé à l'interne).
+        if mode_paiement not in _MODES_MANUELS:
+            raise ValidationError(f"Mode de paiement invalide : {mode_paiement}.")
 
         # Validation du mode et de la référence
         if mode_paiement in (ModePaiement.MOBILE_MONEY, ModePaiement.VIREMENT):

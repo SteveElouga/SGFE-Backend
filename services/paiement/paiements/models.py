@@ -9,6 +9,7 @@ class ModePaiement(models.TextChoices):
     ESPECES = "ESPECES", "Espèces"
     MOBILE_MONEY = "MOBILE_MONEY", "Mobile Money"
     VIREMENT = "VIREMENT", "Virement bancaire"
+    CHEQUE = "CHEQUE", "Chèque"
     # Imputation automatique d'un avoir (report de trop-perçu) — jamais saisi
     # manuellement par un comptable, généré par le service à l'initialisation
     # d'une facture.
