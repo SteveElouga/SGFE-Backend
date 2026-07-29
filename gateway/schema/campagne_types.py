@@ -20,6 +20,11 @@ class Campagne:
     numero_mobile_money: str
     generer_factures_auto: bool
     envoyer_whatsapp_auto: bool
+    # userId (Auth Service) de l'auteur de la campagne. Exposé pour le filtrage
+    # « mes campagnes » côté frontend (un SUPERVISEUR ne voit que les siennes).
+    # Typé str (→ String!) par cohérence avec campagne_id et les autres ids de la
+    # gateway ; non-null (le service valide un created_by non vide à la création).
+    created_by: str
 
 
 @strawberry.type
@@ -210,6 +215,7 @@ def campagne_from_grpc(r: campagne_pb.CampagneResponse) -> Campagne:
         numero_mobile_money=r.numero_mobile_money,
         generer_factures_auto=r.generer_factures_auto,
         envoyer_whatsapp_auto=r.envoyer_whatsapp_auto,
+        created_by=r.created_by,
     )
 
 

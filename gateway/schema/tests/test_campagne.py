@@ -22,6 +22,7 @@ def _campagne_response(**kwargs) -> campagne_pb.CampagneResponse:
         numero_mobile_money="",
         generer_factures_auto=True,
         envoyer_whatsapp_auto=True,
+        created_by="user-001",
     )
     return campagne_pb.CampagneResponse(**{**defaults, **kwargs})
 
@@ -51,6 +52,17 @@ class TestCampagneQueries(SimpleTestCase):
         result = CampagneQueries().campagne(info, campagne_id="camp-001")
         self.assertEqual(result.campagne_id, "camp-001")
         self.assertEqual(result.nom, "Campagne Juillet")
+
+    @patch("schema.campagne_queries.campagne_client")
+    @patch("schema.campagne_queries.require_auth")
+    @patch("schema.campagne_queries.require_role")
+    def test_campagne_expose_created_by(self, mock_role, mock_auth, mock_client) -> None:
+        """Le type GraphQL Campagne remonte createdBy (via campagne_from_grpc) —
+        support du filtrage « mes campagnes » frontend selon le rôle SUPERVISEUR."""
+        mock_auth.return_value = MagicMock(role="ADMIN", user_id="user-001")
+        mock_client.get_campagne.return_value = _campagne_response(created_by="sup-042")
+        result = CampagneQueries().campagne(MagicMock(), campagne_id="camp-001")
+        self.assertEqual(result.created_by, "sup-042")
 
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")
