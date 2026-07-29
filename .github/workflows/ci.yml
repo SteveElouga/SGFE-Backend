@@ -104,7 +104,7 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/auth/requirements.txt
-      - run: pip install -r requirements.txt ruff coverage pip-audit bandit
+      - run: pip install -r requirements.txt ruff==0.15.20 coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
       - name: Audit des dépendances (pip-audit)
@@ -130,7 +130,7 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: gateway/requirements.txt
-      - run: pip install -r requirements.txt ruff coverage pip-audit bandit
+      - run: pip install -r requirements.txt ruff==0.15.20 coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
       - name: Audit des dépendances (pip-audit)
@@ -156,7 +156,7 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/abonne/requirements.txt
-      - run: pip install -r requirements.txt ruff coverage pip-audit bandit
+      - run: pip install -r requirements.txt ruff==0.15.20 coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
       - name: Audit des dépendances (pip-audit)
@@ -182,7 +182,7 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/campagne/requirements.txt
-      - run: pip install -r requirements.txt ruff coverage pip-audit bandit
+      - run: pip install -r requirements.txt ruff==0.15.20 coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
       - name: Audit des dépendances (pip-audit)
@@ -208,7 +208,7 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/facturation/requirements.txt
-      - run: pip install -r requirements.txt ruff coverage pip-audit bandit
+      - run: pip install -r requirements.txt ruff==0.15.20 coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
       - name: Audit des dépendances (pip-audit)
@@ -234,7 +234,7 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/paiement/requirements.txt
-      - run: pip install -r requirements.txt ruff coverage pip-audit bandit
+      - run: pip install -r requirements.txt ruff==0.15.20 coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
       - name: Audit des dépendances (pip-audit)
@@ -260,7 +260,7 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/notification/requirements.txt
-      - run: pip install -r requirements.txt ruff coverage pip-audit bandit
+      - run: pip install -r requirements.txt ruff==0.15.20 coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
       - name: Audit des dépendances (pip-audit)
@@ -286,7 +286,7 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/reporting/requirements.txt
-      - run: pip install -r requirements.txt ruff coverage pip-audit bandit
+      - run: pip install -r requirements.txt ruff==0.15.20 coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
       - name: Audit des dépendances (pip-audit)
