@@ -8,6 +8,7 @@ from schema.facturation_queries import FacturationQueries
 from schema.notification_queries import NotificationQueries
 from schema.paiement_queries import PaiementQueries
 from schema.reporting_queries import ReportingQueries
+from schema.stats_queries import StatsQueries
 
 
 @strawberry.type
@@ -20,5 +21,6 @@ class Query(
     PaiementQueries,
     NotificationQueries,
     ReportingQueries,
+    StatsQueries,
 ):
     pass
