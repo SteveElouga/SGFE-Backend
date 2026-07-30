@@ -1,5 +1,7 @@
 """Types Strawberry pour le Reporting Service (tableau de bord, docs/ARCHITECTURE.md)."""
 
+from datetime import date
+
 import strawberry
 
 
@@ -99,3 +101,90 @@ def stats_globales_from_grpc(r) -> StatsGlobales:
         montant_total_facture_global=r.montant_total_facture_global,
         montant_total_encaisse_global=r.montant_total_encaisse_global,
     )
+
+
+# ── statsParMois : agrégat mensuel réel ───────────────────────────────────────
+# Calculé par fan-out dans la gateway (le Reporting Service ne porte aucune
+# dimension temporelle). Dissocie le mois de PAIEMENT (encaissé) du mois de
+# GÉNÉRATION (facturé) — un paiement de juillet sur une facture de mai compte
+# en juillet pour l'encaissé et en mai pour le facturé.
+
+
+@strawberry.type
+class StatMois:
+    """Agrégat d'un mois. Une ligne par mois de la fenêtre glissante — un mois
+    sans donnée reste présent avec des zéros (le frontend calcule des deltas
+    honnêtes : « juin = 0 » ≠ « juin manquant »)."""
+
+    mois: str  # "AAAA-MM" (tri lexicographique = chronologique)
+    annee: int
+    mois_num: int
+    encaisse: int  # SUM(Paiement.montant) du mois de date_paiement, annulés exclus
+    facture: int  # SUM(Facture.montant) du mois de date_generation
+    consommation: int  # SUM(Facture.consommation) du mois de génération (fallback ticket)
+    nb_paiements: int
+    nb_factures: int
+
+
+def _fenetre_mois(nb_mois: int, today: date) -> list[tuple[int, int]]:
+    """Les `nb_mois` derniers mois (annee, mois_num), du plus récent au plus ancien."""
+    mois: list[tuple[int, int]] = []
+    annee, m = today.year, today.month
+    for _ in range(nb_mois):
+        mois.append((annee, m))
+        m -= 1
+        if m == 0:
+            m, annee = 12, annee - 1
+    return mois
+
+
+def build_stats_par_mois(factures, paiements, nb_mois: int, today: date | None = None) -> list["StatMois"]:
+    """Bucketise factures/paiements par mois et renvoie `nb_mois` lignes triées du
+    plus récent ([0] = mois courant) au plus ancien, zéros compris.
+
+    - encaisse : mois de `date_paiement` (paiements `annule` exclus) ;
+    - facture / consommation : mois de `date_generation`.
+    Les dates traversent le gRPC en chaînes ; le mois = 7 premiers caractères
+    ("AAAA-MM"), valable pour `date_paiement` ("AAAA-MM-JJ") comme pour
+    `date_generation` (datetime ISO).
+    """
+    today = today or date.today()
+    enc: dict[str, float] = {}
+    fac: dict[str, float] = {}
+    con: dict[str, float] = {}
+    nb_p: dict[str, int] = {}
+    nb_f: dict[str, int] = {}
+
+    for p in paiements:
+        if getattr(p, "annule", False):
+            continue
+        cle = (p.date_paiement or "")[:7]
+        if len(cle) != 7:
+            continue
+        enc[cle] = enc.get(cle, 0.0) + p.montant
+        nb_p[cle] = nb_p.get(cle, 0) + 1
+
+    for f in factures:
+        cle = (f.date_generation or "")[:7]
+        if len(cle) != 7:
+            continue
+        fac[cle] = fac.get(cle, 0.0) + f.montant
+        con[cle] = con.get(cle, 0.0) + f.consommation
+        nb_f[cle] = nb_f.get(cle, 0) + 1
+
+    resultat: list[StatMois] = []
+    for annee, mois_num in _fenetre_mois(nb_mois, today):
+        cle = f"{annee:04d}-{mois_num:02d}"
+        resultat.append(
+            StatMois(
+                mois=cle,
+                annee=annee,
+                mois_num=mois_num,
+                encaisse=round(enc.get(cle, 0.0)),
+                facture=round(fac.get(cle, 0.0)),
+                consommation=round(con.get(cle, 0.0)),
+                nb_paiements=nb_p.get(cle, 0),
+                nb_factures=nb_f.get(cle, 0),
+            )
+        )
+    return resultat
