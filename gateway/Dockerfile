@@ -17,6 +17,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Les correctifs de sécurité Debian sortent après la publication de l'image de
+# base : l'épinglage par digest, bon pour la reproductibilité, fige aussi les
+# CVE système. On applique donc les mises à jour disponibles au moment du build.
+# C'est ce qui ferme CVE-2026-14456 (OpenSSL, déni de service) — le digest le
+# plus récent de python:3.12-slim portait encore libssl3t64 3.5.6 quand Debian
+# proposait déjà 3.5.7.
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN useradd --create-home --uid 1000 appuser
 
 # Pas de --chown : le code et les dépendances restent root:root, lisibles
