@@ -429,26 +429,33 @@ class TestEnvoiServiceGetWhatsAppQr(TestCase):
 
     @patch("notifications.services.whatsapp_client")
     def test_get_qr_relaye_le_client(self, mock_wa):
-        mock_wa.get_qr.return_value = (False, "data:image/png;base64,AAA", "")
-        ready, qr, number = EnvoiService().get_whatsapp_qr()
+        mock_wa.get_qr.return_value = (False, "data:image/png;base64,AAA", "", "qr", 0)
+        ready, qr, number, phase, _depuis = EnvoiService().get_whatsapp_qr()
         self.assertFalse(ready)
         self.assertEqual(qr, "data:image/png;base64,AAA")
         self.assertEqual(number, "")
+        self.assertEqual(phase, "qr")
 
     @patch("notifications.services.whatsapp_client")
     def test_get_qr_connecte_expose_le_numero(self, mock_wa):
-        mock_wa.get_qr.return_value = (True, "", "237675799743")
-        ready, qr, number = EnvoiService().get_whatsapp_qr()
+        mock_wa.get_qr.return_value = (True, "", "237675799743", "connecte", 0)
+        ready, _qr, number, _phase, _depuis = EnvoiService().get_whatsapp_qr()
         self.assertTrue(ready)
         self.assertEqual(number, "237675799743")
 
     @patch("notifications.services.whatsapp_client")
-    def test_get_qr_service_indisponible_degrade(self, mock_wa):
-        """whatsapp-service inaccessible → (False, '', '') plutôt qu'une exception."""
+    def test_get_qr_service_indisponible_est_une_rupture_pas_un_demarrage(self, mock_wa):
+        """Un service injoignable n'est pas un service qui démarre.
+
+        La dégradation gracieuse retournait un booléen à faux, que l'écran
+        affichait comme « initialisation en cours » — une attente que rien ne
+        viendrait clore, puisque le service ne répond pas. Nommer la rupture est
+        ce qui permet à l'UI de dire quoi faire au lieu de faire patienter.
+        """
         from notifications.whatsapp_client import WhatsAppDeliveryError
 
         mock_wa.get_qr.side_effect = WhatsAppDeliveryError("service KO")
-        self.assertEqual(EnvoiService().get_whatsapp_qr(), (False, "", ""))
+        self.assertEqual(EnvoiService().get_whatsapp_qr(), (False, "", "", "rupture", 0))
 
     @patch("notifications.services.whatsapp_client")
     def test_tester_envoi_relaye_au_client(self, mock_wa):

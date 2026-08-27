@@ -101,6 +101,13 @@ message WhatsAppQrResponse {
   bool ready = 1;
   string qr = 2;
   string number = 3;
+  // « connecte » | « qr » | « demarrage » | « rupture ».
+  // Un booléen ne distinguait pas « ça démarre, patientez » de « la liaison est
+  // tombée, il faut rescanner » — deux situations qui appellent des messages
+  // opposés, et que l'écran affichait de la même façon.
+  string phase = 4;
+  // Millisecondes écoulées depuis la dernière connexion réussie (0 si jamais).
+  int64 depuis_ms = 5;
 }
 
 message RevoquerTousTokensResponse {

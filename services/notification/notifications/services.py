@@ -82,19 +82,23 @@ class EnvoiService:
         self._envois = EnvoiRepository()
         self._tokens = TokenAccesRepository()
 
-    def get_whatsapp_qr(self) -> tuple[bool, str, str]:
-        """Retourne (ready, qr_data_url, number) pour l'affichage admin de la liaison WhatsApp.
+    def get_whatsapp_qr(self) -> tuple[bool, str, str, str, int]:
+        """Retourne (ready, qr, number, phase, depuis_ms) pour l'affichage admin.
 
-        `number` est le numéro du compte appairé (vide si non connecté).
+        `number` est le numéro du compte appairé (vide si non connecté). `phase`
+        dit pourquoi la liaison n'est pas prête — « demarrage » et « rupture »
+        appellent des messages opposés, et l'UI ne pouvait pas les distinguer.
+
         Dégradation gracieuse : si le service whatsapp-web.js est inaccessible,
-        retourne (False, "", "") plutôt que de lever — l'UI admin affiche alors
-        « non connecté » sans erreur bloquante.
+        la phase est « rupture » — c'en est une, et la taire donnerait à l'écran
+        la même apparence qu'un démarrage en cours, c'est-à-dire une attente
+        que rien ne viendra clore.
         """
         try:
             return whatsapp_client.get_qr()
         except WhatsAppDeliveryError as exc:
             logger.warning("QR WhatsApp indisponible : %s", exc)
-            return (False, "", "")
+            return (False, "", "", "rupture", 0)
 
     def tester_envoi(self, phone_number: str) -> None:
         """Envoie un message de test WhatsApp au numéro fourni (écran d'administration).

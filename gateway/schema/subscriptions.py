@@ -182,10 +182,13 @@ class Subscription:
                 except (json.JSONDecodeError, TypeError):
                     continue
 
+                ready = bool(data.get("ready", False))
                 yield WhatsAppQr(
-                    ready=bool(data.get("ready", False)),
+                    ready=ready,
                     qr=data.get("qr", "") or "",
                     number=data.get("number", "") or "",
+                    phase=data.get("phase") or ("connecte" if ready else "demarrage"),
+                    depuis_ms=int(data.get("depuis") or 0),
                 )
         finally:
             await pubsub.unsubscribe("whatsapp:events")
