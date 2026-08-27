@@ -472,10 +472,21 @@ class FactureService:
         """
         facture = self._repo.get_by_id(facture_id)
 
+        # Un PDF dont le contenu dépend de données vivantes ne peut pas être
+        # mis en cache. C'est le cas dès qu'un solde antérieur s'y imprime : la
+        # dette bouge à chaque encaissement, à chaque nouvelle facture, à chaque
+        # arriéré saisi. Servir le fichier figé ferait renvoyer à l'abonné un
+        # total à payer périmé — précisément ce qu'un renvoi de facture est
+        # censé corriger.
+        #
+        # La régénération ne concerne donc que les abonnés endettés ; pour un
+        # abonné à jour, le cache continue de faire son travail.
+        dette, _, _ = self._lire_solde_anterieur(abonne_id=str(facture.abonne_id), facture_id=str(facture.id))
         cache_a_jour = (
             facture.pdf_path
             and facture.pdf_template_version == PDF_TEMPLATE_VERSION
             and os.path.exists(facture.pdf_path)
+            and dette == 0
         )
         if cache_a_jour:
             return lire_pdf(facture.pdf_path), f"{facture.numero_facture}.pdf"
