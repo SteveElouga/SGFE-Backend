@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf AS builder
+FROM python:3.12-slim@sha256:7a8b475003c4fe15a2cd4e55e5cfc2f3560bdc9333d624f24cdd6d4340fd7a17 AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -9,13 +9,23 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --default-timeout=120 --retries 5 --user -r requirements.txt
 
-FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf
+FROM python:3.12-slim@sha256:7a8b475003c4fe15a2cd4e55e5cfc2f3560bdc9333d624f24cdd6d4340fd7a17
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH=/home/appuser/.local/bin:$PATH
 
 WORKDIR /app
+
+# Les correctifs de sécurité Debian sortent après la publication de l'image de
+# base : l'épinglage par digest, bon pour la reproductibilité, fige aussi les
+# CVE système. On applique donc les mises à jour disponibles au moment du build.
+# C'est ce qui ferme CVE-2026-14456 (OpenSSL, déni de service) — le digest le
+# plus récent de python:3.12-slim portait encore libssl3t64 3.5.6 quand Debian
+# proposait déjà 3.5.7.
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --uid 1000 appuser
 
