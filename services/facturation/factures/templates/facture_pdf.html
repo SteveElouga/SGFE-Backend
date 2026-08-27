@@ -137,6 +137,9 @@ espace         .url .date_expiration — lien de l'espace abonné ; Facturation
     /* La dette antérieure se distingue de la consommation : même colonne,
        autre encre — on la lit sans la confondre. */
     .totals__row--anterieur span:last-child { color: #9a3324; font-weight: 700; }
+    /* L'avoir est un crédit : il se lit en vert, à l'opposé de la dette rouge
+       qui le précède parfois sur la même facture. */
+    .totals__row--avoir span:last-child { color: #0d6a56; font-weight: 700; }
     .totals__note {
       padding: 5px 14px 0;
       font-size: 9.5px;
@@ -295,6 +298,16 @@ espace         .url .date_expiration — lien de l'espace abonné ; Facturation
       {% else %}
       <div class="totals__row"><span>Sous-total HT</span><span>{{ facture.sous_total }}</span></div>
       <div class="totals__row"><span>Frais supplémentaires</span><span>{{ facture.frais_supplementaires }}</span></div>
+      {% endif %}
+      {% if avoir.existe %}
+      {% comment %}Un avoir vient d'un trop-perçu, d'une facture annulée sous un versement
+         ou d'une rectification. Sans cette ligne, l'abonné lit un total inférieur à sa
+         consommation sans rien qui l'explique — et croit à une erreur. Elle ne s'imprime
+         que si elle porte un montant.{% endcomment %}
+      <div class="totals__row totals__row--avoir">
+        <span>Avoir appliqué</span>
+        <span>− {{ avoir.montant }}</span>
+      </div>
       {% endif %}
       <div class="totals__grand">
         <span class="totals__grand-label">Total à payer</span>

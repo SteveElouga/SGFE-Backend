@@ -55,7 +55,7 @@ _HIST_HAUTEUR_MIN_PX = 4
 #     pour les régularisations. Le bump force la régénération des PDF déjà
 #     stockés — sans lui, une facture émise avant garderait son ancien rendu et
 #     n'afficherait jamais la dette antérieure.
-PDF_TEMPLATE_VERSION = 3
+PDF_TEMPLATE_VERSION = 4
 
 
 @dataclass
@@ -102,6 +102,12 @@ class DonneesFacture:
     solde_anterieur: Decimal = Decimal("0")
     solde_anterieur_nb_factures: int = 0
     solde_anterieur_depuis: str = ""
+    # Avoir déjà imputé sur cette facture : un trop-perçu antérieur, une facture
+    # annulée sous un versement, une rectification. Sans cette ligne, l'abonné
+    # lit un « déjà réglé » dont il n'a aucun souvenir, et un reste à payer
+    # inférieur à sa consommation sans rien qui l'explique. Comme le solde
+    # antérieur, elle ne s'imprime que si elle porte un montant.
+    avoir_impute: Decimal = Decimal("0")
     # Identité de l'abonné (source : Abonné Service, facultative)
     numero_abonne: str = ""
     abonne_nom: str = ""
@@ -263,6 +269,8 @@ def _build_context(
     # montant.
     solde_anterieur = Decimal(str(facture.solde_anterieur or 0))
     a_un_solde_anterieur = solde_anterieur > 0
+    avoir_impute = Decimal(str(facture.avoir_impute or 0))
+    a_un_avoir = avoir_impute > 0
 
     return {
         "societe": {
@@ -286,7 +294,8 @@ def _build_context(
             # l'abonné devait déjà. Les anciennes factures restent ouvertes,
             # chacune avec sa date limite et son horloge de relance : on cumule
             # à l'affichage, on ne fusionne pas les créances.
-            "total": _fcfa(facture.montant + solde_anterieur),
+            "total": _fcfa(max(Decimal("0"), facture.montant + solde_anterieur - avoir_impute)),
+            "avoir_impute": _fcfa(avoir_impute),
             "date_generation": facture.date_generation,
             # Délai de règlement dérivé des dates de la facture (jamais codé
             # en dur) — reflète le delai_paiement_jours réellement appliqué.
@@ -306,6 +315,10 @@ def _build_context(
             "montant": _fcfa(solde_anterieur),
             "nb_factures": facture.solde_anterieur_nb_factures,
             "depuis": _date_fr(facture.solde_anterieur_depuis),
+        },
+        "avoir": {
+            "existe": a_un_avoir,
+            "montant": _fcfa(avoir_impute),
         },
         "nature": {
             "est_regularisation": facture.nature == "REGULARISATION",

@@ -120,6 +120,10 @@ message SoldeResponse {
   // l'imputation et qui porte l'âge de la dette.
   string abonne_id = 6;
   string date_limite_paiement = 7;
+  // Part de `montant_paye` provenant d'un avoir et non d'un versement.
+  // Sans elle, un abonné dont la facture est réduite par un trop-perçu antérieur
+  // lit un « déjà réglé » qu'il ne se souvient pas d'avoir payé.
+  double avoir_impute = 8;
 }
 
 message SuiviImpayeResponse {

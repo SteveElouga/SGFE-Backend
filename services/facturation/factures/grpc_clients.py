@@ -348,6 +348,9 @@ class PaiementServiceClient:
                 "montant_paye": s.montant_paye,
                 "solde_restant": s.solde_restant,
                 "statut": s.statut,
+                # Part réglée par un avoir : la facture l'imprime pour que
+                # l'abonné sache d'où vient un « déjà réglé » qu'il n'a pas versé.
+                "avoir_impute": getattr(s, "avoir_impute", 0.0),
             }
         except Exception as exc:
             logger.warning(

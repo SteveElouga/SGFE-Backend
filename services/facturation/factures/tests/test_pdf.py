@@ -351,3 +351,65 @@ class GenererPdfReelTests(SimpleTestCase):
     @staticmethod
     def _societe() -> InfosSociete:
         return InfosSociete(nom="Hydro Services CI")
+
+
+class AvoirSurLaFactureTest(SimpleTestCase):
+    """La ligne « Avoir appliqué » et son effet sur le total.
+
+    Un avoir vient d'un trop-perçu, d'une facture annulée sous un versement, ou
+    d'une rectification. Sans cette ligne, l'abonné lit un total inférieur à sa
+    consommation sans rien qui l'explique — et il l'interprète comme une erreur,
+    ce qui produit un appel plutôt qu'un paiement.
+
+    Comme le solde antérieur, elle ne s'imprime que si elle porte un montant :
+    une ligne à zéro sur chaque facture habituerait l'œil à l'ignorer le jour
+    où elle compte.
+    """
+
+    def _societe(self) -> InfosSociete:
+        return InfosSociete(nom="Régie test", adresse="BP 1", telephone="000")
+
+    def test_sans_avoir_la_ligne_ne_s_imprime_pas(self):
+        ctx = _build_context(_donnees(), self._societe())
+        self.assertFalse(ctx["avoir"]["existe"])
+        html = render_to_string("facture_pdf.html", ctx)
+        self.assertNotIn("Avoir appliqué", html)
+
+    def test_avec_un_avoir_la_ligne_apparait(self):
+        ctx = _build_context(_donnees(avoir_impute=Decimal("5000.00")), self._societe())
+        self.assertTrue(ctx["avoir"]["existe"])
+        html = render_to_string("facture_pdf.html", ctx)
+        self.assertIn("Avoir appliqué", html)
+
+    def test_l_avoir_se_retranche_du_total(self):
+        ctx = _build_context(_donnees(avoir_impute=Decimal("5000.00")), self._societe())
+        # 21 500 de consommation − 5 000 d'avoir
+        self.assertEqual(ctx["facture"]["total"], _fcfa(Decimal("16500.00")))
+
+    def test_le_total_ne_devient_jamais_negatif(self):
+        """Un avoir supérieur à la facture la solde, il ne la rend pas due par la régie."""
+        ctx = _build_context(_donnees(avoir_impute=Decimal("30000.00")), self._societe())
+        self.assertEqual(ctx["facture"]["total"], _fcfa(Decimal("0")))
+
+    def test_avoir_et_solde_anterieur_cohabitent(self):
+        """Les deux existent : l'un ajoute, l'autre retranche, et le total les compose."""
+        ctx = _build_context(
+            _donnees(
+                avoir_impute=Decimal("3000.00"),
+                solde_anterieur=Decimal("8000.00"),
+                solde_anterieur_nb_factures=1,
+                solde_anterieur_depuis="2026-05-20",
+            ),
+            self._societe(),
+        )
+        # 21 500 + 8 000 − 3 000
+        self.assertEqual(ctx["facture"]["total"], _fcfa(Decimal("26500.00")))
+        html = render_to_string("facture_pdf.html", ctx)
+        self.assertIn("Avoir appliqué", html)
+        self.assertIn("Solde antérieur", html)
+
+    def test_le_signe_moins_est_visible(self):
+        """Un montant sans signe, dans une colonne de montants dus, se lit comme un dû."""
+        ctx = _build_context(_donnees(avoir_impute=Decimal("5000.00")), self._societe())
+        html = render_to_string("facture_pdf.html", ctx)
+        self.assertIn("−", html)

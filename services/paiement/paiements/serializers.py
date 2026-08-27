@@ -9,7 +9,10 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 
 import paiement_service_pb2 as pb
 
-from paiements.models import Paiement, SoldeFacture, SuiviImpaye
+from django.db.models import Sum
+from decimal import Decimal
+
+from paiements.models import ModePaiement, Paiement, SoldeFacture, SuiviImpaye
 
 
 def paiement_to_proto(p: Paiement) -> pb.PaiementResponse:
@@ -32,8 +35,19 @@ def paiement_to_proto(p: Paiement) -> pb.PaiementResponse:
 
 
 def solde_to_proto(s: SoldeFacture) -> pb.SoldeResponse:
-    """Convertit un objet SoldeFacture en message protobuf SoldeResponse."""
+    """Convertit un objet SoldeFacture en message protobuf SoldeResponse.
+
+    `avoir_impute` est recalculé depuis le journal des versements plutôt que
+    stocké : c'est la somme des écritures de mode AVOIR sur cette facture, et
+    elle se déduit sans risque de dérive. Sans elle, un abonné dont la facture a
+    été réduite par un trop-perçu antérieur lit un « déjà réglé » dont il n'a
+    aucun souvenir.
+    """
+    avoir_impute = Paiement.objects.filter(facture_id=s.facture_id, mode_paiement=ModePaiement.AVOIR).aggregate(
+        t=Sum("montant")
+    )["t"] or Decimal("0")
     return pb.SoldeResponse(
+        avoir_impute=float(avoir_impute),
         facture_id=str(s.facture_id),
         montant_total=float(s.montant_total),
         montant_paye=float(s.montant_paye),

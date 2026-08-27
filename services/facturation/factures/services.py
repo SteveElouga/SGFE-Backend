@@ -289,6 +289,7 @@ class FactureService:
                 solde_anterieur=dette[0],
                 solde_anterieur_nb_factures=dette[1],
                 solde_anterieur_depuis=dette[2],
+                avoir_impute=self._lire_avoir_impute(str(facture.id)),
             )
             historique = build_historique(
                 [
@@ -303,6 +304,21 @@ class FactureService:
                 extra={"facture_id": str(facture.id)},
             )
             return ""
+
+    def _lire_avoir_impute(self, facture_id: str) -> Decimal:
+        """Part de cette facture réglée par un avoir plutôt que par un versement.
+
+        Dégradation gracieuse comme le solde antérieur : si Paiement Service est
+        indisponible, la facture s'imprime sans la ligne plutôt que pas du tout.
+        Taire un crédit produit une facture incomplète ; ne pas produire de
+        facture du tout en produit une inexistante.
+        """
+        try:
+            solde = self._paiement_client.get_solde(facture_id)
+            return Decimal(str((solde or {}).get("avoir_impute", 0) or 0))
+        except Exception:  # noqa: BLE001 - dégradation explicite
+            logger.warning("Avoir imputé indisponible — la facture s'imprime sans la ligne")
+            return Decimal("0")
 
     def _regenerer_et_persister(
         self,
