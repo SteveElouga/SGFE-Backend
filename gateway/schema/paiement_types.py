@@ -10,6 +10,10 @@ class SoldeFacture:
     montant_paye: float
     solde_restant: float
     statut: str
+    # L'abonné permet de regrouper les impayés par personne plutôt que par
+    # facture ; l'échéance ordonne l'imputation et porte l'âge de la dette.
+    abonne_id: str
+    date_limite_paiement: str
 
 
 @strawberry.type
@@ -53,6 +57,8 @@ def solde_from_grpc(r) -> SoldeFacture:
         montant_paye=r.montant_paye,
         solde_restant=r.solde_restant,
         statut=r.statut,
+        abonne_id=r.abonne_id,
+        date_limite_paiement=r.date_limite_paiement,
     )
 
 

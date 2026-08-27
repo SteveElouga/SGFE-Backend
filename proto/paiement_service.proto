@@ -112,6 +112,11 @@ message SoldeResponse {
   double montant_paye = 3;
   double solde_restant = 4;
   string statut = 5;
+  // Ajoutés en 6 et 7 : l'abonné, pour regrouper les impayés par personne
+  // plutôt que par facture ; l'échéance, parce que c'est elle qui ordonne
+  // l'imputation et qui porte l'âge de la dette.
+  string abonne_id = 6;
+  string date_limite_paiement = 7;
 }
 
 message SuiviImpayeResponse {
