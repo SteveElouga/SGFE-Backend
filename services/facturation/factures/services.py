@@ -253,6 +253,11 @@ class FactureService:
             espace_url, espace_expiration = self._notification_client.get_espace_url(
                 abonne_id=str(facture.abonne_id), facture_id=str(facture.id)
             )
+            # Ce que l'abonné doit EN PLUS de cette facture. Dégradation
+            # gracieuse : si Paiement est injoignable, la facture s'imprime
+            # sans la ligne plutôt que d'échouer — mieux vaut une facture
+            # incomplète qu'une facture absente.
+            dette = self._lire_solde_anterieur(abonne_id=str(facture.abonne_id), facture_id=str(facture.id))
             donnees = DonneesFacture(
                 numero_facture=facture.numero_facture,
                 abonne_id=str(facture.abonne_id),
@@ -278,6 +283,11 @@ class FactureService:
                 campagne_nom=campagne_nom,
                 espace_url=espace_url,
                 espace_date_expiration=espace_expiration,
+                nature=facture.nature,
+                motif=facture.motif,
+                solde_anterieur=dette[0],
+                solde_anterieur_nb_factures=dette[1],
+                solde_anterieur_depuis=dette[2],
             )
             historique = build_historique(
                 [
@@ -340,6 +350,23 @@ class FactureService:
         if statut and statut not in StatutFacture.values:
             raise ValidationError(f"Statut invalide : {statut}. Valeurs attendues : {', '.join(StatutFacture.values)}")
         return self._repo.list_by_filters(campagne_id=campagne_id, abonne_id=abonne_id, statut=statut)
+
+    def _lire_solde_anterieur(self, abonne_id: str, facture_id: str) -> tuple[Decimal, int, str]:
+        """Interroge Paiement pour la dette de l'abonné, hors la facture imprimée.
+
+        Retourne `(montant, nb_factures, plus_ancienne_echeance)`. Un échec
+        renvoie un solde nul : la facture s'imprime sans la ligne plutôt que de
+        ne pas s'imprimer du tout.
+        """
+        try:
+            r = self._paiement_client.get_dette_abonne(abonne_id=abonne_id, hors_facture_id=facture_id)
+            return Decimal(str(r.total_du)), int(r.nb_factures), r.plus_ancienne_echeance or ""
+        except Exception:
+            logger.warning(
+                "Solde antérieur indisponible — la facture s'imprime sans la ligne",
+                extra={"abonne_id": abonne_id, "facture_id": facture_id},
+            )
+            return Decimal("0"), 0, ""
 
     def creer_regularisation(
         self,

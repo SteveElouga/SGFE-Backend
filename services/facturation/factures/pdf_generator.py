@@ -51,7 +51,11 @@ _HIST_HAUTEUR_MIN_PX = 4
 #   1 = gabarit « AquaBill » (Django + WeasyPrint)
 #   2 = refonte maquette (compact, police Montserrat embarquée, modalités + pied
 #       ancrés en bas, lien espace abonné)
-PDF_TEMPLATE_VERSION = 2
+# 3 : ligne « solde antérieur » conditionnelle et variante sans bloc de relevé
+#     pour les régularisations. Le bump force la régénération des PDF déjà
+#     stockés — sans lui, une facture émise avant garderait son ancien rendu et
+#     n'afficherait jamais la dette antérieure.
+PDF_TEMPLATE_VERSION = 3
 
 
 @dataclass
@@ -86,6 +90,18 @@ class DonneesFacture:
     date_limite_paiement: str
     date_generation: str
     numero_mobile_money: str = ""
+    # ── Nature et solde antérieur ────────────────────────────────────────────
+    # `REGULARISATION` constate une dette déclarée, sans relevé : le bloc des
+    # index n'a rien à imprimer et laisse la place au motif.
+    nature: str = "CONSOMMATION"
+    motif: str = ""
+    # Ce que l'abonné doit EN PLUS de cette facture. Zéro pour un abonné à
+    # jour — et dans ce cas la ligne ne s'imprime pas du tout : « Solde
+    # antérieur : 0 FCFA » est du bruit, et pire, elle habituerait l'œil à
+    # l'ignorer le jour où elle porte un montant.
+    solde_anterieur: Decimal = Decimal("0")
+    solde_anterieur_nb_factures: int = 0
+    solde_anterieur_depuis: str = ""
     # Identité de l'abonné (source : Abonné Service, facultative)
     numero_abonne: str = ""
     abonne_nom: str = ""
@@ -242,6 +258,12 @@ def _build_context(
     nom, prenom = _nom_abonne(facture)
     montant_fmt = _fcfa(facture.montant)
 
+    # Le solde antérieur ne s'imprime que s'il existe : une ligne à zéro est du
+    # bruit, et elle habituerait l'œil à l'ignorer le jour où elle porte un
+    # montant.
+    solde_anterieur = Decimal(str(facture.solde_anterieur or 0))
+    a_un_solde_anterieur = solde_anterieur > 0
+
     return {
         "societe": {
             "nom": societe.nom or "Société de Distribution d'Eau",
@@ -258,13 +280,13 @@ def _build_context(
             "consommation": _num(facture.consommation),
             "prix_unitaire": _fcfa(facture.prix_m3),
             "montant": montant_fmt,
-            # Aucun frais additionnel n'est modélisé par les règles métier
-            # actuelles (CLAUDE.md : montant = consommation * prix_m3) — le
-            # sous-total et le total sont donc identiques au montant tant
-            # qu'une telle règle n'est pas introduite.
             "sous_total": montant_fmt,
             "frais_supplementaires": _fcfa(Decimal("0")),
-            "total": montant_fmt,
+            # Le total à payer additionne la consommation du mois et ce que
+            # l'abonné devait déjà. Les anciennes factures restent ouvertes,
+            # chacune avec sa date limite et son horloge de relance : on cumule
+            # à l'affichage, on ne fusionne pas les créances.
+            "total": _fcfa(facture.montant + solde_anterieur),
             "date_generation": facture.date_generation,
             # Délai de règlement dérivé des dates de la facture (jamais codé
             # en dur) — reflète le delai_paiement_jours réellement appliqué.
@@ -278,6 +300,16 @@ def _build_context(
             "quartier": f"Quartier {facture.quartier}" if facture.quartier else "",
             "camp": facture.camp,
             "whatsapp": facture.abonne_whatsapp,
+        },
+        "solde_anterieur": {
+            "existe": a_un_solde_anterieur,
+            "montant": _fcfa(solde_anterieur),
+            "nb_factures": facture.solde_anterieur_nb_factures,
+            "depuis": _date_fr(facture.solde_anterieur_depuis),
+        },
+        "nature": {
+            "est_regularisation": facture.nature == "REGULARISATION",
+            "motif": facture.motif,
         },
         "compteur": {"numero": facture.numero_compteur or "—"},
         "releve": {

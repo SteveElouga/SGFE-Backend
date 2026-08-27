@@ -242,6 +242,18 @@ class PaiementServiceClient:
 
         self._stub = pb_grpc.PaiementServiceStub(self._channel)
         self._pb = pb
+        self._pb = pb
+
+    def get_dette_abonne(self, abonne_id: str, hors_facture_id: str = ""):
+        """Dette agrégée d'un abonné, hors une facture donnée.
+
+        Sert au « solde antérieur » imprimé sur la facture : ce que l'abonné
+        doit EN PLUS de celle qu'il tient en main. L'appelant gère l'échec —
+        une facture doit s'imprimer même si Paiement est injoignable.
+        """
+        return self._stub.GetDetteAbonne(
+            self._pb.DetteAbonneRequest(abonne_id=abonne_id, hors_facture_id=hors_facture_id)
+        )
 
     def initialiser_solde(
         self,
