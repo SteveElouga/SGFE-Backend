@@ -13,7 +13,7 @@ from django.db import IntegrityError, transaction
 
 from .event_publisher import publish_reporting_event
 from .exceptions import PreconditionError
-from .models import Facture, StatutFacture, Tarif
+from .models import Facture, NatureFacture, StatutFacture, Tarif
 from .pdf_generator import (
     PDF_TEMPLATE_VERSION,
     DonneesFacture,
@@ -340,6 +340,78 @@ class FactureService:
         if statut and statut not in StatutFacture.values:
             raise ValidationError(f"Statut invalide : {statut}. Valeurs attendues : {', '.join(StatutFacture.values)}")
         return self._repo.list_by_filters(campagne_id=campagne_id, abonne_id=abonne_id, statut=statut)
+
+    def creer_regularisation(
+        self,
+        abonne_id: str,
+        montant: float,
+        motif: str,
+        date_limite_paiement: datetime.date | None = None,
+    ) -> Facture:
+        """Constate à la main une dette qui existait avant l'application.
+
+        Certains abonnés devaient déjà de l'argent à la mise en service : ces
+        arriérés n'avaient aucun moyen d'entrer dans le système, puisqu'une
+        facture ne naissait que d'un relevé, à la clôture d'une campagne.
+
+        Une régularisation est une vraie facture — elle passe donc par tout
+        l'aval sans rien réécrire : solde, relances, PDF, espace abonné,
+        encaissement. Elle s'en distingue sur trois points : sa série de
+        numérotation (``REG`` et non ``FACT``), l'absence de campagne et
+        d'index, et un motif obligatoire qui dit ce qu'elle constate.
+
+        Son montant est **déclaré**, pas calculé : aucun index ne le justifie.
+        C'est pourquoi le motif ne peut pas être vide — il est la seule trace
+        de ce que la dette représente.
+        """
+        montant_d = Decimal(str(montant)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if montant_d <= 0:
+            raise ValidationError("Le montant de la régularisation doit être supérieur à zéro.")
+        if not motif or not motif.strip():
+            raise ValidationError("Le motif de la régularisation est obligatoire.")
+        if not abonne_id:
+            raise ValidationError("L'identifiant de l'abonné est obligatoire.")
+
+        aujourdhui = datetime.date.today()
+        # Sans échéance fournie, la dette est exigible immédiatement : elle
+        # date d'avant, elle n'a pas à bénéficier d'un nouveau délai.
+        limite = date_limite_paiement or aujourdhui
+
+        for tentative in range(_MAX_NUMERO_RETRIES):
+            try:
+                with transaction.atomic():
+                    numero = self._repo.build_numero(aujourdhui.year, aujourdhui.month, for_update=True, serie="REG")
+                    facture = self._repo.create(
+                        abonne_id=abonne_id,
+                        campagne_id="",
+                        ancien_index=Decimal("0"),
+                        nouveau_index=Decimal("0"),
+                        consommation=Decimal("0"),
+                        prix_m3=Decimal("0"),
+                        montant=montant_d,
+                        date_releve=aujourdhui,
+                        date_limite_paiement=limite,
+                        numero_facture=numero,
+                        nature=NatureFacture.REGULARISATION,
+                        motif=motif.strip(),
+                    )
+                break
+            except IntegrityError:
+                if tentative == _MAX_NUMERO_RETRIES - 1:
+                    raise
+        else:  # pragma: no cover - la boucle sort toujours par break ou raise
+            raise RuntimeError("Numérotation de régularisation impossible")
+
+        # Le solde doit exister pour que la dette apparaisse dans les impayés
+        # et entre dans l'escalade des relances comme n'importe quelle facture.
+        self._paiement_client.initialiser_solde(
+            facture_id=str(facture.id),
+            abonne_id=abonne_id,
+            campagne_id="",
+            montant_total=float(montant_d),
+            date_limite_paiement=limite.isoformat(),
+        )
+        return facture
 
     def update_statut(self, facture_id: str, statut: str) -> Facture:
         """Met à jour le statut d'une facture (appelé par Paiement Service)."""

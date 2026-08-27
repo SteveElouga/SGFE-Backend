@@ -209,6 +209,91 @@ class PaiementService:
 
         return paiement, solde
 
+    def enregistrer_paiement_abonne(
+        self,
+        abonne_id: str,
+        montant: float,
+        date_paiement: date,
+        mode_paiement: str,
+        reference_transaction: str,
+        enregistre_par: str,
+    ) -> tuple[list[Paiement], Decimal]:
+        """Encaisse un versement au nom d'un abonné, imputé **du plus ancien au plus récent**.
+
+        Jusqu'ici un versement visait une facture, choisie par le caissier. Dès
+        qu'un abonné traîne plusieurs dettes — le cas dès qu'on saisit un
+        arriéré antérieur à l'application — cela l'obligeait à ventiler à la
+        main, et rien ne l'empêchait de solder la dette récente en laissant
+        vieillir l'ancienne.
+
+        L'imputation suit désormais la règle comptable usuelle : le solde le
+        plus anciennement exigible s'éteint d'abord, le reliquat déborde sur le
+        suivant. Un versement peut donc produire **plusieurs** écritures.
+
+        Ce qui reste après extinction de toutes les dettes part en avoir, comme
+        pour un trop-perçu sur facture unique.
+
+        Retourne les versements créés et l'excédent porté au crédit.
+        """
+        montant_d = Decimal(str(montant))
+        if montant_d <= 0:
+            raise ValidationError("Le montant du paiement doit être supérieur à zéro.")
+        if mode_paiement in (ModePaiement.MOBILE_MONEY, ModePaiement.VIREMENT):
+            if not reference_transaction or not reference_transaction.strip():
+                raise ValidationError(f"La référence de transaction est obligatoire pour le mode {mode_paiement}.")
+
+        reference = (reference_transaction or "").strip()
+        crees: list[Paiement] = []
+
+        with transaction.atomic():
+            # Idempotence : une référence déjà vue ne re-crédite rien. Le filet
+            # vaut pour l'ensemble du versement, pas pour chaque imputation.
+            if reference:
+                existant = self._paiement_repo.get_by_reference(reference)
+                if existant is not None:
+                    return [existant], Decimal("0")
+
+            soldes = self._solde_repo.list_non_soldes_par_abonne(abonne_id, for_update=True)
+            restant = montant_d
+
+            for solde in soldes:
+                if restant <= 0:
+                    break
+                du = Decimal(str(solde.solde_restant))
+                if du <= 0:
+                    continue
+                part = min(restant, du)
+                # La référence ne se pose que sur la première écriture : la
+                # contrainte d'unicité en base l'exige, et c'est bien un seul
+                # versement même s'il se répartit sur plusieurs factures.
+                crees.append(
+                    self._paiement_repo.create(
+                        facture_id=solde.facture_id,
+                        abonne_id=abonne_id,
+                        montant=part,
+                        date_paiement=date_paiement,
+                        mode_paiement=mode_paiement,
+                        reference_transaction=reference if not crees else "",
+                        enregistre_par=enregistre_par,
+                    )
+                )
+                self._solde_repo.update_after_paiement(solde, part)
+                restant -= part
+
+            if restant > 0:
+                self._avoir_repo.crediter(abonne_id, restant)
+                self._mouvement_repo.create(abonne_id, restant, TypeMouvementAvoir.TROP_PERCU)
+
+        return crees, restant
+
+    def total_du_abonne(self, abonne_id: str, hors_facture_id: str = "") -> Decimal:
+        """Ce qu'un abonné doit encore, toutes factures confondues.
+
+        `hors_facture_id` sert à l'impression : sur une facture, le « solde
+        antérieur » est ce qu'il doit **en plus** de celle qu'il tient en main.
+        """
+        return self._solde_repo.total_du_abonne(abonne_id, hors_facture_id)
+
     def annuler_paiement(self, paiement_id: str, motif: str, annule_par: str) -> tuple[Paiement, SoldeFacture]:
         """Annule un paiement (annulation douce) et rétablit le solde de la facture.
 

@@ -33,6 +33,20 @@ class Tarif(models.Model):
         return f"Tarif {self.prix_m3} FCFA/m³ ({statut}, effet {self.date_effet})"
 
 
+class NatureFacture(models.TextChoices):
+    """Ce que la facture constate.
+
+    ``CONSOMMATION`` naît d'un relevé, à la clôture d'une campagne : son montant
+    se déduit des index et le PDF l'explique. ``REGULARISATION`` est saisie à la
+    main pour constater une dette qui existait avant — un arriéré antérieur à la
+    mise en service, par exemple. Elle n'a ni index ni consommation, et son
+    montant ne se déduit de rien : il est déclaré.
+    """
+
+    CONSOMMATION = "CONSOMMATION", "Consommation relevée"
+    REGULARISATION = "REGULARISATION", "Régularisation d'arriéré"
+
+
 class Facture(models.Model):
     """Facture générée à la clôture d'une campagne.
 
@@ -45,7 +59,10 @@ class Facture(models.Model):
     numero_facture = models.CharField(max_length=30, unique=True)
     # Références externes (pas de FK inter-service)
     abonne_id = models.CharField(max_length=36)
-    campagne_id = models.CharField(max_length=36)
+    # Vide pour une facture de régularisation : elle ne naît d'aucune campagne.
+    # Le service Paiement l'acceptait déjà (`SoldeFacture.campagne_id` est
+    # `blank=True` depuis l'origine) ; c'était Facturation qui l'exigeait.
+    campagne_id = models.CharField(max_length=36, blank=True, default="")
     # Index et consommation
     ancien_index = models.DecimalField(max_digits=10, decimal_places=3)
     nouveau_index = models.DecimalField(max_digits=10, decimal_places=3)
@@ -63,6 +80,10 @@ class Facture(models.Model):
     # Un écart avec pdf_generator.PDF_TEMPLATE_VERSION déclenche la régénération.
     pdf_template_version = models.PositiveSmallIntegerField(default=0)
     numero_mobile_money = models.CharField(max_length=20, blank=True, default="")
+    nature = models.CharField(max_length=16, choices=NatureFacture.choices, default=NatureFacture.CONSOMMATION)
+    # Renseigné pour une régularisation : ce que la dette constate, en clair.
+    # Imprimé sur le PDF à la place du bloc de relevé.
+    motif = models.CharField(max_length=255, blank=True, default="")
 
     class Meta:
         db_table = "factures"
