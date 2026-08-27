@@ -13,6 +13,13 @@ service PaiementService {
   rpc ListPaiementsParCampagne (CampagneIdRequest) returns (ListPaiementsResponse);
   rpc ListImpayes (EmptyRequest) returns (ListImpayesResponse);
   rpc GetSuiviImpaye (FactureIdRequest) returns (SuiviImpayeResponse);
+  // Ce qu'un abonné doit encore, toutes factures confondues. `hors_facture_id`
+  // sert à l'impression : sur une facture, le « solde antérieur » est ce qu'il
+  // doit EN PLUS de celle qu'il tient en main.
+  rpc GetDetteAbonne (DetteAbonneRequest) returns (DetteAbonneResponse);
+  // Encaisse un versement au nom d'un abonné, imputé du plus ancien au plus
+  // récent. Produit potentiellement plusieurs écritures.
+  rpc EnregistrerPaiementAbonne (EnregistrerPaiementAbonneRequest) returns (PaiementAbonneResponse);
   // Avoir (crédit) de l'abonné : émission d'un avoir manuel (rectification) et
   // consultation du solde + journal des mouvements.
   rpc CrediterAvoir (CrediterAvoirRequest) returns (AvoirResponse);
@@ -70,6 +77,33 @@ message PaiementResponse {
   string annule_le = 11;
   string annule_par = 12;
   string motif_annulation = 13;
+}
+
+message DetteAbonneRequest {
+  string abonne_id = 1;
+  string hors_facture_id = 2;
+}
+
+message DetteAbonneResponse {
+  double total_du = 1;
+  int32 nb_factures = 2;
+  // Date limite la plus ancienne parmi les factures dues — c'est l'âge qui
+  // fait payer, pas le montant.
+  string plus_ancienne_echeance = 3;
+}
+
+message EnregistrerPaiementAbonneRequest {
+  string abonne_id = 1;
+  double montant = 2;
+  string date_paiement = 3;
+  string mode_paiement = 4;
+  string reference_transaction = 5;
+  string enregistre_par = 6;
+}
+
+message PaiementAbonneResponse {
+  repeated PaiementResponse paiements = 1;
+  double excedent_en_avoir = 2;
 }
 
 message SoldeResponse {

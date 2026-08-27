@@ -3,6 +3,10 @@ package facturation;
 
 service FacturationService {
   rpc GenererFactures (GenererFacturesRequest) returns (GenererFacturesResponse);
+  // Constate à la main une dette antérieure à la mise en service. Série de
+  // numérotation propre (REG-), sans campagne ni index : son montant est
+  // déclaré, pas calculé — d'où le motif obligatoire.
+  rpc CreerRegularisation (CreerRegularisationRequest) returns (FactureResponse);
   rpc GetFacture (FactureIdRequest) returns (FactureResponse);
   rpc ListFactures (ListFacturesRequest) returns (ListFacturesResponse);
   rpc GetFacturePDF (FactureIdRequest) returns (PDFResponse);
@@ -22,6 +26,15 @@ message GenererFacturesRequest {
   string campagne_id = 1;
   string numero_mobile_money = 2;
   bool envoyer_whatsapp_auto = 3;
+}
+
+message CreerRegularisationRequest {
+  string abonne_id = 1;
+  double montant = 2;
+  string motif = 3;
+  // Vide = exigible immédiatement : la dette date d'avant, elle n'a pas à
+  // bénéficier d'un nouveau délai.
+  string date_limite_paiement = 4;
 }
 
 message FactureIdRequest { string facture_id = 1; }

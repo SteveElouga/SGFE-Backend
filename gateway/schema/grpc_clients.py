@@ -275,6 +275,18 @@ class FacturationServiceClient:
             facturation_pb.GenererRecuRequest(paiement_id=paiement_id, facture_id=facture_id)
         )
 
+    def creer_regularisation(
+        self, abonne_id: str, montant: float, motif: str, date_limite_paiement: str = ""
+    ) -> facturation_pb.FactureResponse:
+        return self._stub.CreerRegularisation(
+            facturation_pb.CreerRegularisationRequest(
+                abonne_id=abonne_id,
+                montant=montant,
+                motif=motif,
+                date_limite_paiement=date_limite_paiement,
+            )
+        )
+
     def update_statut_facture(self, facture_id: str, statut: str) -> facturation_pb.FactureResponse:
         return self._stub.UpdateStatutFacture(facturation_pb.UpdateStatutRequest(facture_id=facture_id, statut=statut))
 
@@ -332,6 +344,31 @@ class PaiementServiceClient:
 
     def get_suivi_impaye(self, facture_id: str) -> paiement_pb.SuiviImpayeResponse:
         return self._stub.GetSuiviImpaye(paiement_pb.FactureIdRequest(facture_id=facture_id))
+
+    def get_dette_abonne(self, abonne_id: str, hors_facture_id: str = "") -> paiement_pb.DetteAbonneResponse:
+        return self._stub.GetDetteAbonne(
+            paiement_pb.DetteAbonneRequest(abonne_id=abonne_id, hors_facture_id=hors_facture_id)
+        )
+
+    def enregistrer_paiement_abonne(
+        self,
+        abonne_id: str,
+        montant: float,
+        date_paiement: str,
+        mode_paiement: str,
+        reference_transaction: str,
+        enregistre_par: str,
+    ) -> paiement_pb.PaiementAbonneResponse:
+        return self._stub.EnregistrerPaiementAbonne(
+            paiement_pb.EnregistrerPaiementAbonneRequest(
+                abonne_id=abonne_id,
+                montant=montant,
+                date_paiement=date_paiement,
+                mode_paiement=mode_paiement,
+                reference_transaction=reference_transaction,
+                enregistre_par=enregistre_par,
+            )
+        )
 
     def crediter_avoir(self, abonne_id: str, montant: float, motif: str, cree_par: str) -> paiement_pb.AvoirResponse:
         return self._stub.CrediterAvoir(

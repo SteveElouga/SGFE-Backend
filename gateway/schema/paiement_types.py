@@ -137,3 +137,16 @@ def avoir_from_grpc(r) -> Avoir:
             for m in r.mouvements
         ],
     )
+
+
+@strawberry.type
+class DetteAbonne:
+    """Ce qu'un abonné doit encore, toutes factures confondues.
+
+    `plusAncienneEcheance` porte l'âge de la dette — c'est lui qui fait payer,
+    pas le montant. `null` quand l'abonné est à jour.
+    """
+
+    total_du: float
+    nb_factures: int
+    plus_ancienne_echeance: str | None

@@ -39,6 +39,11 @@ class FacturationServiceStub:
                 request_serializer=facturation__service__pb2.GenererFacturesRequest.SerializeToString,
                 response_deserializer=facturation__service__pb2.GenererFacturesResponse.FromString,
                 _registered_method=True)
+        self.CreerRegularisation = channel.unary_unary(
+                '/facturation.FacturationService/CreerRegularisation',
+                request_serializer=facturation__service__pb2.CreerRegularisationRequest.SerializeToString,
+                response_deserializer=facturation__service__pb2.FactureResponse.FromString,
+                _registered_method=True)
         self.GetFacture = channel.unary_unary(
                 '/facturation.FacturationService/GetFacture',
                 request_serializer=facturation__service__pb2.FactureIdRequest.SerializeToString,
@@ -96,6 +101,15 @@ class FacturationServiceServicer:
 
     def GenererFactures(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreerRegularisation(self, request, context):
+        """Constate à la main une dette antérieure à la mise en service. Série de
+        numérotation propre (REG-), sans campagne ni index : son montant est
+        déclaré, pas calculé — d'où le motif obligatoire.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -170,6 +184,11 @@ def add_FacturationServiceServicer_to_server(servicer, server):
                     servicer.GenererFactures,
                     request_deserializer=facturation__service__pb2.GenererFacturesRequest.FromString,
                     response_serializer=facturation__service__pb2.GenererFacturesResponse.SerializeToString,
+            ),
+            'CreerRegularisation': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreerRegularisation,
+                    request_deserializer=facturation__service__pb2.CreerRegularisationRequest.FromString,
+                    response_serializer=facturation__service__pb2.FactureResponse.SerializeToString,
             ),
             'GetFacture': grpc.unary_unary_rpc_method_handler(
                     servicer.GetFacture,
@@ -249,6 +268,33 @@ class FacturationService:
             '/facturation.FacturationService/GenererFactures',
             facturation__service__pb2.GenererFacturesRequest.SerializeToString,
             facturation__service__pb2.GenererFacturesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreerRegularisation(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/facturation.FacturationService/CreerRegularisation',
+            facturation__service__pb2.CreerRegularisationRequest.SerializeToString,
+            facturation__service__pb2.FactureResponse.FromString,
             options,
             channel_credentials,
             insecure,

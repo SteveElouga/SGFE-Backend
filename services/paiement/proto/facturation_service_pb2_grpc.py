@@ -39,6 +39,11 @@ class FacturationServiceStub:
                 request_serializer=facturation__service__pb2.GenererFacturesRequest.SerializeToString,
                 response_deserializer=facturation__service__pb2.GenererFacturesResponse.FromString,
                 _registered_method=True)
+        self.CreerRegularisation = channel.unary_unary(
+                '/facturation.FacturationService/CreerRegularisation',
+                request_serializer=facturation__service__pb2.CreerRegularisationRequest.SerializeToString,
+                response_deserializer=facturation__service__pb2.FactureResponse.FromString,
+                _registered_method=True)
         self.GetFacture = channel.unary_unary(
                 '/facturation.FacturationService/GetFacture',
                 request_serializer=facturation__service__pb2.FactureIdRequest.SerializeToString,
@@ -52,6 +57,21 @@ class FacturationServiceStub:
         self.GetFacturePDF = channel.unary_unary(
                 '/facturation.FacturationService/GetFacturePDF',
                 request_serializer=facturation__service__pb2.FactureIdRequest.SerializeToString,
+                response_deserializer=facturation__service__pb2.PDFResponse.FromString,
+                _registered_method=True)
+        self.GenererBilanImpayesPDF = channel.unary_unary(
+                '/facturation.FacturationService/GenererBilanImpayesPDF',
+                request_serializer=facturation__service__pb2.EmptyRequest.SerializeToString,
+                response_deserializer=facturation__service__pb2.PDFResponse.FromString,
+                _registered_method=True)
+        self.GenererSyntheseCampagnePDF = channel.unary_unary(
+                '/facturation.FacturationService/GenererSyntheseCampagnePDF',
+                request_serializer=facturation__service__pb2.CampagneIdRequest.SerializeToString,
+                response_deserializer=facturation__service__pb2.PDFResponse.FromString,
+                _registered_method=True)
+        self.GenererRecuPaiementPDF = channel.unary_unary(
+                '/facturation.FacturationService/GenererRecuPaiementPDF',
+                request_serializer=facturation__service__pb2.GenererRecuRequest.SerializeToString,
                 response_deserializer=facturation__service__pb2.PDFResponse.FromString,
                 _registered_method=True)
         self.UpdateStatutFacture = channel.unary_unary(
@@ -85,6 +105,15 @@ class FacturationServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CreerRegularisation(self, request, context):
+        """Constate à la main une dette antérieure à la mise en service. Série de
+        numérotation propre (REG-), sans campagne ni index : son montant est
+        déclaré, pas calculé — d'où le motif obligatoire.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def GetFacture(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -99,6 +128,27 @@ class FacturationServiceServicer:
 
     def GetFacturePDF(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GenererBilanImpayesPDF(self, request, context):
+        """Bilan des impayés (document A4 agrégé) — back-office ADMIN/COMPTABLE.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GenererSyntheseCampagnePDF(self, request, context):
+        """Synthèse chiffrée d'une campagne (stats 3 domaines via Reporting) — écran 13.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GenererRecuPaiementPDF(self, request, context):
+        """Reçu d'un versement (document A5) — back-office ADMIN/COMPTABLE.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -135,6 +185,11 @@ def add_FacturationServiceServicer_to_server(servicer, server):
                     request_deserializer=facturation__service__pb2.GenererFacturesRequest.FromString,
                     response_serializer=facturation__service__pb2.GenererFacturesResponse.SerializeToString,
             ),
+            'CreerRegularisation': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreerRegularisation,
+                    request_deserializer=facturation__service__pb2.CreerRegularisationRequest.FromString,
+                    response_serializer=facturation__service__pb2.FactureResponse.SerializeToString,
+            ),
             'GetFacture': grpc.unary_unary_rpc_method_handler(
                     servicer.GetFacture,
                     request_deserializer=facturation__service__pb2.FactureIdRequest.FromString,
@@ -148,6 +203,21 @@ def add_FacturationServiceServicer_to_server(servicer, server):
             'GetFacturePDF': grpc.unary_unary_rpc_method_handler(
                     servicer.GetFacturePDF,
                     request_deserializer=facturation__service__pb2.FactureIdRequest.FromString,
+                    response_serializer=facturation__service__pb2.PDFResponse.SerializeToString,
+            ),
+            'GenererBilanImpayesPDF': grpc.unary_unary_rpc_method_handler(
+                    servicer.GenererBilanImpayesPDF,
+                    request_deserializer=facturation__service__pb2.EmptyRequest.FromString,
+                    response_serializer=facturation__service__pb2.PDFResponse.SerializeToString,
+            ),
+            'GenererSyntheseCampagnePDF': grpc.unary_unary_rpc_method_handler(
+                    servicer.GenererSyntheseCampagnePDF,
+                    request_deserializer=facturation__service__pb2.CampagneIdRequest.FromString,
+                    response_serializer=facturation__service__pb2.PDFResponse.SerializeToString,
+            ),
+            'GenererRecuPaiementPDF': grpc.unary_unary_rpc_method_handler(
+                    servicer.GenererRecuPaiementPDF,
+                    request_deserializer=facturation__service__pb2.GenererRecuRequest.FromString,
                     response_serializer=facturation__service__pb2.PDFResponse.SerializeToString,
             ),
             'UpdateStatutFacture': grpc.unary_unary_rpc_method_handler(
@@ -198,6 +268,33 @@ class FacturationService:
             '/facturation.FacturationService/GenererFactures',
             facturation__service__pb2.GenererFacturesRequest.SerializeToString,
             facturation__service__pb2.GenererFacturesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreerRegularisation(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/facturation.FacturationService/CreerRegularisation',
+            facturation__service__pb2.CreerRegularisationRequest.SerializeToString,
+            facturation__service__pb2.FactureResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -278,6 +375,87 @@ class FacturationService:
             target,
             '/facturation.FacturationService/GetFacturePDF',
             facturation__service__pb2.FactureIdRequest.SerializeToString,
+            facturation__service__pb2.PDFResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GenererBilanImpayesPDF(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/facturation.FacturationService/GenererBilanImpayesPDF',
+            facturation__service__pb2.EmptyRequest.SerializeToString,
+            facturation__service__pb2.PDFResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GenererSyntheseCampagnePDF(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/facturation.FacturationService/GenererSyntheseCampagnePDF',
+            facturation__service__pb2.CampagneIdRequest.SerializeToString,
+            facturation__service__pb2.PDFResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GenererRecuPaiementPDF(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/facturation.FacturationService/GenererRecuPaiementPDF',
+            facturation__service__pb2.GenererRecuRequest.SerializeToString,
             facturation__service__pb2.PDFResponse.FromString,
             options,
             channel_credentials,

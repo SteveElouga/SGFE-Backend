@@ -286,6 +286,10 @@ class PaiementService:
 
         return crees, restant
 
+    def list_non_soldes_par_abonne(self, abonne_id: str) -> list[SoldeFacture]:
+        """Soldes non éteints d'un abonné, du plus ancien exigible au plus récent."""
+        return self._solde_repo.list_non_soldes_par_abonne(abonne_id)
+
     def total_du_abonne(self, abonne_id: str, hors_facture_id: str = "") -> Decimal:
         """Ce qu'un abonné doit encore, toutes factures confondues.
 

@@ -215,6 +215,50 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
         suivi = self._svc.get_suivi_impaye(request.facture_id)
         return suivi_to_proto(suivi)
 
+    def GetDetteAbonne(
+        self,
+        request: pb.DetteAbonneRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.DetteAbonneResponse:
+        """Ce qu'un abonné doit encore, toutes factures confondues.
+
+        `hors_facture_id` sert à l'impression : sur une facture, le « solde
+        antérieur » est ce qu'il doit EN PLUS de celle qu'il tient en main.
+        """
+        soldes = [
+            s
+            for s in self._svc.list_non_soldes_par_abonne(request.abonne_id)
+            if not request.hors_facture_id or s.facture_id != request.hors_facture_id
+        ]
+        total = self._svc.total_du_abonne(request.abonne_id, request.hors_facture_id)
+        # La plus ancienne échéance dit l'âge de la dette — c'est elle qui fait
+        # payer, pas le montant.
+        plus_ancienne = min((s.date_limite_paiement for s in soldes), default=None)
+        return pb.DetteAbonneResponse(
+            total_du=float(total),
+            nb_factures=len(soldes),
+            plus_ancienne_echeance=plus_ancienne.isoformat() if plus_ancienne else "",
+        )
+
+    def EnregistrerPaiementAbonne(
+        self,
+        request: pb.EnregistrerPaiementAbonneRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.PaiementAbonneResponse:
+        """Encaisse un versement imputé du plus ancien au plus récent."""
+        paiements, excedent = self._svc.enregistrer_paiement_abonne(
+            abonne_id=request.abonne_id,
+            montant=request.montant,
+            date_paiement=date.fromisoformat(request.date_paiement),
+            mode_paiement=request.mode_paiement,
+            reference_transaction=request.reference_transaction,
+            enregistre_par=request.enregistre_par,
+        )
+        return pb.PaiementAbonneResponse(
+            paiements=[paiement_to_proto(p) for p in paiements],
+            excedent_en_avoir=float(excedent),
+        )
+
 
 def serve() -> None:
     """Démarre le serveur gRPC (appelé par la commande de management)."""
