@@ -150,3 +150,17 @@ class DetteAbonne:
     total_du: float
     nb_factures: int
     plus_ancienne_echeance: str | None
+
+
+@strawberry.type
+class PaiementAbonne:
+    """Résultat d'un encaissement au niveau abonné.
+
+    `paiements` porte la ventilation réelle — une écriture par facture touchée,
+    de la plus ancienne à la plus récente. C'est ce qui permet à l'interface de
+    montrer au caissier ce qui vient de se passer, et pas seulement que ça s'est
+    passé.
+    """
+
+    paiements: list[Paiement]
+    excedent_en_avoir: float
