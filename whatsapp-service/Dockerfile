@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:22-slim@sha256:813a7480f28fdadac1f7f5c824bcdad435b5bc1322a5968bbbdef8d058f9dff4
+FROM node:22-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
 
 # apt-get upgrade en plus du digest pinné : applique les correctifs de
 # sécurité publiés par Debian depuis la construction de cette image de

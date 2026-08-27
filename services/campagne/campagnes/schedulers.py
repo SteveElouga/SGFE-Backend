@@ -73,6 +73,18 @@ def start_scheduler() -> None:
         campagne_planifiee_job,
         trigger=CronTrigger(hour=7, minute=0),
         id="campagne_planifiee",
+        # APScheduler abandonne un passage dont l'heure est dépassée de plus
+        # d'une seconde — c'est son défaut. Sur une machine qui dort, ou un
+        # conteneur redémarré après l'heure, le job n'est jamais rattrapé :
+        # les journaux ne montrent que « Run time of job … was missed ».
+        #
+        # Constaté sur cet environnement : six factures à 31 jours de retard
+        # et **zéro** SuiviImpaye en base — aucune relance n'était partie,
+        # aucun abonné suspendu, alors que les quatre étapes auraient dû se
+        # déclencher. Six heures de grâce laissent le temps d'un réveil ;
+        # `coalesce` évite de rejouer N fois plusieurs passages manqués.
+        misfire_grace_time=6 * 60 * 60,
+        coalesce=True,
         replace_existing=True,
     )
     _scheduler.start()

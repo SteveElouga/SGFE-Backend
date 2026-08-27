@@ -1,7 +1,7 @@
 # Notification Service — requirements autonome (chaque service est buildé/déployé
 # indépendamment, notamment en Docker — pas de fichier de dépendances partagé).
 
-Django==5.2.16
+Django==5.2.17
 grpcio==1.81.1
 grpcio-tools==1.81.1
 protobuf==6.33.6
