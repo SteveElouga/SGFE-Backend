@@ -103,7 +103,9 @@ class PaiementMutations:
         où l'imputation doit être forcée : contestation d'une facture précise,
         régularisation d'écriture.
         """
-        require_auth(info)
+        # `require_auth` renvoie l'utilisateur validé — le contexte, lui,
+        # n'expose pas `.user`. C'est ainsi que procède `enregistrerPaiement`.
+        user = require_auth(info)
         require_role(info, "ADMIN", "COMPTABLE")
         r = paiement_client.enregistrer_paiement_abonne(
             abonne_id=abonne_id,
@@ -111,7 +113,7 @@ class PaiementMutations:
             date_paiement=date_paiement,
             mode_paiement=mode_paiement,
             reference_transaction=reference_transaction,
-            enregistre_par=str(getattr(info.context.user, "id", "") or ""),
+            enregistre_par=str(user.user_id),
         )
         return PaiementAbonne(
             paiements=[paiement_from_grpc(p) for p in r.paiements],
