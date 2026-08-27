@@ -37,7 +37,9 @@ def espace_abonne(request: HttpRequest, token: str) -> JsonResponse:
           "statut": "...",
           "date_limite_paiement": "...",
           "solde_restant": 0.0,
-          "montant_paye": 0.0
+          "montant_paye": 0.0,
+          "nature": "CONSOMMATION" | "REGULARISATION",
+          "motif": ""
         }
       ]
     }
@@ -83,6 +85,10 @@ def espace_abonne(request: HttpRequest, token: str) -> JsonResponse:
                 "date_limite_paiement": f.date_limite_paiement,
                 "solde_restant": solde_restant,
                 "montant_paye": montant_paye,
+                # Une régularisation n'a pas de relevé : sans sa nature et son
+                # motif, l'abonné lit un montant qu'aucun index ne justifie.
+                "nature": f.nature or "CONSOMMATION",
+                "motif": f.motif or "",
             }
         )
 

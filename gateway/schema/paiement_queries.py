@@ -9,6 +9,7 @@ from .context import require_auth, require_role
 from .grpc_clients import auth_client, paiement_client
 from .paiement_types import (
     Avoir,
+    DetteAbonne,
     Paiement,
     SoldeFacture,
     SuiviImpaye,
@@ -78,6 +79,28 @@ class PaiementQueries:
         require_auth(info)
         require_role(info, "ADMIN", "COMPTABLE")
         return suivi_from_grpc(paiement_client.get_suivi_impaye(facture_id))
+
+    @strawberry.field
+    def dette_abonne(
+        self,
+        info: strawberry.types.Info,
+        abonne_id: str,
+        hors_facture_id: str | None = None,
+    ) -> DetteAbonne:
+        """Ce qu'un abonné doit encore, toutes factures confondues — ADMIN, COMPTABLE.
+
+        `horsFactureId` sert à l'impression : sur une facture, le « solde
+        antérieur » est ce que l'abonné doit EN PLUS de celle qu'il tient en
+        main.
+        """
+        require_auth(info)
+        require_role(info, "ADMIN", "COMPTABLE")
+        r = paiement_client.get_dette_abonne(abonne_id, hors_facture_id or "")
+        return DetteAbonne(
+            total_du=r.total_du,
+            nb_factures=r.nb_factures,
+            plus_ancienne_echeance=r.plus_ancienne_echeance or None,
+        )
 
     @strawberry.field
     def avoir_abonne(self, info: strawberry.types.Info, abonne_id: str) -> Avoir:

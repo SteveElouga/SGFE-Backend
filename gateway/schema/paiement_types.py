@@ -10,6 +10,10 @@ class SoldeFacture:
     montant_paye: float
     solde_restant: float
     statut: str
+    # L'abonné permet de regrouper les impayés par personne plutôt que par
+    # facture ; l'échéance ordonne l'imputation et porte l'âge de la dette.
+    abonne_id: str
+    date_limite_paiement: str
 
 
 @strawberry.type
@@ -53,6 +57,8 @@ def solde_from_grpc(r) -> SoldeFacture:
         montant_paye=r.montant_paye,
         solde_restant=r.solde_restant,
         statut=r.statut,
+        abonne_id=r.abonne_id,
+        date_limite_paiement=r.date_limite_paiement,
     )
 
 
@@ -137,3 +143,30 @@ def avoir_from_grpc(r) -> Avoir:
             for m in r.mouvements
         ],
     )
+
+
+@strawberry.type
+class DetteAbonne:
+    """Ce qu'un abonné doit encore, toutes factures confondues.
+
+    `plusAncienneEcheance` porte l'âge de la dette — c'est lui qui fait payer,
+    pas le montant. `null` quand l'abonné est à jour.
+    """
+
+    total_du: float
+    nb_factures: int
+    plus_ancienne_echeance: str | None
+
+
+@strawberry.type
+class PaiementAbonne:
+    """Résultat d'un encaissement au niveau abonné.
+
+    `paiements` porte la ventilation réelle — une écriture par facture touchée,
+    de la plus ancienne à la plus récente. C'est ce qui permet à l'interface de
+    montrer au caissier ce qui vient de se passer, et pas seulement que ça s'est
+    passé.
+    """
+
+    paiements: list[Paiement]
+    excedent_en_avoir: float

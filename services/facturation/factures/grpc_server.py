@@ -124,6 +124,21 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
 
         return pb.GenererFacturesResponse(factures=[facture_to_proto(f) for f in factures])
 
+    def CreerRegularisation(
+        self,
+        request: pb.CreerRegularisationRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.FactureResponse:
+        """Constate à la main une dette antérieure à la mise en service."""
+        limite = datetime.date.fromisoformat(request.date_limite_paiement) if request.date_limite_paiement else None
+        facture = self._facture_svc.creer_regularisation(
+            abonne_id=request.abonne_id,
+            montant=request.montant,
+            motif=request.motif,
+            date_limite_paiement=limite,
+        )
+        return facture_to_proto(facture)
+
     def GetFacture(
         self,
         request: pb.FactureIdRequest,

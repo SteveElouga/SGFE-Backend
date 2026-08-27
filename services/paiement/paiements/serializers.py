@@ -39,6 +39,8 @@ def solde_to_proto(s: SoldeFacture) -> pb.SoldeResponse:
         montant_paye=float(s.montant_paye),
         solde_restant=float(s.solde_restant),
         statut=s.statut,
+        abonne_id=str(s.abonne_id),
+        date_limite_paiement=s.date_limite_paiement.isoformat() if s.date_limite_paiement else "",
     )
 
 

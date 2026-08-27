@@ -68,6 +68,37 @@ class FacturationMutations:
         return succes
 
     @strawberry.mutation
+    def creer_regularisation(
+        self,
+        info: strawberry.types.Info,
+        abonne_id: str,
+        montant: float,
+        motif: str,
+        date_limite_paiement: str | None = None,
+    ) -> Facture:
+        """Constate à la main une dette antérieure à la mise en service — ADMIN, COMPTABLE.
+
+        Certains abonnés devaient déjà de l'argent avant l'application : ces
+        arriérés n'avaient aucun moyen d'entrer dans le système, une facture ne
+        naissant que d'un relevé, à la clôture d'une campagne.
+
+        La régularisation est une vraie facture — elle passe donc par tout
+        l'aval sans exception : solde, relances, PDF, espace abonné,
+        encaissement. Son montant est déclaré et non calculé, d'où le motif
+        obligatoire : c'est la seule trace de ce que la dette constate.
+        """
+        require_auth(info)
+        require_role(info, "ADMIN", "COMPTABLE")
+        return facture_from_grpc(
+            facturation_client.creer_regularisation(
+                abonne_id=abonne_id,
+                montant=montant,
+                motif=motif,
+                date_limite_paiement=date_limite_paiement or "",
+            )
+        )
+
+    @strawberry.mutation
     def update_statut_facture(
         self,
         info: strawberry.types.Info,

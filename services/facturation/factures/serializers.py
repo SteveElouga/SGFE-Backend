@@ -30,6 +30,8 @@ def facture_to_proto(facture: Facture) -> pb.FactureResponse:
         date_generation=facture.date_generation.isoformat(),
         pdf_path=facture.pdf_path or "",
         numero_mobile_money=facture.numero_mobile_money,
+        nature=facture.nature,
+        motif=facture.motif or "",
     )
 
 

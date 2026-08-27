@@ -134,6 +134,15 @@ espace         .url .date_expiration — lien de l'espace abonné ; Facturation
       letter-spacing: .8px; text-transform: uppercase;
     }
     .totals__grand-value { font-size: 18px; font-weight: 800; color: #fff; }
+    /* La dette antérieure se distingue de la consommation : même colonne,
+       autre encre — on la lit sans la confondre. */
+    .totals__row--anterieur span:last-child { color: #9a3324; font-weight: 700; }
+    .totals__note {
+      padding: 5px 14px 0;
+      font-size: 9.5px;
+      color: #9a3324;
+      text-align: right;
+    }
 
     /* ── Histogramme conso ───────────────────────────────────────────────── */
     .hist { margin-top: 22px; }
@@ -231,13 +240,30 @@ espace         .url .date_expiration — lien de l'espace abonné ; Facturation
   </div>
 
   <!-- Détail -->
+  {% if nature.est_regularisation %}
+  {% comment %}Une régularisation constate une dette déclarée : elle n'a ni index ni
+     consommation, et un tableau à colonnes vides mentirait sur ce qu'elle est.
+     Le motif prend la place — c'est la seule justification du montant.{% endcomment %}
+  <table class="detail">
+    <thead>
+      <tr>
+        <th>Désignation</th>
+        <th>Montant</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>{{ nature.motif }}</td>
+        <td>{{ facture.montant }}</td>
+      </tr>
+  {% else %}
   <table class="detail">
     <thead>
       <tr>
         <th>Désignation</th>
         <th>Ancien index</th>
         <th>Nouvel index</th>
-        <th>Conso (m³)</th>
+        <th>Consommation</th>
         <th>Prix unitaire</th>
         <th>Montant</th>
       </tr>
@@ -251,18 +277,33 @@ espace         .url .date_expiration — lien de l'espace abonné ; Facturation
         <td class="num-pu">{{ facture.prix_unitaire }}</td>
         <td>{{ facture.montant }}</td>
       </tr>
+  {% endif %}
     </tbody>
   </table>
 
   <!-- Totaux -->
   <div class="totals">
     <div class="totals__box">
+      {% if solde_anterieur.existe %}
+      {% comment %}Consommation du mois et dette antérieure restent distinctes : l'abonné
+         doit voir ce qu'il consomme et ce qu'il traîne. Le total les additionne.{% endcomment %}
+      <div class="totals__row"><span>Consommation du mois</span><span>{{ facture.montant }}</span></div>
+      <div class="totals__row totals__row--anterieur">
+        <span>Solde antérieur · {{ solde_anterieur.nb_factures }} facture{{ solde_anterieur.nb_factures|pluralize }}</span>
+        <span>{{ solde_anterieur.montant }}</span>
+      </div>
+      {% else %}
       <div class="totals__row"><span>Sous-total HT</span><span>{{ facture.sous_total }}</span></div>
       <div class="totals__row"><span>Frais supplémentaires</span><span>{{ facture.frais_supplementaires }}</span></div>
+      {% endif %}
       <div class="totals__grand">
         <span class="totals__grand-label">Total à payer</span>
         <span class="totals__grand-value">{{ facture.total }}</span>
       </div>
+      {% if solde_anterieur.existe and solde_anterieur.depuis %}
+      {# L'âge de la dette pèse plus que son montant : c'est lui qui fait payer. #}
+      <div class="totals__note">dont {{ solde_anterieur.montant }} dus depuis le {{ solde_anterieur.depuis }}</div>
+      {% endif %}
     </div>
   </div>
 

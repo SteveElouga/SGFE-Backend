@@ -13,7 +13,7 @@ from django.db import IntegrityError, transaction
 
 from .event_publisher import publish_reporting_event
 from .exceptions import PreconditionError
-from .models import Facture, StatutFacture, Tarif
+from .models import Facture, NatureFacture, StatutFacture, Tarif
 from .pdf_generator import (
     PDF_TEMPLATE_VERSION,
     DonneesFacture,
@@ -253,6 +253,11 @@ class FactureService:
             espace_url, espace_expiration = self._notification_client.get_espace_url(
                 abonne_id=str(facture.abonne_id), facture_id=str(facture.id)
             )
+            # Ce que l'abonné doit EN PLUS de cette facture. Dégradation
+            # gracieuse : si Paiement est injoignable, la facture s'imprime
+            # sans la ligne plutôt que d'échouer — mieux vaut une facture
+            # incomplète qu'une facture absente.
+            dette = self._lire_solde_anterieur(abonne_id=str(facture.abonne_id), facture_id=str(facture.id))
             donnees = DonneesFacture(
                 numero_facture=facture.numero_facture,
                 abonne_id=str(facture.abonne_id),
@@ -278,6 +283,11 @@ class FactureService:
                 campagne_nom=campagne_nom,
                 espace_url=espace_url,
                 espace_date_expiration=espace_expiration,
+                nature=facture.nature,
+                motif=facture.motif,
+                solde_anterieur=dette[0],
+                solde_anterieur_nb_factures=dette[1],
+                solde_anterieur_depuis=dette[2],
             )
             historique = build_historique(
                 [
@@ -341,6 +351,95 @@ class FactureService:
             raise ValidationError(f"Statut invalide : {statut}. Valeurs attendues : {', '.join(StatutFacture.values)}")
         return self._repo.list_by_filters(campagne_id=campagne_id, abonne_id=abonne_id, statut=statut)
 
+    def _lire_solde_anterieur(self, abonne_id: str, facture_id: str) -> tuple[Decimal, int, str]:
+        """Interroge Paiement pour la dette de l'abonné, hors la facture imprimée.
+
+        Retourne `(montant, nb_factures, plus_ancienne_echeance)`. Un échec
+        renvoie un solde nul : la facture s'imprime sans la ligne plutôt que de
+        ne pas s'imprimer du tout.
+        """
+        try:
+            r = self._paiement_client.get_dette_abonne(abonne_id=abonne_id, hors_facture_id=facture_id)
+            return Decimal(str(r.total_du)), int(r.nb_factures), r.plus_ancienne_echeance or ""
+        except Exception:
+            logger.warning(
+                "Solde antérieur indisponible — la facture s'imprime sans la ligne",
+                extra={"abonne_id": abonne_id, "facture_id": facture_id},
+            )
+            return Decimal("0"), 0, ""
+
+    def creer_regularisation(
+        self,
+        abonne_id: str,
+        montant: float,
+        motif: str,
+        date_limite_paiement: datetime.date | None = None,
+    ) -> Facture:
+        """Constate à la main une dette qui existait avant l'application.
+
+        Certains abonnés devaient déjà de l'argent à la mise en service : ces
+        arriérés n'avaient aucun moyen d'entrer dans le système, puisqu'une
+        facture ne naissait que d'un relevé, à la clôture d'une campagne.
+
+        Une régularisation est une vraie facture — elle passe donc par tout
+        l'aval sans rien réécrire : solde, relances, PDF, espace abonné,
+        encaissement. Elle s'en distingue sur trois points : sa série de
+        numérotation (``REG`` et non ``FACT``), l'absence de campagne et
+        d'index, et un motif obligatoire qui dit ce qu'elle constate.
+
+        Son montant est **déclaré**, pas calculé : aucun index ne le justifie.
+        C'est pourquoi le motif ne peut pas être vide — il est la seule trace
+        de ce que la dette représente.
+        """
+        montant_d = Decimal(str(montant)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if montant_d <= 0:
+            raise ValidationError("Le montant de la régularisation doit être supérieur à zéro.")
+        if not motif or not motif.strip():
+            raise ValidationError("Le motif de la régularisation est obligatoire.")
+        if not abonne_id:
+            raise ValidationError("L'identifiant de l'abonné est obligatoire.")
+
+        aujourdhui = datetime.date.today()
+        # Sans échéance fournie, la dette est exigible immédiatement : elle
+        # date d'avant, elle n'a pas à bénéficier d'un nouveau délai.
+        limite = date_limite_paiement or aujourdhui
+
+        for tentative in range(_MAX_NUMERO_RETRIES):
+            try:
+                with transaction.atomic():
+                    numero = self._repo.build_numero(aujourdhui.year, aujourdhui.month, for_update=True, serie="REG")
+                    facture = self._repo.create(
+                        abonne_id=abonne_id,
+                        campagne_id="",
+                        ancien_index=Decimal("0"),
+                        nouveau_index=Decimal("0"),
+                        consommation=Decimal("0"),
+                        prix_m3=Decimal("0"),
+                        montant=montant_d,
+                        date_releve=aujourdhui,
+                        date_limite_paiement=limite,
+                        numero_facture=numero,
+                        nature=NatureFacture.REGULARISATION,
+                        motif=motif.strip(),
+                    )
+                break
+            except IntegrityError:
+                if tentative == _MAX_NUMERO_RETRIES - 1:
+                    raise
+        else:  # pragma: no cover - la boucle sort toujours par break ou raise
+            raise RuntimeError("Numérotation de régularisation impossible")
+
+        # Le solde doit exister pour que la dette apparaisse dans les impayés
+        # et entre dans l'escalade des relances comme n'importe quelle facture.
+        self._paiement_client.initialiser_solde(
+            facture_id=str(facture.id),
+            abonne_id=abonne_id,
+            campagne_id="",
+            montant_total=float(montant_d),
+            date_limite_paiement=limite.isoformat(),
+        )
+        return facture
+
     def update_statut(self, facture_id: str, statut: str) -> Facture:
         """Met à jour le statut d'une facture (appelé par Paiement Service)."""
         if statut not in StatutFacture.values:
@@ -373,10 +472,21 @@ class FactureService:
         """
         facture = self._repo.get_by_id(facture_id)
 
+        # Un PDF dont le contenu dépend de données vivantes ne peut pas être
+        # mis en cache. C'est le cas dès qu'un solde antérieur s'y imprime : la
+        # dette bouge à chaque encaissement, à chaque nouvelle facture, à chaque
+        # arriéré saisi. Servir le fichier figé ferait renvoyer à l'abonné un
+        # total à payer périmé — précisément ce qu'un renvoi de facture est
+        # censé corriger.
+        #
+        # La régénération ne concerne donc que les abonnés endettés ; pour un
+        # abonné à jour, le cache continue de faire son travail.
+        dette, _, _ = self._lire_solde_anterieur(abonne_id=str(facture.abonne_id), facture_id=str(facture.id))
         cache_a_jour = (
             facture.pdf_path
             and facture.pdf_template_version == PDF_TEMPLATE_VERSION
             and os.path.exists(facture.pdf_path)
+            and dette == 0
         )
         if cache_a_jour:
             return lire_pdf(facture.pdf_path), f"{facture.numero_facture}.pdf"

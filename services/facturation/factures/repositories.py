@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from django.db.models import Q
 
-from .models import Facture, StatutFacture, Tarif
+from .models import Facture, NatureFacture, StatutFacture, Tarif
 
 
 class TarifRepository:
@@ -31,7 +31,7 @@ class TarifRepository:
 class FactureRepository:
     """Accès base de données pour les factures."""
 
-    def next_sequence(self, year: int, month: int, for_update: bool = False) -> int:
+    def next_sequence(self, year: int, month: int, for_update: bool = False, serie: str = "FACT") -> int:
         """Retourne le prochain numéro de séquence pour l'année/mois.
 
         `for_update=True` verrouille la dernière facture du mois (SELECT ...
@@ -40,7 +40,7 @@ class FactureRepository:
         `transaction.atomic()` que la création de la facture (même pattern
         que `abonnes.repositories.AbonneRepository.last_numero`).
         """
-        prefix = f"FACT-{year:04d}-{month:02d}-"
+        prefix = f"{serie}-{year:04d}-{month:02d}-"
         qs = Facture.objects.select_for_update() if for_update else Facture.objects.all()
         last_numero = (
             qs.filter(numero_facture__startswith=prefix)
@@ -52,10 +52,20 @@ class FactureRepository:
             return 1
         return int(last_numero.rsplit("-", 1)[-1]) + 1
 
-    def build_numero(self, year: int, month: int, for_update: bool = False) -> str:
-        """Construit le prochain numéro de facture au format FACT-AAAA-MM-XXXX."""
-        seq = self.next_sequence(year, month, for_update=for_update)
-        return f"FACT-{year:04d}-{month:02d}-{seq:04d}"
+    def build_numero(self, year: int, month: int, for_update: bool = False, serie: str = "FACT") -> str:
+        """Construit le prochain numéro au format SERIE-AAAA-MM-XXXX.
+
+        Deux séries cohabitent, volontairement distinctes pour qu'aucun
+        comptable ne confonde les deux natures :
+
+        - ``FACT`` — consommation relevée, née d'une clôture de campagne ;
+        - ``REG``  — régularisation d'un arriéré, saisie à la main, sans relevé.
+
+        Les séquences sont indépendantes : REG-2026-08-0001 peut coexister avec
+        FACT-2026-08-0001.
+        """
+        seq = self.next_sequence(year, month, for_update=for_update, serie=serie)
+        return f"{serie}-{year:04d}-{month:02d}-{seq:04d}"
 
     def create(
         self,
@@ -70,6 +80,8 @@ class FactureRepository:
         date_limite_paiement: datetime.date,
         numero_facture: str,
         numero_mobile_money: str = "",
+        nature: str = NatureFacture.CONSOMMATION,
+        motif: str = "",
     ) -> Facture:
         return Facture.objects.create(
             numero_facture=numero_facture,
@@ -83,6 +95,8 @@ class FactureRepository:
             date_releve=date_releve,
             date_limite_paiement=date_limite_paiement,
             numero_mobile_money=numero_mobile_money,
+            nature=nature,
+            motif=motif,
             statut=StatutFacture.IMPAYEE,
         )
 

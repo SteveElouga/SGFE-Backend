@@ -74,6 +74,16 @@ class PaiementServiceStub:
                 request_serializer=paiement__service__pb2.FactureIdRequest.SerializeToString,
                 response_deserializer=paiement__service__pb2.SuiviImpayeResponse.FromString,
                 _registered_method=True)
+        self.GetDetteAbonne = channel.unary_unary(
+                '/paiement.PaiementService/GetDetteAbonne',
+                request_serializer=paiement__service__pb2.DetteAbonneRequest.SerializeToString,
+                response_deserializer=paiement__service__pb2.DetteAbonneResponse.FromString,
+                _registered_method=True)
+        self.EnregistrerPaiementAbonne = channel.unary_unary(
+                '/paiement.PaiementService/EnregistrerPaiementAbonne',
+                request_serializer=paiement__service__pb2.EnregistrerPaiementAbonneRequest.SerializeToString,
+                response_deserializer=paiement__service__pb2.PaiementAbonneResponse.FromString,
+                _registered_method=True)
         self.CrediterAvoir = channel.unary_unary(
                 '/paiement.PaiementService/CrediterAvoir',
                 request_serializer=paiement__service__pb2.CrediterAvoirRequest.SerializeToString,
@@ -140,6 +150,23 @@ class PaiementServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetDetteAbonne(self, request, context):
+        """Ce qu'un abonné doit encore, toutes factures confondues. `hors_facture_id`
+        sert à l'impression : sur une facture, le « solde antérieur » est ce qu'il
+        doit EN PLUS de celle qu'il tient en main.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def EnregistrerPaiementAbonne(self, request, context):
+        """Encaisse un versement au nom d'un abonné, imputé du plus ancien au plus
+        récent. Produit potentiellement plusieurs écritures.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def CrediterAvoir(self, request, context):
         """Avoir (crédit) de l'abonné : émission d'un avoir manuel (rectification) et
         consultation du solde + journal des mouvements.
@@ -196,6 +223,16 @@ def add_PaiementServiceServicer_to_server(servicer, server):
                     servicer.GetSuiviImpaye,
                     request_deserializer=paiement__service__pb2.FactureIdRequest.FromString,
                     response_serializer=paiement__service__pb2.SuiviImpayeResponse.SerializeToString,
+            ),
+            'GetDetteAbonne': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetDetteAbonne,
+                    request_deserializer=paiement__service__pb2.DetteAbonneRequest.FromString,
+                    response_serializer=paiement__service__pb2.DetteAbonneResponse.SerializeToString,
+            ),
+            'EnregistrerPaiementAbonne': grpc.unary_unary_rpc_method_handler(
+                    servicer.EnregistrerPaiementAbonne,
+                    request_deserializer=paiement__service__pb2.EnregistrerPaiementAbonneRequest.FromString,
+                    response_serializer=paiement__service__pb2.PaiementAbonneResponse.SerializeToString,
             ),
             'CrediterAvoir': grpc.unary_unary_rpc_method_handler(
                     servicer.CrediterAvoir,
@@ -424,6 +461,60 @@ class PaiementService:
             '/paiement.PaiementService/GetSuiviImpaye',
             paiement__service__pb2.FactureIdRequest.SerializeToString,
             paiement__service__pb2.SuiviImpayeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetDetteAbonne(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/paiement.PaiementService/GetDetteAbonne',
+            paiement__service__pb2.DetteAbonneRequest.SerializeToString,
+            paiement__service__pb2.DetteAbonneResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def EnregistrerPaiementAbonne(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/paiement.PaiementService/EnregistrerPaiementAbonne',
+            paiement__service__pb2.EnregistrerPaiementAbonneRequest.SerializeToString,
+            paiement__service__pb2.PaiementAbonneResponse.FromString,
             options,
             channel_credentials,
             insecure,

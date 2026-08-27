@@ -1,8 +1,10 @@
 """Accès base de données du Paiement Service."""
 
 from datetime import date
+from decimal import Decimal
 
 from django.core.exceptions import ObjectDoesNotExist
+from django.db.models import Sum
 
 from .models import AvoirAbonne, MouvementAvoir, Paiement, SoldeFacture, StatutSolde, SuiviImpaye
 
@@ -156,6 +158,37 @@ class SoldeFactureRepository:
 
         solde.save(update_fields=["montant_paye", "solde_restant", "statut", "updated_at"])
         return solde
+
+    def list_non_soldes_par_abonne(self, abonne_id: str, for_update: bool = False) -> list[SoldeFacture]:
+        """Soldes non éteints d'un abonné, **du plus ancien au plus récent**.
+
+        L'ordre porte la règle d'imputation : un versement éteint d'abord la
+        dette la plus ancienne. Le tri se fait sur la date limite de paiement,
+        et non sur la date de création — c'est l'exigibilité qui compte, et une
+        régularisation d'arriéré est exigible immédiatement même si elle vient
+        d'être saisie.
+
+        `for_update=True` verrouille les lignes pour sérialiser deux versements
+        concurrents sur un même abonné : sans cela, deux caissiers pourraient
+        imputer le même solde deux fois.
+        """
+        qs = SoldeFacture.objects.filter(abonne_id=abonne_id).exclude(statut=StatutSolde.PAYEE)
+        if for_update:
+            qs = qs.select_for_update()
+        return list(qs.order_by("date_limite_paiement", "facture_id"))
+
+    def total_du_abonne(self, abonne_id: str, hors_facture_id: str = "") -> Decimal:
+        """Somme des soldes restants d'un abonné, hors une facture donnée.
+
+        `hors_facture_id` sert à l'impression : sur une facture, le « solde
+        antérieur » est ce que l'abonné doit **en plus** de celle qu'il tient
+        entre les mains.
+        """
+        qs = SoldeFacture.objects.filter(abonne_id=abonne_id).exclude(statut=StatutSolde.PAYEE)
+        if hors_facture_id:
+            qs = qs.exclude(facture_id=hors_facture_id)
+        total = qs.aggregate(t=Sum("solde_restant"))["t"]
+        return Decimal(str(total)) if total is not None else Decimal("0")
 
     def list_impayes(self) -> list[SoldeFacture]:
         """Retourne toutes les factures dont la date limite est dépassée et non payées."""
