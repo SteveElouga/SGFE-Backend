@@ -24,6 +24,9 @@ service PaiementService {
   // consultation du solde + journal des mouvements.
   rpc CrediterAvoir (CrediterAvoirRequest) returns (AvoirResponse);
   rpc GetAvoirAbonne (AbonneIdRequest) returns (AvoirResponse);
+  // Éteint le solde d'une facture annulée. Ce que l'abonné avait versé est
+  // porté à son avoir : la facture disparaît, pas son argent.
+  rpc AnnulerSolde (AnnulerSoldeRequest) returns (AnnulerSoldeResponse);
 }
 
 message InitialiserSoldeRequest {
@@ -156,3 +159,17 @@ message AvoirResponse {
 }
 
 message EmptyRequest {}
+
+message AnnulerSoldeRequest {
+  string facture_id = 1;
+  // Obligatoire : c'est la seule trace de la raison, puisqu'aucun index ne
+  // justifie la disparition d'une dette.
+  string motif = 2;
+}
+
+message AnnulerSoldeResponse {
+  // Solde éteint (statut ANNULEE, reste à payer nul).
+  SoldeResponse solde = 1;
+  // Montant reversé à l'avoir de l'abonné (0 si rien n'avait été payé).
+  double montant_porte_en_avoir = 2;
+}

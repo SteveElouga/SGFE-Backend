@@ -31,6 +31,24 @@ class Facture:
     campagne_nom: str = ""
     campagne_periode_mois: int = 0
     campagne_periode_annee: int = 0
+    # CONSOMMATION (issue d'un relevé) | REGULARISATION (dette déclarée).
+    # Sans elle, une régularisation s'affiche comme une facture d'eau à qui il
+    # manquerait son index — un tiret là où l'on cherche des mètres cubes.
+    nature: str = "CONSOMMATION"
+    # Justification d'une régularisation — remplace le relevé absent.
+    motif: str = ""
+    # ── Annulation ────────────────────────────────────────────────────────────
+    # Une facture annulée reste au journal : la supprimer laisserait un trou
+    # dans la numérotation comptable, et le trou est précisément ce qui prouve
+    # qu'on a effacé quelque chose.
+    motif_annulation: str = ""
+    date_annulation: str = ""
+    annulee_par: str = ""
+    # Les deux bouts d'une correction se citent : sans ce lien, le journal
+    # montre une facture annulée et une autre née le même jour, sans rien qui
+    # dise que la seconde répare la première.
+    remplacee_par_id: str = ""
+    remplace_id: str = ""
 
 
 @strawberry.type
@@ -59,6 +77,13 @@ def facture_from_grpc(r: object) -> Facture:
         date_generation=r.date_generation,
         pdf_path=r.pdf_path,
         numero_mobile_money=r.numero_mobile_money,
+        nature=getattr(r, "nature", "") or "CONSOMMATION",
+        motif=getattr(r, "motif", "") or "",
+        motif_annulation=getattr(r, "motif_annulation", "") or "",
+        date_annulation=getattr(r, "date_annulation", "") or "",
+        annulee_par=getattr(r, "annulee_par", "") or "",
+        remplacee_par_id=getattr(r, "remplacee_par_id", "") or "",
+        remplace_id=getattr(r, "remplace_id", "") or "",
     )
 
 
@@ -70,3 +95,16 @@ def tarif_from_grpc(r: object) -> Tarif:
         date_effet=r.date_effet,
         is_active=r.is_active,
     )
+
+
+@strawberry.type
+class RegenerationFacture:
+    """Les deux bouts d'une correction, rendus ensemble.
+
+    L'écran a besoin des deux : dire ce qui a été annulé, et ouvrir ce qui l'a
+    remplacé. Ne renvoyer que la nouvelle obligerait à relire l'ancienne pour
+    savoir ce qu'on vient de faire.
+    """
+
+    annulee: Facture
+    nouvelle: Facture

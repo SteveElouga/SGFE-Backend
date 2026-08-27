@@ -159,6 +159,19 @@ class SoldeFactureRepository:
         solde.save(update_fields=["montant_paye", "solde_restant", "statut", "updated_at"])
         return solde
 
+    def annuler(self, solde: SoldeFacture) -> SoldeFacture:
+        """Éteint un solde parce que sa facture est annulée.
+
+        Le solde restant tombe à zéro sans qu'un versement l'ait éteint : c'est
+        exactement pourquoi le statut doit être ANNULEE et non PAYEE. Confondre
+        les deux ferait entrer dans les recettes une somme que personne n'a
+        versée, et rendrait l'écart introuvable au rapprochement.
+        """
+        solde.solde_restant = Decimal("0")
+        solde.statut = StatutSolde.ANNULEE
+        solde.save(update_fields=["solde_restant", "statut", "updated_at"])
+        return solde
+
     def list_non_soldes_par_abonne(self, abonne_id: str, for_update: bool = False) -> list[SoldeFacture]:
         """Soldes non éteints d'un abonné, **du plus ancien au plus récent**.
 
@@ -172,7 +185,9 @@ class SoldeFactureRepository:
         concurrents sur un même abonné : sans cela, deux caissiers pourraient
         imputer le même solde deux fois.
         """
-        qs = SoldeFacture.objects.filter(abonne_id=abonne_id).exclude(statut=StatutSolde.PAYEE)
+        qs = SoldeFacture.objects.filter(abonne_id=abonne_id).exclude(
+            statut__in=(StatutSolde.PAYEE, StatutSolde.ANNULEE)
+        )
         if for_update:
             qs = qs.select_for_update()
         return list(qs.order_by("date_limite_paiement", "facture_id"))
@@ -184,7 +199,9 @@ class SoldeFactureRepository:
         antérieur » est ce que l'abonné doit **en plus** de celle qu'il tient
         entre les mains.
         """
-        qs = SoldeFacture.objects.filter(abonne_id=abonne_id).exclude(statut=StatutSolde.PAYEE)
+        qs = SoldeFacture.objects.filter(abonne_id=abonne_id).exclude(
+            statut__in=(StatutSolde.PAYEE, StatutSolde.ANNULEE)
+        )
         if hors_facture_id:
             qs = qs.exclude(facture_id=hors_facture_id)
         total = qs.aggregate(t=Sum("solde_restant"))["t"]
@@ -195,7 +212,7 @@ class SoldeFactureRepository:
         return list(
             SoldeFacture.objects.filter(
                 date_limite_paiement__lt=date.today(),
-            ).exclude(statut=StatutSolde.PAYEE)
+            ).exclude(statut__in=(StatutSolde.PAYEE, StatutSolde.ANNULEE))
         )
 
 

@@ -5,7 +5,13 @@ import strawberry
 import strawberry.types
 
 from .context import require_auth, require_role
-from .facturation_types import Facture, Tarif, facture_from_grpc, tarif_from_grpc
+from .facturation_types import (
+    Facture,
+    RegenerationFacture,
+    Tarif,
+    facture_from_grpc,
+    tarif_from_grpc,
+)
 from .grpc_clients import facturation_client, notification_client
 
 
@@ -96,6 +102,67 @@ class FacturationMutations:
                 motif=motif,
                 date_limite_paiement=date_limite_paiement or "",
             )
+        )
+
+    @strawberry.mutation
+    def annuler_facture(
+        self,
+        info: strawberry.types.Info,
+        facture_id: str,
+        motif: str,
+    ) -> Facture:
+        """Annule une facture sans l'effacer — ADMIN uniquement.
+
+        Elle reste au journal avec son numéro, son motif et l'auteur de
+        l'annulation : une numérotation comptable dont des numéros
+        disparaissent n'est plus une numérotation, et le trou est précisément
+        ce qui prouve qu'on a effacé quelque chose.
+
+        Ce que l'abonné avait déjà versé lui revient sous forme d'avoir, d'où il
+        s'imputera de lui-même sur sa prochaine facture. C'est le cas courant :
+        une erreur d'index se découvre le plus souvent quand quelqu'un vient
+        payer et conteste son montant.
+
+        Réservé à ADMIN : effacer une dette est le geste le plus lourd de
+        l'application, plus lourd encore que d'en créer une.
+        """
+        utilisateur = require_auth(info)
+        require_role(info, "ADMIN")
+        return facture_from_grpc(
+            facturation_client.annuler_facture(
+                facture_id=facture_id,
+                motif=motif,
+                annule_par=getattr(utilisateur, "username", "") or "",
+            )
+        )
+
+    @strawberry.mutation
+    def regenerer_facture(
+        self,
+        info: strawberry.types.Info,
+        facture_id: str,
+        motif: str,
+    ) -> RegenerationFacture:
+        """Annule une facture et en émet une corrigée — ADMIN uniquement.
+
+        Le relevé est **relu** depuis Campagne Service, pas recopié de la
+        facture annulée : corriger un index puis régénérer produit la facture
+        juste, alors que recopier reproduirait fidèlement l'erreur qu'on répare.
+
+        Ce que l'abonné avait versé revient à son avoir à l'annulation, puis
+        s'impute sur la nouvelle facture à sa création : il retrouve son
+        paiement sans que personne ne le ressaisisse.
+        """
+        utilisateur = require_auth(info)
+        require_role(info, "ADMIN")
+        resultat = facturation_client.regenerer_facture(
+            facture_id=facture_id,
+            motif=motif,
+            regenere_par=getattr(utilisateur, "username", "") or "",
+        )
+        return RegenerationFacture(
+            annulee=facture_from_grpc(resultat.annulee),
+            nouvelle=facture_from_grpc(resultat.nouvelle),
         )
 
     @strawberry.mutation

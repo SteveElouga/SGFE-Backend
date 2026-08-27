@@ -244,6 +244,16 @@ class PaiementServiceClient:
         self._pb = pb
         self._pb = pb
 
+    def annuler_solde(self, facture_id: str, motif: str) -> None:
+        """Éteint le solde d'une facture annulée et rend à l'abonné ce qu'il a versé.
+
+        Aucune dégradation gracieuse ici, contrairement au reste de ce client :
+        si l'appel échoue, la facture ne doit pas être annulée non plus. Une
+        facture marquée annulée dont la dette continuerait de courir dans les
+        impayés et les relances serait pire que pas d'annulation du tout.
+        """
+        self._stub.AnnulerSolde(self._pb.AnnulerSoldeRequest(facture_id=facture_id, motif=motif))
+
     def get_dette_abonne(self, abonne_id: str, hors_facture_id: str = ""):
         """Dette agrégée d'un abonné, hors une facture donnée.
 

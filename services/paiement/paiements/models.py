@@ -19,6 +19,11 @@ class StatutSolde(models.TextChoices):
     IMPAYEE = "IMPAYEE", "Impayée"
     PARTIELLE = "PARTIELLE", "Partiellement payée"
     PAYEE = "PAYEE", "Payée"
+    # Facture annulée : la dette n'existe plus, mais le solde reste au journal.
+    # Le distinguer de PAYEE importe — « payée » et « annulée » racontent deux
+    # histoires opposées, et les confondre ferait apparaître dans les recettes
+    # une somme que personne n'a versée.
+    ANNULEE = "ANNULEE", "Annulée"
 
 
 class Paiement(models.Model):
@@ -114,6 +119,10 @@ class TypeMouvementAvoir(models.TextChoices):
     TROP_PERCU = "TROP_PERCU", "Trop-perçu"  # crédit auto (surpaiement)
     RECTIFICATION = "RECTIFICATION", "Rectification"  # crédit manuel (correction / geste commercial)
     IMPUTATION = "IMPUTATION", "Imputation"  # débit (avoir appliqué à une facture)
+    # Crédit né de l'annulation d'une facture déjà payée, en tout ou partie.
+    # Distinct d'un trop-perçu : l'abonné n'a pas versé de trop, c'est la
+    # facture qui a disparu sous son versement.
+    ANNULATION = "ANNULATION", "Annulation de facture"
 
 
 class MouvementAvoir(models.Model):

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 
 from .event_publisher import publish_reporting_event
 from .exceptions import PreconditionError
@@ -367,6 +368,181 @@ class FactureService:
                 extra={"abonne_id": abonne_id, "facture_id": facture_id},
             )
             return Decimal("0"), 0, ""
+
+    def annuler_facture(self, facture_id: str, motif: str, annule_par: str) -> Facture:
+        """Annule une facture sans l'effacer.
+
+        Une facture annulée reste au journal avec son numéro, son motif et le nom
+        de qui l'a annulée. La supprimer laisserait un trou dans la numérotation
+        comptable — et un trou est précisément ce qui prouve qu'on a effacé
+        quelque chose.
+
+        Ce que l'abonné avait déjà versé lui revient sous forme d'avoir, d'où il
+        s'imputera de lui-même sur sa prochaine facture. C'est le cas courant et
+        non l'exception : une erreur d'index se découvre le plus souvent quand
+        quelqu'un vient payer et conteste son montant.
+
+        Le motif est obligatoire, comme il l'est pour une régularisation : ces
+        deux gestes modifient une dette sans qu'aucun index ne le justifie, et
+        la phrase saisie est la seule trace de la raison.
+        """
+        if not motif or not motif.strip():
+            raise ValidationError("Le motif de l'annulation est obligatoire.")
+
+        facture = self._repo.get_by_id(facture_id)
+        if facture.statut == StatutFacture.ANNULEE:
+            raise ValidationError("Cette facture est déjà annulée.")
+
+        # Éteindre le solde d'abord : si le service paiement est indisponible,
+        # mieux vaut ne pas annuler du tout que d'annuler une facture dont la
+        # dette continuerait de courir dans les impayés et les relances.
+        self._paiement_client.annuler_solde(facture_id=facture_id, motif=motif.strip())
+
+        facture.statut = StatutFacture.ANNULEE
+        facture.motif_annulation = motif.strip()
+        facture.date_annulation = timezone.now()
+        facture.annulee_par = annule_par or ""
+        facture.save(update_fields=["statut", "motif_annulation", "date_annulation", "annulee_par"])
+        logger.info(
+            "Facture annulée",
+            extra={"facture_id": facture_id, "numero": facture.numero_facture, "par": annule_par},
+        )
+        return facture
+
+    def regenerer_facture(
+        self,
+        facture_id: str,
+        motif: str,
+        regenere_par: str,
+        delai_paiement_jours: int,
+        societe: InfosSociete | None = None,
+    ) -> tuple[Facture, Facture]:
+        """Annule une facture et en émet une corrigée à partir du relevé actuel.
+
+        Le relevé est relu depuis Campagne Service plutôt que recopié de la
+        facture : c'est tout l'intérêt du geste. Corriger un index puis
+        régénérer produit la facture juste ; recopier les index de l'ancienne
+        reproduirait fidèlement l'erreur qu'on cherche à réparer.
+
+        Les deux factures se citent l'une l'autre. Sans ce lien, le journal
+        montre une facture annulée et une autre née le même jour, sans rien qui
+        dise que la seconde répare la première.
+
+        Ce que l'abonné avait versé revient à son avoir à l'annulation, puis
+        s'impute sur la nouvelle facture à sa création : il retrouve son
+        paiement sans que personne ne le ressaisisse.
+
+        Returns:
+            (facture annulée, facture émise en remplacement)
+        """
+        ancienne = self._repo.get_by_id(facture_id)
+        if ancienne.nature == NatureFacture.REGULARISATION:
+            raise ValidationError(
+                "Une régularisation ne se régénère pas : son montant est déclaré, pas calculé. "
+                "Annulez-la et saisissez-en une nouvelle."
+            )
+        if not ancienne.campagne_id:
+            raise ValidationError("Cette facture n'est rattachée à aucune campagne — régénération impossible.")
+
+        releve = self._relire_releve(ancienne.campagne_id, ancienne.abonne_id)
+        if releve is None:
+            raise PreconditionError(
+                "Aucun relevé trouvé pour cet abonné dans la campagne — corrigez le relevé avant de régénérer."
+            )
+
+        try:
+            tarif = self._tarif_repo.get_actif()
+        except ObjectDoesNotExist as exc:
+            raise PreconditionError("Aucun tarif actif — configurez un tarif avant de régénérer.") from exc
+
+        ancien_index = Decimal(str(releve["ancien_index"]))
+        nouveau_index = Decimal(str(releve["nouveau_index"]))
+        if nouveau_index < ancien_index:
+            raise ValidationError(
+                "Le relevé actuel est incohérent (index de fin inférieur à l'index de départ) — "
+                "corrigez-le avant de régénérer."
+            )
+
+        consommation = (nouveau_index - ancien_index).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
+        montant = (consommation * tarif.prix_m3).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+        try:
+            date_releve = datetime.date.fromisoformat(releve["date_releve"])
+        except ValueError:
+            date_releve = datetime.datetime.fromisoformat(releve["date_releve"]).date()
+
+        # Le délai vient de l'appelant, comme pour `generer_factures` : c'est la
+        # couche gRPC qui le lit dans Config Service, pas ce service-ci.
+        date_limite = date_releve + datetime.timedelta(days=delai_paiement_jours)
+
+        # L'annulation d'abord : elle rend l'argent versé à l'avoir de l'abonné,
+        # d'où la nouvelle facture le récupérera à sa création.
+        annulee = self.annuler_facture(facture_id, motif=motif, annule_par=regenere_par)
+
+        campagne_nom = self._campagne_client.get_campagne_nom(ancienne.campagne_id)
+        nouvelle = None
+        for tentative in range(_MAX_NUMERO_RETRIES):
+            try:
+                with transaction.atomic():
+                    numero = self._repo.build_numero(date_releve.year, date_releve.month, for_update=True)
+                    nouvelle = self._repo.create(
+                        abonne_id=ancienne.abonne_id,
+                        campagne_id=ancienne.campagne_id,
+                        ancien_index=ancien_index,
+                        nouveau_index=nouveau_index,
+                        consommation=consommation,
+                        prix_m3=tarif.prix_m3,
+                        montant=montant,
+                        date_releve=date_releve,
+                        date_limite_paiement=date_limite,
+                        numero_facture=numero,
+                        numero_mobile_money=ancienne.numero_mobile_money,
+                        remplace_id=str(ancienne.id),
+                    )
+                break
+            except IntegrityError:
+                if tentative == _MAX_NUMERO_RETRIES - 1:
+                    raise
+        if nouvelle is None:  # pragma: no cover - la boucle sort par break ou raise
+            raise RuntimeError("Numérotation de la facture régénérée impossible")
+
+        annulee.remplacee_par_id = str(nouvelle.id)
+        annulee.save(update_fields=["remplacee_par_id"])
+
+        # Le solde récupère au passage l'avoir né de l'annulation.
+        self._paiement_client.initialiser_solde(
+            facture_id=str(nouvelle.id),
+            abonne_id=nouvelle.abonne_id,
+            campagne_id=nouvelle.campagne_id,
+            montant_total=float(montant),
+            date_limite_paiement=date_limite.isoformat(),
+        )
+        self._regenerer_et_persister(nouvelle, societe=societe, campagne_nom=campagne_nom)
+
+        logger.info(
+            "Facture régénérée",
+            extra={
+                "ancienne": annulee.numero_facture,
+                "nouvelle": nouvelle.numero_facture,
+                "abonne_id": nouvelle.abonne_id,
+            },
+        )
+        return annulee, nouvelle
+
+    def _relire_releve(self, campagne_id: str, abonne_id: str) -> dict | None:
+        """Relit le relevé courant d'un abonné dans sa campagne.
+
+        Relu et non recopié : une régénération sert justement à prendre en
+        compte un index corrigé entre-temps.
+        """
+        try:
+            releves = self._campagne_client.list_releves(campagne_id)
+        except Exception as exc:  # noqa: BLE001 - dégradation explicite
+            raise PreconditionError(f"Campagne Service indisponible — régénération impossible : {exc}") from exc
+        for r in releves:
+            if r.get("abonne_id") == abonne_id and r.get("nouveau_index") is not None:
+                return r
+        return None
 
     def creer_regularisation(
         self,

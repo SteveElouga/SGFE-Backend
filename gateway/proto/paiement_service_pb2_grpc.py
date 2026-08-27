@@ -94,6 +94,11 @@ class PaiementServiceStub:
                 request_serializer=paiement__service__pb2.AbonneIdRequest.SerializeToString,
                 response_deserializer=paiement__service__pb2.AvoirResponse.FromString,
                 _registered_method=True)
+        self.AnnulerSolde = channel.unary_unary(
+                '/paiement.PaiementService/AnnulerSolde',
+                request_serializer=paiement__service__pb2.AnnulerSoldeRequest.SerializeToString,
+                response_deserializer=paiement__service__pb2.AnnulerSoldeResponse.FromString,
+                _registered_method=True)
 
 
 class PaiementServiceServicer:
@@ -181,6 +186,14 @@ class PaiementServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def AnnulerSolde(self, request, context):
+        """Éteint le solde d'une facture annulée. Ce que l'abonné avait versé est
+        porté à son avoir : la facture disparaît, pas son argent.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_PaiementServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -243,6 +256,11 @@ def add_PaiementServiceServicer_to_server(servicer, server):
                     servicer.GetAvoirAbonne,
                     request_deserializer=paiement__service__pb2.AbonneIdRequest.FromString,
                     response_serializer=paiement__service__pb2.AvoirResponse.SerializeToString,
+            ),
+            'AnnulerSolde': grpc.unary_unary_rpc_method_handler(
+                    servicer.AnnulerSolde,
+                    request_deserializer=paiement__service__pb2.AnnulerSoldeRequest.FromString,
+                    response_serializer=paiement__service__pb2.AnnulerSoldeResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -569,6 +587,33 @@ class PaiementService:
             '/paiement.PaiementService/GetAvoirAbonne',
             paiement__service__pb2.AbonneIdRequest.SerializeToString,
             paiement__service__pb2.AvoirResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AnnulerSolde(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/paiement.PaiementService/AnnulerSolde',
+            paiement__service__pb2.AnnulerSoldeRequest.SerializeToString,
+            paiement__service__pb2.AnnulerSoldeResponse.FromString,
             options,
             channel_credentials,
             insecure,

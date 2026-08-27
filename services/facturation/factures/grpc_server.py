@@ -139,6 +139,43 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
         )
         return facture_to_proto(facture)
 
+    def AnnulerFacture(
+        self,
+        request: pb.AnnulerFactureRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.FactureResponse:
+        """Annule une facture sans l'effacer, et rend à l'abonné ce qu'il a versé."""
+        facture = self._facture_svc.annuler_facture(
+            facture_id=request.facture_id,
+            motif=request.motif,
+            annule_par=request.annule_par,
+        )
+        return facture_to_proto(facture)
+
+    def RegenererFacture(
+        self,
+        request: pb.RegenererFactureRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.RegenererFactureResponse:
+        """Annule une facture et en émet une corrigée depuis le relevé actuel.
+
+        Le délai de paiement et les infos société sont lus ici, comme pour la
+        génération : le service métier ne dépend pas de Config Service.
+        """
+        delai = self._config_client.get_delai_paiement_jours()
+        societe = self._config_client.get_infos_societe()
+        annulee, nouvelle = self._facture_svc.regenerer_facture(
+            facture_id=request.facture_id,
+            motif=request.motif,
+            regenere_par=request.regenere_par,
+            delai_paiement_jours=delai,
+            societe=societe,
+        )
+        return pb.RegenererFactureResponse(
+            annulee=facture_to_proto(annulee),
+            nouvelle=facture_to_proto(nouvelle),
+        )
+
     def GetFacture(
         self,
         request: pb.FactureIdRequest,
