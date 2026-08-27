@@ -76,6 +76,13 @@ message FactureResponse {
   string date_generation = 13;
   string pdf_path = 14;
   string numero_mobile_money = 15;
+  // CONSOMMATION (issue d'un relevé) ou REGULARISATION (dette déclarée).
+  // Sans ce champ, une régularisation est indistinguable d'une facture
+  // ordinaire à qui il manquerait son relevé — ce que l'espace abonné
+  // affichait littéralement : un montant, et un tiret à la place de l'index.
+  string nature = 16;
+  // Justification d'une régularisation. Vide pour une consommation.
+  string motif = 17;
 }
 
 message TarifResponse {
