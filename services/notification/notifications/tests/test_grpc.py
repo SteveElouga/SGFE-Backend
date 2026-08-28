@@ -342,14 +342,19 @@ class TestTesterEnvoiRPC(TestCase):
     @patch("notifications.services.whatsapp_client")
     def test_tester_envoi_echec_retourne_le_motif_reel(self, mock_wa):
         """En cas d'échec, le motif exact est renvoyé (pas d'abort ni de message générique)."""
-        mock_wa.send.side_effect = WhatsAppDeliveryError("WhatsApp non connecté — scannez le QR code sur /qr")
+        mock_wa.send.side_effect = WhatsAppDeliveryError(
+            "WhatsApp n'est pas connecté. Un administrateur doit lier le compte "
+            "depuis Configuration › WhatsApp & Tokens."
+        )
 
         servicer = NotificationServiceServicer()
         context = MagicMock()
         response = servicer.TesterEnvoi(pb.TesterEnvoiRequest(phone_number="+237699000001"), context)
 
         self.assertFalse(response.success)
-        self.assertIn("non connecté", response.message)
+        self.assertIn("pas connecté", response.message)
+        # Le motif remonté ne doit nommer aucune route interne.
+        self.assertNotIn("/qr", response.message)
         context.abort.assert_not_called()
 
     def test_tester_envoi_numero_vide_leve_value_error(self):
