@@ -503,6 +503,23 @@ En traitant les huit actions **P0**, le projet devient déployable de façon res
 
 ## 10. Décisions d'exécution & plan cadré (Local maintenant → Azure moyen terme → Kubernetes en cible)
 
+> ⚠️ **L'horizon ② a changé de cible le 28 août 2026 : AWS, plus Azure.**
+> Les décisions *applicatives* de cette section restent valables — elles sont
+> indépendantes de l'infrastructure, c'est d'ailleurs ce que la section dit
+> elle-même. Seules les mentions de plateforme sont périmées :
+>
+> | Écrit ici | Cible retenue |
+> |---|---|
+> | Azure Key Vault | AWS Secrets Manager |
+> | Flexible Server + PITR | RDS PostgreSQL, ou conteneurs + snapshots — arbitrage ouvert |
+> | Front Door / App Gateway WAF | CloudFront |
+> | Identité managée | Profil d'instance EC2 (rôle IAM) |
+> | AKS + Ansible en ③ | Ansible dès ②, pour l'infrastructure et l'amorçage — **pas** dans la boucle de livraison |
+>
+> Le détail se trouve dans [`docs/INFRASTRUCTURE_AWS.md`](docs/INFRASTRUCTURE_AWS.md)
+> (dimensionnement, coûts, réseau) et [`docs/CHAINE_DE_LIVRAISON.md`](docs/CHAINE_DE_LIVRAISON.md)
+> (qui déploie quoi, et dans quel ordre).
+
 Cette section fige les décisions prises lors du cadrage. **Trois horizons de déploiement :** **① Local (maintenant)** — Docker Compose en local (dév) ; **② Azure (moyen terme)** — migration cloud, d'abord Docker Compose sur VM Azure ; **③ Kubernetes/AKS + Ansible (cible)**. **Point clé : l'essentiel du travail P0/P1 est indépendant de l'infrastructure** (correctifs de code, sécurité applicative, tests, volet financier, espace abonné) et se fait **dès maintenant en local** ; seuls les items « plateforme » (Key Vault, bases & observabilité managées, WAF, mesh) attendent la migration Azure. Les décisions *(reco)* sont adoptées par défaut — **modifiables sur simple demande**.
 
 ### 10.1 Décisions Phase P0
