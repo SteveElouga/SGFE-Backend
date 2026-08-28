@@ -40,7 +40,14 @@ class WhatsAppWebClient:
             raise WhatsAppDeliveryError(f"Service WhatsApp inaccessible : {exc}") from exc
 
         if response.status_code == 503:
-            raise WhatsAppDeliveryError("WhatsApp non connecté — scannez le QR code sur /qr pour activer l'envoi")
+            # Ce message atterrit tel quel dans le centre de notifications, sous
+            # les yeux d'un comptable. Il y montrait « /qr » — une route interne
+            # du service Node, que personne d'autre qu'un développeur ne peut
+            # ouvrir. On nomme l'écran par lequel un administrateur y arrive.
+            raise WhatsAppDeliveryError(
+                "WhatsApp n'est pas connecté. Un administrateur doit lier le compte "
+                "depuis Configuration › WhatsApp & Tokens."
+            )
 
         # Le corps de réponse n'est garanti JSON qu'en cas de succès ou
         # d'erreur applicative (400/500) renvoyée par Express — un proxy/nginx
@@ -74,7 +81,14 @@ class WhatsAppWebClient:
             raise WhatsAppDeliveryError(f"Service WhatsApp inaccessible : {exc}") from exc
 
         if response.status_code == 503:
-            raise WhatsAppDeliveryError("WhatsApp non connecté — scannez le QR code sur /qr pour activer l'envoi")
+            # Ce message atterrit tel quel dans le centre de notifications, sous
+            # les yeux d'un comptable. Il y montrait « /qr » — une route interne
+            # du service Node, que personne d'autre qu'un développeur ne peut
+            # ouvrir. On nomme l'écran par lequel un administrateur y arrive.
+            raise WhatsAppDeliveryError(
+                "WhatsApp n'est pas connecté. Un administrateur doit lier le compte "
+                "depuis Configuration › WhatsApp & Tokens."
+            )
 
         try:
             data = response.json()

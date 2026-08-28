@@ -36,7 +36,14 @@ class WhatsAppWebClient:
             raise WhatsAppDeliveryError(f"Service WhatsApp inaccessible : {exc}") from exc
 
         if response.status_code == 503:
-            raise WhatsAppDeliveryError("WhatsApp non connecté — scannez le QR code sur /qr pour activer l'envoi")
+            # Ce message atterrit tel quel dans le centre de notifications, sous
+            # les yeux d'un comptable. Il y montrait « /qr » — une route interne
+            # du service Node, que personne d'autre qu'un développeur ne peut
+            # ouvrir. On nomme l'écran par lequel un administrateur y arrive.
+            raise WhatsAppDeliveryError(
+                "WhatsApp n'est pas connecté. Un administrateur doit lier le compte "
+                "depuis Configuration › WhatsApp & Tokens."
+            )
 
         # Ne suppose jamais que response.json() réussit avant d'avoir écarté
         # les statuts gérés explicitement (voir ANO-024) — un corps non-JSON
