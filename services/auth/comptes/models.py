@@ -64,6 +64,20 @@ class User(AbstractBaseUser, PermissionsMixin):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Instant du dernier changement de mot de passe.
+    #
+    # La liste noire des jetons révoque un jeton nommément — elle ne peut donc
+    # pas fermer *toutes* les sessions d'une personne, puisque les jetons émis
+    # ne sont stockés nulle part. Or c'est exactement ce qu'attend quelqu'un qui
+    # change son mot de passe parce qu'il pense que son compte est compromis :
+    # sans cela, la session de l'intrus continue de fonctionner, et le geste de
+    # défense ne défend rien.
+    #
+    # Un horodatage suffit : tout jeton émis avant lui est refusé. Aucun stockage
+    # par session, et la révocation vaut pour les jetons d'accès comme pour ceux
+    # de rafraîchissement, sur tous les appareils à la fois.
+    password_changed_at = models.DateTimeField(null=True, blank=True)
+
     is_staff = models.BooleanField(default=False)
 
     objects = UserManager()
