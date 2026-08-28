@@ -31,6 +31,44 @@ class AuthenticationError(Exception):
     """Échec d'authentification (identifiants invalides, compte verrouillé/inactif)."""
 
 
+def _refuser_si_anterieur_au_mot_de_passe(user, jeton) -> None:
+    """Refuse un jeton émis avant le dernier changement de mot de passe.
+
+    Changer son mot de passe parce qu'on pense son compte compromis n'a de sens
+    que si le geste ferme les sessions de l'intrus. La liste noire ne peut pas
+    le faire : elle révoque un jeton nommément, et les jetons émis ne sont
+    stockés nulle part.
+
+    Comparer la date d'émission (`iat`) à l'horodatage du changement révoque
+    d'un coup tout ce qui a été émis avant, sur tous les appareils, sans rien
+    stocker par session.
+
+    Les comptes dont le mot de passe n'a jamais changé depuis l'ajout du champ
+    passent sans contrainte : leur `password_changed_at` est nul, et refuser
+    leurs jetons déconnecterait tout le monde au déploiement.
+    """
+    change_le = getattr(user, "password_changed_at", None)
+    if change_le is None:
+        return
+    emis_le = jeton.payload.get("iat")
+    if emis_le is None:
+        return
+
+    # La comparaison se fait à la seconde entière, des deux côtés.
+    #
+    # `iat` est une seconde epoch — c'est ce que la spécification JWT prévoit —
+    # tandis que l'horodatage en base porte les microsecondes. Comparer les deux
+    # tels quels refuse le jeton émis dans la même seconde que le changement :
+    # c'est-à-dire celui qu'on vient de délivrer à la personne qui vient de
+    # changer son mot de passe. Elle serait déconnectée à l'instant même où elle
+    # se reconnecte.
+    #
+    # Tronquer les deux à la seconde laisse passer ce cas et ne rouvre rien :
+    # la fenêtre est celle d'une seconde partagée avec l'acte de changement.
+    if int(emis_le) < int(change_le.timestamp()):
+        raise AuthenticationError("Session fermée par un changement de mot de passe")
+
+
 class AuthService:
     """Logique métier d'authentification et de gestion des tokens JWT."""
 
@@ -98,9 +136,12 @@ class AuthService:
             raise AuthenticationError("Token révoqué")
 
         try:
-            return self.users.get_by_id(access["user_id"])
+            user = self.users.get_by_id(access["user_id"])
         except ObjectDoesNotExist as exc:
             raise AuthenticationError("Utilisateur introuvable") from exc
+
+        _refuser_si_anterieur_au_mot_de_passe(user, access)
+        return user
 
     def refresh_token(self, refresh_token: str) -> tuple[str, str, int]:
         try:
@@ -115,6 +156,8 @@ class AuthService:
             user = self.users.get_by_id(refresh["user_id"])
         except ObjectDoesNotExist as exc:
             raise AuthenticationError("Utilisateur introuvable") from exc
+
+        _refuser_si_anterieur_au_mot_de_passe(user, refresh)
 
         nouveaux_tokens = self._generer_tokens(user)
 
@@ -311,6 +354,9 @@ class PasswordSetupService:
         with transaction.atomic():
             user.set_password(new_password)
             user.is_active = True
+            # Ferme toutes les sessions ouvertes : c'est ce qu'attend quelqu'un
+            # qui change son mot de passe parce qu'il pense son compte compromis.
+            user.password_changed_at = timezone.now()
             self.users.save(user)
             setup_token.mark_used()
 
@@ -388,5 +434,8 @@ class PhoneOtpService:
         with transaction.atomic():
             user.set_password(new_password)
             user.is_active = True
+            # Même règle que pour le reset par e-mail : le nouveau mot de passe
+            # ferme ce qui était ouvert avant lui.
+            user.password_changed_at = timezone.now()
             self.users.save(user)
             otp_token.mark_used()
