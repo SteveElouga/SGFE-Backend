@@ -1,6 +1,10 @@
 # Déploiement — SGFE Backend
 
-Trois horizons (voir `AUDIT_SGFE.md` §10) : **① local** (Docker Compose) · **② VM Azure** (Docker Compose) · **③ AKS** (Kubernetes, plus tard). Ce guide couvre ① et ②.
+> ⚠️ **L'horizon ② a changé de cible le 28 août 2026 : AWS, plus Azure.** Ce guide décrit le **lancement manuel**, qui reste valable en local. Pour le déploiement automatisé sur AWS — qui fait quoi entre Ansible, GitHub Actions et Docker — voir **[`docs/CHAINE_DE_LIVRAISON.md`](./docs/CHAINE_DE_LIVRAISON.md)**.
+>
+> Les mentions « Azure », « Key Vault » et « Flexible Server » ci-dessous sont **périmées** ; leurs équivalents AWS sont donnés en §1 du nouveau document. La commande de production ci-dessous utilise encore `--build` : c'est précisément le verrou que `CHAINE_DE_LIVRAISON.md` §2 demande de lever.
+
+Trois horizons (voir `AUDIT_SGFE.md` §10) : **① local** (Docker Compose) · **② VM cloud** (Docker Compose) · **③ Kubernetes** (plus tard). Ce guide couvre ① et ②.
 
 ## Prérequis
 
