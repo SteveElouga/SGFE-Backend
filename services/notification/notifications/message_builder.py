@@ -5,6 +5,16 @@ EF-NOTIF-004 : messages de relance impayés (étapes 1 à 4) + rétablissement.
 """
 
 
+def _fcfa(montant: float) -> str:
+    """Montant en FCFA, séparateur de milliers par espace insécable fine.
+
+    Le PDF écrit « 23 500 » ; le message écrivait « 23500 ». Sur une facture à
+    cinq chiffres, l'abonné doit pouvoir relire son total sans le compter.
+    """
+    entier = int(round(montant))
+    return f"{entier:,}".replace(",", "\u202f")
+
+
 def build_message_facture(
     prenom_nom: str,
     periode: str,
@@ -15,6 +25,10 @@ def build_message_facture(
     date_expiration_token: str,
     frontend_url: str,
     numero_mobile_money: str = "",
+    solde_anterieur: float = 0,
+    nb_factures_anterieures: int = 0,
+    plus_ancienne_echeance: str = "",
+    avoir_impute: float = 0,
 ) -> str:
     """Construit le message WhatsApp d'envoi de facture (EF-NOTIF-001).
 
@@ -34,16 +48,44 @@ def build_message_facture(
     """
     lien = f"{frontend_url}/espace/{token}"
     consommation_str = f"{consommation:.0f}" if consommation == int(consommation) else f"{consommation}"
-    montant_str = f"{montant:.0f}" if montant == int(montant) else f"{montant}"
 
     paiement_mobile = f"\n💳 Paiement Mobile Money : {numero_mobile_money}\n" if numero_mobile_money else ""
+
+    # Le total réellement dû, identique à celui du PDF joint : consommation du
+    # mois, plus la dette antérieure, moins l'avoir déjà imputé. Il ne descend
+    # jamais sous zéro — un avoir supérieur à la facture la solde sans créer
+    # de créance envers l'abonné.
+    total = max(0.0, montant + solde_anterieur - avoir_impute)
+
+    # Détail affiché seulement s'il y a quelque chose à détailler. Sur une
+    # facture ordinaire — pas d'antériorité, pas d'avoir — le message garde sa
+    # forme courte : une ligne de montant, et c'est tout.
+    lignes_detail = ""
+    if solde_anterieur > 0 or avoir_impute > 0:
+        lignes_detail = f"Montant du mois : {_fcfa(montant)} FCFA\n"
+        if solde_anterieur > 0:
+            pluriel = "s" if nb_factures_anterieures > 1 else ""
+            lignes_detail += (
+                f"Solde antérieur ({nb_factures_anterieures} facture{pluriel}) : {_fcfa(solde_anterieur)} FCFA\n"
+            )
+        if avoir_impute > 0:
+            lignes_detail += f"Avoir appliqué : − {_fcfa(avoir_impute)} FCFA\n"
+        lignes_detail += "──────────────────\n"
+
+    # L'âge de la dette pèse plus que son montant : c'est lui qui fait payer.
+    # Le PDF porte déjà cette mention, le message la reprend.
+    note_anciennete = ""
+    if solde_anterieur > 0 and plus_ancienne_echeance:
+        note_anciennete = f"\n⚠️ Dont {_fcfa(solde_anterieur)} FCFA dus depuis le {plus_ancienne_echeance}.\n"
 
     return (
         f"Bonjour {prenom_nom},\n\n"
         f"Votre facture d'eau - {periode}\n\n"
         f"Consommation : {consommation_str} m³\n"
-        f"Montant dû    : {montant_str} FCFA\n"
-        f"Date limite   : {date_limite}\n"
+        f"{lignes_detail}"
+        f"TOTAL À PAYER : {_fcfa(total)} FCFA\n"
+        f"Date limite : {date_limite}\n"
+        f"{note_anciennete}"
         f"{paiement_mobile}\n"
         f"📄 Votre facture est en pièce jointe.\n\n"
         f"🔗 Consultez votre historique :\n"

@@ -13,7 +13,12 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from notifications.brevo_client import envoyer_email_admin
-from notifications.grpc_clients import abonne_client, config_client, facturation_client
+from notifications.grpc_clients import (
+    abonne_client,
+    config_client,
+    facturation_client,
+    paiement_client,
+)
 from notifications.message_builder import (
     build_message_facture,
     build_message_recu,
@@ -150,6 +155,21 @@ class EnvoiService:
         date_expiration_fr = date_expiration.strftime("%d/%m/%Y")
         frontend_url = settings.FRONTEND_URL
 
+        # Le message doit annoncer le MÊME total que le PDF qu'il transporte.
+        # Avant, il affichait `facture.montant` — la consommation du mois seule —
+        # pendant que la pièce jointe additionnait la dette antérieure et
+        # retranchait l'avoir. L'abonné paie ce qu'il lit dans WhatsApp, pas ce
+        # qu'il y a dans le PDF : il payait donc le mauvais montant, et se
+        # faisait relancer pour une différence dont personne ne l'avait informé.
+        #
+        # Les deux appels dégradent gracieusement (voir PaiementServiceClient) :
+        # si Paiement est indisponible, le message part avec la consommation
+        # seule plutôt que de ne pas partir.
+        solde_ant, nb_fact_ant, plus_ancienne = paiement_client.get_dette_abonne(
+            abonne_id=abonne_id, hors_facture_id=facture_id
+        )
+        avoir = paiement_client.get_avoir_impute(facture_id)
+
         message = build_message_facture(
             prenom_nom=prenom_nom,
             periode=periode,
@@ -160,6 +180,10 @@ class EnvoiService:
             date_expiration_token=date_expiration_fr,
             frontend_url=frontend_url,
             numero_mobile_money=facture.numero_mobile_money,
+            solde_anterieur=solde_ant,
+            nb_factures_anterieures=nb_fact_ant,
+            plus_ancienne_echeance=_format_date_fr(plus_ancienne) if plus_ancienne else "",
+            avoir_impute=avoir,
         )
 
         envoi = self._envois.create(

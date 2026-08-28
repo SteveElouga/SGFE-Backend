@@ -15,7 +15,7 @@ services/notification/
 │   ├── models.py      # Envoi, TokenAcces
 │   ├── services.py    # EnvoiService, TokenService
 │   ├── grpc_server.py # Servicer gRPC
-│   ├── grpc_clients.py # Clients vers Facturation, Abonné, Config
+│   ├── grpc_clients.py # Clients vers Facturation, Abonné, Config, Paiement
 │   ├── whatsapp_client.py  # HTTP vers whatsapp-web.js
 │   ├── message_builder.py  # Constructeurs de messages WhatsApp
 │   └── management/commands/grpc_server.py
@@ -26,7 +26,13 @@ services/notification/
 
 - **Pas d'API HTTP** — tout passe par gRPC (port 50056).
 - **WhatsApp** : HTTP POST vers `whatsapp-service:3000/send` (Node.js whatsapp-web.js).
-  Scanner le QR code sur `/qr` pour activer l'envoi.
+  L'appairage se fait depuis **Configuration › WhatsApp & Tokens** dans le
+  frontend — il n'y a pas de route `/qr` exposée aux utilisateurs.
+- **Client Paiement** : `GetDetteAbonne` et `GetSolde`, pour que le message
+  WhatsApp annonce le **même total que le PDF** qu'il transporte — consommation
+  du mois, plus la dette antérieure, moins l'avoir imputé. Les deux appels
+  dégradent : si Paiement est injoignable, le message part avec la
+  consommation seule plutôt que de ne pas partir.
 - **Dégradation gracieuse** : si WhatsApp est indisponible, l'Envoi est marqué
   ECHEC en base sans lever d'erreur gRPC — la facture reste accessible.
 - **TokenAcces** : UUID v4 partagé dans l'URL `{FRONTEND_URL}/espace/{token}`.
@@ -52,5 +58,6 @@ python -m grpc_tools.protoc -I ../../proto/ \
   ../../proto/notification_service.proto \
   ../../proto/facturation_service.proto \
   ../../proto/abonne_service.proto \
-  ../../proto/config_service.proto
+  ../../proto/config_service.proto \
+  ../../proto/paiement_service.proto
 ```

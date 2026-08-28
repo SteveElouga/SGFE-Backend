@@ -78,6 +78,64 @@ class FacturationServiceClient:
             return b"", ""
 
 
+class PaiementServiceClient:
+    """Client gRPC vers Paiement Service (port 50055).
+
+    Ajouté pour que le message WhatsApp puisse annoncer le **même total** que
+    le PDF qu'il transporte. Avant, le message affichait `facture.montant` — la
+    consommation du mois seule — pendant que sa pièce jointe additionnait la
+    dette antérieure et retranchait l'avoir. Deux chiffres différents dans le
+    même envoi, et l'abonné paie celui qu'il lit dans WhatsApp.
+
+    Les deux appels dégradent gracieusement : si Paiement est indisponible, le
+    message part avec la consommation seule plutôt que de ne pas partir. Une
+    facture incomplète vaut mieux qu'une facture jamais reçue — c'est la même
+    règle que celle du générateur PDF.
+    """
+
+    def __init__(self) -> None:
+        address = f"{settings.PAIEMENT_GRPC_HOST}:{settings.PAIEMENT_GRPC_PORT}"
+        self._channel = grpc.insecure_channel(address)
+
+        proto_path = _get_proto_path()
+        if proto_path not in sys.path:
+            sys.path.insert(0, proto_path)
+
+        import paiement_service_pb2 as pb  # type: ignore[import]
+        import paiement_service_pb2_grpc as pb_grpc  # type: ignore[import]
+
+        self._stub = pb_grpc.PaiementServiceStub(self._channel)
+        self._pb = pb
+
+    def get_dette_abonne(self, abonne_id: str, hors_facture_id: str = ""):
+        """Dette de l'abonné, hors la facture qu'on lui envoie.
+
+        Retourne `(total_du, nb_factures, plus_ancienne_echeance)`. Un échec
+        rend un solde nul : le message part sans la ligne d'antériorité.
+        """
+        try:
+            r = self._stub.GetDetteAbonne(
+                self._pb.DetteAbonneRequest(abonne_id=abonne_id, hors_facture_id=hors_facture_id)
+            )
+            return float(r.total_du), int(r.nb_factures), r.plus_ancienne_echeance or ""
+        except grpc.RpcError as exc:
+            logger.warning("Solde antérieur indisponible — le message part sans la ligne : %s", exc)
+            return 0.0, 0, ""
+
+    def get_avoir_impute(self, facture_id: str) -> float:
+        """Part de cette facture réglée par un avoir plutôt que par un versement.
+
+        Sans cette ligne, l'abonné lit un total inférieur à sa consommation
+        sans rien qui l'explique — et croit à une erreur.
+        """
+        try:
+            r = self._stub.GetSolde(self._pb.FactureIdRequest(facture_id=facture_id))
+            return float(getattr(r, "avoir_impute", 0) or 0)
+        except grpc.RpcError as exc:
+            logger.warning("Avoir imputé indisponible — le message part sans la ligne : %s", exc)
+            return 0.0
+
+
 class AbonneServiceClient:
     """Client gRPC vers Abonné Service (port 50052)."""
 
@@ -180,3 +238,4 @@ class ConfigServiceClient:
 facturation_client = FacturationServiceClient()
 abonne_client = AbonneServiceClient()
 config_client = ConfigServiceClient()
+paiement_client = PaiementServiceClient()

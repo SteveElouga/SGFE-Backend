@@ -94,6 +94,9 @@ FACTURATION_GRPC_PORT = env.int("FACTURATION_GRPC_PORT", default=50054)
 ABONNE_GRPC_HOST = env("ABONNE_GRPC_HOST", default="localhost")
 ABONNE_GRPC_PORT = env.int("ABONNE_GRPC_PORT", default=50052)
 
+PAIEMENT_GRPC_HOST = env("PAIEMENT_GRPC_HOST", default="localhost")
+PAIEMENT_GRPC_PORT = env.int("PAIEMENT_GRPC_PORT", default=50055)
+
 CONFIG_GRPC_HOST = env("CONFIG_GRPC_HOST", default="localhost")
 CONFIG_GRPC_PORT = env.int("CONFIG_GRPC_PORT", default=50058)
 
