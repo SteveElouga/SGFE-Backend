@@ -50,3 +50,7 @@ k8s/secrets/*.yaml
 
 # Sauvegardes PostgreSQL locales (dumps) — jamais committées
 /backups/
+
+# PDF de factures générés à l'exécution — sortie de build, pas du code.
+# Un test qui régénère un PDF ne doit pas produire un fichier à committer.
+services/*/pdfs/

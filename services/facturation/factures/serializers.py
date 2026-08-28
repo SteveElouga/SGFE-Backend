@@ -32,6 +32,11 @@ def facture_to_proto(facture: Facture) -> pb.FactureResponse:
         numero_mobile_money=facture.numero_mobile_money,
         nature=facture.nature,
         motif=facture.motif or "",
+        motif_annulation=facture.motif_annulation or "",
+        date_annulation=facture.date_annulation.isoformat() if facture.date_annulation else "",
+        annulee_par=facture.annulee_par or "",
+        remplacee_par_id=facture.remplacee_par_id or "",
+        remplace_id=facture.remplace_id or "",
     )
 
 

@@ -300,13 +300,30 @@ class TestGetWhatsAppQrRPC(TestCase):
 
     @patch("notifications.services.whatsapp_client")
     def test_connecte_expose_le_numero(self, mock_wa):
-        mock_wa.get_qr.return_value = (True, "", "237675799743")
+        mock_wa.get_qr.return_value = (True, "", "237675799743", "connecte", 0)
 
         servicer = NotificationServiceServicer()
         response = servicer.GetWhatsAppQr(pb.EmptyRequest(), MagicMock())
 
         self.assertTrue(response.ready)
         self.assertEqual(response.number, "237675799743")
+        self.assertEqual(response.phase, "connecte")
+
+    @patch("notifications.services.whatsapp_client")
+    def test_la_phase_survit_au_passage_en_protobuf(self, mock_wa):
+        """C'est la frontière où l'information se perdait.
+
+        Le message ne portait que ready/qr/number : tout ce qui expliquait
+        *pourquoi* la liaison n'était pas prête s'arrêtait au service Django.
+        """
+        mock_wa.get_qr.return_value = (False, "", "", "rupture", 420000)
+
+        servicer = NotificationServiceServicer()
+        response = servicer.GetWhatsAppQr(pb.EmptyRequest(), MagicMock())
+
+        self.assertFalse(response.ready)
+        self.assertEqual(response.phase, "rupture")
+        self.assertEqual(response.depuis_ms, 420000)
 
 
 class TestTesterEnvoiRPC(TestCase):

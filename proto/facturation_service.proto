@@ -7,6 +7,14 @@ service FacturationService {
   // numérotation propre (REG-), sans campagne ni index : son montant est
   // déclaré, pas calculé — d'où le motif obligatoire.
   rpc CreerRegularisation (CreerRegularisationRequest) returns (FactureResponse);
+  // Annule une facture sans l'effacer : elle reste au journal avec son numéro,
+  // son motif et l'auteur de l'annulation. Ce que l'abonné avait versé est
+  // porté à son avoir.
+  rpc AnnulerFacture (AnnulerFactureRequest) returns (FactureResponse);
+  // Annule puis émet une facture corrigée à partir du relevé actuel — relu, et
+  // non recopié : c'est ce qui permet à une correction d'index de produire la
+  // facture juste.
+  rpc RegenererFacture (RegenererFactureRequest) returns (RegenererFactureResponse);
   rpc GetFacture (FactureIdRequest) returns (FactureResponse);
   rpc ListFactures (ListFacturesRequest) returns (ListFacturesResponse);
   rpc GetFacturePDF (FactureIdRequest) returns (PDFResponse);
@@ -83,6 +91,14 @@ message FactureResponse {
   string nature = 16;
   // Justification d'une régularisation. Vide pour une consommation.
   string motif = 17;
+  // ── Annulation ─────────────────────────────────────────────────────────────
+  string motif_annulation = 18;
+  string date_annulation = 19;
+  string annulee_par = 20;
+  // Facture émise en remplacement de celle-ci (vide si aucune).
+  string remplacee_par_id = 21;
+  // Facture que celle-ci remplace (vide si elle n'en remplace aucune).
+  string remplace_id = 22;
 }
 
 message TarifResponse {
@@ -100,3 +116,22 @@ message PDFResponse {
 message GenererFacturesResponse { repeated FactureResponse factures = 1; }
 message ListFacturesResponse { repeated FactureResponse factures = 1; }
 message EmptyRequest {}
+
+message AnnulerFactureRequest {
+  string facture_id = 1;
+  // Obligatoire : aucun index ne justifie la disparition d'une dette, la
+  // phrase saisie est la seule trace de la raison.
+  string motif = 2;
+  string annule_par = 3;
+}
+
+message RegenererFactureRequest {
+  string facture_id = 1;
+  string motif = 2;
+  string regenere_par = 3;
+}
+
+message RegenererFactureResponse {
+  FactureResponse annulee = 1;
+  FactureResponse nouvelle = 2;
+}

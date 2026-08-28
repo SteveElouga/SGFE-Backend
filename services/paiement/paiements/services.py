@@ -107,6 +107,47 @@ class PaiementService:
         self._avoir_repo.consommer(avoir, a_imputer)
         self._mouvement_repo.create(abonne_id, a_imputer, TypeMouvementAvoir.IMPUTATION, facture_id=solde.facture_id)
 
+    def annuler_solde(self, facture_id: str, motif: str) -> tuple[SoldeFacture, Decimal]:
+        """Éteint le solde d'une facture annulée et rend à l'abonné ce qu'il a versé.
+
+        Une facture peut être annulée après qu'un abonné a commencé à la payer —
+        c'est même le cas le plus fréquent, puisqu'une erreur d'index se découvre
+        souvent quand quelqu'un vient régler. Ce qu'il a versé ne lui appartient
+        pas moins pour autant : le montant bascule à son avoir, d'où il
+        s'imputera de lui-même sur la facture suivante.
+
+        Le solde passe en ANNULEE et non en PAYEE. La distinction n'est pas
+        décorative : « payée » et « annulée » racontent deux histoires opposées,
+        et les confondre ferait apparaître dans les recettes une somme que
+        personne n'a versée.
+
+        Returns:
+            Le solde éteint, et le montant porté à l'avoir (zéro si rien n'avait
+            été versé).
+        """
+        with transaction.atomic():
+            solde = self._solde_repo.get_by_facture_id(facture_id, for_update=True)
+            if solde.statut == StatutSolde.ANNULEE:
+                # Idempotent : réannuler ne doit pas re-créditer l'abonné.
+                return solde, Decimal("0")
+
+            deja_verse = Decimal(str(solde.montant_paye))
+            self._solde_repo.annuler(solde)
+
+            if deja_verse > 0:
+                self._avoir_repo.crediter(solde.abonne_id, deja_verse)
+                self._mouvement_repo.create(
+                    solde.abonne_id,
+                    deja_verse,
+                    TypeMouvementAvoir.ANNULATION,
+                    facture_id=facture_id,
+                )
+                logger.info(
+                    "Versements d'une facture annulée portés à l'avoir",
+                    extra={"facture_id": facture_id, "montant": str(deja_verse), "motif": motif},
+                )
+        return solde, deja_verse
+
     def crediter_avoir_manuel(self, abonne_id: str, montant: float, motif: str, cree_par: str) -> AvoirAbonne:
         """Émet un avoir manuel (note de rectification : facture corrigée à la
         baisse, erreur d'index, geste commercial). Le crédit alimente l'avoir de

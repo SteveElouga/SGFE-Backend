@@ -14,6 +14,10 @@ class SoldeFacture:
     # facture ; l'échéance ordonne l'imputation et porte l'âge de la dette.
     abonne_id: str
     date_limite_paiement: str
+    # Part de `montant_paye` venue d'un avoir plutôt que d'un versement. Sans
+    # elle, un abonné dont la facture a été réduite par un trop-perçu antérieur
+    # lit un « déjà réglé » dont il n'a aucun souvenir.
+    avoir_impute: float = 0.0
 
 
 @strawberry.type
@@ -59,6 +63,7 @@ def solde_from_grpc(r) -> SoldeFacture:
         statut=r.statut,
         abonne_id=r.abonne_id,
         date_limite_paiement=r.date_limite_paiement,
+        avoir_impute=getattr(r, "avoir_impute", 0.0) or 0.0,
     )
 
 

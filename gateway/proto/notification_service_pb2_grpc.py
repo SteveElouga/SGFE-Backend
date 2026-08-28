@@ -44,6 +44,11 @@ class NotificationServiceStub:
                 request_serializer=notification__service__pb2.FactureIdRequest.SerializeToString,
                 response_deserializer=notification__service__pb2.EnvoiResponse.FromString,
                 _registered_method=True)
+        self.EnvoyerRecu = channel.unary_unary(
+                '/notification.NotificationService/EnvoyerRecu',
+                request_serializer=notification__service__pb2.EnvoyerRecuRequest.SerializeToString,
+                response_deserializer=notification__service__pb2.EnvoiResponse.FromString,
+                _registered_method=True)
         self.EnvoyerRelance = channel.unary_unary(
                 '/notification.NotificationService/EnvoyerRelance',
                 request_serializer=notification__service__pb2.EnvoyerRelanceRequest.SerializeToString,
@@ -107,6 +112,13 @@ class NotificationServiceServicer:
 
     def ReenvoyerFacture(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def EnvoyerRecu(self, request, context):
+        """Confirmation de paiement : envoie le reçu (PDF) à l'abonné après un versement.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -182,6 +194,11 @@ def add_NotificationServiceServicer_to_server(servicer, server):
             'ReenvoyerFacture': grpc.unary_unary_rpc_method_handler(
                     servicer.ReenvoyerFacture,
                     request_deserializer=notification__service__pb2.FactureIdRequest.FromString,
+                    response_serializer=notification__service__pb2.EnvoiResponse.SerializeToString,
+            ),
+            'EnvoyerRecu': grpc.unary_unary_rpc_method_handler(
+                    servicer.EnvoyerRecu,
+                    request_deserializer=notification__service__pb2.EnvoyerRecuRequest.FromString,
                     response_serializer=notification__service__pb2.EnvoiResponse.SerializeToString,
             ),
             'EnvoyerRelance': grpc.unary_unary_rpc_method_handler(
@@ -288,6 +305,33 @@ class NotificationService:
             target,
             '/notification.NotificationService/ReenvoyerFacture',
             notification__service__pb2.FactureIdRequest.SerializeToString,
+            notification__service__pb2.EnvoiResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def EnvoyerRecu(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/notification.NotificationService/EnvoyerRecu',
+            notification__service__pb2.EnvoyerRecuRequest.SerializeToString,
             notification__service__pb2.EnvoiResponse.FromString,
             options,
             channel_credentials,

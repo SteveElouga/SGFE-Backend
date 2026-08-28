@@ -28,6 +28,7 @@ def espace_abonne(request: HttpRequest, token: str) -> JsonResponse:
     {
       "abonne_id": "...",
       "token_expiration": "YYYY-MM-DD",
+      "avoir": 0.0,
       "factures": [
         {
           "facture_id": "...",
@@ -92,10 +93,20 @@ def espace_abonne(request: HttpRequest, token: str) -> JsonResponse:
             }
         )
 
+    # Avoir disponible : ce que la régie doit à l'abonné. Sans lui, un client
+    # dont la facture suivante sera réduite d'un trop-perçu lit un montant qu'il
+    # ne peut pas rapprocher de sa consommation — et croit à une erreur.
+    avoir = 0.0
+    try:
+        avoir = float(paiement_client.get_avoir_abonne(abonne_id).montant)
+    except grpc.RpcError as exc:
+        logger.warning("Avoir indisponible", extra={"abonne_id": abonne_id, "error": str(exc)})
+
     return JsonResponse(
         {
             "abonne_id": abonne_id,
             "token_expiration": token_resp.date_expiration,
+            "avoir": avoir,
             "factures": factures_json,
         }
     )

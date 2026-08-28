@@ -156,8 +156,8 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
         gRPC — dégradation gracieuse si whatsapp-service est indisponible
         (ready=False, qr="", number="").
         """
-        ready, qr, number = self._envoi_service.get_whatsapp_qr()
-        return pb.WhatsAppQrResponse(ready=ready, qr=qr, number=number)
+        ready, qr, number, phase, depuis_ms = self._envoi_service.get_whatsapp_qr()
+        return pb.WhatsAppQrResponse(ready=ready, qr=qr, number=number, phase=phase, depuis_ms=depuis_ms)
 
     def RevoquerTousTokens(self, request, context):
         """Révoque en masse tous les tokens d'accès abonné actifs."""

@@ -82,6 +82,7 @@ class FactureRepository:
         numero_mobile_money: str = "",
         nature: str = NatureFacture.CONSOMMATION,
         motif: str = "",
+        remplace_id: str = "",
     ) -> Facture:
         return Facture.objects.create(
             numero_facture=numero_facture,
@@ -97,6 +98,7 @@ class FactureRepository:
             numero_mobile_money=numero_mobile_money,
             nature=nature,
             motif=motif,
+            remplace_id=remplace_id,
             statut=StatutFacture.IMPAYEE,
         )
 

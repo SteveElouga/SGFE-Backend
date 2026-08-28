@@ -57,20 +57,52 @@ class WhatsAppWebClientTests(SimpleTestCase):
         mock_get.return_value = Mock(
             status_code=200, json=Mock(return_value={"ready": False, "qr": "data:image/png;base64,AAA", "number": ""})
         )
-        ready, qr, number = self.client.get_qr()
+        ready, qr, number, phase, depuis = self.client.get_qr()
         self.assertFalse(ready)
         self.assertEqual(qr, "data:image/png;base64,AAA")
         self.assertEqual(number, "")
+        # Sans phase dans la réponse, on retombe sur « demarrage » plutôt que
+        # sur une chaîne vide : l'UI teste la valeur, pas sa présence.
+        self.assertEqual(phase, "demarrage")
+        self.assertEqual(depuis, 0)
 
     @patch("notifications.whatsapp_client.requests.get")
     def test_get_qr_connecte_expose_le_numero(self, mock_get):
         mock_get.return_value = Mock(
             status_code=200, json=Mock(return_value={"ready": True, "qr": "", "number": "237675799743"})
         )
-        ready, qr, number = self.client.get_qr()
+        ready, qr, number, _phase, _depuis = self.client.get_qr()
         self.assertTrue(ready)
         self.assertEqual(qr, "")
         self.assertEqual(number, "237675799743")
+
+    @patch("notifications.whatsapp_client.requests.get")
+    def test_get_qr_transporte_la_phase_et_l_anciennete(self, mock_get):
+        """« demarrage » et « rupture » appellent des messages opposés.
+
+        L'écran ne recevait qu'un booléen à faux, qui recouvrait les deux :
+        « le service démarre, patientez » et « la liaison est tombée, il faut
+        rescanner ». Il affichait donc la même attente sans fin dans les deux
+        cas — d'où l'impression qu'il faut recharger pour voir le QR.
+        """
+        mock_get.return_value = Mock(
+            status_code=200,
+            json=Mock(return_value={"ready": False, "qr": "", "number": "", "phase": "rupture", "depuis": 420000}),
+        )
+        ready, _qr, _number, phase, depuis = self.client.get_qr()
+        self.assertFalse(ready)
+        self.assertEqual(phase, "rupture")
+        self.assertEqual(depuis, 420000)
+
+    @patch("notifications.whatsapp_client.requests.get")
+    def test_get_qr_depuis_nul_ne_devient_pas_none(self, mock_get):
+        """`depuis` vaut null tant qu'on n'a jamais été connecté — 0 côté proto."""
+        mock_get.return_value = Mock(
+            status_code=200,
+            json=Mock(return_value={"ready": False, "qr": "", "number": "", "phase": "demarrage", "depuis": None}),
+        )
+        *_rest, depuis = self.client.get_qr()
+        self.assertEqual(depuis, 0)
 
     @patch("notifications.whatsapp_client.requests.get")
     def test_get_qr_network_error_raises_delivery_error(self, mock_get):

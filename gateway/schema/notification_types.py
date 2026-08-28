@@ -46,10 +46,24 @@ class WhatsAppQr:
     ready: bool
     qr: str
     number: str
+    # « connecte » | « qr » | « demarrage » | « rupture ».
+    # Un booléen à faux recouvrait deux situations qui appellent des messages
+    # opposés : « le service démarre, patientez » et « la liaison est tombée,
+    # il faut rescanner ». L'écran affichait la même attente sans fin dans les
+    # deux cas, d'où l'impression qu'il fallait recharger pour voir le QR.
+    phase: str = "demarrage"
+    # Millisecondes depuis la dernière connexion réussie (0 si jamais connecté).
+    depuis_ms: int = 0
 
 
 def whatsapp_qr_from_grpc(r) -> WhatsAppQr:
-    return WhatsAppQr(ready=r.ready, qr=r.qr, number=r.number)
+    return WhatsAppQr(
+        ready=r.ready,
+        qr=r.qr,
+        number=r.number,
+        phase=getattr(r, "phase", "") or ("connecte" if r.ready else "demarrage"),
+        depuis_ms=getattr(r, "depuis_ms", 0) or 0,
+    )
 
 
 @strawberry.type

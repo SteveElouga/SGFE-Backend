@@ -167,6 +167,22 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
         montant, mouvements = self._svc.get_avoir_abonne(request.abonne_id)
         return avoir_to_proto(request.abonne_id, montant, mouvements)
 
+    def AnnulerSolde(
+        self,
+        request: pb.AnnulerSoldeRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.AnnulerSoldeResponse:
+        """Éteint le solde d'une facture annulée, en rendant l'argent déjà versé.
+
+        Idempotent : réannuler renvoie le solde tel quel avec un report nul,
+        plutôt que de créditer l'abonné une seconde fois.
+        """
+        solde, porte_en_avoir = self._svc.annuler_solde(facture_id=request.facture_id, motif=request.motif)
+        return pb.AnnulerSoldeResponse(
+            solde=solde_to_proto(solde),
+            montant_porte_en_avoir=float(porte_en_avoir),
+        )
+
     def GetSolde(
         self,
         request: pb.FactureIdRequest,

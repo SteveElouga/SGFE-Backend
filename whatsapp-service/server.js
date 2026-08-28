@@ -50,6 +50,21 @@ let isReady = false;
 let currentQr = null;
 let activeClient = null;
 let restartCount = 0;
+// Instant du dernier passage à l'état « prêt ». Sert à mesurer depuis combien de
+// temps la liaison est rompue, donc à décider s'il faut alerter.
+let readySince = null;
+// Chien de garde de l'initialisation : voir startClient().
+let watchdog = null;
+// Une seule alerte par épisode de rupture — pas une par tentative de reconnexion.
+let alerteEnvoyee = false;
+
+// Délai au-delà duquel une initialisation qui n'a rien produit est considérée
+// comme bloquée. Chromium démarre en 10-30 s selon la machine ; 90 s laisse une
+// marge large tout en restant très en deçà du silence de plusieurs heures qu'on
+// observait.
+const WATCHDOG_MS = Number(process.env.WHATSAPP_WATCHDOG_MS) || 90000;
+// Durée de rupture au-delà de laquelle les administrateurs sont prévenus.
+const ALERTE_APRES_MS = Number(process.env.WHATSAPP_ALERTE_APRES_MS) || 180000;
 
 // Client Redis partagé : coffre-fort de la session WhatsApp (RemoteAuth y stocke
 // un zip du profil, restauré au démarrage). C'est ce qui permet de survivre à un
@@ -75,12 +90,78 @@ const WHATSAPP_EVENTS_CHANNEL = 'whatsapp:events';
  */
 async function publishStatus(payload) {
     try {
-        await redis.publish(WHATSAPP_EVENTS_CHANNEL, JSON.stringify(payload));
+        // `phase` dit *pourquoi* on n'est pas prêt : c'est la différence entre
+        // « patientez, ça démarre » et « il faut rescanner ». L'UI ne pouvait pas
+        // faire la distinction, donc elle affichait la même attente indéfinie
+        // dans les deux cas — d'où l'impression qu'il faut recharger.
+        const enrichi = {
+            ...payload,
+            phase: payload.phase || (payload.ready ? 'connecte' : payload.qr ? 'qr' : 'demarrage'),
+            depuis: payload.ready ? null : dureeRupture(),
+        };
+        await redis.publish(WHATSAPP_EVENTS_CHANNEL, JSON.stringify(enrichi));
     } catch (err) {
         // Best-effort : un échec de publication ne doit jamais casser le cycle de
         // vie du client WhatsApp (l'UI retombe sur la query whatsappQr en repli).
         console.warn('[WhatsApp] Publication du statut sur Redis échouée :', err.message);
     }
+}
+
+/**
+ * L'état de la liaison en un mot, pour que l'UI sache quoi dire.
+ *
+ * `demarrage` et `rupture` demandent des messages opposés — « patientez » contre
+ * « il faut rescanner » — et l'écran ne pouvait pas les distinguer : il ne
+ * recevait qu'un booléen `ready` à faux. Il affichait donc la même attente sans
+ * fin dans les deux cas, ce qui donne l'impression qu'il faut recharger.
+ */
+function phaseCourante() {
+    if (isReady) return 'connecte';
+    if (currentQr) return 'qr';
+    if (alerteEnvoyee) return 'rupture';
+    return 'demarrage';
+}
+
+/** Millisecondes écoulées depuis la dernière connexion réussie (null si jamais). */
+function dureeRupture() {
+    return readySince === null ? null : Date.now() - readySince;
+}
+
+/**
+ * Prévient les administrateurs qu'une liaison WhatsApp est rompue.
+ *
+ * Jusqu'ici, la seule alerte partait à l'échec d'un envoi — c'est-à-dire au
+ * moment où le mal est déjà fait, et une fois par facture ratée. Une clôture de
+ * campagne avec la liaison coupée produisait donc dix-huit courriels
+ * d'échec et zéro avertissement préalable. Ici on prévient une fois, sur
+ * l'événement qui compte : la liaison est tombée et personne ne l'a rescannée.
+ */
+async function alerterRupture(motif) {
+    if (alerteEnvoyee) return;
+    alerteEnvoyee = true;
+    await publishStatus({ ready: false, qr: currentQr ? await QRCode.toDataURL(currentQr) : '', number: '', phase: 'rupture', motif });
+    console.error(`[WhatsApp] ALERTE — liaison rompue (${motif})`);
+}
+
+/**
+ * Chien de garde de l'initialisation.
+ *
+ * `client.initialize()` peut ne jamais se résoudre : Chromium qui n'arrive pas à
+ * démarrer, une extraction de session qui bloque, un réseau qui pend. Le `catch`
+ * placé dessus n'attrape qu'un rejet — un blocage n'en est pas un. Le service
+ * restait alors indéfiniment à 503, sans QR, sans log et sans reprise. Observé
+ * en local : deux heures de silence complet après un redémarrage.
+ *
+ * On mesure donc le temps sans signe de vie, et on relance nous-mêmes.
+ */
+function armerWatchdog(client) {
+    clearTimeout(watchdog);
+    watchdog = setTimeout(async () => {
+        if (activeClient !== client || isReady || currentQr) return;
+        console.error(`[WhatsApp] Aucun signe de vie après ${WATCHDOG_MS / 1000} s — redémarrage du client`);
+        await alerterRupture('initialisation bloquée');
+        scheduleRestart(client);
+    }, WATCHDOG_MS);
 }
 
 function startClient() {
@@ -109,6 +190,8 @@ function startClient() {
     activeClient = client;
 
     client.on('qr', async (qr) => {
+        // Un QR est un signe de vie : le client fonctionne, il attend un scan.
+        clearTimeout(watchdog);
         currentQr = qr;
         qrcodeTerminal.generate(qr, { small: true });
         console.log(`[WhatsApp] QR code prêt — scannez-le sur http://localhost:${PORT}/qr`);
@@ -129,9 +212,12 @@ function startClient() {
     });
 
     client.on('ready', async () => {
+        clearTimeout(watchdog);
         isReady = true;
         restartCount = 0;
         currentQr = null;
+        readySince = Date.now();
+        alerteEnvoyee = false;
         console.log('[WhatsApp] Client prêt — envoi de messages activé');
         const number = client.info?.wid?.user || '';
         await publishStatus({ ready: true, qr: '', number });
@@ -140,7 +226,9 @@ function startClient() {
     client.on('auth_failure', async (msg) => {
         console.error('[WhatsApp] Échec d\'authentification :', msg);
         isReady = false;
-        await publishStatus({ ready: false, qr: '', number: '' });
+        // Un échec d'authentification ne se répare pas tout seul : il faut
+        // rescanner. On alerte sans attendre.
+        await alerterRupture(`authentification refusée : ${msg}`);
         scheduleRestart(client);
     });
 
@@ -148,9 +236,15 @@ function startClient() {
         if (activeClient !== client) return; // un nouveau cycle a déjà commencé
         console.warn('[WhatsApp] Déconnecté :', reason);
         isReady = false;
-        await publishStatus({ ready: false, qr: '', number: '' });
+        await publishStatus({ ready: false, qr: '', number: '', phase: 'deconnecte', motif: String(reason) });
+        // Une coupure brève se répare toute seule ; on n'alerte que si elle dure.
+        setTimeout(() => {
+            if (!isReady) void alerterRupture(`déconnecté : ${reason}`);
+        }, ALERTE_APRES_MS);
         scheduleRestart(client);
     });
+
+    armerWatchdog(client);
 
     client.initialize().catch((err) => {
         if (activeClient !== client) return;
@@ -178,7 +272,13 @@ app.get('/health', (_req, res) => {
     // 503 tant que WhatsApp n'est pas connecté (init, QR à scanner, déconnexion) ;
     // 200 seulement quand le client peut réellement envoyer. Un orchestrateur ne doit
     // pas considérer le service « sain » s'il est incapable d'envoyer un message.
-    res.status(isReady ? 200 : 503).json({ ready: isReady });
+    // `phase` et `depuis` permettent de lire *pourquoi* dans les logs d'un
+    // orchestrateur, sans avoir à ouvrir ceux du container.
+    res.status(isReady ? 200 : 503).json({
+        ready: isReady,
+        phase: phaseCourante(),
+        depuis: dureeRupture(),
+    });
 });
 
 app.get('/qr', requireApiKey, async (_req, res) => {
@@ -214,13 +314,13 @@ app.get('/qr-data', requireApiKey, async (_req, res) => {
         if (activeClient && activeClient.info && activeClient.info.wid) {
             number = activeClient.info.wid.user || '';
         }
-        return res.json({ ready: true, qr: '', number });
+        return res.json({ ready: true, qr: '', number, phase: 'connecte', depuis: null });
     }
     if (!currentQr) {
-        return res.json({ ready: false, qr: '', number: '' });
+        return res.json({ ready: false, qr: '', number: '', phase: phaseCourante(), depuis: dureeRupture() });
     }
     const qrImage = await QRCode.toDataURL(currentQr);
-    res.json({ ready: false, qr: qrImage, number: '' });
+    res.json({ ready: false, qr: qrImage, number: '', phase: 'qr', depuis: dureeRupture() });
 });
 
 app.post('/send', requireApiKey, async (req, res) => {

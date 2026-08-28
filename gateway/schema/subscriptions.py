@@ -159,6 +159,18 @@ class Subscription:
 
         from redis.asyncio import Redis
 
+        # On s'abonne AVANT de prendre le snapshot.
+        #
+        # L'ordre inverse ouvre une fenêtre : le snapshot traverse la gateway, le
+        # service notification puis whatsapp-service en HTTP, et pendant ce
+        # trajet un QR publié n'a personne pour l'entendre. L'abonné voyait alors
+        # « le service démarre » jusqu'au QR suivant, une vingtaine de secondes
+        # plus tard — assez long pour qu'on recharge la page en croyant à une
+        # panne. S'abonner d'abord ne coûte rien et ne perd rien.
+        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        pubsub = redis.pubsub()
+        await pubsub.subscribe("whatsapp:events")
+
         # Snapshot initial : état courant immédiat (le QR peut déjà être prêt).
         # Appel gRPC synchrone déporté dans un thread pour ne pas bloquer l'event
         # loop ASGI ; un échec (services indisponibles) ne doit pas tuer le flux.
@@ -167,10 +179,6 @@ class Subscription:
             yield whatsapp_qr_from_grpc(snapshot)
         except Exception as exc:
             logger.warning("whatsapp_status: snapshot initial échoué : %s", exc)
-
-        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
-        pubsub = redis.pubsub()
-        await pubsub.subscribe("whatsapp:events")
 
         try:
             async for message in pubsub.listen():
@@ -182,10 +190,13 @@ class Subscription:
                 except (json.JSONDecodeError, TypeError):
                     continue
 
+                ready = bool(data.get("ready", False))
                 yield WhatsAppQr(
-                    ready=bool(data.get("ready", False)),
+                    ready=ready,
                     qr=data.get("qr", "") or "",
                     number=data.get("number", "") or "",
+                    phase=data.get("phase") or ("connecte" if ready else "demarrage"),
+                    depuis_ms=int(data.get("depuis") or 0),
                 )
         finally:
             await pubsub.unsubscribe("whatsapp:events")

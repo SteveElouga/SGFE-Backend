@@ -9,6 +9,11 @@ class StatutFacture(models.TextChoices):
     IMPAYEE = "IMPAYEE", "Impayée"
     PARTIELLE = "PARTIELLE", "Partiellement payée"
     PAYEE = "PAYEE", "Payée"
+    # Une facture annulée n'est pas supprimée : elle reste au journal avec son
+    # numéro, son motif et la trace de qui l'a annulée. Une numérotation
+    # comptable dont des numéros disparaissent n'est plus une numérotation —
+    # le trou est précisément ce qui prouve qu'on a effacé quelque chose.
+    ANNULEE = "ANNULEE", "Annulée"
 
 
 class Tarif(models.Model):
@@ -84,6 +89,22 @@ class Facture(models.Model):
     # Renseigné pour une régularisation : ce que la dette constate, en clair.
     # Imprimé sur le PDF à la place du bloc de relevé.
     motif = models.CharField(max_length=255, blank=True, default="")
+
+    # ── Annulation ────────────────────────────────────────────────────────────
+    # Le motif est obligatoire, comme il l'est pour une régularisation : ces
+    # deux gestes modifient une dette sans qu'aucun index ne le justifie, et la
+    # phrase saisie est la seule trace de la raison.
+    motif_annulation = models.CharField(max_length=255, blank=True, default="")
+    date_annulation = models.DateTimeField(null=True, blank=True)
+    annulee_par = models.CharField(max_length=150, blank=True, default="")
+    # Facture émise en remplacement, quand l'annulation s'accompagne d'une
+    # régénération. Relie les deux bouts de la correction : sans ce lien, le
+    # journal montre une facture annulée et une autre née le même jour, sans
+    # rien qui dise que la seconde répare la première.
+    remplacee_par_id = models.CharField(max_length=36, blank=True, default="")
+    # Facture que celle-ci remplace — le lien inverse, pour qu'une facture
+    # corrigée puisse citer celle qu'elle corrige sur son PDF.
+    remplace_id = models.CharField(max_length=36, blank=True, default="")
 
     class Meta:
         db_table = "factures"

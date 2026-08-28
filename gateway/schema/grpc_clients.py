@@ -275,6 +275,18 @@ class FacturationServiceClient:
             facturation_pb.GenererRecuRequest(paiement_id=paiement_id, facture_id=facture_id)
         )
 
+    def annuler_facture(self, facture_id: str, motif: str, annule_par: str) -> facturation_pb.FactureResponse:
+        return self._stub.AnnulerFacture(
+            facturation_pb.AnnulerFactureRequest(facture_id=facture_id, motif=motif, annule_par=annule_par)
+        )
+
+    def regenerer_facture(
+        self, facture_id: str, motif: str, regenere_par: str
+    ) -> facturation_pb.RegenererFactureResponse:
+        return self._stub.RegenererFacture(
+            facturation_pb.RegenererFactureRequest(facture_id=facture_id, motif=motif, regenere_par=regenere_par)
+        )
+
     def creer_regularisation(
         self, abonne_id: str, montant: float, motif: str, date_limite_paiement: str = ""
     ) -> facturation_pb.FactureResponse:

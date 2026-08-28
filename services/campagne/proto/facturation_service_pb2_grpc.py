@@ -44,6 +44,16 @@ class FacturationServiceStub:
                 request_serializer=facturation__service__pb2.CreerRegularisationRequest.SerializeToString,
                 response_deserializer=facturation__service__pb2.FactureResponse.FromString,
                 _registered_method=True)
+        self.AnnulerFacture = channel.unary_unary(
+                '/facturation.FacturationService/AnnulerFacture',
+                request_serializer=facturation__service__pb2.AnnulerFactureRequest.SerializeToString,
+                response_deserializer=facturation__service__pb2.FactureResponse.FromString,
+                _registered_method=True)
+        self.RegenererFacture = channel.unary_unary(
+                '/facturation.FacturationService/RegenererFacture',
+                request_serializer=facturation__service__pb2.RegenererFactureRequest.SerializeToString,
+                response_deserializer=facturation__service__pb2.RegenererFactureResponse.FromString,
+                _registered_method=True)
         self.GetFacture = channel.unary_unary(
                 '/facturation.FacturationService/GetFacture',
                 request_serializer=facturation__service__pb2.FactureIdRequest.SerializeToString,
@@ -109,6 +119,24 @@ class FacturationServiceServicer:
         """Constate à la main une dette antérieure à la mise en service. Série de
         numérotation propre (REG-), sans campagne ni index : son montant est
         déclaré, pas calculé — d'où le motif obligatoire.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AnnulerFacture(self, request, context):
+        """Annule une facture sans l'effacer : elle reste au journal avec son numéro,
+        son motif et l'auteur de l'annulation. Ce que l'abonné avait versé est
+        porté à son avoir.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RegenererFacture(self, request, context):
+        """Annule puis émet une facture corrigée à partir du relevé actuel — relu, et
+        non recopié : c'est ce qui permet à une correction d'index de produire la
+        facture juste.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -189,6 +217,16 @@ def add_FacturationServiceServicer_to_server(servicer, server):
                     servicer.CreerRegularisation,
                     request_deserializer=facturation__service__pb2.CreerRegularisationRequest.FromString,
                     response_serializer=facturation__service__pb2.FactureResponse.SerializeToString,
+            ),
+            'AnnulerFacture': grpc.unary_unary_rpc_method_handler(
+                    servicer.AnnulerFacture,
+                    request_deserializer=facturation__service__pb2.AnnulerFactureRequest.FromString,
+                    response_serializer=facturation__service__pb2.FactureResponse.SerializeToString,
+            ),
+            'RegenererFacture': grpc.unary_unary_rpc_method_handler(
+                    servicer.RegenererFacture,
+                    request_deserializer=facturation__service__pb2.RegenererFactureRequest.FromString,
+                    response_serializer=facturation__service__pb2.RegenererFactureResponse.SerializeToString,
             ),
             'GetFacture': grpc.unary_unary_rpc_method_handler(
                     servicer.GetFacture,
@@ -295,6 +333,60 @@ class FacturationService:
             '/facturation.FacturationService/CreerRegularisation',
             facturation__service__pb2.CreerRegularisationRequest.SerializeToString,
             facturation__service__pb2.FactureResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AnnulerFacture(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/facturation.FacturationService/AnnulerFacture',
+            facturation__service__pb2.AnnulerFactureRequest.SerializeToString,
+            facturation__service__pb2.FactureResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RegenererFacture(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/facturation.FacturationService/RegenererFacture',
+            facturation__service__pb2.RegenererFactureRequest.SerializeToString,
+            facturation__service__pb2.RegenererFactureResponse.FromString,
             options,
             channel_credentials,
             insecure,
