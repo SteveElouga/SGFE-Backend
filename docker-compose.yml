@@ -149,6 +149,8 @@ services:
       CONFIG_GRPC_PORT: "50058"
       PAIEMENT_GRPC_HOST: paiement-service
       PAIEMENT_GRPC_PORT: "50055"
+      NOTIFICATION_GRPC_HOST: notification-service
+      NOTIFICATION_GRPC_PORT: "50056"
       ABONNE_GRPC_HOST: abonne-service
       ABONNE_GRPC_PORT: "50052"
       REPORTING_GRPC_HOST: reporting-service
@@ -252,6 +254,8 @@ services:
       FACTURATION_GRPC_PORT: "50054"
       ABONNE_GRPC_HOST: abonne-service
       ABONNE_GRPC_PORT: "50052"
+      PAIEMENT_GRPC_HOST: paiement-service
+      PAIEMENT_GRPC_PORT: "50055"
       CONFIG_GRPC_HOST: config-service
       CONFIG_GRPC_PORT: "50058"
       WHATSAPP_SERVICE_URL: http://whatsapp-service:3000
@@ -295,6 +299,8 @@ services:
       CAMPAGNE_DB_PASSWORD: devpassword
       CAMPAGNE_GRPC_PORT: "50053"
       REDIS_URL: "redis://redis:6379/0"
+      NOTIFICATION_GRPC_HOST: notification-service
+      NOTIFICATION_GRPC_PORT: "50056"
       ABONNE_GRPC_HOST: abonne-service
       ABONNE_GRPC_PORT: "50052"
       FACTURATION_GRPC_HOST: facturation-service
