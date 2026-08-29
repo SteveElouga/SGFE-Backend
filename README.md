@@ -119,4 +119,6 @@ make install-hooks           # installe pre-commit + commit-msg + pre-push
 - [`MEMORY.md`](./MEMORY.md) — règles impératives, décisions, état, prochaines étapes
 - [`AUDIT_SGFE.md`](./AUDIT_SGFE.md) — audit complet + checklist priorisée + plan cadré
 - [`CLAUDE.md`](./CLAUDE.md) — conventions détaillées
+- [`docs/INFRASTRUCTURE_AWS.md`](./docs/INFRASTRUCTURE_AWS.md) — dimensionnement de l'instance, coûts et choix de services managés
+- [`docs/CHAINE_DE_LIVRAISON.md`](./docs/CHAINE_DE_LIVRAISON.md) — déploiement automatisé : qui fait quoi, dans quel ordre
 - `docs/` — SRS, ARCHITECTURE, ADR, ETAT_DU_SYSTEME, WORKFLOWS, DOCUMENTATION_TECHNIQUE

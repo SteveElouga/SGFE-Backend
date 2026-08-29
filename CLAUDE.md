@@ -6,8 +6,8 @@
 **Architecture :** Microservices (9 composants)
 **Communication interne :** gRPC + Protocol Buffers v3
 **API externe :** GraphQL (Strawberry + Apollo Client)
-**Orchestration :** Kubernetes + Minikube (MacBook Pro)
-**Déploiement :** Canary Deployment
+**Orchestration :** Docker Compose — *Kubernetes reste une cible lointaine, pas un état*
+**Déploiement :** Docker Compose sur EC2 ; canari côté frontend uniquement
 
 ---
 
@@ -45,25 +45,21 @@ facturation-eau/
 │   ├── reporting_service.proto
 │   └── config_service.proto
 │
-├── frontend/                   # Angular PWA (mobile-first)
+├── nginx/                      # Seul point d'entrée publié (:8080)
+├── whatsapp-service/           # Node.js + Chromium (whatsapp-web.js)
+├── scripts/                    # gen-jwt-keys.sh, backup-databases.sh
 │
-├── k8s/                        # Manifestes Kubernetes
-│   ├── namespace.yaml
-│   ├── services/               # 1 dossier par microservice
-│   ├── databases/              # StatefulSets PostgreSQL
-│   ├── observability/          # Prometheus, Loki, Jaeger, Grafana
-│   └── secrets/                # Templates (sans valeurs réelles)
-│
-├── observability/              # Configuration observabilité
-│   ├── prometheus/
-│   ├── grafana/
-│   ├── loki/
-│   └── jaeger/
+├── docker-compose.yml          # 21 services — le mode de démarrage réel
+├── docker-compose.prod.yml     # Surcouche de durcissement
 │
 ├── docs/                       # Documentation
 │   ├── SRS.md                  # Spécification fonctionnelle (IEEE 830)
 │   ├── ARCHITECTURE.md         # Documentation architecturale (C4 + Arc42)
-│   └── ADR.md                  # Architecture Decision Records (26 ADRs)
+│   ├── ADR.md                  # Architecture Decision Records (28 ADRs)
+│   ├── WORKFLOWS.md            # Ce que fait réellement le code, pas à pas
+│   ├── ETAT_DU_SYSTEME.md      # Registre des anomalies (ANO-XXX)
+│   ├── INFRASTRUCTURE_AWS.md   # Dimensionnement, coûts, services managés
+│   └── CHAINE_DE_LIVRAISON.md  # Déploiement automatisé : qui fait quoi
 │
 ├── CLAUDE.md                   # Ce fichier
 ├── .cursorrules
@@ -96,15 +92,15 @@ Backend          Django 5.x + Django REST Framework
 gRPC             grpcio + grpcio-tools + grpc-stubs
 GraphQL          Strawberry (gateway) + Apollo Client (frontend)
 Base de données  PostgreSQL 16 (1 instance par service)
-PDF              ReportLab
+PDF              WeasyPrint 69
 WhatsApp         whatsapp-web.js (service Node.js auto-hébergé, compte dédié, zéro coût)
 E-mail           Brevo API (activation de compte, réinitialisation de mot de passe — 300/jour gratuits)
-Orchestration    Kubernetes + Minikube
-Conteneurs       Docker
-Frontend         Angular 18 + PWA
-Observabilité    OpenTelemetry + Prometheus + Loki + Jaeger + Grafana
-Déploiement      Canary Deployment
-Serveur          MacBook Pro + ngrok
+Orchestration    Docker Compose (21 services)
+Conteneurs       Docker — 12 Dockerfiles, images de base épinglées au SHA
+Frontend         Angular 22 + PrimeNG 21 + PWA
+Observabilité    ⚠️ AUCUNE aujourd'hui — dépendances présentes, 0 fichier instrumenté
+Déploiement      Compose ; cible AWS — voir docs/INFRASTRUCTURE_AWS.md
+Serveur          local ; cible EC2 t4g.medium en eu-west-3
 Auth             JWT (SimpleJWT) — access 24h (cookie HttpOnly pour le refresh, 7j)
 Scheduler        APScheduler (cron jobs)
 ```
@@ -300,27 +296,29 @@ def impaye_checker_job():
 
 ### Démarrage de l'environnement
 
+> ⚠️ **Corrigé le 28 août 2026.** Ce bloc donnait des commandes Minikube et
+> `kubectl` pour des manifestes `k8s/` et un dossier `observability/` qui
+> **n'existent pas dans le dépôt**. Le seul mode de démarrage réel est
+> Docker Compose.
+
 ```bash
-# Démarrer Minikube
-minikube start --memory=8192 --cpus=4
+# Tout le stack — 21 services
+docker compose up -d --build
 
-# Appliquer tous les manifestes Kubernetes
-kubectl apply -f k8s/
+# État et santé des conteneurs (les 11 Dockerfiles portent un HEALTHCHECK)
+docker compose ps --format json
 
-# Vérifier l'état des pods
-kubectl get pods -n facturation-eau
+# Logs d'un service
+docker compose logs -f gateway --tail=50
 
-# Tunnel ngrok vers l'API Gateway
-ngrok http 8000
-
-# Port-forward Grafana
-kubectl port-forward svc/grafana-service 3000:3000 -n facturation-eau
-
-# Port-forward Jaeger
-kubectl port-forward svc/jaeger-service 16686:16686 -n facturation-eau
+# Point d'entrée : seul nginx est publié
+open http://localhost:8080/graphql
 ```
 
-### Développement local (sans Kubernetes)
+Pour la production sur AWS, voir `docs/INFRASTRUCTURE_AWS.md` (dimensionnement,
+coûts) et `docs/CHAINE_DE_LIVRAISON.md` (qui déploie quoi).
+
+### Développement local, service par service
 
 ```bash
 # Démarrer un service individuellement
@@ -428,13 +426,14 @@ et relayé via le paramètre `created_by` de `ListCampagnesRequest` côté
 
 ## Observabilité
 
-```
-Grafana      → http://localhost:3000  (métriques + logs)
-Jaeger UI    → http://localhost:16686 (traces distribuées)
-Prometheus   → http://localhost:9090  (métriques brutes)
-```
+> ⚠️ **Corrigé le 28 août 2026.** Cette section décrivait Grafana, Jaeger et
+> Prometheus comme s'ils tournaient. **Rien n'est instrumenté** : les huit
+> services portent bien `opentelemetry` et `prometheus_client` dans leurs
+> `requirements.txt`, mais **zéro fichier** initialise un `TracerProvider` ou
+> expose `/metrics`, et le dossier `observability/` n'existe pas. Un incident
+> en production se diagnostique aujourd'hui par `docker compose logs`.
 
-Chaque service doit :
+Ce qui reste à faire (points 58 à 60 du registre), chaque service devant :
 1. Produire des logs JSON structurés avec `trace_id`
 2. Exposer `/metrics` pour Prometheus
 3. Être instrumenté avec OpenTelemetry SDK
