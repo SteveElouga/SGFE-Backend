@@ -42,7 +42,17 @@ USER appuser
 
 EXPOSE 8000
 
+# Sonde : un POST GraphQL minimal, pas un GET.
+#
+# Le GET précédent s'appuyait sur la page GraphiQL, qui répondait 200. Depuis
+# que GraphiQL et l'introspection sont coupés hors développement, `GET
+# /graphql` renvoie 400 — et la sonde échouait en permanence, laissant le
+# conteneur `unhealthy` sans que rien ne soit cassé.
+#
+# `{__typename}` est un méta-champ toujours disponible : il ne demande ni
+# authentification ni introspection, et prouve que la couche GraphQL répond,
+# pas seulement que le port est ouvert.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/graphql', timeout=2)" || exit 1
+    CMD python -c "import json,urllib.request; r=urllib.request.urlopen(urllib.request.Request('http://localhost:8000/graphql', data=json.dumps({'query':'{__typename}'}).encode(), headers={'Content-Type':'application/json'}), timeout=2); exit(0 if r.status==200 else 1)" || exit 1
 
 CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "gateway.asgi:application"]
