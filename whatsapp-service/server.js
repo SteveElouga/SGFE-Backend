@@ -408,3 +408,37 @@ async function shutdown(signal) {
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+/**
+ * whatsapp-web.js lève depuis ses propres `async` internes, hors de la
+ * promesse rendue par `initialize()`. Le `.catch()` posé sur celle-ci ne les
+ * voit donc pas, et Node ≥ 15 tue le processus sur un rejet non traité.
+ *
+ * Observé le 29/08/2026, pendant une reconnexion après redéploiement :
+ *
+ *   Error: Execution context was destroyed, most likely because of a navigation.
+ *     at async Client.inject (whatsapp-web.js/src/Client.js:295)
+ *
+ * Le service est mort ; seul `restart: unless-stopped` l'a relevé, au prix
+ * d'un démarrage complet de Chromium. La boucle de reconnexion existait déjà
+ * juste à côté et savait traiter exactement ce cas — elle n'a simplement
+ * jamais été atteinte.
+ *
+ * On la lui donne ici. Le rejet est journalisé tel quel : le masquer serait
+ * pire que le plantage, puisqu'il deviendrait invisible.
+ */
+process.on('unhandledRejection', (raison) => {
+    const message = raison instanceof Error ? raison.message : String(raison);
+    console.error('[WhatsApp] Rejet non traité — reconnexion plutôt que mort du processus :', message);
+    if (activeClient) scheduleRestart(activeClient);
+});
+
+/**
+ * Une exception synchrone non rattrapée laisse un état imprévisible : on
+ * journalise et on sort. Docker relance. C'est volontairement plus brutal que
+ * le cas ci-dessus — ici, on ne sait pas ce qui reste cohérent.
+ */
+process.on('uncaughtException', (err) => {
+    console.error('[WhatsApp] Exception non rattrapée — arrêt :', err.stack || err.message);
+    process.exit(1);
+});
