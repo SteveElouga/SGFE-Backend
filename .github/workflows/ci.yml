@@ -18,6 +18,11 @@ permissions:
 # éphémère générée en mémoire pendant les tests (voir services/auth/auth/settings.py).
 env:
   DJANGO_SECRET_KEY: ci-not-a-real-secret-key-for-tests-only
+  # Même raison : l'authentification de la couche gRPC interne est fail-closed,
+  # et les clients refusent de s'instancier sans clé. C'est le comportement
+  # voulu — un service qui démarre sans secret serait un service ouvert — mais
+  # il vaut aussi pour la CI, qui est un environnement comme un autre.
+  INTERNAL_GRPC_KEY: ci-not-a-real-grpc-key-for-tests-only
 
 jobs:
   changes:
