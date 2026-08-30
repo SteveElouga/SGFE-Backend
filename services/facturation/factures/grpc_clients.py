@@ -7,6 +7,7 @@ from pathlib import Path
 
 import grpc
 from django.conf import settings
+from factures.grpc_auth import canal_authentifie
 
 from .pdf_generator import InfosSociete
 
@@ -32,7 +33,7 @@ class AbonneServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.ABONNE_GRPC_HOST}:{settings.ABONNE_GRPC_PORT}"
-        self._channel = grpc.insecure_channel(address)
+        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
 
         proto_path = str(Path(settings.BASE_DIR) / "proto")
         if proto_path not in sys.path:
@@ -78,7 +79,7 @@ class CampagneServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.CAMPAGNE_GRPC_HOST}:{settings.CAMPAGNE_GRPC_PORT}"
-        self._channel = grpc.insecure_channel(address)
+        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
 
         proto_path = str(Path(settings.BASE_DIR) / "proto")
         if proto_path not in sys.path:
@@ -136,7 +137,7 @@ class ConfigServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.CONFIG_GRPC_HOST}:{settings.CONFIG_GRPC_PORT}"
-        self._channel = grpc.insecure_channel(address)
+        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
 
         proto_path = str(Path(settings.BASE_DIR) / "proto")
         if proto_path not in sys.path:
@@ -181,7 +182,7 @@ class NotificationServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.NOTIFICATION_GRPC_HOST}:{settings.NOTIFICATION_GRPC_PORT}"
-        self._channel = grpc.insecure_channel(address)
+        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
 
         proto_path = str(Path(settings.BASE_DIR) / "proto")
         if proto_path not in sys.path:
@@ -231,7 +232,7 @@ class PaiementServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.PAIEMENT_GRPC_HOST}:{settings.PAIEMENT_GRPC_PORT}"
-        self._channel = grpc.insecure_channel(address)
+        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
 
         proto_path = str(Path(settings.BASE_DIR) / "proto")
         if proto_path not in sys.path:
@@ -400,7 +401,7 @@ class ReportingServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.REPORTING_GRPC_HOST}:{settings.REPORTING_GRPC_PORT}"
-        self._channel = grpc.insecure_channel(address)
+        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
 
         proto_path = str(Path(settings.BASE_DIR) / "proto")
         if proto_path not in sys.path:

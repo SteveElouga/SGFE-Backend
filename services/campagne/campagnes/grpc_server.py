@@ -19,6 +19,7 @@ import campagne_service_pb2_grpc as pb_grpc
 from campagnes.event_publisher import publish_progression_event, publish_reporting_event
 from campagnes.grpc_clients import FacturationServiceClient
 from campagnes.grpc_interceptors import ErrorHandlingInterceptor
+from campagnes.grpc_auth import AuthServerInterceptor
 from campagnes.models import StatutCampagne, StatutReleve
 from campagnes.repositories import (
     CampagneAgentRepository,
@@ -390,7 +391,7 @@ def serve() -> None:
 
     server = grpc.server(
         concurrent.futures.ThreadPoolExecutor(max_workers=10),
-        interceptors=[ErrorHandlingInterceptor()],
+        interceptors=[AuthServerInterceptor(settings.INTERNAL_GRPC_KEY), ErrorHandlingInterceptor()],
     )
     pb_grpc.add_CampagneServiceServicer_to_server(CampagneServicer(), server)
     port = getattr(settings, "CAMPAGNE_GRPC_PORT", 50053)

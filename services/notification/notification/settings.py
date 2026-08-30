@@ -100,6 +100,15 @@ PAIEMENT_GRPC_PORT = env.int("PAIEMENT_GRPC_PORT", default=50055)
 CONFIG_GRPC_HOST = env("CONFIG_GRPC_HOST", default="localhost")
 CONFIG_GRPC_PORT = env.int("CONFIG_GRPC_PORT", default=50058)
 
+# Authentification de la couche gRPC interne (registre, point 1).
+#
+# Secret partagé entre tous les services. Sans lui, le serveur gRPC refuse de
+# démarrer — même en développement : une valeur par défaut silencieuse
+# recréerait exactement le trou qu'on ferme, un contrôle qui a l'air posé et
+# ne protège rien.
+INTERNAL_GRPC_KEY = env("INTERNAL_GRPC_KEY", default="")
+
+
 # --- WhatsApp (whatsapp-web.js service) ---
 WHATSAPP_SERVICE_URL = env("WHATSAPP_SERVICE_URL", default="http://localhost:3000")
 # Clé partagée envoyée en en-tête X-Internal-Api-Key vers whatsapp-service.

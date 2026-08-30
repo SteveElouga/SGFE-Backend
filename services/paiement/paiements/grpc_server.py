@@ -17,6 +17,7 @@ import paiement_service_pb2_grpc as pb_grpc
 from paiements.event_publisher import publish_paiement_event, publish_reporting_event
 from paiements.grpc_clients import FacturationServiceClient, NotificationServiceClient
 from paiements.grpc_interceptors import ErrorHandlingInterceptor
+from paiements.grpc_auth import AuthServerInterceptor
 from paiements.models import StatutSolde
 from paiements.serializers import avoir_to_proto, paiement_to_proto, solde_to_proto, suivi_to_proto
 from paiements.services import PaiementService
@@ -282,7 +283,7 @@ def serve() -> None:
 
     server = grpc.server(
         concurrent.futures.ThreadPoolExecutor(max_workers=10),
-        interceptors=[ErrorHandlingInterceptor()],
+        interceptors=[AuthServerInterceptor(settings.INTERNAL_GRPC_KEY), ErrorHandlingInterceptor()],
     )
     pb_grpc.add_PaiementServiceServicer_to_server(PaiementServicer(), server)
     port = getattr(settings, "PAIEMENT_GRPC_PORT", 50055)

@@ -92,6 +92,15 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # --- gRPC ---
 AUTH_GRPC_PORT = env.int("AUTH_GRPC_PORT", default=50051)
 
+# Authentification de la couche gRPC interne (registre, point 1).
+#
+# Secret partagé entre tous les services. Sans lui, le serveur gRPC refuse de
+# démarrer — même en développement : une valeur par défaut silencieuse
+# recréerait exactement le trou qu'on ferme, un contrôle qui a l'air posé et
+# ne protège rien.
+INTERNAL_GRPC_KEY = env("INTERNAL_GRPC_KEY", default="")
+
+
 # --- Redis (pub/sub : notifie la gateway des mutations utilisateur) ---
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 

@@ -12,6 +12,7 @@ import auth_service_pb2_grpc as pb_grpc
 
 from comptes.event_publisher import publish_user_event
 from comptes.grpc_interceptors import ErrorHandlingInterceptor
+from comptes.grpc_auth import AuthServerInterceptor
 from comptes.serializers import user_to_payload, user_to_response
 from comptes.services import AuthService, PasswordSetupService, PhoneOtpService, UserAdminService
 
@@ -112,7 +113,10 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):
 
 
 def serve() -> None:
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10), interceptors=[ErrorHandlingInterceptor()])
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=10),
+        interceptors=[AuthServerInterceptor(settings.INTERNAL_GRPC_KEY), ErrorHandlingInterceptor()],
+    )
     pb_grpc.add_AuthServiceServicer_to_server(AuthServiceServicer(), server)
     server.add_insecure_port(f"[::]:{settings.AUTH_GRPC_PORT}")
     server.start()

@@ -81,5 +81,14 @@ NOTIFICATION_GRPC_PORT = env.int("NOTIFICATION_GRPC_PORT", default=50056)
 REPORTING_GRPC_HOST = env("REPORTING_GRPC_HOST", default="localhost")
 REPORTING_GRPC_PORT = env.int("REPORTING_GRPC_PORT", default=50057)
 
+# Authentification de la couche gRPC interne (registre, point 1).
+#
+# Secret partagé entre tous les services. Sans lui, le serveur gRPC refuse de
+# démarrer — même en développement : une valeur par défaut silencieuse
+# recréerait exactement le trou qu'on ferme, un contrôle qui a l'air posé et
+# ne protège rien.
+INTERNAL_GRPC_KEY = env("INTERNAL_GRPC_KEY", default="")
+
+
 # --- JWT (validation interne) ---
 JWT_ALGORITHM = env("JWT_ALGORITHM", default="HS256")

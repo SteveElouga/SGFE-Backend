@@ -13,6 +13,7 @@ import abonne_service_pb2_grpc as pb_grpc
 
 from abonnes.event_publisher import publish_abonne_event
 from abonnes.grpc_interceptors import ErrorHandlingInterceptor
+from abonnes.grpc_auth import AuthServerInterceptor
 from abonnes.serializers import abonne_to_response, compteur_to_response, historique_to_response
 from abonnes.services import AbonneService, CompteurService
 
@@ -147,7 +148,10 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
 
 
 def serve() -> None:
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10), interceptors=[ErrorHandlingInterceptor()])
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=10),
+        interceptors=[AuthServerInterceptor(settings.INTERNAL_GRPC_KEY), ErrorHandlingInterceptor()],
+    )
     pb_grpc.add_AbonneServiceServicer_to_server(AbonneServiceServicer(), server)
     server.add_insecure_port(f"[::]:{settings.ABONNE_GRPC_PORT}")
     server.start()

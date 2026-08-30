@@ -11,6 +11,7 @@ import reporting_service_pb2 as pb
 import reporting_service_pb2_grpc as pb_grpc
 
 from stats.grpc_interceptors import ErrorHandlingInterceptor
+from stats.grpc_auth import AuthServerInterceptor
 from stats.services import AgregateurDashboard
 from stats.serializers import (
     stats_campagne_to_dict,
@@ -101,7 +102,7 @@ class ReportingServiceServicer(pb_grpc.ReportingServiceServicer):
 def serve() -> None:
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=10),
-        interceptors=[ErrorHandlingInterceptor()],
+        interceptors=[AuthServerInterceptor(settings.INTERNAL_GRPC_KEY), ErrorHandlingInterceptor()],
     )
     pb_grpc.add_ReportingServiceServicer_to_server(ReportingServiceServicer(), server)
     server.add_insecure_port(f"[::]:{settings.REPORTING_GRPC_PORT}")

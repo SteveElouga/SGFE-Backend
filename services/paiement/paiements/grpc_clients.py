@@ -6,6 +6,7 @@ from pathlib import Path
 
 import grpc
 from django.conf import settings
+from paiements.grpc_auth import canal_authentifie
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class FacturationServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.FACTURATION_GRPC_HOST}:{settings.FACTURATION_GRPC_PORT}"
-        self._channel = grpc.insecure_channel(address)
+        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
         _ensure_proto_in_syspath()
 
         import facturation_service_pb2 as pb
@@ -59,7 +60,7 @@ class NotificationServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.NOTIFICATION_GRPC_HOST}:{settings.NOTIFICATION_GRPC_PORT}"
-        self._channel = grpc.insecure_channel(address)
+        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
         _ensure_proto_in_syspath()
 
         import notification_service_pb2 as pb
@@ -170,7 +171,7 @@ class AbonneServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.ABONNE_GRPC_HOST}:{settings.ABONNE_GRPC_PORT}"
-        self._channel = grpc.insecure_channel(address)
+        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
         _ensure_proto_in_syspath()
 
         import abonne_service_pb2 as pb
@@ -229,7 +230,7 @@ class ConfigServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.CONFIG_GRPC_HOST}:{settings.CONFIG_GRPC_PORT}"
-        self._channel = grpc.insecure_channel(address)
+        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
         _ensure_proto_in_syspath()
 
         try:
@@ -294,7 +295,7 @@ class ReportingServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.REPORTING_GRPC_HOST}:{settings.REPORTING_GRPC_PORT}"
-        self._channel = grpc.insecure_channel(address)
+        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
         _ensure_proto_in_syspath()
 
         import reporting_service_pb2 as pb
