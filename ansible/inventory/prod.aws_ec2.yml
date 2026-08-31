@@ -1,0 +1,38 @@
+---
+# Inventaire dynamique — les machines ne sont jamais listées à la main.
+#
+# Un inventaire statique se périme au premier remplacement d'instance : l'IP
+# change, le fichier reste, et le playbook se connecte à une machine qui n'existe
+# plus. Ici l'inventaire est une REQUÊTE : ce qui porte l'étiquette du projet et
+# tourne, à l'instant où on lance.
+#
+#   ansible-inventory -i ansible/inventory/prod.aws_ec2.yml --graph
+plugin: amazon.aws.aws_ec2
+
+regions:
+  - eu-west-3
+
+filters:
+  tag:Project: SGFE
+  instance-state-name: running
+
+# Groupe unique : il n'y a qu'une machine, et prétendre le contraire par une
+# hiérarchie de groupes vides rendrait l'inventaire moins lisible, pas plus.
+keyed_groups:
+  - key: tags.Project
+    prefix: ""
+    separator: ""
+
+# Connexion par SSM, pas par SSH.
+#
+# Le greffon `aws_ssm` passe par l'agent installé sur la machine, qui établit une
+# connexion SORTANTE vers AWS. Conséquence : aucun port entrant à ouvrir, aucune
+# clé privée à faire tourner, et l'accès se révoque en retirant une permission
+# IAM. C'est ce qui permet au groupe de sécurité de n'avoir AUCUNE règle
+# entrante — pas même le port 22.
+compose:
+  ansible_connection: "'community.aws.aws_ssm'"
+  ansible_aws_ssm_region: "'eu-west-3'"
+  # Le seau sert de canal de transfert de fichiers pour le greffon SSM ; il doit
+  # exister et être accessible en écriture au rôle d'instance.
+  ansible_aws_ssm_bucket_name: "'sgfe-ssm-transfert'"

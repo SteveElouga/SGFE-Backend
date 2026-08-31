@@ -1,0 +1,78 @@
+---
+# Monte le volume qui porte les données — et donc la session WhatsApp.
+#
+# Ce n'est pas un disque de cache. `whatsapp-service/redis-store.js` implémente
+# RemoteAuth : la session WhatsApp est persistée sous forme d'archive DANS Redis.
+# Perdre ce volume, c'est rescanner un QR code — et interrompre tous les envois
+# jusqu'à ce que quelqu'un le fasse, sans que rien ne le signale à l'écran.
+#
+# Voir CHAINE_DE_LIVRAISON.md §13.1.
+
+- name: Retrouver le périphérique du volume des données
+  # NVMe renomme les périphériques : ce qu'on a demandé en /dev/sdf apparaît en
+  # /dev/nvme1n1 sur les instances récentes. On cherche donc le disque non
+  # partitionné qui n'est pas le disque racine, plutôt que de supposer un nom.
+  ansible.builtin.shell: |
+    set -o pipefail
+    lsblk -rno NAME,TYPE,MOUNTPOINT | awk '$2=="disk" && $3=="" {print "/dev/"$1}' | head -1
+  args:
+    executable: /bin/bash
+  register: volumes_peripherique
+  changed_when: false
+
+- name: Refuser de continuer si aucun volume libre n'est visible
+  # Mieux vaut s'arrêter ici que formater le disque racine.
+  ansible.builtin.assert:
+    that:
+      - volumes_peripherique.stdout | length > 0
+    fail_msg: >-
+      Aucun disque non monté trouvé. Le volume des données est-il attaché ?
+      Vérifier avec `lsblk` sur la machine avant de relancer.
+    quiet: true
+
+- name: Système de fichiers
+  # `force: false` est le garde-fou : sans lui, une relance du playbook
+  # reformaterait le volume et effacerait la session WhatsApp et les bases.
+  community.general.filesystem:
+    fstype: ext4
+    dev: "{{ volumes_volumes_peripherique.stdout }}"
+    force: false
+
+- name: Point de montage
+  ansible.builtin.file:
+    path: "{{ volume_donnees_point_montage }}"
+    state: directory
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0750"
+
+- name: Montage persistant
+  # Monté par UUID, pas par nom de périphérique : le nom change au remplacement
+  # de l'instance, l'UUID suit le volume. Un `/etc/fstab` qui référence
+  # /dev/nvme1n1 empêche la machine de redémarrer le jour où ce nom bouge.
+  ansible.posix.mount:
+    path: "{{ volume_donnees_point_montage }}"
+    src: "UUID={{ ansible_devices[volumes_peripherique.stdout | basename].uuid | default(omit) }}"
+    fstype: ext4
+    opts: defaults,nofail
+    state: mounted
+  register: volumes_montage
+  failed_when: false
+
+- name: Montage par UUID relevé après formatage
+  # `ansible_devices` est collecté au début du play : il ne connaît pas l'UUID
+  # d'un système de fichiers créé à la tâche précédente. On le relit.
+  when: volumes_montage is failed
+  block:
+    - name: Lire l'UUID
+      ansible.builtin.command: "blkid -s UUID -o value {{ volumes_volumes_peripherique.stdout }}"
+      register: volumes_uuid
+      changed_when: false
+
+    - name: Monter
+      ansible.posix.mount:
+        path: "{{ volume_donnees_point_montage }}"
+        src: "UUID={{ volumes_volumes_uuid.stdout }}"
+        fstype: ext4
+        opts: defaults,nofail
+        state: mounted

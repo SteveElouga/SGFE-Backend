@@ -1,0 +1,87 @@
+---
+# 02-bootstrap.yml — d'une machine vierge à une machine prête à recevoir un
+# déploiement.
+#
+#   ansible-playbook -i ansible/inventory/prod.aws_ec2.yml ansible/02-bootstrap.yml
+#
+# C'est ici qu'Ansible est irremplaçable. La Phase 0 a rendu le compose
+# déployable, `cd-prod.yml` sait déployer — mais aucun des deux ne sait
+# transformer une AMI Ubuntu nue en machine qui a Docker, un volume monté pour
+# la session WhatsApp, un `.env` rempli depuis Secrets Manager et une session
+# GHCR ouverte. Ce savoir n'existait nulle part avant ce fichier : il vivait dans
+# la tête de qui avait installé la machine de développement.
+#
+# Idempotent. Relancé, il ne reformate pas le volume, ne régénère pas les clés
+# RS256 (ce qui invaliderait tous les jetons en circulation), et ne réécrit le
+# `.env` que depuis la source de vérité.
+#
+# Ansible se connecte par SSM, pas par SSH — voir l'inventaire. Le groupe de
+# sécurité n'a AUCUNE règle entrante, pas même le port 22.
+
+- name: Amorçage de la machine de production
+  hosts: all
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Refuser d'amorcer une machine qui n'appartient pas au projet
+      # L'inventaire filtre déjà sur l'étiquette, mais un `-i` mal choisi ou un
+      # `--limit` trop large amènerait ce playbook sur une machine étrangère —
+      # qu'il reformaterait un disque et à qui il écrirait des identifiants.
+      ansible.builtin.assert:
+        that:
+          - "'SGFE' in (tags.Project | default(''))"
+        fail_msg: >-
+          Cette machine ne porte pas l'étiquette Project=SGFE. L'amorçage
+          formate un volume et écrit des identifiants : il ne s'applique qu'aux
+          machines du projet.
+        quiet: true
+      when: tags is defined
+
+    - name: Mise à jour du cache de paquets
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+  roles:
+    # L'ordre compte, et il n'est pas alphabétique.
+    #
+    # `docker` d'abord — le reste s'appuie sur le moteur et sur l'utilisateur de
+    # déploiement qu'il crée.
+    - role: docker
+
+    # `volumes` avant `secrets` : le point de montage doit exister avant qu'on y
+    # écrive, et c'est ce volume qui portera les données des bases.
+    - role: volumes
+
+    # `secrets` avant `compose` : la session GHCR lit son jeton dans le `.env`.
+    - role: secrets
+
+    - role: compose
+
+  post_tasks:
+    - name: Vérifier que le compose de production s'interpole
+      # Le test le plus utile qu'on puisse faire sans déployer : si `GHCR_REPO`
+      # ou `IMAGE_TAG` manque, `compose config` échoue ici — pendant l'amorçage,
+      # où c'est lisible — plutôt qu'au milieu du premier déploiement.
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet
+        chdir: "{{ deploy_dir }}"
+      become: true
+      become_user: "{{ deploy_user }}"
+      changed_when: false
+
+    - name: Ce qu'il reste à faire
+      ansible.builtin.debug:
+        msg:
+          - "Machine prête."
+          - ""
+          - "Ce que l'amorçage NE fait pas, délibérément :"
+          - "  • il ne démarre aucun conteneur — c'est cd-prod.yml qui déploie"
+          - "  • il n'ouvre aucun port entrant — le TLS et CloudFront sont les points 20-21"
+          - "  • il n'installe pas l'agent CloudWatch — point 60, à sa propre passe"
+          - ""
+          - "Prochain pas : pousser sur main, ou lancer cd-prod.yml à la main."
+          - ""
+          - "⚠️ Si l'instance est en arm64 (t4g), la CI doit publier des images"
+          - "   multi-plateformes — point 50. Sinon aucun conteneur ne démarrera."

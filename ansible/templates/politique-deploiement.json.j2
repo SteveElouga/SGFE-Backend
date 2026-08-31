@@ -1,0 +1,26 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EnvoyerDesCommandesAuxMachinesDeSGFE",
+      "Effect": "Allow",
+      "Action": "ssm:SendCommand",
+      "Resource": "arn:aws:ec2:{{ aws_region }}:{{ appelant.account }}:instance/*",
+      "Condition": {
+        "StringEquals": { "ssm:resourceTag/Project": "{{ projet_tag }}" }
+      }
+    },
+    {
+      "Sid": "UtiliserLeDocumentDeShell",
+      "Effect": "Allow",
+      "Action": "ssm:SendCommand",
+      "Resource": "arn:aws:ssm:{{ aws_region }}::document/AWS-RunShellScript"
+    },
+    {
+      "Sid": "LireLeResultatDesCommandes",
+      "Effect": "Allow",
+      "Action": ["ssm:GetCommandInvocation", "ssm:ListCommandInvocations", "ssm:DescribeInstanceInformation"],
+      "Resource": "*"
+    }
+  ]
+}
