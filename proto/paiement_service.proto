@@ -61,6 +61,15 @@ message CampagneIdRequest { string campagne_id = 1; }
 message ListPaiementsRequest {
   string facture_id = 1;
   string abonne_id = 2;
+  // Bornes de PÉRIODE (ISO `AAAA-MM-JJ`, incluses), sur `date_paiement`.
+  // Vides = pas de borne.
+  //
+  // C'est ce qu'un journal de caisse demande : ce qui est entré entre deux
+  // dates. `ListPaiementsParCampagne` ne peut pas y répondre — et manque en
+  // outre tout paiement de régularisation, dont le `SoldeFacture` porte un
+  // `campagne_id` vide.
+  string date_debut = 3;
+  string date_fin = 4;
 }
 
 message PaiementResponse {
