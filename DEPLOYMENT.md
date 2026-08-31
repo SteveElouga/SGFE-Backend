@@ -32,13 +32,54 @@ Trois horizons (voir `AUDIT_SGFE.md` §10) : **① local** (Docker Compose) · *
   docker compose up -d --build
   ```
 
-- **Production (VM Azure)** — avec la surcouche de durcissement :
+- **Production** — on **tire** les images publiées, on ne construit pas :
 
   ```sh
-  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+  # /opt/sgfe/.env porte les deux variables (voir ci-dessous)
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
   ```
 
-  La surcouche `docker-compose.prod.yml` ajoute : `restart: unless-stopped`, des **limites mémoire**, et `DEBUG=False` sur les services Django.
+  La surcouche `docker-compose.prod.yml` fait deux choses : elle pointe les onze
+  services sur les images que la CI a publiées, scannées (Trivy), signées
+  (cosign) et accompagnées de leur SBOM ; et elle durcit le runtime —
+  `restart: unless-stopped`, limites mémoire, `DEBUG=False`.
+
+### `--no-build` n'est pas décoratif
+
+Le compose de base porte des `build:`, et Compose **construit localement** quand
+l'image nommée est absente. Sans ce drapeau, un `IMAGE_TAG` erroné ne provoquerait
+pas d'échec : il déclencherait une reconstruction silencieuse.
+
+C'était le défaut central de cette chaîne — la commande de production portait
+`--build`, donc la machine recompilait et **n'exécutait jamais** les images
+signées. Toute la chaîne de confiance existait sans être consommée.
+
+### Les deux variables de `/opt/sgfe/.env`
+
+```
+GHCR_REPO=steveelouga/sgfe-backend   # le dépôt, en minuscules
+IMAGE_TAG=a3f9c2e                    # le SHA de commit à exécuter
+```
+
+La syntaxe `${VAR:?message}` du compose fait échouer le déploiement si l'une
+manque, plutôt que d'interpoler une chaîne vide et de tirer une référence qui
+résoudrait vers `latest` — c'est-à-dire n'importe quoi.
+
+**Déployer** = réécrire `IMAGE_TAG`, tirer, relancer.
+**Revenir en arrière** = réécrire l'ancien tag. Aucune reconstruction dans les
+deux sens, et le retour arrière est aussi rapide que l'aller.
+
+### Vérifier une signature avant de déployer
+
+La chaîne cosign n'a d'intérêt que si quelqu'un la consomme :
+
+```sh
+cosign verify \
+  --certificate-identity-regexp "https://github.com/${GHCR_REPO}/.github/workflows/ci.yml@.*" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  "ghcr.io/${GHCR_REPO}/auth-service:${IMAGE_TAG}"
+```
 
 ## Migrations
 

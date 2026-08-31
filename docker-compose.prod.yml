@@ -1,16 +1,42 @@
-# docker-compose.prod.yml — surcouche de PRODUCTION (horizon ② : VM Azure en
-# Docker Compose). À superposer au compose de base :
+# docker-compose.prod.yml — surcouche de PRODUCTION. À superposer au compose de
+# base :
 #
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
 #
-# Rôle : durcissement RUNTIME — redémarrage automatique de tous les conteneurs,
-# limites mémoire, et DEBUG=False sur les services Django. Voir DEPLOYMENT.md.
+# ⚠️ `--no-build` n'est pas décoratif. Le compose de base porte des `build:`, et
+# Compose construit localement quand l'image nommée est absente. Sans ce drapeau,
+# un `IMAGE_TAG` erroné ne provoquerait pas d'échec : il déclencherait une
+# reconstruction silencieuse — c'est-à-dire exactement le défaut qu'on ferme ici.
+#
+# Rôle de ce fichier, dans l'ordre d'importance :
+#
+#   1. TIRER au lieu de CONSTRUIRE. Chaque service pointe sur l'image que la CI
+#      a publiée, scannée par Trivy, signée par cosign, accompagnée de son SBOM
+#      et de sa provenance. Avant, la production recompilait sur place : ces
+#      images signées n'étaient jamais exécutées nulle part, et toute la chaîne
+#      de confiance ne servait à rien.
+#
+#   2. Durcissement runtime — redémarrage automatique, limites mémoire,
+#      DEBUG=False sur les services Django.
+#
+# Deux variables sont OBLIGATOIRES, dans `/opt/sgfe/.env` sur la machine :
+#
+#   GHCR_REPO=steveelouga/sgfe-backend      # le dépôt, en minuscules
+#   IMAGE_TAG=a3f9c2e                       # le SHA de commit à exécuter
+#
+# La syntaxe `${VAR:?message}` fait échouer le déploiement si l'une manque,
+# plutôt que d'interpoler une chaîne vide et de tirer `service:` — une référence
+# qui résoudrait vers `latest`, c'est-à-dire n'importe quoi.
+#
+# **Déployer** = réécrire `IMAGE_TAG`, tirer, relancer.
+# **Revenir en arrière** = réécrire l'ancien tag. Aucune reconstruction dans les
+# deux sens, et le retour arrière est aussi rapide que l'aller.
 #
 # ⚠️ SECRETS : le docker-compose.yml de base contient des valeurs DEV EN DUR
-# (DJANGO_SECRET_KEY placeholder, mots de passe `devpassword`, clé whatsapp
-# placeholder). Elles NE conviennent PAS en production : fournir de vrais secrets
-# (voir DEPLOYMENT.md). L'externalisation vers un coffre (Azure Key Vault) est
-# l'item P0 dédié, traité à la migration Azure.
+# (`devpassword`, `django-insecure-placeholder`, placeholders de clés). Elles NE
+# conviennent PAS en production : voir `docs/INFRASTRUCTURE_AWS.md` et l'inventaire
+# des 43 affectations de secret (artefact « Six Secrets »).
 
 x-prod: &prod
   restart: unless-stopped
@@ -40,12 +66,14 @@ services:
   reporting-postgres:
     <<: *prod
   nginx:
+    image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/nginx:${IMAGE_TAG:?IMAGE_TAG manquant}
     <<: *prod
   db-backup:
     <<: *prod
 
   # --- WhatsApp : Chromium (puppeteer) → plus de mémoire ---
   whatsapp-service:
+    image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/whatsapp-service:${IMAGE_TAG:?IMAGE_TAG manquant}
     restart: unless-stopped
     deploy:
       resources:
@@ -54,38 +82,47 @@ services:
 
   # --- Services Django : durcissement + DEBUG=False ---
   auth-service:
+    image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/auth-service:${IMAGE_TAG:?IMAGE_TAG manquant}
     <<: *prod
     environment:
       DJANGO_DEBUG: "False"
   abonne-service:
+    image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/abonne-service:${IMAGE_TAG:?IMAGE_TAG manquant}
     <<: *prod
     environment:
       DJANGO_DEBUG: "False"
   campagne-service:
+    image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/campagne-service:${IMAGE_TAG:?IMAGE_TAG manquant}
     <<: *prod
     environment:
       DJANGO_DEBUG: "False"
   facturation-service:
+    image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/facturation-service:${IMAGE_TAG:?IMAGE_TAG manquant}
     <<: *prod
     environment:
       DJANGO_DEBUG: "False"
   paiement-service:
+    image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/paiement-service:${IMAGE_TAG:?IMAGE_TAG manquant}
     <<: *prod
     environment:
       DJANGO_DEBUG: "False"
   notification-service:
+    image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/notification-service:${IMAGE_TAG:?IMAGE_TAG manquant}
     <<: *prod
     environment:
       DJANGO_DEBUG: "False"
   config-service:
+    image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/config-service:${IMAGE_TAG:?IMAGE_TAG manquant}
     <<: *prod
     environment:
       DJANGO_DEBUG: "False"
   reporting-service:
+    image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/reporting-service:${IMAGE_TAG:?IMAGE_TAG manquant}
     <<: *prod
     environment:
       DJANGO_DEBUG: "False"
   gateway:
+    image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/gateway:${IMAGE_TAG:?IMAGE_TAG manquant}
     <<: *prod
     environment:
       DJANGO_DEBUG: "False"

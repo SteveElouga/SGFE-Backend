@@ -166,7 +166,7 @@ Ansible intervient **avant**, pour que `docker compose pull` fonctionne : moteur
 Il s'agit de séparer ce qui **construit** de ce qui **exécute**.
 
 - [ ] `docker-compose.yml` garde ses `build:` — c'est le fichier du développeur, il doit continuer à construire localement.
-- [ ] `docker-compose.prod.yml` remplace chaque `build:` par une image tirée, en plus du durcissement qu'il porte déjà :
+- [ ] `docker-compose.prod.yml` **ajoute** un `image:` à chaque service, en plus du durcissement qu'il porte déjà. Il ne peut pas *remplacer* le `build:` du compose de base — Compose fusionne les clés, il n'en retire aucune. C'est `--no-build` au déploiement qui interdit la construction :
 
   ```yaml
   services:
@@ -178,7 +178,14 @@ Il s'agit de séparer ce qui **construit** de ce qui **exécute**.
   ```
 
 - [ ] Ajouter `docker-build-config`, `publish-config`, `docker-build-reporting`, `publish-reporting` dans `ci.yml`, sur le modèle exact des neuf autres.
-- [ ] Retirer `--build` du chemin production de `DEPLOYMENT.md:34` et y documenter `IMAGE_TAG`.
+- [ ] Retirer `--build` du chemin production de `DEPLOYMENT.md` et y documenter `IMAGE_TAG`.
+
+  > ⚠️ **Corrigé le 31 août 2026 — ce plan était incomplet.** Retirer `--build`
+  > ne suffit pas : Compose **construit quand l'image nommée est absente**. Un
+  > `IMAGE_TAG` erroné aurait donc déclenché une reconstruction silencieuse, soit
+  > exactement le défaut qu'on ferme. Le chemin production doit porter
+  > `--no-build`, et les variables être déclarées en `${VAR:?message}` pour
+  > échouer plutôt qu'interpoler une chaîne vide.
 - [ ] Sortir les **33 valeurs de développement en dur** de `docker-compose.yml` (`devpassword`, `django-insecure-placeholder`, `dev-fake-key`, `whatsapp-dev-placeholder…`) vers un `.env` alimenté par Secrets Manager.
 
 ### Comment la machine sait quelle version tirer
