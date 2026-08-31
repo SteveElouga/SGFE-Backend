@@ -337,3 +337,49 @@ class TestAvalCascade(TestCase):
 
         mock_notif.return_value.envoyer_recu.assert_called_once()
         self.assertAlmostEqual(mock_notif.return_value.envoyer_recu.call_args.kwargs["montant"], 8000.0)
+
+
+@patch("paiements.grpc_server.publish_paiement_event")
+@patch("paiements.grpc_server.publish_reporting_event")
+@patch("paiements.services.NotificationServiceClient")
+@patch("paiements.services.AbonneServiceClient")
+@patch("paiements.grpc_server.NotificationServiceClient")
+@patch("paiements.grpc_server.FacturationServiceClient")
+class TestMessageDeRetablissement(TestCase):
+    """Le message « votre ligne d'eau est rétablie » ne part que sur un vrai rétablissement.
+
+    Il partait à chaque facture soldée. Or l'immense majorité des abonnés qui
+    règlent leur dette n'ont jamais été coupés : ils recevaient donc l'annonce
+    d'un rétablissement qui n'avait pas eu lieu — en plus du reçu, soit deux
+    messages pour un geste, annonçant deux montants différents du même versement.
+    """
+
+    def test_message_envoye_quand_une_suspension_est_levee(
+        self, mock_fact, mock_notif, mock_abonne, mock_notif_svc, mock_rep, mock_pub
+    ) -> None:
+        _solde("juin", 5000, jours=60)
+        mock_abonne.return_value.reactiver_abonne.return_value = True
+        servicer = PaiementServicer()
+
+        servicer.EnregistrerPaiementAbonne(_requete_abonne(5000), _contexte())
+
+        mock_notif_svc.return_value.envoyer_relance.assert_called_once()
+        self.assertEqual(mock_notif_svc.return_value.envoyer_relance.call_args.kwargs["etape"], 0)
+
+    def test_aucun_message_si_l_abonne_n_etait_pas_suspendu(
+        self, mock_fact, mock_notif, mock_abonne, mock_notif_svc, mock_rep, mock_pub
+    ) -> None:
+        """Le cas le plus fréquent. Le reçu suffit : il confirme l'argent reçu.
+
+        `reactiver_abonne` rend False — Abonné Service refuse de réactiver un
+        abonné déjà ACTIF, et le client traduit ce refus en « rien à faire ».
+        """
+        _solde("juin", 5000, jours=60)
+        mock_abonne.return_value.reactiver_abonne.return_value = False
+        servicer = PaiementServicer()
+
+        servicer.EnregistrerPaiementAbonne(_requete_abonne(5000), _contexte())
+
+        mock_notif_svc.return_value.envoyer_relance.assert_not_called()
+        # Mais le reçu, lui, part bien : l'abonné a payé, il a droit à sa preuve.
+        mock_notif.return_value.envoyer_recu.assert_called_once()

@@ -238,6 +238,30 @@ class RecuPaiementServiceTests(TestCase):
         self.assertEqual(ctx["situation"]["statut_label"], "Facture partielle")
         self.assertIn("11h20", ctx["enregistrement"]["date_heure"])
 
+    def test_refuse_d_emettre_un_recu_si_le_solde_est_illisible(self):
+        """Un reçu ne peut pas attester ce qu'on n'a pas pu lire.
+
+        `get_solde` dégrade en `None` quand Paiement Service est injoignable. Le
+        code écrivait `or {}` puis `... or 0`, ce qui transforme « inconnu » en
+        « zéro » — et la note du reçu s'écrit à partir de ce zéro :
+
+            « Facture soldée — ce reçu confirme le règlement intégral … »
+
+        Un appel gRPC en échec produisait donc un DOCUMENT OFFICIEL remis à
+        l'abonné, attestant un règlement intégral qui n'avait pas eu lieu, avec
+        « total versé : 0 » imprimé juste au-dessus.
+
+        L'appelant côté notification dégrade proprement : le message WhatsApp
+        part sans pièce jointe. Pas de reçu vaut infiniment mieux qu'un faux.
+        """
+        svc = self._service()
+        svc._paiement_client = SimpleNamespace(
+            list_paiements=svc._paiement_client.list_paiements,
+            get_solde=lambda fid: None,  # Paiement Service injoignable
+        )
+        with self.assertRaises(ObjectDoesNotExist):
+            svc.generer_recu_pdf("p1", str(self.facture.id))
+
     def test_rang_du_recu_stable_parmi_plusieurs_versements(self):
         paiements = [
             {

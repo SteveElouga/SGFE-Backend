@@ -298,10 +298,10 @@ class EnvoiService:
         periode = _periode_from_date(facture.date_releve)
 
         if etape == 0:
-            message = build_message_retablissement(
-                prenom_nom=prenom_nom,
-                montant=facture.montant,
-            )
+            # Plus de montant : `facture.montant` n'est pas le versement, et
+            # l'annoncer comme tel était faux à chaque paiement partiel.
+            # Voir `build_message_retablissement`.
+            message = build_message_retablissement(prenom_nom=prenom_nom)
         elif etape == 1:
             # Pour la relance 1, on inclut le lien de l'espace abonné
             tokens_actifs = self._tokens.list_active_by_facture(facture_id)
