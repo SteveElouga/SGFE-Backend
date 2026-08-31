@@ -24,6 +24,9 @@ class TypeEnvoi(models.TextChoices):
     SUSPENSION = "SUSPENSION", "Suspension"
     RETABLISSEMENT = "RETABLISSEMENT", "Rétablissement"
     RECU = "RECU", "Reçu"
+    # Un versement annulé laisse l'abonné avec un reçu qui ne vaut plus rien, et
+    # une dette qu'il croyait éteinte. On le lui dit.
+    ANNULATION_PAIEMENT = "ANNULATION_PAIEMENT", "Annulation d'un paiement"
 
 
 class Envoi(models.Model):

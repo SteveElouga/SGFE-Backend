@@ -258,3 +258,42 @@ def build_message_retablissement(
         f"Votre paiement de {montant_str} FCFA a été reçu.\n"
         f"Votre ligne d'eau est maintenant rétablie."
     )
+
+
+def build_message_annulation_paiement(
+    prenom_nom: str,
+    periode: str,
+    solde_restant: float,
+) -> str:
+    """Construit le message d'annulation d'un versement.
+
+    Un versement annulé laisse l'abonné dans une situation qu'il ignore : il
+    détient un reçu qui ne vaut plus rien, et une dette qu'il croyait éteinte.
+    Ne rien dire, c'est le laisser découvrir la chose à la relance suivante.
+
+    Le message ne nomme pas le montant annulé. Ce n'est pas un oubli : ce
+    montant figure déjà sur le reçu que l'abonné détient, et le transporter
+    jusqu'ici aurait demandé d'élargir le contrat `EnvoyerRelance` puis de
+    régénérer les stubs de cinq services. Le chiffre qui appelle une action est
+    de toute façon l'autre : **ce qui reste dû.**
+
+    Le motif de l'annulation n'y figure pas non plus — il est destiné à la piste
+    d'audit, et il est souvent écrit dans le vocabulaire du guichet
+    (« doublon », « erreur de saisie ») plutôt que dans celui de l'abonné.
+
+    Args:
+        prenom_nom: Prénom et NOM de l'abonné.
+        periode: Période de la facture concernée (ex. « Août 2026 »).
+        solde_restant: Ce qui reste dû sur cette facture après annulation.
+
+    Returns:
+        Message WhatsApp formaté.
+    """
+    return (
+        f"Bonjour {prenom_nom},\n\n"
+        f"Un versement enregistré sur votre facture de {periode} a été annulé "
+        f"par nos services.\n\n"
+        f"Reste à payer : {_fcfa(solde_restant)} FCFA\n\n"
+        f"Si vous avez bien effectué ce versement, contactez-nous : il s'agit "
+        f"probablement d'une correction de saisie de notre part."
+    )

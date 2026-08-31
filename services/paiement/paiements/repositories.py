@@ -22,22 +22,47 @@ class PaiementRepository:
         reference_transaction: str,
         enregistre_par: str,
         montant_excedent: object = 0,
+        versement_id: object = None,
     ) -> Paiement:
-        """Crée un nouveau paiement en base.
+        """Crée une écriture de paiement.
 
-        `montant_excedent` est la part de `montant` partie à l'avoir de l'abonné.
-        Par défaut zéro : la plupart des versements s'imputent entièrement.
+        `montant` est la part imputée à CETTE facture, pas la somme reçue : un
+        versement peut se répartir sur plusieurs factures.
+
+        `montant_excedent` est la part du versement partie à l'avoir. Elle ne se
+        pose que sur la dernière écriture — c'est elle qu'on annulera pour
+        reprendre le crédit.
+
+        `versement_id` regroupe les écritures d'un même versement. Omis, une
+        écriture forme son propre versement (cas d'une imputation isolée, comme
+        celle d'un avoir à la création d'une facture).
         """
-        return Paiement.objects.create(
-            facture_id=facture_id,
-            abonne_id=abonne_id,
-            montant=montant,
-            montant_excedent=montant_excedent,
-            date_paiement=date_paiement,
-            mode_paiement=mode_paiement,
-            reference_transaction=reference_transaction,
-            enregistre_par=enregistre_par,
-        )
+        champs = {
+            "facture_id": facture_id,
+            "abonne_id": abonne_id,
+            "montant": montant,
+            "montant_excedent": montant_excedent,
+            "date_paiement": date_paiement,
+            "mode_paiement": mode_paiement,
+            "reference_transaction": reference_transaction,
+            "enregistre_par": enregistre_par,
+        }
+        if versement_id is not None:
+            champs["versement_id"] = versement_id
+        return Paiement.objects.create(**champs)
+
+    def list_du_versement(self, versement_id: object) -> list[Paiement]:
+        """Toutes les écritures nées d'un même versement, dans l'ordre d'imputation.
+
+        Un versement s'impute sur la facture visée puis sur les impayés : il
+        produit donc plusieurs écritures. L'annulation les charge toutes — on
+        annule un versement, pas une de ses lignes.
+        """
+        return list(Paiement.objects.filter(versement_id=versement_id).order_by("created_at"))
+
+    def dernier_du_versement(self, versement_id: object) -> Paiement | None:
+        """Dernière écriture d'un versement — celle qui porte l'excédent."""
+        return Paiement.objects.filter(versement_id=versement_id).order_by("-created_at").first()
 
     def get_by_reference(self, reference_transaction: str) -> Paiement | None:
         """Paiement portant cette référence de transaction, ou None — support de

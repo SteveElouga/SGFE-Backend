@@ -136,6 +136,20 @@ class PaiementServiceClient:
             logger.warning("Avoir imputé indisponible — le message part sans la ligne : %s", exc)
             return 0.0
 
+    def get_solde_restant(self, facture_id: str) -> float:
+        """Ce qui reste dû sur une facture.
+
+        Rend zéro si le service est injoignable. L'appelant doit traiter ce zéro
+        comme « inconnu » et non comme « rien à payer » : annoncer un solde nul à
+        tort est le seul message plus dommageable que pas de message.
+        """
+        try:
+            r = self._stub.GetSolde(self._pb.FactureIdRequest(facture_id=facture_id))
+            return float(getattr(r, "solde_restant", 0) or 0)
+        except grpc.RpcError as exc:
+            logger.warning("Solde restant indisponible — repli sur le montant de la facture : %s", exc)
+            return 0.0
+
 
 class AbonneServiceClient:
     """Client gRPC vers Abonné Service (port 50052)."""

@@ -161,6 +161,17 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
         # versement se voit.
         publish_paiement_event(paiement, statut_facture=solde.statut)
 
+        # Prévient l'abonné (dégradation gracieuse assurée par le client).
+        #
+        # Il détenait un reçu et croyait sa facture soldée. Se taire le laisse
+        # découvrir la chose à la relance suivante — et le message d'étape 5 dit
+        # ce qui reste dû, plus qu'il ne rappelle ce qui a été défait.
+        self._notification_client.envoyer_relance(
+            facture_id=paiement.facture_id,
+            abonne_id=paiement.abonne_id,
+            etape=5,
+        )
+
         return paiement_to_proto(paiement)
 
     def CrediterAvoir(

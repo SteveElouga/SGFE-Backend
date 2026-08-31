@@ -229,7 +229,10 @@ class TestEnregistrerPaiementRPC(TestCase):
             enregistre_par="user-001",
         )
         response = self.servicer.EnregistrerPaiement(request, _mock_context())
-        self.assertAlmostEqual(response.montant, 500.00)
+        # La réponse porte la part imputée (300), pas la somme reçue (500) :
+        # une écriture par facture touchée. Voir test_services pour le pourquoi
+        # — l'ancienne sémantique double comptait les recettes.
+        self.assertAlmostEqual(response.montant, 300.00)
         self.assertEqual(str(AvoirAbonne.objects.get(abonne_id="abonne-001").montant), "200.00")
 
     def test_enregistrer_paiement_facture_inconnue_propage_not_found(self) -> None:

@@ -239,7 +239,14 @@ class TestEnregistrerPaiement(TestCase):
             reference_transaction="",
             enregistre_par="user-001",
         )
-        self.assertEqual(paiement.montant, Decimal("400.00"))  # montant réellement reçu
+        # `montant` est la part imputée à CETTE facture, non la somme reçue.
+        #
+        # C'était l'inverse jusqu'à l'introduction de la cascade sur les
+        # impayés — et cette sémantique faisait double compter les recettes :
+        # `statsParMois` somme tous les `p.montant`, et l'imputation ultérieure
+        # de l'avoir crée un second Paiement (mode AVOIR). Un versement de 400
+        # sur une facture de 300 comptait donc 400 + 100 = 500 encaissés.
+        self.assertEqual(paiement.montant, Decimal("300.00"))
         self.assertEqual(solde.solde_restant, Decimal("0"))  # jamais négatif
         self.assertEqual(solde.statut, StatutSolde.PAYEE)
         self.assertEqual(AvoirAbonne.objects.get(abonne_id="abonne-001").montant, Decimal("100.00"))
