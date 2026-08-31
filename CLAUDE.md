@@ -393,9 +393,28 @@ Le client GraphQL (Apollo) doit appeler `/graphql` en **chemin relatif**
 new HttpLink({ uri: '/graphql', withCredentials: true })
 ```
 
-En production, c'est nginx (déjà devant la Gateway, voir `docs/ARCHITECTURE.md`
-§7) qui joue ce rôle : il sert le build Angular et proxyfie `/graphql` sous
-le même domaine.
+> ⚠️ **Corrigé le 31 août 2026.** Ce paragraphe affirmait que le nginx de ce
+> dépôt « sert le build Angular ». Il ne l'a jamais servi : `nginx/default.conf`
+> n'a ni `root` ni `try_files`, une seule `location /` qui proxyfie tout vers
+> `gateway:8000`, et un CSP `default-src 'none'` qui bloquerait le moindre
+> script. Quatrième prescription de ce fichier que le code n'a jamais suivie,
+> après les trois corrigées le 28 août.
+
+En production, ce rôle est tenu par le **nginx du dépôt frontend**
+(`SGFE-frontend/nginx/conf.d/default.conf`) : c'est lui qui sert le build
+Angular, et lui qui proxyfie sous le même domaine `/graphql` (y compris le
+WebSocket des subscriptions), l'espace abonné, les PDF de factures, les CSV et
+le bilan des impayés.
+
+Les deux piles sont deux projets Compose distincts, donc deux réseaux étanches.
+La jointure est le réseau **`sgfe-edge`**, créé par ce dépôt et rejoint par le
+frontend en `external: true` ; **seul** le service `gateway` y adhère côté
+backend. Le nginx de ce dépôt reste l'arête de l'API pour un accès direct
+(publié en `8080:80`) — il n'est pas sur le chemin du navigateur.
+
+Conséquence sur l'ordre de démarrage : **cette pile d'abord**. Le `docker
+compose up` du frontend échoue en disant que le réseau n'existe pas — un échec
+lisible, préférable à un nginx qui démarre et sert des 502.
 
 ---
 

@@ -422,6 +422,19 @@ services:
       REDIS_URL: "redis://redis:6379/0"
     expose:
       - "8000"
+    # Le SEUL service de cette pile joignable depuis la pile frontend.
+    #
+    # Le frontend et le backend sont deux projets Compose distincts — donc deux
+    # réseaux étanches. Le nginx du frontend proxyfie `/graphql`, l'espace abonné,
+    # les PDF et les CSV vers ce conteneur : sans réseau commun, il ne résout même
+    # pas son nom et refuse de démarrer.
+    #
+    # `default` doit être répété : dès qu'un service déclare `networks`, il perd
+    # son adhésion implicite au réseau du projet — et le gateway ne parlerait plus
+    # à aucun des huit services gRPC ni à Redis.
+    networks:
+      - default
+      - edge
 
   nginx:
     build: ./nginx
@@ -461,6 +474,22 @@ services:
       - ./scripts/backup-databases.sh:/backup.sh:ro
     entrypoint: ["/bin/sh", "-c", "while true; do sh /backup.sh || true; sleep 86400; done"]
     restart: unless-stopped
+
+# ── Réseaux ──────────────────────────────────────────────────────────────────
+#
+# Cette pile crée `sgfe-edge` ; la pile frontend le déclare `external: true` et
+# s'y raccroche. La dépendance va donc dans un seul sens — le frontend a besoin
+# de l'API, l'inverse n'est pas vrai — et l'ordre de démarrage suit : **cette
+# pile d'abord**, sinon `docker compose up` côté frontend échoue en disant que le
+# réseau n'existe pas. C'est un échec lisible, et de loin préférable à un nginx
+# qui démarre et sert des 502.
+#
+# Le nom est fixé explicitement : sans `name`, Compose le préfixerait du nom du
+# projet (`sgfe-backend_edge`), qui dépend du nom du dossier sur la machine — le
+# frontend ne pourrait pas s'y référer de façon stable.
+networks:
+  edge:
+    name: sgfe-edge
 
 volumes:
   auth_postgres_data:
