@@ -204,8 +204,16 @@ class AbonneServiceClient:
 
     def reactiver_abonne(self, abonne_id: str) -> None:
         """
-        Réactive un abonné suspendu dans Abonné Service après paiement complet.
+        Réactive un abonné suspendu dans Abonné Service après extinction de sa dette.
         Dégradation gracieuse en cas d'erreur gRPC.
+
+        Le cas « il n'était pas suspendu » n'est pas une anomalie. Abonné Service
+        refuse de réactiver un abonné déjà ACTIF (`ValidationError` →
+        INVALID_ARGUMENT), et c'est le cas le PLUS FRÉQUENT : la grande majorité
+        des abonnés qui soldent leur dette n'ont jamais été coupés.
+
+        Le journaliser en WARNING remplissait donc les journaux d'alertes sur le
+        chemin normal — et c'est ainsi qu'on n'y voit plus les vraies.
         """
         try:
             self._stub.ReactiverAbonne(self._pb.AbonneIdRequest(abonne_id=abonne_id))
@@ -214,6 +222,12 @@ class AbonneServiceClient:
                 extra={"abonne_id": abonne_id},
             )
         except grpc.RpcError as exc:
+            if exc.code() == grpc.StatusCode.INVALID_ARGUMENT:
+                logger.info(
+                    "Pas de réactivation — l'abonné n'était pas suspendu",
+                    extra={"abonne_id": abonne_id},
+                )
+                return
             logger.warning(
                 "ReactiverAbonne échoué — dégradation gracieuse",
                 extra={"abonne_id": abonne_id, "error": str(exc)},
