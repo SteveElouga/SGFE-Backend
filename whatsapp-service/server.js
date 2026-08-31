@@ -50,6 +50,9 @@ let isReady = false;
 let currentQr = null;
 let activeClient = null;
 let restartCount = 0;
+// Un cycle de reconnexion est déjà en vol. Empêche les redémarrages
+// concurrents — voir `scheduleRestart`.
+let restartEnCours = false;
 // Instant du dernier passage à l'état « prêt ». Sert à mesurer depuis combien de
 // temps la liaison est rompue, donc à décider s'il faut alerter.
 let readySince = null;
@@ -255,15 +258,49 @@ function startClient() {
 }
 
 async function scheduleRestart(clientRef) {
+    // Un seul cycle de reconnexion à la fois.
+    //
+    // Tous les appelants historiques se gardaient eux-mêmes par
+    // `if (activeClient !== client) return`. Le gestionnaire
+    // `unhandledRejection` ajouté le 30/08 ne le pouvait pas : un rejet
+    // n'appartient à aucun client identifiable. Il appelait donc cette
+    // fonction à chaque rejet — et une panne de Chromium en produit plusieurs
+    // d'affilée. Résultat mesuré : six « Session authentifiée » pour un seul
+    // conteneur, des clients concurrents attachés à la même page
+    // (`window['onQRChangedEvent'] already exists!`), et une session perdue.
+    //
+    // La garde va ici plutôt que dans le gestionnaire : elle protège aussi
+    // les appelants existants, et le prochain appelant ajouté n'aura pas à y
+    // penser.
+    if (restartEnCours) return;
+    restartEnCours = true;
+
     // Détruire proprement le client actuel avant d'en créer un nouveau.
     // Un client whatsapp-web.js n'est pas réutilisable après disconnected/failure.
-    try { await clientRef.destroy(); } catch (_) {}
+    //
+    // Borné dans le temps : `destroy()` s'appuie sur Chromium, qui est
+    // précisément ce qui vient de mal se comporter. Sans cette borne, un
+    // `destroy` qui ne rend jamais la main laisserait le verrou posé et
+    // gèlerait toute reconnexion ultérieure — on aurait remplacé un
+    // empilement par un blocage.
+    try {
+        await Promise.race([
+            clientRef.destroy(),
+            new Promise((resolve) => setTimeout(resolve, 10_000)),
+        ]);
+    } catch (_) {}
 
     restartCount++;
     // Backoff exponentiel plafonné à 60 s pour ne pas saturer les logs
     const delay = Math.min(5000 * restartCount, 60_000);
     console.log(`[WhatsApp] Reconnexion dans ${delay / 1000} s (tentative n°${restartCount})`);
-    setTimeout(startClient, delay);
+    setTimeout(() => {
+        // Le verrou se lève à l'instant où le nouveau cycle démarre : les
+        // rejets arrivés pendant l'attente sont absorbés par celui-ci, ceux
+        // du nouveau cycle pourront en déclencher un autre.
+        restartEnCours = false;
+        startClient();
+    }, delay);
 }
 
 // ── Endpoints ─────────────────────────────────────────────────────────────────
