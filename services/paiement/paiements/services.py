@@ -418,6 +418,29 @@ class PaiementService:
 
         return crees, restant
 
+    def imputations_du_versement(self, versement_id: object) -> list[tuple[Paiement, SoldeFacture]]:
+        """Les écritures d'un versement, chacune avec le solde de la facture qu'elle a touchée.
+
+        Un versement produit une écriture par facture touchée. Les conséquences
+        d'un encaissement — statut de la facture, résolution du suivi d'impayé,
+        pause des relances, statistiques — sont **par facture**, pas par
+        versement : elles doivent donc être appliquées sur chacune.
+
+        C'est ce que cette méthode rend possible, et c'est ce qui manquait. Avant,
+        l'appelant ne connaissait que la facture visée : une vieille facture
+        éteinte par la cascade restait affichée IMPAYÉE dans le back-office, son
+        `SuiviImpaye` n'était jamais résolu, et aucun reçu ne la couvrait.
+
+        Les soldes sont relus après imputation : ils portent donc le statut
+        définitif du versement, cascade comprise.
+        """
+        imputations: list[tuple[Paiement, SoldeFacture]] = []
+        for paiement in self._paiement_repo.list_du_versement(versement_id):
+            solde = self._solde_repo.get_if_exists(paiement.facture_id)
+            if solde is not None:
+                imputations.append((paiement, solde))
+        return imputations
+
     def list_non_soldes_par_abonne(self, abonne_id: str) -> list[SoldeFacture]:
         """Soldes non éteints d'un abonné, du plus ancien exigible au plus récent."""
         return self._solde_repo.list_non_soldes_par_abonne(abonne_id)
@@ -566,14 +589,21 @@ class PaiementService:
         return self._suivi_repo.get_by_facture_id(facture_id)
 
     def marquer_facture_payee_si_applicable(self, solde: SoldeFacture) -> None:
-        """
-        Après paiement total : résout le SuiviImpaye si existant,
-        réactive l'abonné s'il était suspendu, envoie confirmation WhatsApp.
+        """Après paiement total d'UNE facture : résout son suivi d'impayé.
+
+        Ne touche plus à l'abonné ni à ses notifications — c'est le rôle de
+        `retablir_si_dette_eteinte`, appelée une fois par versement.
+
+        Pourquoi ce partage. Cette méthode s'applique désormais à **chaque**
+        facture éteinte par un versement, cascade comprise. Y laisser la
+        réactivation et le message WhatsApp aurait produit, pour un abonné qui
+        solde trois arriérés au comptoir, trois réactivations et trois messages
+        « votre facture est réglée » — pour un seul geste, et alors que ce qui
+        l'intéresse est de savoir s'il est à jour, une fois.
         """
         if solde.statut != StatutSolde.PAYEE:
             return
 
-        # Résoudre le suivi impayé si existant
         try:
             suivi = self._suivi_repo.get_by_facture_id(solde.facture_id)
             suivi.resolu_le = date.today()
@@ -585,17 +615,48 @@ class PaiementService:
         except ObjectDoesNotExist:
             pass  # Pas de suivi impayé, c'est normal
 
-        # EF-IMP-005 — Réactivation de l'abonné suspendu (dégradation gracieuse)
-        AbonneServiceClient().reactiver_abonne(solde.abonne_id)
+    def retablir_si_dette_eteinte(self, abonne_id: str, facture_id_reference: str) -> bool:
+        """Réactive l'abonné et le prévient — mais seulement s'il ne doit plus RIEN.
 
-        notif_client = NotificationServiceClient()
+        RS-005 (`docs/SRS.md`) dit « **paiement intégral** après suspension →
+        ACTIF ». Le code lisait cette règle au niveau d'une facture : dès qu'UNE
+        facture passait PAYEE, l'abonné était réactivé.
 
-        # Confirmation de paiement complet par WhatsApp (dégradation gracieuse)
-        notif_client.envoyer_relance(
-            facture_id=solde.facture_id,
-            abonne_id=solde.abonne_id,
-            etape=0,  # étape 0 = confirmation de paiement
+        Un abonné suspendu qui devait trois factures et n'en réglait qu'une
+        retrouvait donc l'eau en devant encore deux mois. Perte de recette
+        directe, et lecture fausse de la règle : « intégral » qualifie la dette,
+        pas une ligne de la dette.
+
+        La condition est maintenant `total_du_abonne(...) <= 0`. La méthode
+        existait déjà (`total_du_abonne`, plus bas) et n'était appelée que pour
+        l'impression des factures.
+
+        Appelée une fois par versement, après que toutes les imputations ont été
+        écrites : le total est donc définitif.
+
+        Rend `True` si la dette est éteinte — ce que l'appelant utilise pour
+        décider du contenu du reçu.
+        """
+        reste = self.total_du_abonne(abonne_id)
+        if reste > 0:
+            logger.info(
+                "Pas de rétablissement — l'abonné doit encore",
+                extra={"abonne_id": abonne_id, "reste_du": str(reste)},
+            )
+            return False
+
+        # EF-IMP-005 — Réactivation de l'abonné suspendu (dégradation gracieuse).
+        # Sans effet s'il n'était pas suspendu : le client le journalise en INFO.
+        AbonneServiceClient().reactiver_abonne(abonne_id)
+
+        # EF-NOTIF-004 — l'abonné est à jour, et on le lui dit une fois
+        # (étape 0 = confirmation). Dégradation gracieuse.
+        NotificationServiceClient().envoyer_relance(
+            facture_id=facture_id_reference,
+            abonne_id=abonne_id,
+            etape=0,
         )
+        return True
 
     def suspendre_relances_si_partiel(self, solde: SoldeFacture, jours_suspension: int | None = None) -> None:
         """

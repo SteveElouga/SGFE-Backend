@@ -58,6 +58,29 @@ services/paiement/
   mauvais ordre laisserait vieillir la mauvaise dette.
 - `enregistrer_paiement` (une facture nommée) reste disponible : un caissier a
   parfois besoin de viser une facture précise.
+
+- **Les conséquences d'un encaissement s'appliquent par FACTURE TOUCHÉE, et un
+  seul chemin les porte** — `PaiementServicer._propager_versement`.
+
+  Un RPC qui encaisse sans l'appeler est un RPC qui encaisse dans le vide.
+  C'était le cas de `EnregistrerPaiementAbonne`, le geste le plus fréquent de
+  l'exploitation : ni statut de facture, ni réactivation de l'abonné suspendu,
+  ni reçu, ni pause des relances, ni statistiques. **Un abonné suspendu qui
+  venait payer restait coupé.**
+
+  Et le chemin qui les portait ne les portait que pour la facture visée : une
+  vieille facture éteinte par le débordement restait IMPAYÉE côté Facturation,
+  avec un `SuiviImpaye` jamais résolu.
+
+- **La réactivation exige que la dette TOTALE soit éteinte** (RS-005,
+  `docs/SRS.md`). « Paiement intégral » qualifie la dette, pas une ligne de la
+  dette : régler une facture sur trois ne rouvre pas la ligne d'eau. La
+  condition est `total_du_abonne(...) <= 0`, dans
+  `retablir_si_dette_eteinte`.
+
+- **Un reçu par versement, pas par ligne** — et il annonce la dette totale
+  restante. Un abonné qui solde trois arriérés d'un geste recevait sinon un reçu
+  et trois « votre facture est réglée ».
 - `reference_transaction` obligatoire pour MOBILE_MONEY et VIREMENT
 - Statut : `montant_paye == 0` → IMPAYEE ; `0 < montant_paye < total` → PARTIELLE ; `>= total` → PAYEE
 - Après PAYEE : résoudre SuiviImpaye.resolu_le et notifier (dégradation gracieuse)

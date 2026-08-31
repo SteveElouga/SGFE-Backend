@@ -156,7 +156,18 @@ class TestEnregistrerPaiementRPC(TestCase):
         self.assertEqual(kwargs["facture_id"], "facture-recu")
         self.assertEqual(kwargs["abonne_id"], "abonne-001")
         self.assertAlmostEqual(kwargs["montant"], 120.00)
-        self.assertAlmostEqual(kwargs["solde_restant"], 180.00)  # 300 - 120
+
+        # Le reçu annonce la dette TOTALE, pas le reste de la seule facture visée.
+        #
+        # Cet abonné doit deux factures de 300 (celle du setUp et celle-ci) et
+        # verse 120 : il doit encore 480. L'ancienne valeur attendue était 180 —
+        # le reste de cette facture-là — et c'est justement le défaut. Un reçu qui
+        # annonce « solde restant dû : 180 » à quelqu'un qui doit 480 fait dire au
+        # document l'inverse de la vérité, et c'est le document que l'abonné garde.
+        #
+        # Même décision que côté frontend en #95 : dire ce que l'abonné doit
+        # ailleurs, plutôt que de le taire.
+        self.assertAlmostEqual(kwargs["solde_restant"], 480.00)  # 600 dus - 120 versés
 
     @patch("paiements.grpc_server.publish_reporting_event")
     @patch("paiements.grpc_server.FacturationServiceClient")

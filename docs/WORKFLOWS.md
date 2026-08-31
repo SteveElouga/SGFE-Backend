@@ -181,26 +181,56 @@ Désactive tous les tarifs existants (`is_active=False`) puis crée le nouveau t
 
 ## 5. Paiement
 
-### 5.1 Enregistrement d'un paiement (`enregistrerPaiement`)
+> ⚠️ **Réécrit le 31 août 2026.** Cette section décrivait un « anti-surpaiement »
+> qui refusait tout versement dépassant le solde. Ce refus n'existe plus depuis
+> #141 : le surpaiement est accepté et cascade sur les impayés. Elle ne
+> documentait par ailleurs **que** `enregistrerPaiement`, alors que
+> `enregistrerPaiementAbonne` est le geste que l'interface emploie — et c'est
+> précisément ce silence qui a laissé ce second chemin sans aucun effet aval.
 
-*Rôle requis : ADMIN ou COMPTABLE.*
+**Deux chemins d'encaissement**, et un seul jeu de conséquences.
 
-1. `[Paiement]` Valide `montant > 0`.
-2. Si `mode_paiement ∈ {MOBILE_MONEY, VIREMENT}` → `reference_transaction` obligatoire et non vide (sinon refus). Aucune contrainte pour `ESPECES`.
-3. Récupère le `SoldeFacture` de la facture (doit avoir été initialisé par `InitialiserSolde`, sinon erreur « facture introuvable »).
-4. Anti-surpaiement : `montant > solde_restant` → refus (empêche tout dépassement cumulé sur plusieurs versements).
-5. Crée le `Paiement`, met à jour `SoldeFacture` : `montant_paye += montant`, `solde_restant = montant_total - montant_paye`, statut dérivé (`PAYEE` si `montant_paye ≥ montant_total`, sinon `PARTIELLE`).
-6. `[Paiement]` → `Facturation.UpdateStatutFacture(...)` (dégradé).
-7. Si le nouveau statut est `PAYEE` :
-   - `[Paiement]` Résout `SuiviImpaye.resolu_le` s'il existait.
-   - `[Paiement]` → `Abonne.ReactiverAbonne(abonne_id)` si l'abonné avait été suspendu.
-   - `[Paiement]` → `Notification.EnvoyerRelance(etape=0)` — confirmation de paiement par WhatsApp.
-8. Si le nouveau statut est `PARTIELLE` :
-   - `[Paiement]` Pose `SuiviImpaye.relances_suspendues_jusqu = aujourd'hui + 5 jours` (délai par défaut) — met en pause toute relance ultérieure pendant ce délai, y compris une éventuelle suspension automatique.
+### 5.1 Encaissement au comptoir (`enregistrerPaiementAbonne`) — le geste courant
 
-### 5.2 Paiements partiels multiples
+*Rôle requis : ADMIN ou COMPTABLE.* C'est celui que l'interface emploie : le caissier saisit un montant, le système répartit.
 
-Chaque appel `enregistrerPaiement` relit le solde courant en base et recalcule à partir de là — aucune limite au nombre de versements tant que la somme ne dépasse pas `montant_total`. Exemple vérifié par les tests : deux versements de 150 sur une facture de 300 → statut `PAYEE` après le second.
+1. `[Paiement]` Valide `montant > 0`, et `reference_transaction` non vide si `mode_paiement ∈ {MOBILE_MONEY, VIREMENT}`.
+2. Idempotence : une `reference_transaction` déjà vue ne re-crédite rien (rejeu réseau, double-clic).
+3. Impute **du plus anciennement exigible au plus récent** (tri sur `date_limite_paiement`) : le plus vieux solde s'éteint d'abord, le reliquat déborde sur le suivant. C'est l'ancienneté qui déclenche relances et suspension — imputer dans l'autre sens laisserait vieillir la mauvaise dette.
+4. Une **écriture `Paiement` par facture touchée**, toutes marquées du même `versement_id`. `Paiement.montant` est la part imputée à *sa* facture, pas la somme reçue.
+5. Ce qui reste après extinction de **toutes** les dettes part en avoir (`TROP_PERCU`), et seulement là.
+6. Puis les conséquences communes — voir §5.3.
+
+### 5.2 Encaissement sur une facture nommée (`enregistrerPaiement`)
+
+*Rôle requis : ADMIN ou COMPTABLE.* Un caissier a parfois besoin de viser une facture précise.
+
+Même déroulé, à un détail près : **la facture visée est servie d'abord**, puis l'excédent cascade sur les impayés, puis l'avoir. Un abonné règle la facture dont il a reçu le message ; c'est celle-là qui s'éteint en premier.
+
+### 5.3 Les conséquences d'un encaissement (les deux chemins)
+
+Portées par un seul chemin de code (`_propager_versement`). **Par facture touchée**, cascade comprise :
+
+1. `[Paiement]` → `Facturation.UpdateStatutFacture(...)` (dégradé).
+2. Si `PAYEE` → résout `SuiviImpaye.resolu_le`.
+3. Si `PARTIELLE` → pose `SuiviImpaye.relances_suspendues_jusqu = aujourd'hui + N jours` (`impaye_suspension_relances`, défaut 5) : met en pause toute relance ultérieure, suspension automatique comprise.
+4. Publie `PAIEMENT_STATS` sur le flux Reporting, avec **la part imputée à cette facture et la campagne de cette facture**.
+5. Publie l'événement de la souscription GraphQL `paiementCree`.
+
+**Une fois par versement** :
+
+6. Si — et seulement si — `total_du_abonne(...) == 0` : `[Paiement]` → `Abonne.ReactiverAbonne(...)` et `Notification.EnvoyerRelance(etape=0)`. RS-005 dit « paiement **intégral** après suspension → ACTIF » : *intégral* qualifie la dette, pas une ligne de la dette. Un abonné qui règle une facture sur trois ne retrouve pas l'eau.
+7. `[Paiement]` → `Notification.EnvoyerRecu(...)` : **un** reçu pour le geste. `montant` = ce que l'abonné a tendu (excédent compris) ; `solde_restant` = ce qu'il doit **encore en tout**, et non le reste d'une facture parmi plusieurs.
+
+Tout est en dégradation gracieuse : un service aval injoignable n'annule jamais un versement déjà écrit.
+
+### 5.4 Paiements partiels multiples
+
+Chaque appel relit le solde courant en base et recalcule à partir de là — aucune limite au nombre de versements. Un versement qui dépasse ne provoque pas de refus : il déborde sur les impayés, puis sur l'avoir. Exemple vérifié par les tests : deux versements de 150 sur une facture de 300 → statut `PAYEE` après le second.
+
+### 5.5 Annulation d'un versement (`annulerPaiement`)
+
+On annule un **versement**, pas une de ses lignes : les écritures partageant le `versement_id` sont annulées d'un bloc. Un excédent déjà porté à l'avoir est reprisé (refus si le crédit a déjà été dépensé), les `SuiviImpaye` sont rouverts (`resolu_le = None`), les recettes du read model sont décrémentées (`PAIEMENT_ANNULE`), et l'abonné est prévenu (étape 5).
 
 ---
 
