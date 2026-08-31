@@ -21,12 +21,18 @@ class PaiementRepository:
         mode_paiement: str,
         reference_transaction: str,
         enregistre_par: str,
+        montant_excedent: object = 0,
     ) -> Paiement:
-        """Crée un nouveau paiement en base."""
+        """Crée un nouveau paiement en base.
+
+        `montant_excedent` est la part de `montant` partie à l'avoir de l'abonné.
+        Par défaut zéro : la plupart des versements s'imputent entièrement.
+        """
         return Paiement.objects.create(
             facture_id=facture_id,
             abonne_id=abonne_id,
             montant=montant,
+            montant_excedent=montant_excedent,
             date_paiement=date_paiement,
             mode_paiement=mode_paiement,
             reference_transaction=reference_transaction,

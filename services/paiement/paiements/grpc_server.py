@@ -142,6 +142,25 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
                 "Sync statut facture (annulation) échouée — dégradation gracieuse",
                 extra={"facture_id": paiement.facture_id, "error": str(exc)},
             )
+
+        # Décrémente les recettes du read model Reporting.
+        #
+        # L'enregistrement d'un versement publiait `PAIEMENT` ; son annulation ne
+        # publiait rien. Le read model surévaluait donc les recettes de façon
+        # permanente, en désaccord avec `statsParMois` que la gateway calcule en
+        # excluant les paiements annulés.
+        publish_reporting_event(
+            "PAIEMENT_STATS",
+            campagne_id=solde.campagne_id,
+            montant_paiement=float(paiement.montant),
+            type_update="PAIEMENT_ANNULE",
+        )
+
+        # Notifie la gateway pour que les écrans ouverts se rafraîchissent : un
+        # solde qui remonte doit se voir sans recharger la page, comme un
+        # versement se voit.
+        publish_paiement_event(paiement, statut_facture=solde.statut)
+
         return paiement_to_proto(paiement)
 
     def CrediterAvoir(
