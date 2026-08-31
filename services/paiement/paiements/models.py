@@ -30,6 +30,17 @@ class Paiement(models.Model):
     """Enregistrement d'un versement partiel ou total sur une facture."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Regroupe les écritures nées d'un SEUL versement.
+    #
+    # Un abonné tend une somme ; elle s'impute sur la facture visée, puis sur
+    # ses impayés, et le reste seulement part à l'avoir. Cela produit plusieurs
+    # écritures — une par facture touchée — qui ne forment pourtant qu'un
+    # versement.
+    #
+    # Sans ce regroupement, annuler « le paiement » ne défaisait qu'une de ses
+    # imputations et laissait les autres debout : un solde faux, exactement le
+    # défaut qu'on venait de corriger sur le trop-perçu.
+    versement_id = models.UUIDField(default=uuid.uuid4, editable=False)
     # Référence vers Facturation Service (pas de FK inter-service)
     facture_id = models.CharField(max_length=36)
     # Référence vers Abonné Service (pas de FK inter-service)
@@ -59,7 +70,11 @@ class Paiement(models.Model):
 
     class Meta:
         db_table = "paiements"
-        indexes = [models.Index(fields=["facture_id"])]
+        indexes = [
+            models.Index(fields=["facture_id"]),
+            # L'annulation charge toutes les écritures d'un versement.
+            models.Index(fields=["versement_id"]),
+        ]
         ordering = ["-created_at"]
         constraints = [
             # Idempotence : une référence de transaction (MoMo/virement) ne peut

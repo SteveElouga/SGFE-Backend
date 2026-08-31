@@ -46,7 +46,10 @@ class SoldeRetabliDeLaPartImputee(TestCase):
         # reçu que 5 000, puis remontait le résultat à zéro.
         self.svc.initialiser_solde("f-1", ABONNE, 5000, DEMAIN)
         p, _ = self.svc.enregistrer_paiement("f-1", ABONNE, 10000, date.today(), ModePaiement.ESPECES, "", "caissier")
-        self.assertEqual(p.montant, 10000)
+        # `montant` porte la part imputée à cette facture, pas la somme reçue :
+        # une écriture par facture touchée. L'excédent, lui, n'a nulle part où
+        # cascader ici — c'est la seule dette de l'abonné.
+        self.assertEqual(p.montant, 5000)
         self.assertEqual(p.montant_excedent, 5000)
 
         _, solde = self.svc.annuler_paiement(str(p.id), "erreur", "admin")
@@ -166,7 +169,10 @@ class SuiviImpayeRouvert(TestCase):
         p2, _ = self.svc.enregistrer_paiement("f-1", ABONNE, 2000, date.today(), ModePaiement.ESPECES, "", "caissier")
         suivi = self._suivi_resolu("f-1", ABONNE)
 
-        # p2 s'est entièrement porté à l'avoir (la facture était déjà soldée).
+        # p2 n'a rien pu imputer (facture déjà soldée, aucun autre impayé) :
+        # son écriture vaut zéro et porte les 2 000 partis à l'avoir.
+        self.assertEqual(p2.montant, 0)
+        p2.refresh_from_db()
         self.assertEqual(p2.montant_excedent, 2000)
         _, solde = self.svc.annuler_paiement(str(p2.id), "doublon", "admin")
 
@@ -205,16 +211,18 @@ class VersementAbonneMultiFactures(TestCase):
         crees[1].refresh_from_db()
         self.assertEqual(crees[1].montant_excedent, 2000)
 
-    def test_annuler_la_premiere_ecriture_ne_touche_pas_l_avoir(self):
+    def test_annuler_une_ecriture_annule_tout_le_versement(self):
         self.svc.initialiser_solde("f-1", ABONNE, 3000, date.today() - timedelta(days=30))
         self.svc.initialiser_solde("f-2", ABONNE, 5000, DEMAIN)
         crees, _ = self.svc.enregistrer_paiement_abonne(
             ABONNE, 10000, date.today(), ModePaiement.ESPECES, "", "caissier"
         )
-        avoir_avant, _ = self.svc.get_avoir_abonne(ABONNE)
 
+        # On clique sur la PREMIÈRE écriture — l'annulation défait le versement
+        # entier. N'en défaire qu'une laisserait les autres imputations debout.
         _, solde = self.svc.annuler_paiement(str(crees[0].id), "erreur", "admin")
 
         self.assertEqual(solde.solde_restant, 3000)
+        self.assertEqual(self.svc.get_solde("f-2").solde_restant, 5000)
         avoir_apres, _ = self.svc.get_avoir_abonne(ABONNE)
-        self.assertEqual(avoir_apres, avoir_avant)
+        self.assertEqual(avoir_apres, 0)

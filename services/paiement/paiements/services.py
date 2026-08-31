@@ -1,6 +1,7 @@
 """Logique métier du Paiement Service."""
 
 import logging
+import uuid
 from datetime import date
 from decimal import Decimal
 
@@ -186,12 +187,25 @@ class PaiementService:
         """
         Enregistre un versement et met à jour le solde de la facture.
 
+        Ordre d'imputation — **la facture visée, puis les impayés, puis l'avoir.**
+
+        Un abonné paie ce qu'on lui a demandé : la facture du mois dont il a reçu
+        le message. Le versement s'impute donc d'abord sur celle-là. Ce qui
+        dépasse ne devient pas un crédit tant qu'il reste une dette : l'excédent
+        éteint les impayés, du plus anciennement exigible au plus récent.
+
+        **Il ne peut donc y avoir d'avoir que si tous les impayés sont soldés.**
+        Avant cette règle, un versement de 10 000 sur une facture de 5 000
+        créditait 5 000 à un abonné qui devait encore 3 000 par ailleurs — il
+        restait relancé pour une dette que son propre argent couvrait déjà.
+
+        Un versement produit donc potentiellement **plusieurs écritures**, une par
+        facture touchée. Elles partagent un `versement_id` : c'est ce qui permet
+        de les annuler d'un bloc, puisqu'elles ne forment qu'un seul versement.
+
         Règles :
         - montant > 0
         - reference_transaction obligatoire pour MOBILE_MONEY et VIREMENT
-        - un surpaiement (montant > solde restant) est accepté : la facture est
-          soldée avec la part imputable et l'excédent est porté au crédit
-          (avoir) de l'abonné, reporté sur ses prochaines factures.
         """
         # Validation du montant
         montant_d = Decimal(str(montant))
@@ -223,34 +237,108 @@ class PaiementService:
                 if existant is not None:
                     return existant, solde
 
-            # Trop-perçu : un versement supérieur au solde restant est accepté.
-            # La facture est soldée avec la part imputable et l'excédent est
-            # porté au crédit (avoir) de l'abonné — le solde d'une facture ne
-            # devient jamais négatif.
+            versement_id = uuid.uuid4()
+
+            # 1) La facture visée d'abord — c'est celle que l'abonné règle.
             solde_restant = Decimal(str(solde.solde_restant))
             part_imputee = min(montant_d, solde_restant) if solde_restant > 0 else Decimal("0")
-            excedent = montant_d - part_imputee
 
-            # Enregistrement du paiement (montant réellement reçu, et la part
-            # partie à l'avoir — c'est elle qui rend l'annulation exacte).
             paiement = self._paiement_repo.create(
                 facture_id=facture_id,
                 abonne_id=abonne_id,
-                montant=montant_d,
-                montant_excedent=excedent,
+                montant=part_imputee,
                 date_paiement=date_paiement,
                 mode_paiement=mode_paiement,
                 reference_transaction=reference,
                 enregistre_par=enregistre_par,
+                versement_id=versement_id,
             )
-
-            # Mise à jour du solde (part imputée) + report de l'excédent en avoir.
             solde = self._solde_repo.update_after_paiement(solde, part_imputee)
-            if excedent > 0:
-                self._avoir_repo.crediter(abonne_id, excedent)
-                self._mouvement_repo.create(abonne_id, excedent, TypeMouvementAvoir.TROP_PERCU)
+
+            # 2) Puis les impayés, du plus anciennement exigible au plus récent.
+            restant = montant_d - part_imputee
+            if restant > 0:
+                restant = self._cascader_sur_impayes(
+                    abonne_id=abonne_id,
+                    montant=restant,
+                    hors_facture_id=facture_id,
+                    date_paiement=date_paiement,
+                    mode_paiement=mode_paiement,
+                    enregistre_par=enregistre_par,
+                    versement_id=versement_id,
+                )
+
+            # 3) Ce qui reste, et seulement lui, devient un avoir.
+            if restant > 0:
+                self._porter_en_avoir(abonne_id, restant, versement_id)
+                # L'excédent est posé sur la dernière écriture du versement, qui
+                # peut être celle-ci. Sans ce rafraîchissement, l'objet rendu à
+                # l'appelant — et sérialisé par le serveur gRPC — annoncerait un
+                # excédent nul alors que la base en porte un.
+                paiement.refresh_from_db()
 
         return paiement, solde
+
+    def _cascader_sur_impayes(
+        self,
+        abonne_id: str,
+        montant: Decimal,
+        hors_facture_id: str,
+        date_paiement: date,
+        mode_paiement: str,
+        enregistre_par: str,
+        versement_id: object,
+    ) -> Decimal:
+        """Impute `montant` sur les impayés de l'abonné et rend ce qui reste.
+
+        Du plus anciennement **exigible** au plus récent : c'est l'ancienneté qui
+        déclenche relances et suspension, donc éteindre la dette récente en
+        laissant vieillir l'ancienne serait exactement le mauvais ordre.
+
+        `hors_facture_id` exclut la facture déjà servie à l'étape 1 — son solde
+        vient d'être mis à jour, la relire ici la ferait imputer deux fois.
+
+        Chaque imputation crée sa propre écriture, sans référence de transaction :
+        la contrainte d'unicité l'exige, et c'est bien un seul versement même
+        réparti sur plusieurs factures.
+        """
+        restant = montant
+        for solde in self._solde_repo.list_non_soldes_par_abonne(abonne_id, for_update=True):
+            if restant <= 0:
+                break
+            if solde.facture_id == hors_facture_id:
+                continue
+            du = Decimal(str(solde.solde_restant))
+            if du <= 0:
+                continue
+            part = min(restant, du)
+            self._paiement_repo.create(
+                facture_id=solde.facture_id,
+                abonne_id=abonne_id,
+                montant=part,
+                date_paiement=date_paiement,
+                mode_paiement=mode_paiement,
+                reference_transaction="",
+                enregistre_par=enregistre_par,
+                versement_id=versement_id,
+            )
+            self._solde_repo.update_after_paiement(solde, part)
+            restant -= part
+        return restant
+
+    def _porter_en_avoir(self, abonne_id: str, montant: Decimal, versement_id: object) -> None:
+        """Crédite l'avoir du reliquat d'un versement, une fois toutes les dettes éteintes.
+
+        L'excédent se rattache à la **dernière** écriture du versement : c'est
+        elle qu'on annulera pour reprendre le crédit, et chaque autre écriture ne
+        rend ainsi que ce qu'elle a réellement imputé.
+        """
+        self._avoir_repo.crediter(abonne_id, montant)
+        self._mouvement_repo.create(abonne_id, montant, TypeMouvementAvoir.TROP_PERCU)
+        dernier = self._paiement_repo.dernier_du_versement(versement_id)
+        if dernier is not None:
+            dernier.montant_excedent = montant
+            dernier.save(update_fields=["montant_excedent"])
 
     def enregistrer_paiement_abonne(
         self,
@@ -296,6 +384,7 @@ class PaiementService:
                 if existant is not None:
                     return [existant], Decimal("0")
 
+            versement_id = uuid.uuid4()
             soldes = self._solde_repo.list_non_soldes_par_abonne(abonne_id, for_update=True)
             restant = montant_d
 
@@ -318,23 +407,14 @@ class PaiementService:
                         mode_paiement=mode_paiement,
                         reference_transaction=reference if not crees else "",
                         enregistre_par=enregistre_par,
+                        versement_id=versement_id,
                     )
                 )
                 self._solde_repo.update_after_paiement(solde, part)
                 restant -= part
 
             if restant > 0:
-                self._avoir_repo.crediter(abonne_id, restant)
-                self._mouvement_repo.create(abonne_id, restant, TypeMouvementAvoir.TROP_PERCU)
-                # L'excédent se rattache à la DERNIÈRE écriture : c'est elle
-                # qu'on annulera pour reprendre le crédit. Un versement réparti
-                # sur trois factures dont il reste 2 000 laisse donc 2 000
-                # d'excédent sur la troisième écriture, et zéro sur les deux
-                # premières — chacune ne rend que ce qu'elle a imputé.
-                if crees:
-                    dernier = crees[-1]
-                    dernier.montant_excedent = restant
-                    dernier.save(update_fields=["montant_excedent"])
+                self._porter_en_avoir(abonne_id, restant, versement_id)
 
         return crees, restant
 
@@ -377,26 +457,39 @@ class PaiementService:
                 suivante. Voir `_reprendre_excedent`.
         """
         with transaction.atomic():
-            paiement = self._paiement_repo.get_by_id(paiement_id)
-            if paiement.annule:
+            demande = self._paiement_repo.get_by_id(paiement_id)
+            if demande.annule:
                 raise ValidationError("Ce paiement est déjà annulé.")
 
-            excedent = Decimal(str(paiement.montant_excedent or 0))
-            part_imputee = Decimal(str(paiement.montant)) - excedent
+            # On annule le VERSEMENT, pas l'écriture.
+            #
+            # Un versement s'impute sur la facture visée, puis sur les impayés :
+            # il produit donc plusieurs écritures. N'annuler que celle qu'on a
+            # cliquée laisserait les autres imputations debout — un solde faux,
+            # exactement le défaut qu'on venait de corriger sur le trop-perçu.
+            ecritures = self._paiement_repo.list_du_versement(demande.versement_id)
+            actives = [e for e in ecritures if not e.annule]
+
+            excedent_total = sum((Decimal(str(e.montant_excedent or 0)) for e in actives), Decimal("0"))
 
             # L'avoir se reprend AVANT toute écriture : si l'excédent a déjà été
             # dépensé, l'annulation est refusée en bloc plutôt que faite à moitié.
-            if excedent > 0:
-                self._reprendre_excedent(paiement.abonne_id, excedent)
+            if excedent_total > 0:
+                self._reprendre_excedent(demande.abonne_id, excedent_total)
 
-            # Verrou du solde pour sérialiser avec les versements concurrents.
-            solde = self._solde_repo.get_by_facture_id(paiement.facture_id, for_update=True)
-            solde = self._solde_repo.update_after_annulation(solde, part_imputee)
-            paiement = self._paiement_repo.marquer_annule(paiement, motif=motif, annule_par=annule_par)
+            solde_demande = None
+            for ecriture in actives:
+                # Verrou du solde pour sérialiser avec les versements concurrents.
+                solde = self._solde_repo.get_by_facture_id(ecriture.facture_id, for_update=True)
+                solde = self._solde_repo.update_after_annulation(solde, Decimal(str(ecriture.montant)))
+                self._paiement_repo.marquer_annule(ecriture, motif=motif, annule_par=annule_par)
+                self._rouvrir_suivi_impaye(solde)
+                if ecriture.id == demande.id:
+                    solde_demande = solde
 
-            self._rouvrir_suivi_impaye(solde)
+            paiement = self._paiement_repo.get_by_id(paiement_id)
 
-        return paiement, solde
+        return paiement, solde_demande
 
     def _reprendre_excedent(self, abonne_id: str, excedent: Decimal) -> None:
         """Débite l'avoir de l'excédent d'un versement qu'on annule.

@@ -99,3 +99,50 @@ class MessageFactureLisibiliteTest(SimpleTestCase):
     def test_le_mobile_money_reste_optionnel(self):
         self.assertNotIn("Mobile Money", _message())
         self.assertIn("Mobile Money : +237600000000", _message(numero_mobile_money="+237600000000"))
+
+
+class MessageAnnulationPaiementTest(SimpleTestCase):
+    """Un versement annulé laisse l'abonné avec un reçu qui ne vaut plus rien.
+
+    Se taire, c'est le laisser découvrir la chose à la relance suivante — et
+    croire à une erreur de la régie alors qu'on vient précisément d'en corriger
+    une.
+    """
+
+    def _msg(self, **surcharges):
+        from notifications.message_builder import build_message_annulation_paiement
+
+        base = {"prenom_nom": "Jean DUPONT", "periode": "Août 2026", "solde_restant": 13500}
+        return build_message_annulation_paiement(**{**base, **surcharges})
+
+    def test_annonce_ce_qui_reste_du(self):
+        # C'est le seul chiffre qui appelle une action.
+        #
+        # On compose l'attendu avec `_fcfa` plutôt que de recopier le séparateur
+        # de milliers : c'est une espace fine insécable (U+202F), et l'écrire à
+        # la main dans un test le rend faux pour une raison invisible à l'œil.
+        from notifications.message_builder import _fcfa
+
+        self.assertIn(f"Reste à payer : {_fcfa(13500)} FCFA", self._msg())
+
+    def test_nomme_la_periode_concernee(self):
+        self.assertIn("Août 2026", self._msg())
+
+    def test_ne_nomme_pas_le_motif(self):
+        # Le motif est écrit pour la piste d'audit, dans le vocabulaire du
+        # guichet (« doublon », « erreur de saisie »). Le servir à l'abonné
+        # l'inquiéterait sans l'informer.
+        m = self._msg()
+        for mot in ("doublon", "erreur de saisie", "motif"):
+            self.assertNotIn(mot, m.lower())
+
+    def test_invite_a_signaler_un_versement_reellement_effectue(self):
+        # Si l'annulation est elle-même une erreur, l'abonné est le seul à
+        # pouvoir le dire.
+        self.assertIn("contactez-nous", self._msg())
+
+    def test_les_milliers_sont_separes(self):
+        from notifications.message_builder import _fcfa
+
+        self.assertIn(_fcfa(1234567), self._msg(solde_restant=1234567))
+        self.assertNotIn("1234567", self._msg(solde_restant=1234567))

@@ -27,11 +27,28 @@ services/paiement/
 ## Règles métier critiques
 
 - `montant > 0` — toujours
-- **Le surpaiement est accepté** : la facture est soldée avec la part imputable
-  et l'excédent est porté au crédit (`AvoirAbonne`), reporté sur les prochaines
-  factures. La règle « pas de surpaiement » qui figurait ici contredisait le
-  code depuis l'introduction de l'avoir.
-- **Imputation d'un versement au niveau abonné : du plus ancien au plus récent.**
+- **Le surpaiement est accepté, mais il ne devient un avoir qu'en dernier
+  recours.** Ordre d'imputation : **la facture visée, puis les impayés, puis
+  l'avoir.** Un abonné règle la facture dont il a reçu le message ; ce qui
+  dépasse éteint ses impayés, du plus anciennement exigible au plus récent. Il
+  ne peut donc y avoir d'avoir que si **tous les impayés sont soldés**.
+
+  Avant cette règle, un versement de 10 000 sur une facture de 5 000 créditait
+  5 000 à un abonné qui devait encore 3 000 par ailleurs : il restait relancé,
+  et suspendu à terme, pour une dette que son propre argent couvrait déjà.
+
+- **`Paiement.montant` est la part imputée à SA facture, pas la somme reçue.**
+  Un versement produit une écriture par facture touchée ; leur somme, plus
+  l'avoir, vaut ce que l'abonné a tendu. L'inverse — le montant reçu sur la
+  première écriture — faisait double compter les recettes : `statsParMois`
+  somme tous les `p.montant`, et l'imputation ultérieure de l'avoir crée un
+  second Paiement (mode `AVOIR`).
+
+- **`versement_id` regroupe les écritures d'un même versement**, et
+  `annuler_paiement` les annule **toutes**. On annule un versement, pas une de
+  ses lignes : n'en défaire qu'une laisserait les autres imputations debout.
+- **Imputation d'un versement au niveau abonné (sans facture nommée) : du plus
+  ancien au plus récent.**
   `enregistrer_paiement_abonne` éteint d'abord le solde le plus anciennement
   **exigible** (tri sur `date_limite_paiement`, pas sur la création), le
   reliquat débordant sur le suivant. Un versement produit donc potentiellement

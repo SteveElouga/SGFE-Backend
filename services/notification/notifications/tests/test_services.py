@@ -246,10 +246,14 @@ class TestEnvoiServiceEnvoyerRelance(TestCase):
         self.assertIn("suspendue", args[1])
 
     def test_envoyer_relance_etape_invalide(self):
-        """Une étape hors de [0, 4] doit lever une ValidationError."""
+        """Une étape hors de [0, 5] doit lever une ValidationError.
+
+        L'étape 5 était le premier entier invalide ; elle porte désormais
+        l'annulation d'un versement. La borne est donc 6.
+        """
         service = EnvoiService()
         with self.assertRaises(ValidationError):
-            service.envoyer_relance("facture-id", "abonne-id", etape=5)
+            service.envoyer_relance("facture-id", "abonne-id", etape=6)
 
     @patch("notifications.services.whatsapp_client")
     @patch("notifications.services.abonne_client")
