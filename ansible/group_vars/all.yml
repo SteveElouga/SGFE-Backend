@@ -1,0 +1,101 @@
+# Variables partagées par tous les playbooks.
+#
+# Aucun secret ici. Les mots de passe, clés d'API et jetons vivent dans AWS
+# Secrets Manager et sont lus par la machine elle-même, via son profil
+# d'instance — voir `roles/secrets`. Ansible ne les voit jamais passer, ce qui
+# évite qu'ils atterrissent dans un journal d'exécution ou un fichier de vault
+# qu'il faudrait ensuite protéger à son tour.
+
+# ── Région et étiquetage ─────────────────────────────────────────────────────
+#
+# eu-west-3 (Paris) : le plus proche du Cameroun parmi les régions AWS, et le
+# choix qui pose une question de droit non tranchée — des factures nominatives
+# et des numéros WhatsApp hébergés hors du pays. Voir INFRASTRUCTURE_AWS.md §7
+# et le point 65 du registre.
+aws_region: eu-west-3
+
+# L'étiquette qui remplace le fichier d'état.
+#
+# Terraform a été écarté : il n'y a donc AUCUN état. Retirer une tâche d'un
+# playbook ne supprime pas la ressource dans AWS — elle continue de tourner et
+# de consommer les crédits, en silence. Cette étiquette est ce qui permet
+# d'auditer ce qui existe réellement, d'un seul appel CLI :
+#
+#   aws resourcegroupstaggingapi get-resources --tag-filters Key=Project,Values=SGFE
+#
+# Toute ressource créée par ces playbooks la porte. Sans exception.
+projet_tag: SGFE
+
+etiquettes_communes:
+  Project: "{{ projet_tag }}"
+  ManagedBy: ansible
+  Repository: SGFE-backend
+
+# ── Réseau ──────────────────────────────────────────────────────────────────
+#
+# Un seul sous-réseau public, et pas de NAT Gateway.
+#
+# La NAT Gateway coûte 32,40 $/mois avant le premier octet transféré — plus que
+# l'instance elle-même. Elle ne sert qu'à donner un accès sortant à des
+# ressources en sous-réseau privé ; ici tout tient sur une machine qui a besoin
+# de sortir (GHCR, WhatsApp Web, Brevo). Une IP publique suffit.
+# Voir INFRASTRUCTURE_AWS.md §4.
+vpc_cidr: 10.0.0.0/16
+subnet_cidr: 10.0.1.0/24
+
+# ── Instance ────────────────────────────────────────────────────────────────
+#
+# t4g.medium — Graviton, 4 Gio. Dimensionné sur des mesures `docker stats`
+# réelles, pas sur une estimation : whatsapp-service (Chromium) pèse 929 Mo à
+# lui seul, soit 57 % du total ; les HUIT PostgreSQL réunis n'en pèsent que 98.
+# Total mesuré : 1 640 Mo. Voir INFRASTRUCTURE_AWS.md §1 et §2.
+#
+# ⚠️ arm64 exige que les images soient construites pour cette architecture.
+# La CI ne publie aujourd'hui que amd64 — voir le point 50 du registre
+# (multi-architecture) et §11.8 de CHAINE_DE_LIVRAISON.md. Tant que ce n'est pas
+# fait, basculer `instance_type` sur `t3.medium` (x86) ou l'instance ne
+# démarrera aucun conteneur.
+instance_type: t4g.medium
+instance_architecture: arm64
+volume_racine_gio: 30
+
+# Volume dédié à Redis — et donc à la session WhatsApp.
+#
+# Ce n'est pas un cache jetable : `whatsapp-service/redis-store.js` implémente
+# RemoteAuth, qui persiste la session WhatsApp sous forme d'archive DANS Redis.
+# Perdre ce volume, c'est rescanner un QR code — et donc interrompre tous les
+# envois jusqu'à ce que quelqu'un le fasse. Voir CHAINE_DE_LIVRAISON.md §13.1.
+volume_donnees_gio: 20
+volume_donnees_point_montage: /opt/sgfe/donnees
+
+# ── Déploiement ─────────────────────────────────────────────────────────────
+deploy_dir: /opt/sgfe
+deploy_user: sgfe
+
+# Le dépôt GHCR, en minuscules — GHCR n'accepte pas les majuscules dans un nom
+# d'image, alors que `GITHUB_REPOSITORY` en contient.
+ghcr_repo: steveelouga/sgfe-backend
+
+# ── Rôles IAM ───────────────────────────────────────────────────────────────
+role_instance: sgfe-ec2-role
+role_deploiement: sgfe-github-deploy
+
+# Le dépôt autorisé à assumer le rôle de déploiement, et la SEULE branche
+# depuis laquelle il peut l'assumer. Voir `01-infra.yml` — sans cette
+# contrainte, n'importe quel dépôt GitHub peut prendre le rôle.
+github_org: SteveElouga
+github_repo: SGFE-Backend
+github_branche_deploiement: main
+
+# ── S3 ──────────────────────────────────────────────────────────────────────
+#
+# Les pg_dump quotidiens et les PDF de factures y sont expédiés. Aujourd'hui ils
+# vivent sur le disque de l'instance et meurent avec elle — point 19 du registre.
+# Le nom d'un bucket S3 est global : le suffixe évite la collision.
+bucket_sauvegardes: "sgfe-sauvegardes-{{ aws_account_id | default('a-renseigner') }}"
+retention_sauvegardes_jours: 30
+
+# Destinataire des alertes de budget. Sans valeur ici, la création du budget
+# échoue en le disant — mieux qu'une alerte envoyée à une adresse d'exemple que
+# personne ne lit.
+email_alertes: a-renseigner@example.com

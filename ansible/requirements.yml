@@ -1,0 +1,19 @@
+---
+# Collections requises.
+#
+#   ansible-galaxy collection install -r ansible/requirements.yml
+#
+# Versions minimales épinglées, pas figées : `>=` laisse passer les correctifs
+# de sécurité sans imposer une mise à jour de tout le dépôt.
+collections:
+  # ec2_*, iam_*, s3_bucket, aws_caller_info, et le plugin d'inventaire aws_ec2.
+  - name: amazon.aws
+    version: ">=9.0.0"
+  # iam_openid_connect_provider, s3_lifecycle, budget — ce qui n'est pas dans
+  # amazon.aws.
+  - name: community.aws
+    version: ">=9.0.0"
+  # Le greffon de connexion `aws_ssm` : c'est lui qui permet à Ansible d'entrer
+  # sur la machine sans SSH, donc sans clé et sans port 22 ouvert.
+  - name: community.general
+    version: ">=10.0.0"

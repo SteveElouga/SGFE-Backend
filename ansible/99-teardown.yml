@@ -1,0 +1,162 @@
+---
+# 99-teardown.yml — supprime tout ce que 01-infra.yml a créé.
+#
+#   ansible-playbook ansible/99-teardown.yml -e je_confirme_la_suppression=oui
+#
+# Écrit le même jour que `01-infra.yml`, et pas après. C'est une règle, pas une
+# préférence : sans état Terraform, la seule façon de savoir ce qu'il faut
+# supprimer est de l'avoir écrit pendant qu'on créait. Rédigé six mois plus tard,
+# ce fichier oublierait la moitié des ressources — et l'autre moitié
+# continuerait de tourner et d'être facturée, en silence.
+#
+# ⚠️ CE PLAYBOOK DÉTRUIT DES DONNÉES.
+#
+# Ce qu'il supprime définitivement :
+#   • l'instance et son volume racine
+#   • le VPC, le sous-réseau, la passerelle, le groupe de sécurité
+#   • les deux rôles IAM et leurs politiques
+#
+# Ce qu'il NE supprime PAS, délibérément :
+#   • le volume des données — il porte la session WhatsApp et les bases
+#   • le bucket des sauvegardes — c'est ce qui reste quand tout le reste est parti
+#   • le fournisseur OIDC — partagé avec d'éventuels autres dépôts du compte
+#
+# Ces trois exceptions se suppriment à la main, une fois qu'on a vérifié qu'on
+# n'en a plus besoin. Un playbook qui efface les sauvegardes en même temps que
+# l'infrastructure est un playbook qu'on n'ose plus lancer.
+
+- name: Suppression de l'infrastructure SGFE
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Exiger une confirmation explicite
+      # Pas de `--check` qui protège, pas de « êtes-vous sûr » interactif qui
+      # se contourne d'un `yes |`. Une variable à passer, dont le nom dit ce
+      # qu'elle fait.
+      ansible.builtin.assert:
+        that:
+          - je_confirme_la_suppression | default('') == 'oui'
+        fail_msg: |
+          Relancer avec :  -e je_confirme_la_suppression=oui
+
+          Seront supprimés : instance, VPC, sous-réseau, passerelle, groupe de
+          sécurité, et les deux rôles IAM.
+
+          Seront CONSERVÉS : le volume des données (session WhatsApp et bases),
+          le bucket des sauvegardes, et le fournisseur OIDC. À supprimer à la
+          main si vous le voulez vraiment.
+        quiet: true
+
+    - name: Relever l'identifiant du compte
+      amazon.aws.aws_caller_info:
+      register: appelant
+
+    - name: Retrouver ce qui porte l'étiquette du projet
+      # C'est ici que l'étiquette prouve son intérêt : elle est le seul index de
+      # ce qui existe. Chercher par nom raterait toute ressource renommée à la
+      # main ; chercher par étiquette trouve tout ce que les playbooks ont créé.
+      amazon.aws.ec2_instance_info:
+        region: "{{ aws_region }}"
+        filters:
+          "tag:Project": "{{ projet_tag }}"
+          instance-state-name: ["pending", "running", "stopping", "stopped"]
+      register: instances
+
+    - name: Ce qui va être supprimé
+      ansible.builtin.debug:
+        msg: "{{ instances.instances | map(attribute='instance_id') | list | default(['aucune instance'], true) }}"
+
+    - name: Retrouver le volume des données
+      amazon.aws.ec2_vol_info:
+        region: "{{ aws_region }}"
+        filters:
+          "tag:Name": sgfe-donnees
+      register: volumes_donnees
+
+    - name: Détacher le volume des données AVANT de terminer l'instance
+      # Sans ce détachement, terminer l'instance laisse le volume orphelin — il
+      # survit, comme voulu, mais dans un état qu'on ne sait plus lire. Le
+      # détacher explicitement le laisse propre et réattachable.
+      amazon.aws.ec2_vol:
+        region: "{{ aws_region }}"
+        id: "{{ item.id }}"
+        instance: ""
+      loop: "{{ volumes_donnees.volumes | default([]) }}"
+      failed_when: false
+
+    - name: Terminer les instances
+      amazon.aws.ec2_instance:
+        region: "{{ aws_region }}"
+        instance_ids: "{{ instances.instances | map(attribute='instance_id') | list }}"
+        state: absent
+        wait: true
+      when: instances.instances | length > 0
+
+    - name: Retirer les politiques attachées aux rôles
+      # Un rôle ne se supprime pas s'il porte encore une politique en ligne.
+      amazon.aws.iam_policy:
+        iam_type: role
+        iam_name: "{{ item.role }}"
+        policy_name: "{{ item.politique }}"
+        state: absent
+      loop:
+        - { role: "{{ role_instance }}", politique: sgfe-lire-ses-secrets }
+        - { role: "{{ role_deploiement }}", politique: sgfe-deployer-par-ssm }
+      failed_when: false
+
+    - name: Rôles IAM
+      amazon.aws.iam_role:
+        name: "{{ item }}"
+        state: absent
+        delete_instance_profile: true
+      loop:
+        - "{{ role_instance }}"
+        - "{{ role_deploiement }}"
+      failed_when: false
+
+    - name: Groupe de sécurité
+      amazon.aws.ec2_security_group:
+        name: sgfe-sg
+        region: "{{ aws_region }}"
+        state: absent
+      failed_when: false
+
+    - name: Retrouver le VPC
+      amazon.aws.ec2_vpc_net_info:
+        region: "{{ aws_region }}"
+        filters:
+          "tag:Project": "{{ projet_tag }}"
+      register: vpc_existant
+
+    - name: Sous-réseau
+      amazon.aws.ec2_vpc_subnet:
+        cidr: "{{ subnet_cidr }}"
+        vpc_id: "{{ vpc_existant.vpcs[0].vpc_id }}"
+        region: "{{ aws_region }}"
+        state: absent
+      when: vpc_existant.vpcs | length > 0
+      failed_when: false
+
+    - name: VPC (emporte la passerelle et la table de routage)
+      amazon.aws.ec2_vpc_net:
+        name: sgfe-vpc
+        cidr_block: "{{ vpc_cidr }}"
+        region: "{{ aws_region }}"
+        state: absent
+      failed_when: false
+
+    - name: Ce qui reste, et pourquoi
+      ansible.builtin.debug:
+        msg:
+          - "Infrastructure supprimée."
+          - ""
+          - "CONSERVÉS volontairement — à supprimer à la main si vous le voulez :"
+          - "  • le volume étiqueté Name=sgfe-donnees (session WhatsApp, bases)"
+          - "  • le bucket sgfe-sauvegardes-{{ appelant.account }}"
+          - "  • le fournisseur OIDC token.actions.githubusercontent.com"
+          - ""
+          - "Vérifier qu'il ne reste rien de facturé :"
+          - "  aws resourcegroupstaggingapi get-resources \\"
+          - "    --tag-filters Key=Project,Values={{ projet_tag }}"

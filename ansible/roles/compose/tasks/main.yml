@@ -1,0 +1,88 @@
+---
+# Dépose les deux fichiers compose et les clés JWT — SANS le code source.
+#
+# La machine de production n'a pas besoin du dépôt : elle tire des images. Y
+# copier le code source rouvrirait la porte qu'on vient de fermer, puisqu'un
+# `docker compose up --build` redeviendrait possible depuis la machine.
+#
+# Elle a besoin de trois choses seulement : les deux fichiers compose, le `.env`
+# (rôle `secrets`), et les clés RS256 de l'auth-service.
+
+- name: Fichiers compose
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ deploy_dir }}/{{ item | basename }}"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0644"
+  loop:
+    - ../../docker-compose.yml
+    - ../../docker-compose.prod.yml
+
+- name: Répertoire nginx
+  # `nginx/default.conf` est monté par le compose : sans lui, le conteneur nginx
+  # démarre sur la configuration par défaut de l'image et ne proxifie rien.
+  ansible.builtin.file:
+    path: "{{ deploy_dir }}/nginx"
+    state: directory
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0755"
+
+- name: Configuration nginx
+  ansible.builtin.copy:
+    src: ../../nginx/default.conf
+    dest: "{{ deploy_dir }}/nginx/default.conf"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0644"
+
+- name: Répertoire des clés JWT
+  ansible.builtin.file:
+    path: "{{ deploy_dir }}/keys"
+    state: directory
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0700"
+
+- name: Les clés RS256 existent-elles déjà ?
+  ansible.builtin.stat:
+    path: "{{ deploy_dir }}/keys/private.pem"
+  register: compose_cle_privee
+
+- name: Générer la paire RS256
+  # Générée SUR la machine, jamais transportée. L'auth-service refuse de démarrer
+  # sans elle (fail-fast RS256) ; la régénérer invaliderait tous les jetons en
+  # circulation, d'où le `when` — on ne la remplace pas à chaque amorçage.
+  when: not compose_cle_privee.stat.exists
+  block:
+    - name: Clé privée
+      community.crypto.openssl_privatekey:
+        path: "{{ deploy_dir }}/keys/private.pem"
+        size: 2048
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0600"
+
+    - name: Clé publique
+      community.crypto.openssl_publickey:
+        path: "{{ deploy_dir }}/keys/public.pem"
+        privatekey_path: "{{ deploy_dir }}/keys/private.pem"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0644"
+
+- name: Session GHCR
+  # Un jeton en LECTURE SEULE (`read:packages`), pas un jeton d'écriture : cette
+  # machine tire des images, elle n'en publie aucune. Le jeton vient du `.env`
+  # écrit par le rôle `secrets`.
+  ansible.builtin.shell: |
+    set -euo pipefail
+    set -a; . {{ deploy_dir }}/.env; set +a
+    echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+  args:
+    executable: /bin/bash
+  become: true
+  become_user: "{{ deploy_user }}"
+  no_log: true
+  changed_when: true

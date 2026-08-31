@@ -1,0 +1,335 @@
+---
+# 01-infra.yml — crée l'infrastructure AWS de SGFE.
+#
+#   ansible-playbook ansible/01-infra.yml
+#
+# Idempotent : relancé, il ne recrée rien. Chaque module `amazon.aws` compare
+# l'état demandé à l'existant.
+#
+# ⚠️ CE PLAYBOOK CRÉE DES RESSOURCES FACTURÉES. Lire `99-teardown.yml` avant de
+# le lancer la première fois — il a été écrit le même jour, précisément pour
+# qu'on n'ait pas à improviser la suppression sous pression.
+#
+# ⚠️ IL N'Y A AUCUN FICHIER D'ÉTAT. Terraform a été écarté. Retirer une tâche
+# d'ici ne supprime pas la ressource : elle continue de tourner et de consommer
+# les crédits. Ce qui existe réellement se lit par l'étiquette :
+#
+#   aws resourcegroupstaggingapi get-resources --tag-filters Key=Project,Values=SGFE
+#
+# Prérequis : `ansible-galaxy collection install -r ansible/requirements.yml`
+# et des identifiants AWS ayant le droit de créer VPC, EC2, IAM et S3.
+
+- name: Infrastructure AWS — VPC, instance, rôles, stockage
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Relever l'identifiant du compte AWS
+      amazon.aws.aws_caller_info:
+      register: appelant
+
+    - name: Le nom du bucket dépend du compte — on le compose maintenant
+      ansible.builtin.set_fact:
+        bucket_sauvegardes: "sgfe-sauvegardes-{{ appelant.account }}"
+
+    # ── Réseau ───────────────────────────────────────────────────────────────
+
+    - name: VPC
+      amazon.aws.ec2_vpc_net:
+        name: sgfe-vpc
+        cidr_block: "{{ vpc_cidr }}"
+        region: "{{ aws_region }}"
+        tags: "{{ etiquettes_communes }}"
+        state: present
+      register: vpc
+
+    - name: Passerelle Internet
+      amazon.aws.ec2_vpc_igw:
+        vpc_id: "{{ vpc.vpc.id }}"
+        region: "{{ aws_region }}"
+        tags: "{{ etiquettes_communes }}"
+        state: present
+      register: igw
+
+    - name: Sous-réseau public
+      amazon.aws.ec2_vpc_subnet:
+        vpc_id: "{{ vpc.vpc.id }}"
+        cidr: "{{ subnet_cidr }}"
+        region: "{{ aws_region }}"
+        map_public: true
+        tags: "{{ etiquettes_communes | combine({'Name': 'sgfe-public'}) }}"
+        state: present
+      register: subnet
+
+    - name: Table de routage vers la passerelle
+      amazon.aws.ec2_vpc_route_table:
+        vpc_id: "{{ vpc.vpc.id }}"
+        region: "{{ aws_region }}"
+        subnets: ["{{ subnet.subnet.id }}"]
+        routes:
+          - dest: 0.0.0.0/0
+            gateway_id: "{{ igw.gateway_id }}"
+        tags: "{{ etiquettes_communes | combine({'Name': 'sgfe-public-rt'}) }}"
+        state: present
+
+    - name: Groupe de sécurité
+      # Aucune règle entrante. Pas même le port 22.
+      #
+      # L'administration passe par SSM Session Manager, qui n'ouvre rien : l'agent
+      # sur la machine établit une connexion SORTANTE vers AWS. Il n'y a donc
+      # aucun port à exposer, aucune clé SSH à faire tourner, et l'accès se
+      # révoque en retirant une permission IAM plutôt qu'en cherchant qui détient
+      # une clé privée. C'est le point 6 du registre.
+      #
+      # Le port 443 entrant sera ajouté avec le TLS et CloudFront (points 20-21),
+      # pas avant : ouvrir un port avant d'avoir quelque chose à y servir, c'est
+      # l'oublier ouvert.
+      amazon.aws.ec2_security_group:
+        name: sgfe-sg
+        description: SGFE — sortant uniquement, administration par SSM
+        vpc_id: "{{ vpc.vpc.id }}"
+        region: "{{ aws_region }}"
+        rules: []
+        rules_egress:
+          - proto: -1
+            cidr_ip: 0.0.0.0/0
+            rule_desc: >-
+              Sortant ouvert : GHCR pour les images, WhatsApp Web, Brevo,
+              et les points de terminaison SSM et Secrets Manager.
+        tags: "{{ etiquettes_communes }}"
+        state: present
+      register: sg
+
+    # ── Rôle de l'instance ───────────────────────────────────────────────────
+
+    - name: Rôle assumé par l'instance
+      amazon.aws.iam_role:
+        name: "{{ role_instance }}"
+        assume_role_policy_document: "{{ lookup('template', 'templates/confiance-ec2.json.j2') }}"
+        managed_policies:
+          # Permet à l'agent SSM de fonctionner — c'est ce qui remplace SSH.
+          - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+          # Écriture des journaux et métriques par l'agent CloudWatch.
+          - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+        create_instance_profile: true
+        tags: "{{ etiquettes_communes }}"
+        state: present
+      register: role_ec2
+
+    - name: Politique — lire les secrets de SGFE, et rien d'autre
+      # `secretsmanager:GetSecretValue` restreint au préfixe `sgfe/`. Un rôle
+      # d'instance qui pourrait lire TOUS les secrets du compte transformerait
+      # une compromission de la machine en compromission du compte.
+      amazon.aws.iam_policy:
+        iam_type: role
+        iam_name: "{{ role_instance }}"
+        policy_name: sgfe-lire-ses-secrets
+        policy_json: "{{ lookup('template', 'templates/politique-instance.json.j2') }}"
+        state: present
+
+    # ── Rôle de déploiement, assumé par GitHub Actions ───────────────────────
+
+    - name: Fournisseur OIDC GitHub
+      # Aucun module `amazon.aws` ni `community.aws` n'expose les fournisseurs
+      # OIDC — vérifié dans amazon.aws 11.4 et community.aws 11.1. On passe donc
+      # par le CLI, avec l'idempotence à la main : on crée seulement si l'ARN
+      # attendu n'est pas déjà listé.
+      #
+      # Un seul fournisseur par compte, partagé avec d'éventuels autres dépôts —
+      # c'est pourquoi `99-teardown.yml` ne le supprime pas.
+      ansible.builtin.shell: |
+        set -euo pipefail
+        arn="arn:aws:iam::{{ appelant.account }}:oidc-provider/token.actions.githubusercontent.com"
+        if aws iam list-open-id-connect-providers \
+             --query "OpenIDConnectProviderList[?Arn=='$arn'].Arn" --output text | grep -q .; then
+          echo "existe"
+        else
+          aws iam create-open-id-connect-provider \
+            --url https://token.actions.githubusercontent.com \
+            --client-id-list sts.amazonaws.com \
+            --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1 >/dev/null
+          echo "cree"
+        fi
+      args:
+        executable: /bin/bash
+      register: oidc
+      changed_when: "'cree' in oidc.stdout"
+
+    - name: Rôle assumé par la CD via OIDC
+      # Remplace la clé SSH privée aujourd'hui stockée dans les secrets GitHub
+      # des workflows frontend — une clé permanente, qui ne tourne jamais et
+      # donne un shell complet sur la production. Point 4 du registre.
+      #
+      # ⚠️ La politique de confiance contraint le dépôt ET la branche. Sans la
+      # condition sur `sub`, **n'importe quel dépôt GitHub peut assumer ce rôle**.
+      # C'est l'erreur de configuration OIDC la plus fréquente, et elle est
+      # silencieuse : tout fonctionne, y compris pour l'attaquant.
+      amazon.aws.iam_role:
+        name: "{{ role_deploiement }}"
+        assume_role_policy_document: "{{ lookup('template', 'templates/confiance-oidc.json.j2') }}"
+        create_instance_profile: false
+        tags: "{{ etiquettes_communes }}"
+        state: present
+      register: role_cd
+
+    - name: Politique — envoyer des commandes SSM aux machines de SGFE
+      # `ssm:SendCommand` restreint par étiquette : le rôle de déploiement ne
+      # peut piloter que des instances portant `Project=SGFE`. Il ne peut pas
+      # créer d'instance, ni en supprimer, ni lire un secret.
+      amazon.aws.iam_policy:
+        iam_type: role
+        iam_name: "{{ role_deploiement }}"
+        policy_name: sgfe-deployer-par-ssm
+        policy_json: "{{ lookup('template', 'templates/politique-deploiement.json.j2') }}"
+        state: present
+
+    # ── Stockage des sauvegardes ─────────────────────────────────────────────
+
+    - name: Bucket des sauvegardes
+      # Aujourd'hui les pg_dump quotidiens vivent sur le disque de l'instance et
+      # meurent avec elle. Point 19 du registre.
+      amazon.aws.s3_bucket:
+        name: "{{ bucket_sauvegardes }}"
+        region: "{{ aws_region }}"
+        public_access:
+          block_public_acls: true
+          block_public_policy: true
+          ignore_public_acls: true
+          restrict_public_buckets: true
+        encryption: AES256
+        versioning: true
+        tags: "{{ etiquettes_communes }}"
+        state: present
+
+    - name: Expiration des sauvegardes
+      # Sans règle de cycle de vie, un bucket versionné grossit indéfiniment —
+      # et une sauvegarde de l'an dernier ne sert à personne tout en étant
+      # facturée chaque mois.
+      community.aws.s3_lifecycle:
+        name: "{{ bucket_sauvegardes }}"
+        region: "{{ aws_region }}"
+        rule_id: expirer-les-anciennes-sauvegardes
+        expiration_days: "{{ retention_sauvegardes_jours }}"
+        noncurrent_version_expiration_days: 7
+        status: enabled
+        state: present
+
+    # ── Instance ─────────────────────────────────────────────────────────────
+
+    - name: Dernière AMI Ubuntu 24.04 pour l'architecture choisie
+      amazon.aws.ec2_ami_info:
+        region: "{{ aws_region }}"
+        owners: ["099720109477"] # Canonical
+        filters:
+          name: "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-{{ instance_architecture }}-server-*"
+          state: available
+      register: amis
+
+    - name: Instance EC2
+      amazon.aws.ec2_instance:
+        name: sgfe-prod
+        region: "{{ aws_region }}"
+        instance_type: "{{ instance_type }}"
+        image_id: "{{ (amis.images | sort(attribute='creation_date') | last).image_id }}"
+        vpc_subnet_id: "{{ subnet.subnet.id }}"
+        security_groups: ["{{ sg.group_id }}"]
+        iam_instance_profile: "{{ role_instance }}"
+        network:
+          assign_public_ip: true
+        # Pas de `key_name` : aucune clé SSH n'est associée à cette machine.
+        # L'accès passe exclusivement par SSM.
+        volumes:
+          - device_name: /dev/sda1
+            ebs:
+              volume_size: "{{ volume_racine_gio }}"
+              volume_type: gp3
+              delete_on_termination: true
+              encrypted: true
+        tags: "{{ etiquettes_communes }}"
+        state: running
+        wait: true
+      register: instance
+
+    - name: Volume des données — Redis, et donc la session WhatsApp
+      # `delete_on_termination: false` est délibéré. Ce volume porte la session
+      # WhatsApp persistée par RemoteAuth ; la perdre impose de rescanner un QR
+      # code, et donc d'interrompre tous les envois jusqu'à ce que quelqu'un le
+      # fasse. Il doit survivre au remplacement de l'instance.
+      amazon.aws.ec2_vol:
+        region: "{{ aws_region }}"
+        instance: "{{ instance.instance_ids[0] }}"
+        device_name: /dev/sdf
+        volume_size: "{{ volume_donnees_gio }}"
+        volume_type: gp3
+        encrypted: true
+        delete_on_termination: false
+        tags: "{{ etiquettes_communes | combine({'Name': 'sgfe-donnees'}) }}"
+        state: present
+
+    - name: Alerte de budget
+      # Aucun module de budget n'existe dans les collections AWS — vérifié dans
+      # amazon.aws 11.4 et community.aws 11.1. Le CLI le fait, et l'idempotence
+      # se joue sur `describe-budget`.
+      #
+      # Posée dès le premier jour, pas après la première facture surprise :
+      # une infrastructure sur crédits gratuits sans alerte, c'est une facture
+      # découverte trop tard. Point 23 du registre.
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if aws budgets describe-budget \
+             --account-id {{ appelant.account }} \
+             --budget-name sgfe-budget-mensuel >/dev/null 2>&1; then
+          echo "existe"
+          exit 0
+        fi
+        aws budgets create-budget \
+          --account-id {{ appelant.account }} \
+          --budget '{
+            "BudgetName": "sgfe-budget-mensuel",
+            "BudgetLimit": {"Amount": "60", "Unit": "USD"},
+            "TimeUnit": "MONTHLY",
+            "BudgetType": "COST"
+          }' \
+          --notifications-with-subscribers '[
+            {"Notification": {"NotificationType": "ACTUAL", "ComparisonOperator": "GREATER_THAN",
+             "Threshold": 50, "ThresholdType": "PERCENTAGE"},
+             "Subscribers": [{"SubscriptionType": "EMAIL", "Address": "{{ email_alertes }}"}]},
+            {"Notification": {"NotificationType": "ACTUAL", "ComparisonOperator": "GREATER_THAN",
+             "Threshold": 80, "ThresholdType": "PERCENTAGE"},
+             "Subscribers": [{"SubscriptionType": "EMAIL", "Address": "{{ email_alertes }}"}]}
+          ]' >/dev/null
+        echo "cree"
+      args:
+        executable: /bin/bash
+      register: budget
+      changed_when: "'cree' in budget.stdout"
+      # Un échec ici ne doit pas faire tomber la création de l'infrastructure —
+      # mais il doit se voir.
+      failed_when: false
+
+    - name: Signaler si le budget n'a pas pu être posé
+      ansible.builtin.debug:
+        msg: >-
+          ⚠️ L'alerte de budget n'a pas été créée
+          ({{ budget.stderr | default('raison inconnue') | truncate(160) }}).
+          À poser à la main dans la console AWS Billing — point 23 du registre.
+      when: budget.rc | default(1) != 0
+
+    # ── Ce qu'il faut reporter dans GitHub ───────────────────────────────────
+
+    - name: Ce qui reste à faire à la main
+      ansible.builtin.debug:
+        msg:
+          - "Instance      : {{ instance.instance_ids[0] }} — {{ instance.instances[0].public_ip_address | default('sans IP publique') }}"
+          - "Rôle de CD    : {{ role_cd.iam_role.arn }}"
+          - "Bucket        : {{ bucket_sauvegardes }}"
+          - ""
+          - "À reporter dans les réglages du dépôt GitHub :"
+          - "  secrets.AWS_DEPLOY_ROLE_ARN = {{ role_cd.iam_role.arn }}"
+          - "  vars.GHCR_REPO              = {{ ghcr_repo }}"
+          - ""
+          - "Sans ces deux valeurs, le job « prealables » de cd-prod.yml échoue"
+          - "en les nommant — c'est voulu."
+          - ""
+          - "Puis : ansible-playbook ansible/02-bootstrap.yml"
