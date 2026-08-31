@@ -105,18 +105,25 @@ def build_message_recu(
     Args:
         prenom_nom: Prénom et NOM de l'abonné (ex. "Jean DUPONT").
         periode: Mois et année de la facture réglée (ex. "Juin 2026").
-        montant: Montant du versement reçu, en FCFA.
-        solde_restant: Solde restant dû après ce versement, en FCFA.
+        montant: Montant du VERSEMENT reçu (ce que l'abonné a tendu), en FCFA.
+        solde_restant: Ce qu'il doit encore EN TOUT, toutes factures confondues.
 
     Returns:
         Message WhatsApp formaté.
+
+    Note sur la formulation. La phrase disait « ✅ Votre facture est soldée » — ce
+    qui parlait de la mauvaise chose : le solde transmis est celui de l'abonné,
+    pas d'une facture. Un versement au comptoir couvre souvent plusieurs
+    factures, et le reçu PDF joint, lui, atteste l'imputation sur UNE facture.
+    Les deux chiffres sont justes et mesurent deux choses différentes : chacun
+    doit donc dire laquelle, sinon l'envoi paraît se contredire.
     """
     montant_str = f"{montant:.0f}" if montant == int(montant) else f"{montant}"
     if solde_restant <= 0:
-        situation = "✅ Votre facture est soldée. Merci !"
+        situation = "✅ Vous êtes à jour, plus rien n'est dû. Merci !"
     else:
         solde_str = f"{solde_restant:.0f}" if solde_restant == int(solde_restant) else f"{solde_restant}"
-        situation = f"Solde restant dû : {solde_str} FCFA"
+        situation = f"Reste dû, toutes factures : {solde_str} FCFA"
 
     return (
         f"Bonjour {prenom_nom},\n\n"
@@ -235,28 +242,33 @@ def build_message_relance_4(
     )
 
 
-def build_message_retablissement(
-    prenom_nom: str,
-    montant: float,
-) -> str:
-    """Construit le message de confirmation de paiement / rétablissement (EF-NOTIF-004, EF-IMP-005).
+def build_message_retablissement(prenom_nom: str) -> str:
+    """Message de RÉTABLISSEMENT de la ligne d'eau (EF-NOTIF-004, EF-IMP-005).
 
-    Envoyé lorsqu'une facture passe au statut PAYÉE — y compris si la ligne
-    d'eau avait été suspendue pour impayé, auquel cas elle est rétablie.
+    Envoyé uniquement quand une suspension a réellement été levée.
+
+    ── Deux mensonges retirés d'ici ─────────────────────────────────────────────
+
+    **« Votre paiement de X FCFA a été reçu »**, où X valait `facture.montant`.
+    Ce n'est jamais le versement : c'est la consommation du mois × le prix. Un
+    abonné qui soldait les 2 000 restants d'une facture de 10 000 lisait « votre
+    paiement de 10 000 FCFA a été reçu ». Le chiffre est donc retiré : le reçu,
+    qui part par ailleurs, porte le montant réellement versé — lui le sait.
+
+    **« Votre ligne d'eau est maintenant rétablie »**, affirmé sans condition.
+    Or le cas de très loin le plus fréquent est un abonné qui n'a jamais été
+    coupé : `AbonneServiceClient.reactiver_abonne` le dit dans son propre
+    commentaire. Ce message ne part plus que sur un rétablissement réel — l'appel
+    de réactivation rend maintenant s'il a agi ou non.
 
     Args:
         prenom_nom: Prénom et NOM de l'abonné.
-        montant: Montant du paiement reçu en FCFA.
 
     Returns:
         Message WhatsApp formaté.
     """
-    montant_str = f"{montant:.0f}" if montant == int(montant) else f"{montant}"
-
     return (
-        f"Bonjour {prenom_nom},\n\n"
-        f"Votre paiement de {montant_str} FCFA a été reçu.\n"
-        f"Votre ligne d'eau est maintenant rétablie."
+        f"Bonjour {prenom_nom},\n\nVotre dette est soldée et votre ligne d'eau est rétablie.\nMerci de votre règlement."
     )
 
 

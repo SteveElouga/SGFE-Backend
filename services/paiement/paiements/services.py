@@ -646,16 +646,24 @@ class PaiementService:
             return False
 
         # EF-IMP-005 — Réactivation de l'abonné suspendu (dégradation gracieuse).
-        # Sans effet s'il n'était pas suspendu : le client le journalise en INFO.
-        AbonneServiceClient().reactiver_abonne(abonne_id)
+        # Rend False s'il n'était pas suspendu — le cas le plus fréquent.
+        retabli = AbonneServiceClient().reactiver_abonne(abonne_id)
 
-        # EF-NOTIF-004 — l'abonné est à jour, et on le lui dit une fois
-        # (étape 0 = confirmation). Dégradation gracieuse.
-        NotificationServiceClient().envoyer_relance(
-            facture_id=facture_id_reference,
-            abonne_id=abonne_id,
-            etape=0,
-        )
+        # EF-NOTIF-004 — le message de RÉTABLISSEMENT, et seulement sur un
+        # rétablissement réel.
+        #
+        # Il partait à chaque facture soldée, en affirmant « votre ligne d'eau est
+        # maintenant rétablie » à des abonnés qui n'avaient jamais été coupés. Et
+        # il doublait le reçu, qui part de toute façon : deux messages pour un
+        # geste, annonçant deux montants différents du même versement.
+        #
+        # Le reçu confirme l'argent ; celui-ci ne confirme que l'eau qui revient.
+        if retabli:
+            NotificationServiceClient().envoyer_relance(
+                facture_id=facture_id_reference,
+                abonne_id=abonne_id,
+                etape=0,
+            )
         return True
 
     def suspendre_relances_si_partiel(self, solde: SoldeFacture, jours_suspension: int | None = None) -> None:

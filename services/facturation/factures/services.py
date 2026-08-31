@@ -870,7 +870,28 @@ class RecuPaiementService:
         if versement is None:
             raise ObjectDoesNotExist(f"Paiement introuvable : {paiement_id}")
 
-        solde = self._paiement_client.get_solde(facture_id) or {}
+        # Un reçu ne peut pas attester ce qu'on n'a pas pu lire.
+        #
+        # `get_solde` dégrade en `None` quand Paiement Service est injoignable.
+        # Le code écrivait `or {}`, puis `solde.get("solde_restant") or 0` — ce qui
+        # transforme « inconnu » en « zéro ». Or la note du reçu s'écrit à partir
+        # de ce zéro :
+        #
+        #     « Facture soldée — ce reçu confirme le règlement intégral … »
+        #
+        # Un appel gRPC en échec produisait donc un DOCUMENT OFFICIEL remis à
+        # l'abonné, attestant un règlement intégral qui n'avait pas eu lieu, avec
+        # « total versé : 0 » imprimé juste au-dessus.
+        #
+        # On refuse. L'appelant dégrade déjà proprement : `generer_recu_paiement_pdf`
+        # rend `(b"", "")` et le message WhatsApp part sans pièce jointe. Pas de
+        # reçu vaut infiniment mieux qu'un faux reçu.
+        solde = self._paiement_client.get_solde(facture_id)
+        if solde is None:
+            raise ObjectDoesNotExist(
+                f"Solde de la facture {facture_id} illisible (Paiement Service injoignable) : "
+                "un reçu ne peut pas être émis sans connaître le solde."
+            )
         nb_versements = sum(1 for p in paiements if not p.get("annule"))
 
         facture = self._repo.get_by_id(facture_id)  # ObjectDoesNotExist si absente
