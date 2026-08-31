@@ -80,6 +80,7 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
             facture_id=request.facture_id,
             abonne_id=request.abonne_id,
             etape=request.etape,
+            jours_avant_suspension=request.jours_avant_suspension,
         )
         return envoi_to_proto(envoi)
 
