@@ -764,14 +764,52 @@ class ImpayeService:
             return
 
         notif_client = NotificationServiceClient()
+
+        # ── UN seul message, celui qui correspond au retard RÉEL ─────────────
+        #
+        # Les trois rappels étaient tentés dans le même passage, puis la
+        # suspension. Pour une facture déjà très en retard — le cas dès qu'on
+        # saisit un arriéré avec sa vraie échéance — le premier passage envoyait
+        # quatre messages en quelques secondes, qui se contredisaient :
+        #
+        #   « arrivée à échéance aujourd'hui »
+        #   « impayée depuis 3 jours »
+        #   « impayé depuis 7 jours … suspendue dans 3 jours »
+        #   « votre ligne d'eau a été suspendue »
+        #
+        # On ne rejoue donc plus les étapes manquées : on envoie **la plus
+        # avancée que le retard justifie**, et elle seule. Un abonné à 31 jours
+        # de retard reçoit l'avis de suspension, pas quatre messages dont trois
+        # sont faux.
+        #
+        # Sur une facture qui vieillit normalement, le comportement est
+        # inchangé : étape 1 au jour 0, étape 2 au jour 3, etc. — à chaque
+        # passage, l'étape la plus avancée justifiée est aussi la suivante.
+        #
+        # Les drapeaux des étapes sautées restent à False, ce qui est la vérité :
+        # ces messages n'ont jamais été envoyés. `etape_actuelle` porte, lui, le
+        # niveau réellement atteint.
         modifie = False
 
-        modifie |= self._tenter_rappel(notif_client, solde, suivi, timezone, jours_depasses, delai_rappel_1, 1)
-        modifie |= self._tenter_rappel(notif_client, solde, suivi, timezone, jours_depasses, delai_rappel_2, 2)
-        modifie |= self._tenter_rappel(notif_client, solde, suivi, timezone, jours_depasses, delai_avertissement, 3)
-
         if jours_depasses >= delai_suspension and not suivi.suspension_effectuee and suspension_auto:
-            modifie |= self._effectuer_suspension(notif_client, solde, suivi, timezone)
+            modifie = self._effectuer_suspension(notif_client, solde, suivi, timezone)
+        elif jours_depasses >= delai_avertissement:
+            modifie = self._tenter_rappel(
+                notif_client,
+                solde,
+                suivi,
+                timezone,
+                jours_depasses,
+                delai_avertissement,
+                3,
+                # Le vrai nombre de jours restants, lu dans Config par ce cron.
+                # Le gabarit écrivait « dans 3 jours » en dur.
+                jours_avant_suspension=max(0, delai_suspension - jours_depasses),
+            )
+        elif jours_depasses >= delai_rappel_2:
+            modifie = self._tenter_rappel(notif_client, solde, suivi, timezone, jours_depasses, delai_rappel_2, 2)
+        elif jours_depasses >= delai_rappel_1:
+            modifie = self._tenter_rappel(notif_client, solde, suivi, timezone, jours_depasses, delai_rappel_1, 1)
 
         if modifie:
             self._suivi_repo.save_suivi(suivi)
@@ -785,8 +823,20 @@ class ImpayeService:
         jours_depasses: int,
         delai: int,
         etape: int,
+        jours_avant_suspension: int = 0,
     ) -> bool:
-        """Envoie la relance de l'étape donnée si le délai est atteint et non encore envoyée."""
+        """Envoie la relance de l'étape donnée si le délai est atteint et non encore envoyée.
+
+        **L'étape n'est marquée envoyée que si le message est réellement parti.**
+
+        Elle l'était inconditionnellement, alors que `envoyer_relance` n'échoue
+        jamais : les erreurs gRPC comme les échecs WhatsApp sont avalés. Un abonné
+        pouvait donc être relancé quatre fois sans rien recevoir, puis coupé —
+        et l'escalade continuait comme si tout lui avait été dit.
+
+        Le drapeau n'étant plus posé, le passage du lendemain retentera la même
+        étape. Une relance qui n'est pas partie n'est pas une relance.
+        """
         _ETAPE_ATTRS: dict[int, tuple[str, str]] = {
             1: ("rappel_1_envoye", "date_rappel_1"),
             2: ("rappel_2_envoye", "date_rappel_2"),
@@ -795,11 +845,21 @@ class ImpayeService:
         sent_attr, date_attr = _ETAPE_ATTRS[etape]
         if jours_depasses < delai or getattr(suivi, sent_attr):
             return False
-        notif_client.envoyer_relance(
+
+        parti = notif_client.envoyer_relance(
             facture_id=solde.facture_id,
             abonne_id=solde.abonne_id,
             etape=etape,
+            jours_avant_suspension=jours_avant_suspension,
         )
+        if not parti:
+            logger.warning(
+                "Relance étape %d NON partie — l'étape reste à retenter",
+                etape,
+                extra={"facture_id": solde.facture_id, "abonne_id": solde.abonne_id},
+            )
+            return False
+
         setattr(suivi, sent_attr, True)
         setattr(suivi, date_attr, timezone.now())
         suivi.etape_actuelle = max(suivi.etape_actuelle, etape)
@@ -813,17 +873,34 @@ class ImpayeService:
         suivi: SuiviImpaye,
         timezone: object,
     ) -> bool:
-        """Suspend l'abonné, envoie la relance étape 4 et notifie les admins."""
+        """Suspend l'abonné, envoie la relance étape 4 et notifie les admins.
+
+        La suspension est effectuée même si le message ne part pas : la coupure
+        est la décision, le message n'en est que l'annonce, et différer la
+        coupure parce que WhatsApp est en panne serait perdre de la recette.
+
+        Mais l'échec est journalisé en ERREUR, et les admins sont prévenus dans
+        tous les cas : quelqu'un a été coupé sans l'avoir appris, il faut que
+        ça se sache avant qu'il appelle.
+        """
         AbonneServiceClient().suspendre_abonne(solde.abonne_id)
-        notif_client.envoyer_relance(
+        prevenu = notif_client.envoyer_relance(
             facture_id=solde.facture_id,
             abonne_id=solde.abonne_id,
             etape=4,
         )
+        if not prevenu:
+            logger.error(
+                "Abonné suspendu SANS avoir été prévenu — le message n'est pas parti",
+                extra={"facture_id": solde.facture_id, "abonne_id": solde.abonne_id},
+            )
         # EF-NOTIF-005 — Notifier les admins de chaque suspension
         notif_client.notifier_admins(
             evenement="SUSPENSION",
-            detail=f"Abonné {solde.abonne_id} suspendu pour impayé (facture {solde.facture_id})",
+            detail=(
+                f"Abonné {solde.abonne_id} suspendu pour impayé (facture {solde.facture_id})"
+                + ("" if prevenu else " — ⚠️ L'ABONNÉ N'A PAS PU ÊTRE PRÉVENU")
+            ),
             entite_id=solde.abonne_id,
         )
         suivi.suspension_effectuee = True

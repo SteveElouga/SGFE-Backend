@@ -201,7 +201,17 @@ class TestEnvoiServiceEnvoyerRelance(TestCase):
         self.assertEqual(envoi.statut, StatutEnvoi.ENVOYE)
         self.assertEqual(envoi.type_envoi, TypeEnvoi.RELANCE_2)
         args, _ = mock_wa.send.call_args
-        self.assertIn("3 jours", args[1])
+
+        # Le retard annoncé est le VRAI retard, calculé depuis l'échéance de la
+        # facture — plus le « 3 jours » que le gabarit écrivait en dur.
+        #
+        # Ce test est lui-même la démonstration du défaut : la facture de son
+        # jeu d'essai est échue en juillet 2025, donc en retard de plus d'un an.
+        # L'ancien message annonçait « impayée depuis 3 jours », et ce test
+        # l'exigeait.
+        attendu = (date.today() - date(2025, 7, 20)).days  # échéance du jeu d'essai
+        self.assertIn(f"depuis {attendu} jours", args[1])
+        self.assertNotIn("depuis 3 jours", args[1])
 
     @patch("notifications.services.whatsapp_client")
     @patch("notifications.services.abonne_client")

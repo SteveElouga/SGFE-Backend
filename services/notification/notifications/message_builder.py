@@ -135,29 +135,67 @@ def build_message_recu(
     )
 
 
+def _montant_ou_rien(montant: float | None) -> str:
+    """Le montant, ou une chaîne vide s'il est inconnu.
+
+    Un chiffre inconnu ne s'imprime pas. Le service de notification lit le reste
+    dû auprès de Paiement Service ; si l'appel échoue, la relance part **sans le
+    montant** plutôt qu'avec un montant faux. C'est la même règle que la ligne
+    d'antériorité du message de facture, omise plutôt que faussée.
+    """
+    if montant is None or montant <= 0:
+        return ""
+    return f"{montant:.0f}" if montant == int(montant) else f"{montant}"
+
+
+def _depuis_quand(jours_retard: int) -> str:
+    """« aujourd'hui », « depuis 1 jour », « depuis 31 jours » — le vrai retard.
+
+    Les gabarits écrivaient « depuis 3 jours » et « depuis 7 jours » en dur, en
+    supposant que le cron passe le jour exact de l'échéance. Il ne le fait pas
+    toujours : une régularisation saisie avec sa vraie échéance est immédiatement
+    à plusieurs mois de retard, et le premier passage du cron annonçait alors
+    « échéance aujourd'hui », puis « depuis 3 jours », puis « depuis 7 jours ».
+    Trois phrases fausses, à quelques secondes d'intervalle.
+
+    Le retard réel se calcule depuis `date_limite_paiement` : il n'a besoin
+    d'aucune configuration, et il ne peut pas se désynchroniser.
+    """
+    if jours_retard <= 0:
+        return "aujourd'hui"
+    if jours_retard == 1:
+        return "depuis 1 jour"
+    return f"depuis {jours_retard} jours"
+
+
 def build_message_relance_1(
     prenom_nom: str,
     periode: str,
-    montant: float,
+    montant: float | None,
     lien_espace: str,
+    jours_retard: int = 0,
 ) -> str:
-    """Construit le message de relance étape 1 — Rappel doux (EF-NOTIF-004).
+    """Relance étape 1 — rappel doux (EF-NOTIF-004).
 
     Args:
         prenom_nom: Prénom et NOM de l'abonné.
         periode: Mois de la facture impayée (ex. "Juillet").
-        montant: Montant impayé en FCFA.
+        montant: **Reste dû** sur la facture, ou None si illisible.
         lien_espace: URL complète de l'espace abonné (avec token).
+        jours_retard: Jours écoulés depuis l'échéance (0 = échue ce jour).
 
     Returns:
         Message WhatsApp formaté.
     """
-    montant_str = f"{montant:.0f}" if montant == int(montant) else f"{montant}"
+    montant_str = _montant_ou_rien(montant)
+    somme = f" d'un montant de {montant_str} FCFA" if montant_str else ""
+    quand = _depuis_quand(jours_retard)
+    echeance = "est arrivée à échéance aujourd'hui." if jours_retard <= 0 else f"est échue {quand}."
 
     return (
         f"Bonjour {prenom_nom},\n\n"
-        f"Votre facture de {periode} d'un montant de {montant_str} FCFA\n"
-        f"est arrivée à échéance aujourd'hui.\n\n"
+        f"Votre facture de {periode}{somme}\n"
+        f"{echeance}\n\n"
         f"Merci de régulariser votre situation dans les\n"
         f"meilleurs délais.\n\n"
         f"🔗 {lien_espace}"
@@ -167,24 +205,27 @@ def build_message_relance_1(
 def build_message_relance_2(
     prenom_nom: str,
     periode: str,
-    montant: float,
+    montant: float | None,
+    jours_retard: int = 0,
 ) -> str:
-    """Construit le message de relance étape 2 — Rappel ferme (EF-NOTIF-004).
+    """Relance étape 2 — rappel ferme (EF-NOTIF-004).
 
     Args:
         prenom_nom: Prénom et NOM de l'abonné.
         periode: Mois de la facture impayée.
-        montant: Montant impayé en FCFA.
+        montant: **Reste dû** sur la facture, ou None si illisible.
+        jours_retard: Jours écoulés depuis l'échéance — le vrai, plus « 3 » en dur.
 
     Returns:
         Message WhatsApp formaté.
     """
-    montant_str = f"{montant:.0f}" if montant == int(montant) else f"{montant}"
+    montant_str = _montant_ou_rien(montant)
+    somme = f" ({montant_str} FCFA)" if montant_str else ""
 
     return (
         f"Bonjour {prenom_nom},\n\n"
-        f"Votre facture de {periode} ({montant_str} FCFA) est impayée\n"
-        f"depuis 3 jours.\n\n"
+        f"Votre facture de {periode}{somme} est impayée\n"
+        f"{_depuis_quand(jours_retard)}.\n\n"
         f"⚠️ Sans paiement, votre ligne d'eau fera l'objet\n"
         f"d'un avertissement."
     )
@@ -192,54 +233,84 @@ def build_message_relance_2(
 
 def build_message_relance_3(
     prenom_nom: str,
-    montant: float,
+    montant: float | None,
+    jours_retard: int = 0,
+    jours_avant_suspension: int = 0,
 ) -> str:
-    """Construit le message de relance étape 3 — Avertissement (EF-NOTIF-004).
+    """Relance étape 3 — avertissement (EF-NOTIF-004).
 
     Args:
         prenom_nom: Prénom et NOM de l'abonné.
-        montant: Montant impayé en FCFA.
+        montant: **Reste dû** sur la facture, ou None si illisible.
+        jours_retard: Jours écoulés depuis l'échéance — le vrai, plus « 7 » en dur.
+        jours_avant_suspension: Jours restants avant la coupure automatique.
+            0 = ne pas annoncer de délai, plutôt qu'en annoncer un faux.
 
     Returns:
         Message WhatsApp formaté.
     """
-    montant_str = f"{montant:.0f}" if montant == int(montant) else f"{montant}"
+    montant_str = _montant_ou_rien(montant)
+    somme = f" ({montant_str} FCFA)" if montant_str else ""
+
+    if jours_avant_suspension > 0:
+        jour = "jour" if jours_avant_suspension == 1 else "jours"
+        menace = f"🚨 Sans paiement dans les {jours_avant_suspension} {jour}, votre\nligne d'eau sera suspendue."
+    else:
+        menace = "🚨 Sans paiement, votre ligne d'eau sera suspendue."
 
     return (
         f"Bonjour {prenom_nom},\n\n"
         f"AVERTISSEMENT — Votre ligne d'eau est en situation\n"
-        f"d'impayé depuis 7 jours ({montant_str} FCFA).\n\n"
-        f"🚨 Sans paiement dans les 3 jours, votre ligne d'eau\n"
-        f"sera suspendue."
+        f"d'impayé {_depuis_quand(jours_retard)}{somme}.\n\n"
+        f"{menace}"
     )
 
 
 def build_message_relance_4(
     prenom_nom: str,
-    montant: float,
+    montant: float | None,
     periode: str,
     telephone_societe: str,
 ) -> str:
-    """Construit le message de relance étape 4 — Suspension (EF-NOTIF-004).
+    """Relance étape 4 — suspension (EF-NOTIF-004).
+
+    ── Ce message doit dire quoi payer ──────────────────────────────────────────
+
+    Il annonçait « impayé de X FCFA (Facture Juillet) », où X était le montant
+    brut d'UNE facture, puis renvoyait vers un numéro de téléphone. Un abonné
+    suspendu en a typiquement plusieurs — et depuis que le rétablissement exige
+    l'extinction de la dette TOTALE (RS-005), régler ce X ne le rétablit même
+    pas. Le message envoyait donc payer la mauvaise somme.
+
+    `montant` est désormais **ce qu'il faut payer pour être rétabli** : la dette
+    totale de l'abonné. Inconnue, elle n'est pas imprimée — le renvoi vers le
+    service reste le recours.
 
     Args:
         prenom_nom: Prénom et NOM de l'abonné.
-        montant: Montant impayé en FCFA.
-        periode: Mois de la facture impayée.
+        montant: **Dette totale** de l'abonné, ou None si illisible.
+        periode: Mois de la facture qui a déclenché la suspension.
         telephone_societe: Numéro de contact de la société.
 
     Returns:
         Message WhatsApp formaté.
     """
-    montant_str = f"{montant:.0f}" if montant == int(montant) else f"{montant}"
+    montant_str = _montant_ou_rien(montant)
 
-    return (
-        f"Bonjour {prenom_nom},\n\n"
-        f"Votre ligne d'eau a été suspendue en raison d'un\n"
-        f"impayé de {montant_str} FCFA (Facture {periode}).\n\n"
-        f"Pour rétablir votre ligne d'eau, contactez notre\n"
-        f"service au {telephone_societe}."
+    if montant_str:
+        cause = f"Votre ligne d'eau a été suspendue pour un impayé\n(Facture {periode})."
+        action = f"Pour être rétabli, réglez la totalité de votre dette :\n{montant_str} FCFA.\n\n"
+    else:
+        cause = f"Votre ligne d'eau a été suspendue en raison d'un\nimpayé (Facture {periode})."
+        action = ""
+
+    contact = (
+        f"Contactez notre service au {telephone_societe}."
+        if telephone_societe
+        else "Contactez notre service pour le rétablissement."
     )
+
+    return f"Bonjour {prenom_nom},\n\n{cause}\n\n{action}{contact}"
 
 
 def build_message_retablissement(prenom_nom: str) -> str:

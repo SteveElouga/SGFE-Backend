@@ -246,15 +246,39 @@ On annule un **versement**, pas une de ses lignes : les écritures partageant le
    - `jours_depasses = aujourd'hui - date_limite_paiement`.
    - Récupère ou crée le `SuiviImpaye` (étape initiale 1).
    - **Si `relances_suspendues_jusqu ≥ aujourd'hui`** (posé lors d'un paiement partiel récent) → **aucune relance n'est tentée**, y compris la suspension. Passe à la facture suivante.
-   - Sinon, tente successivement (chaque étape est indépendante, pas de séquentialité stricte imposée) :
-     - **Rappel 1** si `jours_depasses ≥ délai_rappel_1` et pas déjà envoyé → `Notification.EnvoyerRelance(etape=1)`.
-     - **Rappel 2** si `jours_depasses ≥ délai_rappel_2` et pas déjà envoyé → `Notification.EnvoyerRelance(etape=2)`.
-     - **Avertissement** si `jours_depasses ≥ délai_avertissement` et pas déjà envoyé → `Notification.EnvoyerRelance(etape=3)`.
-   - **Suspension automatique** si `jours_depasses ≥ délai_suspension` et pas déjà effectuée et `suspension_auto=True` :
-     - `[Paiement]` → `Abonne.SuspendreAbonne(abonne_id)`.
-     - `[Paiement]` → `Notification.EnvoyerRelance(etape=4)` — message de suspension à l'abonné.
-     - `[Paiement]` → `Notification.NotifierAdmins(evenement="SUSPENSION", ...)`.
-4. ⚠️ Note de comportement : si le cron n'a pas tourné pendant plusieurs jours (panne), au passage suivant, plusieurs étapes de rappel peuvent se déclencher **le même jour** en cascade pour une même facture (rattrapage non séquentiel, comportement probablement voulu mais non documenté comme tel).
+   - Sinon, envoie **UNE seule étape** : la plus avancée que le retard justifie, et elle seule.
+
+     | Retard | Étape envoyée |
+     |---|---|
+     | `≥ délai_suspension`, pas déjà suspendu, `suspension_auto` | **Suspension** (étape 4) |
+     | `≥ délai_avertissement` | **Avertissement** (étape 3), avec `jours_avant_suspension = délai_suspension − jours_depasses` |
+     | `≥ délai_rappel_2` | **Rappel 2** (étape 2) |
+     | `≥ délai_rappel_1` | **Rappel 1** (étape 1) |
+
+     La suspension appelle en outre `Abonne.SuspendreAbonne(abonne_id)` et `Notification.NotifierAdmins(evenement="SUSPENSION", …)`.
+
+   - **L'étape n'est marquée envoyée que si le message est réellement parti.** `EnvoyerRelance` rend un `EnvoiResponse` dont le `statut` vaut `ECHEC` quand WhatsApp a échoué ; le client le lit désormais. Un échec laisse l'étape à retenter au passage suivant.
+   - **La suspension a lieu même si le message échoue** — la coupure est la décision, le message n'en est que l'annonce — mais l'échec est journalisé en ERREUR et la notification admin porte la mention « ⚠️ L'ABONNÉ N'A PAS PU ÊTRE PRÉVENU ».
+
+4. Une étape par facture et par passage. Un cron resté longtemps à l'arrêt ne produit donc plus de cascade : chaque facture reçoit le message qui correspond à son retard du jour.
+
+> ⚠️ **Réécrit le 31 août 2026.** Ce paragraphe décrivait trois rappels « tentés successivement, chaque étape indépendante », et une note qualifiait la cascade de « comportement probablement voulu mais non documenté comme tel ». Il ne l'était pas.
+>
+> Pour une facture déjà très en retard — le cas dès qu'on saisit un arriéré avec sa vraie échéance — le premier passage envoyait **quatre messages en quelques secondes**, qui se contredisaient : « arrivée à échéance aujourd'hui », « impayée depuis 3 jours », « impayé depuis 7 jours … suspendue dans 3 jours », « votre ligne d'eau a été suspendue ». Trois étaient faux, et le quatrième rendait les trois autres absurdes.
+>
+> Les drapeaux des étapes sautées restent à `False` : ces messages n'ont jamais été envoyés, et la piste d'audit doit pouvoir répondre à « m'a-t-on prévenu ? ». Seul `etape_actuelle` porte le niveau atteint.
+
+### 6.1bis Ce que les messages de relance annoncent
+
+**Le reste dû, et non le montant de la facture.** `facture.montant` est la consommation du mois × le prix : un abonné qui avait versé 8 000 sur 10 000 lisait « votre facture de 10 000 FCFA est impayée », son versement ni déduit ni mentionné. Or les factures `PARTIELLE` sont bien relancées — la pause après acompte ne dure que quelques jours.
+
+`FactureResponse` n'expose ni `montant_paye` ni `solde_restant` : la seule source est `Paiement.GetSolde`, et le client existait déjà (il ne servait qu'à l'étape 5). Illisible, le montant **n'est pas imprimé** — jamais imprimé faux.
+
+**Le retard réel, calculé depuis l'échéance.** Les gabarits écrivaient « depuis 3 jours » et « depuis 7 jours » en dur, en supposant que le cron passe le jour exact. Le retard se calcule maintenant depuis `date_limite_paiement` : il n'a besoin d'aucune configuration et ne peut pas se désynchroniser.
+
+**Le délai avant coupure, transmis par le cron.** `EnvoyerRelanceRequest.jours_avant_suspension` (nouveau champ) porte `délai_suspension − jours_depasses`. Un admin qui règle la suspension à 20 jours ne fait plus annoncer 3. À `0`, aucun délai n'est annoncé plutôt qu'un délai faux.
+
+**La suspension dit quoi payer pour être rétabli** : la dette **totale** de l'abonné (`GetDetteAbonne`), pas le montant d'une facture. Depuis RS-005, régler une seule facture ne rétablit pas la ligne — le message envoyait donc payer la mauvaise somme.
 
 ### 6.2 Rétablissement après paiement
 

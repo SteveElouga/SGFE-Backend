@@ -136,19 +136,23 @@ class PaiementServiceClient:
             logger.warning("Avoir imputé indisponible — le message part sans la ligne : %s", exc)
             return 0.0
 
-    def get_solde_restant(self, facture_id: str) -> float:
-        """Ce qui reste dû sur une facture.
+    def get_solde_restant(self, facture_id: str) -> float | None:
+        """Ce qui reste dû sur une facture, ou `None` si c'est illisible.
 
-        Rend zéro si le service est injoignable. L'appelant doit traiter ce zéro
-        comme « inconnu » et non comme « rien à payer » : annoncer un solde nul à
-        tort est le seul message plus dommageable que pas de message.
+        Rendait zéro en cas de panne, avec pour consigne à l'appelant de traiter
+        ce zéro comme « inconnu ». Une valeur qui veut dire deux choses opposées
+        selon un commentaire finit toujours par être lue de la mauvaise façon —
+        et ici la mauvaise lecture annonce « rien à payer » à quelqu'un qui doit.
+
+        `None` ne se confond avec rien. Le zéro qui revient maintenant est un
+        vrai zéro.
         """
         try:
             r = self._stub.GetSolde(self._pb.FactureIdRequest(facture_id=facture_id))
             return float(getattr(r, "solde_restant", 0) or 0)
         except grpc.RpcError as exc:
-            logger.warning("Solde restant indisponible — repli sur le montant de la facture : %s", exc)
-            return 0.0
+            logger.warning("Solde restant illisible — le montant ne sera pas annoncé : %s", exc)
+            return None
 
 
 class AbonneServiceClient:
