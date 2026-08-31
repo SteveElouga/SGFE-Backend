@@ -80,43 +80,67 @@ services:
         limits:
           memory: 2048M
 
-  # --- Services Django : durcissement + DEBUG=False ---
+  # --- Services Django : durcissement, DEBUG=False, et PAS de migration ---
+  #
+  # Le compose de base lance `migrate && grpc_server`. C'est commode en
+  # développement — on ne pense pas aux migrations — et dangereux en production :
+  # combiné au `restart: unless-stopped` ci-dessus, une migration fautive fait
+  # **boucler le conteneur indéfiniment**. Il sort, redémarre, remigre, échoue,
+  # recommence. Rien n'arrête la boucle, et le service paraît « en train de
+  # démarrer » pendant qu'il ne démarrera jamais.
+  #
+  # En production, les migrations sont une **étape gatée du déploiement**, jouée
+  # service par service avec arrêt au premier échec — voir `cd-prod.yml`. Un
+  # échec y est visible, nommé, et n'a pas encore remplacé les conteneurs en
+  # service.
+  #
+  # La surcouche remplace donc la commande pour ne garder que le serveur gRPC.
+  # (La gateway n'est pas concernée : elle n'a pas de base, donc pas de
+  # migration, et utilise le CMD de son image.)
   auth-service:
+    command: python manage.py grpc_server
     image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/auth-service:${IMAGE_TAG:?IMAGE_TAG manquant}
     <<: *prod
     environment:
       DJANGO_DEBUG: "False"
   abonne-service:
+    command: python manage.py grpc_server
     image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/abonne-service:${IMAGE_TAG:?IMAGE_TAG manquant}
     <<: *prod
     environment:
       DJANGO_DEBUG: "False"
   campagne-service:
+    command: python manage.py grpc_server
     image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/campagne-service:${IMAGE_TAG:?IMAGE_TAG manquant}
     <<: *prod
     environment:
       DJANGO_DEBUG: "False"
   facturation-service:
+    command: python manage.py grpc_server
     image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/facturation-service:${IMAGE_TAG:?IMAGE_TAG manquant}
     <<: *prod
     environment:
       DJANGO_DEBUG: "False"
   paiement-service:
+    command: python manage.py grpc_server
     image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/paiement-service:${IMAGE_TAG:?IMAGE_TAG manquant}
     <<: *prod
     environment:
       DJANGO_DEBUG: "False"
   notification-service:
+    command: python manage.py grpc_server
     image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/notification-service:${IMAGE_TAG:?IMAGE_TAG manquant}
     <<: *prod
     environment:
       DJANGO_DEBUG: "False"
   config-service:
+    command: python manage.py grpc_server
     image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/config-service:${IMAGE_TAG:?IMAGE_TAG manquant}
     <<: *prod
     environment:
       DJANGO_DEBUG: "False"
   reporting-service:
+    command: python manage.py grpc_server
     image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/reporting-service:${IMAGE_TAG:?IMAGE_TAG manquant}
     <<: *prod
     environment:

@@ -281,6 +281,29 @@ Le port 22 n'est donc **jamais ouvert** — ni pour l'amorçage, ni pour le dép
 
 **Acteur : GitHub Actions.** Un fichier, `.github/workflows/cd-prod.yml`.
 
+> ✅ **Écrit le 31 août 2026.** Le fichier existe et est relisible. Il **ne peut
+> pas encore s'exécuter** : son job `prealables` échoue tant que
+> `secrets.AWS_DEPLOY_ROLE_ARN` et `vars.GHCR_REPO` ne sont pas définis, c'est-à-dire
+> tant que la Phase 1 n'a pas créé l'instance et le rôle. Un échec nommé valait
+> mieux qu'un déploiement qui casse à mi-course.
+>
+> Trois écarts avec l'esquisse ci-dessous, tous dans le sens de la robustesse :
+>
+> — **Les commandes distantes passent par `jq -n --arg`.** L'esquisse générait la
+> liste des migrations côté runner, avec une boucle shell dans une chaîne JSON
+> dans du YAML : trois niveaux d'échappement pour ce qu'une boucle sur la machine
+> fait en une ligne. Chaque niveau était une occasion de casser en silence.
+>
+> — **Le point 12 est traité dans le même geste.** Les migrations au démarrage
+> sont retirées de `docker-compose.prod.yml` : les garder aurait rendu l'étape
+> gatée décorative, et le risque de boucle intact.
+>
+> — **Le retour arrière ne défait pas les migrations**, et le dit. Une migration
+> Django n'est pas toujours réversible ; l'inverser à l'aveugle sur des données de
+> production est plus dangereux que de laisser un schéma en avance sur le code.
+> Conséquence à connaître : **les migrations doivent rester compatibles vers
+> l'arrière** — ajouter une colonne, jamais la renommer en une fois.
+
 ```yaml
 deploy:
   needs: [ci-status, publish-gateway, publish-auth, publish-abonne,
