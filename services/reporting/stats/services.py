@@ -145,6 +145,17 @@ class AgregateurDashboard:
         stats = self._paiements.get_or_create(campagne_id)
         if type_update == "PAIEMENT":
             stats.montant_encaisse += _dec(montant_paiement)
+        elif type_update == "PAIEMENT_ANNULE":
+            # Il n'existait aucun chemin de décrément : un versement annulé
+            # restait compté dans les recettes, définitivement. Le read model
+            # divergeait donc de `statsParMois` (calculé par la gateway, qui
+            # exclut bien les paiements annulés) — deux chiffres censés dire la
+            # même chose et qui ne s'accordaient pas.
+            #
+            # Le plancher à zéro n'est pas une correction de fond, c'est un
+            # garde-fou : un read model reconstruit à partir d'un flux tronqué
+            # peut recevoir une annulation dont il n'a jamais vu le versement.
+            stats.montant_encaisse = max(Decimal("0"), stats.montant_encaisse - _dec(montant_paiement))
         # Dérivés recalculés à partir des stats de facturation (source de vérité
         # du montant total facturé et du nombre d'impayés).
         facturation = self._facturation.get_or_none(campagne_id)

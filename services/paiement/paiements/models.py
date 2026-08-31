@@ -34,7 +34,16 @@ class Paiement(models.Model):
     facture_id = models.CharField(max_length=36)
     # Référence vers Abonné Service (pas de FK inter-service)
     abonne_id = models.CharField(max_length=36)
+    # Montant REÇU en caisse — pas nécessairement celui imputé à la facture.
     montant = models.DecimalField(max_digits=12, decimal_places=2)
+    # Part de `montant` qui n'a pas pu s'imputer et qui est partie à l'avoir de
+    # l'abonné (trop-perçu).
+    #
+    # Sans ce champ, l'annulation était incapable de distinguer les deux : elle
+    # rétablissait le solde à partir du montant reçu et laissait l'avoir intact.
+    # Un versement de 10 000 sur une facture de 5 000, puis annulé, rendait
+    # 10 000 à l'abonné en lui laissant 5 000 de crédit — mesuré.
+    montant_excedent = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     date_paiement = models.DateField()
     mode_paiement = models.CharField(max_length=20, choices=ModePaiement.choices)
     reference_transaction = models.CharField(max_length=100, blank=True, default="")
@@ -123,6 +132,11 @@ class TypeMouvementAvoir(models.TextChoices):
     # Distinct d'un trop-perçu : l'abonné n'a pas versé de trop, c'est la
     # facture qui a disparu sous son versement.
     ANNULATION = "ANNULATION", "Annulation de facture"
+    # Débit né de l'annulation d'un versement en trop-perçu : l'excédent qu'on
+    # avait porté au crédit repart, puisque le versement qui l'a produit n'existe
+    # plus. Volontairement distinct d'ANNULATION, qui est un crédit — les deux
+    # naissent d'une annulation mais vont en sens opposés.
+    REPRISE_TROP_PERCU = "REPRISE_TROP_PERCU", "Reprise d'un trop-perçu annulé"
 
 
 class MouvementAvoir(models.Model):

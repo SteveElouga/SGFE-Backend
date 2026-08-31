@@ -231,11 +231,13 @@ class PaiementService:
             part_imputee = min(montant_d, solde_restant) if solde_restant > 0 else Decimal("0")
             excedent = montant_d - part_imputee
 
-            # Enregistrement du paiement (montant réellement reçu)
+            # Enregistrement du paiement (montant réellement reçu, et la part
+            # partie à l'avoir — c'est elle qui rend l'annulation exacte).
             paiement = self._paiement_repo.create(
                 facture_id=facture_id,
                 abonne_id=abonne_id,
                 montant=montant_d,
+                montant_excedent=excedent,
                 date_paiement=date_paiement,
                 mode_paiement=mode_paiement,
                 reference_transaction=reference,
@@ -324,6 +326,15 @@ class PaiementService:
             if restant > 0:
                 self._avoir_repo.crediter(abonne_id, restant)
                 self._mouvement_repo.create(abonne_id, restant, TypeMouvementAvoir.TROP_PERCU)
+                # L'excédent se rattache à la DERNIÈRE écriture : c'est elle
+                # qu'on annulera pour reprendre le crédit. Un versement réparti
+                # sur trois factures dont il reste 2 000 laisse donc 2 000
+                # d'excédent sur la troisième écriture, et zéro sur les deux
+                # premières — chacune ne rend que ce qu'elle a imputé.
+                if crees:
+                    dernier = crees[-1]
+                    dernier.montant_excedent = restant
+                    dernier.save(update_fields=["montant_excedent"])
 
         return crees, restant
 
@@ -340,20 +351,103 @@ class PaiementService:
         return self._solde_repo.total_du_abonne(abonne_id, hors_facture_id)
 
     def annuler_paiement(self, paiement_id: str, motif: str, annule_par: str) -> tuple[Paiement, SoldeFacture]:
-        """Annule un paiement (annulation douce) et rétablit le solde de la facture.
+        """Annule un paiement (annulation douce) et défait ce qu'il avait produit.
 
         Le paiement reste en base, marqué annulé (traçabilité qui/quand/pourquoi).
-        Un paiement déjà annulé est refusé (pas de double rétablissement du solde).
+        Un paiement déjà annulé est refusé (pas de double rétablissement).
+
+        Un versement a jusqu'à trois conséquences, et les trois se défont ici :
+
+        1. **le solde de la facture**, rétabli de la seule part imputée — pas du
+           montant reçu. Un versement de 10 000 sur une facture de 5 000 n'a
+           imputé que 5 000 ; rétablir 10 000 s'appuyait sur un garde-fou
+           anti-négatif au lieu d'être juste.
+
+        2. **l'avoir de l'abonné**, débité de l'excédent qui y était parti.
+           Sans cela, on rendait 10 000 à l'abonné en lui laissant 5 000 de
+           crédit — mesuré avant correction.
+
+        3. **le suivi d'impayé**, rouvert quand la facture n'est plus soldée.
+           C'était le manque le plus coûteux : `resolu_le` restait daté, donc le
+           cron de 8 h sautait la facture. La dette était rétablie et plus
+           jamais relancée — silencieusement, en vieillissant.
+
+        Raises:
+            ValidationError: si l'excédent a déjà été consommé par une facture
+                suivante. Voir `_reprendre_excedent`.
         """
         with transaction.atomic():
             paiement = self._paiement_repo.get_by_id(paiement_id)
             if paiement.annule:
                 raise ValidationError("Ce paiement est déjà annulé.")
+
+            excedent = Decimal(str(paiement.montant_excedent or 0))
+            part_imputee = Decimal(str(paiement.montant)) - excedent
+
+            # L'avoir se reprend AVANT toute écriture : si l'excédent a déjà été
+            # dépensé, l'annulation est refusée en bloc plutôt que faite à moitié.
+            if excedent > 0:
+                self._reprendre_excedent(paiement.abonne_id, excedent)
+
             # Verrou du solde pour sérialiser avec les versements concurrents.
             solde = self._solde_repo.get_by_facture_id(paiement.facture_id, for_update=True)
-            solde = self._solde_repo.update_after_annulation(solde, paiement.montant)
+            solde = self._solde_repo.update_after_annulation(solde, part_imputee)
             paiement = self._paiement_repo.marquer_annule(paiement, motif=motif, annule_par=annule_par)
+
+            self._rouvrir_suivi_impaye(solde)
+
         return paiement, solde
+
+    def _reprendre_excedent(self, abonne_id: str, excedent: Decimal) -> None:
+        """Débite l'avoir de l'excédent d'un versement qu'on annule.
+
+        Refuse si l'avoir ne le porte plus. Ce cas arrive dès qu'une facture
+        suivante a été créée entre-temps : son solde a consommé l'avoir à sa
+        naissance, et l'excédent n'existe plus sous forme de crédit.
+
+        Le rendre malgré tout demanderait de remonter la chaîne d'imputation —
+        rétablir le solde de la facture suivante, qui a peut-être déjà été
+        relancée, voire soldée par d'autres versements. Ce n'est pas une
+        correction qu'on improvise dans une transaction : **un refus explicite
+        vaut mieux qu'un solde faux.**
+        """
+        avoir = self._avoir_repo.get_for_update(abonne_id)
+        disponible = Decimal(str(avoir.montant)) if avoir is not None else Decimal("0")
+        if disponible < excedent:
+            raise ValidationError(
+                f"Annulation impossible : le trop-perçu de {excedent} a déjà été imputé sur une "
+                f"facture suivante (avoir disponible : {disponible}). Annulez d'abord cette "
+                "imputation, ou émettez un avoir de rectification."
+            )
+        self._avoir_repo.consommer(avoir, excedent)
+        self._mouvement_repo.create(abonne_id, excedent, TypeMouvementAvoir.REPRISE_TROP_PERCU)
+
+    def _rouvrir_suivi_impaye(self, solde: SoldeFacture) -> None:
+        """Rouvre le suivi d'impayé d'une facture qui n'est plus soldée.
+
+        Le cron de relance ignore un suivi dont `resolu_le` est daté. Une facture
+        rétablie en IMPAYEE ou PARTIELLE doit donc redevenir relançable — sinon
+        la dette existe et rien ne s'en occupe.
+
+        La resuspension de l'abonné n'est pas faite ici : c'est le cron qui la
+        décide, à l'étape 4, en fonction de l'ancienneté. Le rouvrir suffit à le
+        remettre sur ce chemin, et évite de resuspendre quelqu'un dont la dette
+        n'a qu'un jour.
+        """
+        if solde.statut == StatutSolde.PAYEE:
+            return
+        try:
+            suivi = self._suivi_repo.get_by_facture_id(solde.facture_id)
+        except ObjectDoesNotExist:
+            return  # jamais tombée en impayé, rien à rouvrir
+        if suivi.resolu_le is None:
+            return
+        suivi.resolu_le = None
+        self._suivi_repo.save_suivi(suivi)
+        logger.info(
+            "Suivi impayé rouvert après annulation d'un paiement",
+            extra={"facture_id": solde.facture_id, "statut": solde.statut},
+        )
 
     def get_solde(self, facture_id: str) -> SoldeFacture:
         """Retourne le solde courant d'une facture."""
