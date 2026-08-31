@@ -1,0 +1,275 @@
+# Déploiement en production — Phase 3 du plan de livraison.
+#
+# Le backend n'avait AUCUN workflow de déploiement : seulement `ci.yml`, qui
+# construit et publie, et `release.yml`. La mise en production se faisait à la
+# main, avec `--build`, ce qui recompilait sur place et n'exécutait jamais les
+# images signées. La Phase 0 a fermé ce verrou côté compose ; ce fichier est le
+# chemin automatisé qui l'emprunte.
+#
+# ── Ce que ce workflow refuse de faire ──────────────────────────────────────
+#
+# Il ne stocke aucune clé SSH. Le rôle OIDC de GitHub est assumé le temps du
+# déploiement, et les commandes partent par SSM Session Manager : rien à faire
+# tourner, rien à révoquer, port 22 fermé. C'est le point 4 du registre, et
+# c'est ce qui distingue ce fichier des workflows du frontend, qui portent une
+# clé permanente dans `secrets.SSH_PRIVATE_KEY`.
+#
+# Il ne déploie pas sans vérifier les signatures. La chaîne cosign, SBOM et
+# provenance est construite depuis juillet et n'était consommée par personne —
+# une signature que rien ne vérifie ne protège de rien.
+#
+# Il ne laisse pas les conteneurs migrer eux-mêmes. Voir
+# `docker-compose.prod.yml`, section des services Django : combiné à
+# `restart: unless-stopped`, une migration fautive boucle indéfiniment.
+#
+# ── PRÉREQUIS — ce workflow ne peut pas encore s'exécuter ───────────────────
+#
+# Il attend l'infrastructure de la Phase 1, qui n'existe pas au 31/08/2026 :
+#
+#   • une instance EC2 étiquetée `Project=SGFE`, avec l'agent SSM
+#   • le rôle `sgfe-github-deploy`, assumable par ce dépôt et cette branche
+#   • `/opt/sgfe/` contenant les deux composes et un `.env`
+#
+# Le job `prealables` échoue avec un message nommant ce qui manque, plutôt que
+# de laisser le déploiement échouer à mi-course. Voir
+# `docs/CHAINE_DE_LIVRAISON.md` §7 et §8.
+
+name: CD Production
+
+on:
+  push:
+    branches: [main]
+  # Déclenchement manuel : c'est aussi le chemin de retour arrière — on relance
+  # avec le SHA précédent.
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "SHA de l'image à déployer (vide = SHA du commit courant)"
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-production
+  # Ne JAMAIS annuler un déploiement en cours : l'interrompre entre la migration
+  # et le remplacement des conteneurs laisserait un schéma en avance sur le code.
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: eu-west-3
+  SSM_TARGET: "Key=tag:Project,Values=SGFE"
+  DEPLOY_DIR: /opt/sgfe
+  COMPOSE: -f docker-compose.yml -f docker-compose.prod.yml
+  # Les huit services à migrer, dans l'ordre. `auth` d'abord : les autres
+  # dépendent de ses comptes, et un échec là doit arrêter tout de suite.
+  SERVICES_A_MIGRER: "auth-service abonne-service campagne-service facturation-service paiement-service notification-service config-service reporting-service"
+  SERVICES_SIGNES: "gateway auth-service abonne-service campagne-service facturation-service paiement-service notification-service config-service reporting-service nginx whatsapp-service"
+
+jobs:
+  # ── 1. Ce qui manque doit se dire avant, pas à mi-course ───────────────────
+  prealables:
+    name: Préalables
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifier la configuration du déploiement
+        env:
+          ROLE: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          REPO_GHCR: ${{ vars.GHCR_REPO }}
+        run: |
+          manquants=""
+          [ -n "$ROLE" ] || manquants="$manquants\n  • secrets.AWS_DEPLOY_ROLE_ARN — le rôle OIDC (voir CHAINE_DE_LIVRAISON §7)"
+          [ -n "$REPO_GHCR" ] || manquants="$manquants\n  • vars.GHCR_REPO — le dépôt GHCR en minuscules, ex. steveelouga/sgfe-backend"
+          if [ -n "$manquants" ]; then
+            echo "::error title=Déploiement non configuré::L'infrastructure de la Phase 1 n'est pas en place."
+            printf "Configuration manquante :%b\n" "$manquants"
+            echo ""
+            echo "Ce workflow ne peut pas s'exécuter avant que l'instance EC2, l'agent SSM"
+            echo "et le rôle sgfe-github-deploy existent. Voir docs/CHAINE_DE_LIVRAISON.md §7 et §8."
+            exit 1
+          fi
+          echo "Configuration présente."
+
+  # ── 2. Vérifier les signatures avant de toucher à la production ────────────
+  verifier-signatures:
+    name: Vérifier les signatures
+    needs: prealables
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+    steps:
+      - name: Déterminer le tag à déployer
+        id: tag
+        run: echo "value=${{ inputs.image_tag || github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Vérifier les onze images
+        env:
+          REPO_GHCR: ${{ vars.GHCR_REPO }}
+          TAG: ${{ steps.tag.outputs.value }}
+        run: |
+          set -euo pipefail
+          echo "Tag déployé : $TAG"
+          for svc in $SERVICES_SIGNES; do
+            echo "── $svc"
+            # `--certificate-identity-regexp` ancré sur CE dépôt ET ce workflow :
+            # une signature valide produite par un autre dépôt ne doit pas passer.
+            cosign verify "ghcr.io/${REPO_GHCR}/${svc}:${TAG}" \
+              --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/ci\.yml@" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              > /dev/null
+          done
+          echo "Onze signatures vérifiées."
+    outputs:
+      tag: ${{ steps.tag.outputs.value }}
+
+  # ── 3. Déployer ───────────────────────────────────────────────────────────
+  deployer:
+    name: Déployer
+    needs: verifier-signatures
+    runs-on: ubuntu-latest
+    # Porte d'approbation manuelle si l'environnement en déclare une.
+    environment:
+      name: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TAG: ${{ needs.verifier-signatures.outputs.tag }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Une seule commande distante par étape, construite par `jq`.
+      #
+      # J'avais d'abord généré la liste des migrations côté runner, avec une
+      # boucle shell imbriquée dans une chaîne JSON dans du YAML. Trois niveaux
+      # d'échappement pour produire ce qu'une boucle sur la machine fait en une
+      # ligne — et chaque niveau est une occasion de casser silencieusement.
+      #
+      # `jq -n --arg` échappe le script pour nous : aucun guillemet à compter.
+      - name: Tirer, migrer, relancer
+        run: |
+          set -euo pipefail
+          script=$(cat <<'DISTANT'
+          set -euo pipefail
+          cd DEPLOY_DIR_PLACEHOLDER
+          # Le tag en service est conservé AVANT d'écrire le nouveau : c'est lui
+          # qui sert de retour arrière. L'écraser d'abord serait le perdre.
+          cp .env .env.precedent
+          sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=TAG_PLACEHOLDER/" .env
+          docker compose COMPOSE_PLACEHOLDER pull
+          # Les migrations, une par une, arrêt au premier échec — AVANT `up -d`.
+          # Les conteneurs en service ne sont donc jamais remplacés par du code
+          # dont le schéma a échoué.
+          for s in SERVICES_PLACEHOLDER; do
+            echo "── migration $s"
+            docker compose COMPOSE_PLACEHOLDER run --rm --no-deps "$s" python manage.py migrate --noinput
+          done
+          docker compose COMPOSE_PLACEHOLDER up -d --no-build
+          DISTANT
+          )
+          script=${script//DEPLOY_DIR_PLACEHOLDER/$DEPLOY_DIR}
+          script=${script//TAG_PLACEHOLDER/$TAG}
+          script=${script//COMPOSE_PLACEHOLDER/$COMPOSE}
+          script=${script//SERVICES_PLACEHOLDER/$SERVICES_A_MIGRER}
+
+          aws ssm send-command \
+            --targets "$SSM_TARGET" \
+            --document-name AWS-RunShellScript \
+            --comment "SGFE deploy ${TAG}" \
+            --parameters "$(jq -n --arg s "$script" '{commands: [$s]}')" \
+            --output text > /dev/null
+          echo "Déploiement lancé."
+
+
+      - name: Attendre que les conteneurs soient sains
+        run: |
+          set -euo pipefail
+          script=$(cat <<'DISTANT'
+          cd DEPLOY_DIR_PLACEHOLDER
+          # Les onze images portent un HEALTHCHECK. On attend qu'aucune ne soit
+          # `unhealthy` — dix minutes au plus, car le service WhatsApp démarre
+          # Chromium et met plusieurs minutes à se rattacher (mesuré : ~7 min).
+          for i in $(seq 1 60); do
+            malades=$(docker compose COMPOSE_PLACEHOLDER ps --format json | grep -c unhealthy || true)
+            [ "$malades" = "0" ] && exit 0
+            sleep 10
+          done
+          echo "conteneurs encore unhealthy apres 10 minutes"
+          docker compose COMPOSE_PLACEHOLDER ps
+          exit 1
+          DISTANT
+          )
+          script=${script//DEPLOY_DIR_PLACEHOLDER/$DEPLOY_DIR}
+          script=${script//COMPOSE_PLACEHOLDER/$COMPOSE}
+          aws ssm send-command \
+            --targets "$SSM_TARGET" \
+            --document-name AWS-RunShellScript \
+            --parameters "$(jq -n --arg s "$script" '{commands: [$s]}')" \
+            --output text > /dev/null
+
+      - name: Test de fumée — la gateway répond à une vraie requête GraphQL
+        run: |
+          set -euo pipefail
+          # `{__typename}` est un méta-champ : ni authentification, ni
+          # introspection. C'est la même sonde que le healthcheck de l'image — un
+          # GET sur /graphql renverrait 400 depuis que GraphiQL est coupé.
+          script=$(cat <<'DISTANT'
+          set -euo pipefail
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST http://localhost:8080/graphql \
+            -H "Content-Type: application/json" \
+            -d '{"query":"{__typename}"}')
+          [ "$code" = "200" ] || { echo "gateway HTTP $code"; exit 1; }
+          DISTANT
+          )
+          aws ssm send-command \
+            --targets "$SSM_TARGET" \
+            --document-name AWS-RunShellScript \
+            --parameters "$(jq -n --arg s "$script" '{commands: [$s]}')" \
+            --output text > /dev/null
+          echo "Test de fumée passé."
+
+      # ── Retour arrière ─────────────────────────────────────────────────────
+      #
+      # Il restaure `.env.precedent` et relance. Il ne défait PAS les migrations :
+      # une migration Django n'est pas toujours réversible, et l'inverser à
+      # l'aveugle sur des données de production est plus dangereux que de
+      # laisser un schéma en avance sur le code.
+      #
+      # C'est un choix, et il a une conséquence à connaître : un déploiement dont
+      # la migration a réussi mais dont le code échoue laisse le schéma neuf.
+      # C'est pourquoi les migrations doivent rester **compatibles vers
+      # l'arrière** — ajouter une colonne, jamais la renommer en une fois.
+      - name: En cas d'échec — restaurer la version précédente
+        if: failure()
+        run: |
+          set -euo pipefail
+          echo "::warning title=Retour arrière::Déploiement échoué, restauration de la version précédente."
+          script=$(cat <<'DISTANT'
+          set -euo pipefail
+          cd DEPLOY_DIR_PLACEHOLDER
+          [ -f .env.precedent ] || { echo "pas de .env.precedent — retour arriere impossible"; exit 1; }
+          cp .env.precedent .env
+          docker compose COMPOSE_PLACEHOLDER pull
+          docker compose COMPOSE_PLACEHOLDER up -d --no-build
+          DISTANT
+          )
+          script=${script//DEPLOY_DIR_PLACEHOLDER/$DEPLOY_DIR}
+          script=${script//COMPOSE_PLACEHOLDER/$COMPOSE}
+          aws ssm send-command \
+            --targets "$SSM_TARGET" \
+            --document-name AWS-RunShellScript \
+            --comment "SGFE rollback depuis ${TAG}" \
+            --parameters "$(jq -n --arg s "$script" '{commands: [$s]}')" \
+            --output text > /dev/null
+          echo "::error title=Déploiement échoué::Version précédente restaurée. Le schéma de base n'a PAS été inversé."
