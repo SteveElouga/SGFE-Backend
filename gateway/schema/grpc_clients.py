@@ -1,8 +1,8 @@
 import sys
 from pathlib import Path
 
-import grpc
 from django.conf import settings
+from schema.grpc_auth import canal_authentifie
 
 sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 
@@ -29,7 +29,7 @@ class AuthServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.AUTH_GRPC_HOST}:{settings.AUTH_GRPC_PORT}"
-        self._channel = grpc.insecure_channel(address)
+        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
         self._stub = auth_pb_grpc.AuthServiceStub(self._channel)
 
     def login(self, identifier: str, password: str) -> auth_pb.TokenResponse:
@@ -93,7 +93,7 @@ class AbonneServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.ABONNE_GRPC_HOST}:{settings.ABONNE_GRPC_PORT}"
-        self._channel = grpc.insecure_channel(address)
+        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
         self._stub = abonne_pb_grpc.AbonneServiceStub(self._channel)
 
     def get_abonne(self, abonne_id: str) -> abonne_pb.AbonneResponse:
@@ -138,7 +138,7 @@ class ConfigServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.CONFIG_GRPC_HOST}:{settings.CONFIG_GRPC_PORT}"
-        self._channel = grpc.insecure_channel(address)
+        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
         self._stub = config_pb_grpc.ConfigServiceStub(self._channel)
 
     def get_infos_societe(self) -> config_pb.InfosSocieteResponse:
@@ -162,7 +162,7 @@ class CampagneServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.CAMPAGNE_GRPC_HOST}:{settings.CAMPAGNE_GRPC_PORT}"
-        self._channel = grpc.insecure_channel(address)
+        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
         self._stub = campagne_pb_grpc.CampagneServiceStub(self._channel)
 
     def create_campagne(self, **kwargs) -> campagne_pb.CampagneResponse:
@@ -229,7 +229,7 @@ class FacturationServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.FACTURATION_GRPC_HOST}:{settings.FACTURATION_GRPC_PORT}"
-        self._channel = grpc.insecure_channel(address)
+        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
         self._stub = facturation_pb_grpc.FacturationServiceStub(self._channel)
 
     def get_tarif_actuel(self) -> facturation_pb.TarifResponse:
@@ -308,7 +308,7 @@ class PaiementServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.PAIEMENT_GRPC_HOST}:{settings.PAIEMENT_GRPC_PORT}"
-        self._channel = grpc.insecure_channel(address)
+        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
         self._stub = paiement_pb_grpc.PaiementServiceStub(self._channel)
 
     def get_solde(self, facture_id: str) -> paiement_pb.SoldeResponse:
@@ -401,7 +401,7 @@ class NotificationServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.NOTIFICATION_GRPC_HOST}:{settings.NOTIFICATION_GRPC_PORT}"
-        self._channel = grpc.insecure_channel(address)
+        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
         self._stub = notification_pb_grpc.NotificationServiceStub(self._channel)
 
     def envoyer_facture(self, facture_id: str, abonne_id: str) -> notification_pb.EnvoiResponse:
@@ -439,7 +439,7 @@ class ReportingServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.REPORTING_GRPC_HOST}:{settings.REPORTING_GRPC_PORT}"
-        self._channel = grpc.insecure_channel(address)
+        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
         self._stub = reporting_pb_grpc.ReportingServiceStub(self._channel)
 
     def get_dashboard(self) -> reporting_pb.DashboardResponse:

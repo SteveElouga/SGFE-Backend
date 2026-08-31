@@ -12,6 +12,7 @@ import config_service_pb2_grpc as pb_grpc
 
 from parametres.event_publisher import publish_config_event
 from parametres.grpc_interceptors import ErrorHandlingInterceptor
+from parametres.grpc_auth import AuthServerInterceptor
 from parametres.serializers import config_to_response, infos_to_response
 from parametres.services import ConfigService, InfosSocieteService
 
@@ -56,7 +57,7 @@ class ConfigServiceServicer(pb_grpc.ConfigServiceServicer):
 def serve() -> None:
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=10),
-        interceptors=[ErrorHandlingInterceptor()],
+        interceptors=[AuthServerInterceptor(settings.INTERNAL_GRPC_KEY), ErrorHandlingInterceptor()],
     )
     pb_grpc.add_ConfigServiceServicer_to_server(ConfigServiceServicer(), server)
     server.add_insecure_port(f"[::]:{settings.CONFIG_GRPC_PORT}")
