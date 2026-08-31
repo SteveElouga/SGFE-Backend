@@ -300,6 +300,8 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
         paiements = self._svc.list_paiements(
             facture_id=request.facture_id,
             abonne_id=request.abonne_id,
+            date_debut=request.date_debut,
+            date_fin=request.date_fin,
         )
         return pb.ListPaiementsResponse(paiements=[paiement_to_proto(p) for p in paiements])
 

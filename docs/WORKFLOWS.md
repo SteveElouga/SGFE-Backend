@@ -232,6 +232,34 @@ Chaque appel relit le solde courant en base et recalcule à partir de là — au
 
 On annule un **versement**, pas une de ses lignes : les écritures partageant le `versement_id` sont annulées d'un bloc. Un excédent déjà porté à l'avoir est reprisé (refus si le crédit a déjà été dépensé), les `SuiviImpaye` sont rouverts (`resolu_le = None`), les recettes du read model sont décrémentées (`PAIEMENT_ANNULE`), et l'abonné est prévenu (étape 5).
 
+
+### 5.6 Exports comptables (CSV)
+
+*Rôle requis : ADMIN ou COMPTABLE. Routes HTTP, pas GraphQL — un flux CSV s'y prête mal.*
+
+```
+GET /rapports/factures.csv    ?campagne_id=  et/ou  ?date_debut=&date_fin=
+GET /rapports/paiements.csv   ?campagne_id=  et/ou  ?date_debut=&date_fin=
+```
+
+Bornes ISO `AAAA-MM-JJ`, **incluses**. Aucun critère = tout l'historique, ce qu'une clôture d'exercice demande. Une date mal formée est **refusée** (400) plutôt qu'ignorée : un export silencieusement non borné rendrait tout l'historique là où le comptable a demandé un mois, et rien ne le lui dirait avant qu'il somme la colonne.
+
+| Export | La période porte sur | Pourquoi cette date |
+|---|---|---|
+| factures | `date_generation` | une régularisation n'a pas de relevé — c'est la seule date que portent les deux natures |
+| paiements | `date_paiement` | la date de caisse, celle qu'un journal demande |
+
+> ⚠️ **`campagne_id` était OBLIGATOIRE** (400 sinon). Deux verrous, tous deux bloquants pour une clôture :
+>
+> 1. **Aucun journal par période.** Il fallait exporter campagne par campagne et recoller les fichiers à la main.
+> 2. **Les régularisations étaient exportables par aucun chemin.** `creer_regularisation` crée la facture ET son solde avec `campagne_id=""` ; le filtre par campagne ne les trouvait donc jamais, ni la facture ni ses paiements. La seule dette qu'on saisit à la main — l'arriéré antérieur à la mise en service — était structurellement invisible de la comptabilité exportée.
+
+**Colonnes ajoutées, et pourquoi elles changent les totaux.**
+
+*Factures* : `nature`, `motif`, `campagne_id`, `date_generation`. Sans `nature`, rien ne distingue dans le fichier une régularisation — consommation à 0, index vides — d'une facture de consommation. Le comptable lisait des lignes à 0 m³ sans savoir pourquoi, et sans pouvoir rapprocher le montant d'un motif. `date_generation` est la colonne qui a servi à borner l'export : sans elle, on ne peut pas vérifier son propre extrait.
+
+*Paiements* : `annule`, `annule_le`, `annule_par`, `motif_annulation`. Les paiements annulés étaient **déjà** dans l'export — ni le repo ni la vue ne les excluaient — mais rien ne les signalait. Un comptable qui sommait la colonne `montant` comptait donc comme recette des versements annulés. Faux, et faux en silence.
+
 ---
 
 ## 6. Gestion des impayés

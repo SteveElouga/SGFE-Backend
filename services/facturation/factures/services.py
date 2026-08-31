@@ -42,6 +42,21 @@ logger = logging.getLogger(__name__)
 _MAX_NUMERO_RETRIES = 5
 
 
+def _date_ou_none(valeur: str, nom: str) -> datetime.date | None:
+    """Parse une borne ISO, ou `None` si elle est vide.
+
+    Une date illisible lève plutôt que d'être ignorée : un export silencieusement
+    non borné rendrait tout l'historique là où le comptable a demandé un mois, et
+    il n'aurait aucun moyen de s'en apercevoir avant de sommer la colonne.
+    """
+    if not valeur:
+        return None
+    try:
+        return datetime.date.fromisoformat(valeur)
+    except ValueError as exc:
+        raise ValidationError(f"{nom} doit être une date ISO AAAA-MM-JJ (reçu : {valeur!r}).") from exc
+
+
 @dataclass
 class ReleveData:
     """DTO représentant un relevé provenant du Campagne Service."""
@@ -362,11 +377,25 @@ class FactureService:
         campagne_id: str = "",
         abonne_id: str = "",
         statut: str = "",
+        date_debut: str = "",
+        date_fin: str = "",
     ) -> list[Facture]:
-        """Retourne les factures filtrées. Tous les paramètres sont optionnels."""
+        """Retourne les factures filtrées. Tous les paramètres sont optionnels.
+
+        `date_debut` / `date_fin` : bornes ISO `AAAA-MM-JJ` incluses, sur la date
+        de génération. Elles rendent possible un journal par période — mois,
+        exercice — là où seul le filtre par campagne existait, ce qui laissait
+        les régularisations (`campagne_id` vide) exportables par aucun chemin.
+        """
         if statut and statut not in StatutFacture.values:
             raise ValidationError(f"Statut invalide : {statut}. Valeurs attendues : {', '.join(StatutFacture.values)}")
-        return self._repo.list_by_filters(campagne_id=campagne_id, abonne_id=abonne_id, statut=statut)
+        return self._repo.list_by_filters(
+            campagne_id=campagne_id,
+            abonne_id=abonne_id,
+            statut=statut,
+            date_debut=_date_ou_none(date_debut, "date_debut"),
+            date_fin=_date_ou_none(date_fin, "date_fin"),
+        )
 
     def _lire_solde_anterieur(self, abonne_id: str, facture_id: str) -> tuple[Decimal, int, str]:
         """Interroge Paiement pour la dette de l'abonné, hors la facture imprimée.

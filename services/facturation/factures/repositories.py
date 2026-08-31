@@ -110,7 +110,15 @@ class FactureRepository:
         campagne_id: str = "",
         abonne_id: str = "",
         statut: str = "",
+        date_debut: "datetime.date | None" = None,
+        date_fin: "datetime.date | None" = None,
     ) -> list[Facture]:
+        """Factures filtrées. Tous les critères sont optionnels et se combinent.
+
+        Les bornes de PÉRIODE portent sur `date_generation`, et non sur
+        `date_releve` : une régularisation n'a pas de relevé, et c'est la seule
+        date que portent les deux natures de facture. Bornes incluses.
+        """
         qs = Facture.objects.all()
         filters = Q()
         if campagne_id:
@@ -119,6 +127,10 @@ class FactureRepository:
             filters &= Q(abonne_id=abonne_id)
         if statut:
             filters &= Q(statut=statut)
+        if date_debut:
+            filters &= Q(date_generation__date__gte=date_debut)
+        if date_fin:
+            filters &= Q(date_generation__date__lte=date_fin)
         return list(qs.filter(filters).order_by("-date_generation"))
 
     def update_statut(self, facture: Facture, statut: str) -> Facture:

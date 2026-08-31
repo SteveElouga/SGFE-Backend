@@ -33,6 +33,21 @@ from .repositories import (
 logger = logging.getLogger(__name__)
 
 
+def _borne_ou_none(valeur: str, nom: str) -> date | None:
+    """Parse une borne de période ISO, ou `None` si elle est vide.
+
+    Une date illisible lève plutôt que d'être ignorée : un journal
+    silencieusement non borné rendrait tout l'historique là où le comptable a
+    demandé un mois, et rien ne le lui dirait avant qu'il somme la colonne.
+    """
+    if not valeur:
+        return None
+    try:
+        return date.fromisoformat(valeur)
+    except ValueError as exc:
+        raise ValidationError(f"{nom} doit être une date ISO AAAA-MM-JJ (reçu : {valeur!r}).") from exc
+
+
 class PaiementService:
     """Gestion des paiements et des soldes de factures."""
 
@@ -569,9 +584,26 @@ class PaiementService:
         """Retourne le solde courant d'une facture."""
         return self._solde_repo.get_by_facture_id(facture_id)
 
-    def list_paiements(self, facture_id: str = "", abonne_id: str = "") -> list[Paiement]:
-        """Liste les paiements, filtrés par facture et/ou abonné."""
-        return self._paiement_repo.list_by_facture_and_abonne(facture_id, abonne_id)
+    def list_paiements(
+        self,
+        facture_id: str = "",
+        abonne_id: str = "",
+        date_debut: str = "",
+        date_fin: str = "",
+    ) -> list[Paiement]:
+        """Liste les paiements, filtrés par facture, abonné et/ou période.
+
+        `date_debut` / `date_fin` : bornes ISO `AAAA-MM-JJ` incluses, sur la date
+        de paiement. C'est ce qu'un journal de caisse demande — et le seul chemin
+        par lequel un paiement de régularisation devient exportable, son
+        `SoldeFacture` portant un `campagne_id` vide.
+        """
+        return self._paiement_repo.list_by_facture_and_abonne(
+            facture_id,
+            abonne_id,
+            date_debut=_borne_ou_none(date_debut, "date_debut"),
+            date_fin=_borne_ou_none(date_fin, "date_fin"),
+        )
 
     def list_paiements_par_campagne(self, campagne_id: str) -> list[Paiement]:
         """Liste tous les paiements des factures d'une campagne (export CSV)."""
