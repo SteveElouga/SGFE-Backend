@@ -1,0 +1,91 @@
+name: Publier et signer une image multi-architecture
+
+# Construit `linux/amd64` **et** `linux/arm64`, pousse la liste de manifestes sur
+# GHCR, et la signe — la liste et chacune de ses images enfants.
+#
+# ── Pourquoi arm64 ────────────────────────────────────────────────────────────
+#
+# L'infrastructure Ansible provisionne un `t4g.medium` — Graviton, arm64,
+# dimensionné sur des `docker stats` réels. Tant que la CI ne publiait que de
+# l'amd64, **aucun conteneur n'aurait démarré sur cette instance**. C'était le
+# blocage nommé au point 50 du registre, et la raison pour laquelle
+# `group_vars/all.yml` porte un avertissement à côté de `instance_type`.
+#
+# amd64 reste publié : les développeurs travaillent sur Mac Intel et sur des
+# postes x86, et les tests de fumée de `cd-prod.yml` tournent sur un runner amd64.
+# Ne publier que de l'arm64 casserait les deux.
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: "Nom de l'image, ex. auth-service"
+        required: true
+        type: string
+      context:
+        description: "Répertoire de build, ex. services/auth"
+        required: true
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Deux architectures dont une émulée : plus long qu'un build simple, mais
+    # très loin des 6 heures par défaut. Le plafond reste un garde-fou de coût.
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+      # Signature cosign sans clé : le jeton OIDC du job EST l'identité signée.
+      id-token: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Mettre le nom du dépôt en minuscules
+        # GHCR refuse les majuscules dans un nom d'image, et `GITHUB_REPOSITORY`
+        # en contient.
+        run: echo "REPO_LC=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        id: build
+        with:
+          context: ${{ inputs.context }}
+          # Les deux architectures en UN seul build : buildx produit une liste
+          # de manifestes, et `docker pull` sur la machine choisit la bonne
+          # variante tout seul. Le compose de production n'a rien à savoir.
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ env.REPO_LC }}/${{ inputs.service }}:${{ github.ref_name }}
+            ghcr.io/${{ env.REPO_LC }}/${{ inputs.service }}:${{ github.sha }}
+          # Scope distinct de celui des jobs de PR, qui construisent une
+          # architecture à la fois. Un build multi-plateformes gère lui-même les
+          # entrées par architecture à l'intérieur d'un seul scope ; le mélanger
+          # avec les scopes mono-plateforme ne ferait qu'aligner à moitié.
+          cache-from: type=gha,scope=${{ inputs.service }}-multi
+          cache-to: type=gha,mode=max,scope=${{ inputs.service }}-multi
+          sbom: true
+          provenance: true
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Signer l'image et ses variantes (keyless, OIDC GitHub)
+        # `--recursive` n'est pas décoratif.
+        #
+        # `steps.build.outputs.digest` est celui de la LISTE de manifestes. Sans
+        # ce drapeau, cosign ne signe que la liste — et la vérification de
+        # `cd-prod.yml` porterait sur un index, pas sur l'image arm64 réellement
+        # tirée et exécutée sur la machine.
+        #
+        # C'est le genre de trou qui ne se voit pas : la vérification passe, et
+        # ne prouve rien de ce qui tourne.
+        run: cosign sign --recursive --yes "ghcr.io/${REPO_LC}/${{ inputs.service }}@${{ steps.build.outputs.digest }}"

@@ -1,0 +1,85 @@
+name: Construire et scanner une image
+
+# Porte de PR : l'image se construit-elle, et est-elle exempte de CVE
+# CRITICAL/HIGH ? Ne pousse rien.
+#
+# ── Une architecture à la fois, et c'est délibéré ─────────────────────────────
+#
+# La matrice construit `linux/amd64` puis `linux/arm64` séparément, chacune
+# chargée dans le démon Docker local (`load: true`) et scannée par son nom local.
+#
+# On aurait pu construire les deux d'un coup et scanner la liste de manifestes.
+# Trivy ne scanne alors **qu'une** architecture — celle de l'hôte par défaut — et
+# `aquasecurity/trivy-action` n'expose AUCUNE entrée `platform` (vérifié dans son
+# `action.yaml` au SHA épinglé). Il aurait fallu parier sur une variable
+# d'environnement non documentée pour lui faire scanner l'autre : on scannerait
+# amd64 en croyant couvrir l'arm64 qu'on déploie.
+#
+# Une image par architecture, scannée sous son propre nom : rien à sélectionner,
+# rien à supposer. `load: true` charge sans problème une image arm64 sur un
+# runner amd64 — Trivy lit un système de fichiers, il ne l'exécute pas.
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: "Nom de l'image, ex. auth-service"
+        required: true
+        type: string
+      context:
+        description: "Répertoire de build, ex. services/auth"
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Plafonne le coût d'un blocage : sans lui, un build qui pend consomme les
+    # 6 heures de la limite par défaut.
+    timeout-minutes: 30
+    strategy:
+      # Une architecture en échec ne doit pas masquer le résultat de l'autre :
+      # savoir que seul arm64 casse est l'information utile.
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            suffixe: amd64
+          - platform: linux/arm64
+            suffixe: arm64
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # Émulation arm64 sur un runner amd64. Les runners arm64 gratuits de
+      # GitHub sont réservés aux dépôts publics ; celui-ci est privé, et des
+      # *larger runners* arm64 seraient facturés à la minute.
+      #
+      # Le surcoût est faible ici parce que toutes les roues aarch64 existent
+      # pour nos dépendances : `pip install` ne compile presque rien, et seuls
+      # `apt-get` et le travail de couches passent par l'émulation.
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        if: matrix.platform != 'linux/amd64'
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ${{ inputs.context }}
+          platforms: ${{ matrix.platform }}
+          push: false
+          load: true
+          tags: ${{ inputs.service }}:ci-${{ matrix.suffixe }}
+          # Portée du cache PAR ARCHITECTURE. Sans ce suffixe, les deux légs de
+          # la matrice écriraient dans le même scope et s'invalideraient
+          # mutuellement à chaque exécution : le cache ne servirait jamais.
+          cache-from: type=gha,scope=${{ inputs.service }}-${{ matrix.suffixe }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.service }}-${{ matrix.suffixe }}
+
+      - name: Scanner l'image (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ inputs.service }}:ci-${{ matrix.suffixe }}
+          severity: CRITICAL,HIGH
+          scanners: vuln
+          exit-code: "1"
+          ignore-unfixed: true

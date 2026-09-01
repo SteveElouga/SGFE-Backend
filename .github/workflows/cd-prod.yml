@@ -118,12 +118,24 @@ jobs:
             echo "── $svc"
             # `--certificate-identity-regexp` ancré sur CE dépôt ET ce workflow :
             # une signature valide produite par un autre dépôt ne doit pas passer.
+            #
+            # ⚠️ Le workflow visé est `_publish-image.yml`, PAS `ci.yml`.
+            #
+            # Fulcio dérive l'identité du certificat de `job_workflow_ref` — le
+            # workflow qui exécute réellement le job de signature — et non de
+            # `workflow_ref`, celui qui l'appelle. Depuis que la publication est
+            # un workflow réutilisable, l'identité signée est donc
+            # `_publish-image.yml@…` ; garder `ci\.yml@` ici ferait échouer la
+            # vérification des onze images, et bloquerait tout déploiement.
+            #
+            # La propriété de sécurité est intacte : l'ancrage porte toujours sur
+            # ce dépôt ET sur un workflow nommé.
             cosign verify "ghcr.io/${REPO_GHCR}/${svc}:${TAG}" \
-              --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/ci\.yml@" \
+              --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/_publish-image\.yml@" \
               --certificate-oidc-issuer https://token.actions.githubusercontent.com \
               > /dev/null
           done
-          echo "Onze signatures vérifiées."
+          echo "Onze signatures vérifiées — liste de manifestes ET variantes par architecture (cosign sign --recursive)."
     outputs:
       tag: ${{ steps.tag.outputs.value }}
 

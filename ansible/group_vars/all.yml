@@ -50,11 +50,16 @@ subnet_cidr: 10.0.1.0/24
 # lui seul, soit 57 % du total ; les HUIT PostgreSQL réunis n'en pèsent que 98.
 # Total mesuré : 1 640 Mo. Voir INFRASTRUCTURE_AWS.md §1 et §2.
 #
-# ⚠️ arm64 exige que les images soient construites pour cette architecture.
-# La CI ne publie aujourd'hui que amd64 — voir le point 50 du registre
-# (multi-architecture) et §11.8 de CHAINE_DE_LIVRAISON.md. Tant que ce n'est pas
-# fait, basculer `instance_type` sur `t3.medium` (x86) ou l'instance ne
-# démarrera aucun conteneur.
+# arm64 exige que les images soient construites pour cette architecture. C'était
+# le blocage du point 50 : la CI ne publiait que de l'amd64, et aucun conteneur
+# n'aurait démarré ici.
+#
+# ✅ Levé. `_publish-image.yml` construit `linux/amd64,linux/arm64` en un seul
+# build et pousse une liste de manifestes ; `docker pull` sur cette machine
+# choisit la variante arm64 tout seul. Le compose de production n'a rien à savoir.
+#
+# Les deux architectures restent publiées : les postes de développement sont en
+# x86, et les tests de fumée de `cd-prod.yml` tournent sur un runner amd64.
 instance_type: t4g.medium
 instance_architecture: arm64
 volume_racine_gio: 30

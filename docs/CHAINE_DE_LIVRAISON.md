@@ -502,9 +502,35 @@ La chaîne SLSA est **construite mais pas consommée** : le backend signe et att
 - [ ] attacher le SBOM aux releases GitHub (`release.yml`) plutôt que de le laisser uniquement dans le registre ;
 - [ ] activer la protection de branche sur `main` en exigeant **le seul contrôle `ci-status`** — il agrège déjà les 9 jobs requis.
 
-### 11.8 Axe 7 — construire en multi-architecture
+### 11.8 Axe 7 — construire en multi-architecture ✅ **FAIT**
 
-Prérequis au choix d'une instance Graviton, arbitré dans [`INFRASTRUCTURE_AWS.md`](./INFRASTRUCTURE_AWS.md) §2 : ≈ 6 $/mois nets. Ici, la mise en œuvre.
+> **Fait le 1er septembre 2026**, en même temps que l'axe 6 — les deux étaient
+> indissociables, et cette section le disait déjà.
+>
+> Deux workflows réutilisables, `_build-scan.yml` et `_publish-image.yml`,
+> remplacent 22 corps de jobs quasi identiques : **993 → 576 lignes** dans
+> `ci.yml`. La publication construit `linux/amd64,linux/arm64` en un seul build
+> et pousse une liste de manifestes. Le blocage du Graviton est levé.
+>
+> **Approche retenue : A (émulation QEMU)**, comme prévu.
+>
+> **Trois pièges sur trois, traités — mais pas tous comme prévu :**
+>
+> | Piège | Traitement réel |
+> |---|---|
+> | Portée du cache | `scope=<service>-<arch>` sur les jobs de PR ; scope `-multi` distinct pour la publication, qui construit les deux en un seul build |
+> | Signature | `cosign sign --recursive` — comme prévu |
+> | Analyse d'image | **pas** `trivy --platform`. `aquasecurity/trivy-action` n'expose aucune entrée `platform` (vérifié dans son `action.yaml` au SHA épinglé) : il aurait fallu parier sur une variable d'environnement non documentée. On construit et scanne **une architecture à la fois**, chargée localement — rien à sélectionner, rien à supposer. |
+>
+> **Un quatrième piège que cette section ne mentionnait pas, et qui aurait cassé
+> le déploiement :** Fulcio dérive l'identité du certificat de
+> `job_workflow_ref` — le workflow qui **exécute** le job de signature — et non
+> du workflow appelant. L'identité signée est donc `_publish-image.yml@…`, et le
+> `--certificate-identity-regexp` de `cd-prod.yml`, ancré sur `ci\.yml@`, aurait
+> fait échouer la vérification des onze images. Corrigé dans `cd-prod.yml` et
+> dans l'exemple de `DEPLOYMENT.md`.
+
+Prérequis au choix d'une instance Graviton, arbitré dans [`INFRASTRUCTURE_AWS.md`](./INFRASTRUCTURE_AWS.md) §2 : ≈ 6 $/mois nets. Ci-dessous, l'analyse qui a conduit à cette mise en œuvre.
 
 **Ce qui existe déjà :** `docker/setup-buildx-action` est présent **18 fois** — buildx est en place. **Ce qui manque :** `docker/setup-qemu-action` (0 occurrence) et `platforms:` (0 occurrence). Les 29 jobs tournent sur `ubuntu-latest`, donc amd64.
 
@@ -541,8 +567,14 @@ Ajouter `platforms:` à neuf jobs dupliqués, c'est neuf modifications à garder
 | 3 | `ng test` branché, `--pass-with-no-tests` retiré | **la CI frontend teste enfin quelque chose** | faible |
 | 4 | 25 actions frontend épinglées au SHA | supprime la dérive silencieuse d'action | faible |
 | 5 | Matrice sur `test-*` | 842 → ≈ 500 lignes | moyen |
-| 6 | Workflow réutilisable `_build-publish.yml` | ≈ 250 lignes, **débloque `config` et `reporting`** | moyen |
-| 7 | `platforms: linux/amd64,linux/arm64` via QEMU, cache scopé par plateforme | **débloque Graviton** — ≈ 6 $/mois nets | faible |
+| 6 | Workflow réutilisable ✅ **fait** — deux workflows (`_build-scan.yml`, `_publish-image.yml`) | **−417 lignes** dans `ci.yml` | moyen |
+| 7 | `platforms: linux/amd64,linux/arm64` via QEMU ✅ **fait** | **Graviton débloqué** — ≈ 6 $/mois nets | faible |
+
+> `config` et `reporting` avaient été débloqués plus tôt, en #142, sans attendre
+> la déduplication : leurs jobs de build, de test et de publication ont été
+> ajoutés à la main. La déduplication n'était donc plus un prérequis, seulement
+> la bonne façon d'ajouter le multi-architecture sans créer une duplication
+> de 22 configurations à garder synchronisées.
 | 8 | Dependabot frontend, `CODEOWNERS` backend | symétrie | nul |
 | 9 | `cosign verify --recursive` au déploiement | referme la chaîne de confiance | faible |
 

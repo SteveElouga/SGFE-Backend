@@ -83,5 +83,5 @@
           - ""
           - "Prochain pas : pousser sur main, ou lancer cd-prod.yml à la main."
           - ""
-          - "⚠️ Si l'instance est en arm64 (t4g), la CI doit publier des images"
-          - "   multi-plateformes — point 50. Sinon aucun conteneur ne démarrera."
+          - "✅ Les images sont publiées en multi-architecture (amd64 + arm64) :"
+          - "   une instance t4g tire d'elle-même la bonne variante."

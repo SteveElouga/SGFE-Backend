@@ -74,9 +74,20 @@ deux sens, et le retour arrière est aussi rapide que l'aller.
 
 La chaîne cosign n'a d'intérêt que si quelqu'un la consomme :
 
+> ⚠️ Le workflow visé est **`_publish-image.yml`**, pas `ci.yml`. Fulcio dérive
+> l'identité du certificat de `job_workflow_ref` — le workflow qui exécute
+> réellement le job de signature — et non du workflow appelant. Depuis que la
+> publication est un workflow réutilisable, l'identité signée est
+> `_publish-image.yml@…`.
+>
+> Les images sont signées avec `cosign sign --recursive` : la liste de manifestes
+> **et** chaque variante par architecture. Sans ce drapeau, la vérification
+> porterait sur un index et ne prouverait rien de l'image arm64 réellement
+> exécutée sur la machine.
+
 ```sh
 cosign verify \
-  --certificate-identity-regexp "https://github.com/${GHCR_REPO}/.github/workflows/ci.yml@.*" \
+  --certificate-identity-regexp "https://github.com/${GHCR_REPO}/.github/workflows/_publish-image.yml@.*" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   "ghcr.io/${GHCR_REPO}/auth-service:${IMAGE_TAG}"
 ```
