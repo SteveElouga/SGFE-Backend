@@ -1,8 +1,18 @@
 """Vue publique de l'espace abonné — EF-NOTIF-003.
 
 Accessible sans authentification via le token partagé dans le lien WhatsApp.
-Route : GET /espace-abonne/<token>/
-Route PDF : GET /espace-abonne/<token>/facture/<facture_id>/pdf/
+Route JSON : GET /espace-abonne/<token>/
+Route PDF  : GET /espace-abonne/<token>/facture/<facture_id>/pdf/
+Route CSV  : GET /espace-abonne/<token>/factures.csv
+
+EF-NOTIF-003 demande « toutes les factures (avec statut), historique de
+consommation, statut des paiements » et « boutons d'export : PDF et CSV ».
+§8.3 du SRS le redemande. Deux des quatre manquaient :
+
+* la **consommation** — l'abonné voyait des montants, jamais ses mètres cubes.
+  Il ne pouvait donc pas vérifier sa facture. Les champs étaient dans
+  `FactureResponse` depuis toujours ; personne ne les recopiait.
+* l'**export CSV** — seules la vue JSON et le PDF d'une facture existaient.
 """
 
 import logging
@@ -11,6 +21,7 @@ import grpc
 from django.http import FileResponse, HttpRequest, JsonResponse
 from django.views.decorators.http import require_GET
 
+from schema.csv_export import csv_response
 from schema.grpc_clients import facturation_client, notification_client, paiement_client
 
 logger = logging.getLogger(__name__)
@@ -20,11 +31,18 @@ def _token_response_invalide() -> JsonResponse:
     return JsonResponse({"erreur": "Token invalide ou expiré."}, status=401)
 
 
-@require_GET
-def espace_abonne(request: HttpRequest, token: str) -> JsonResponse:
-    """Retourne toutes les factures et soldes de l'abonné identifié par le token.
+def _donnees_abonne(token: str) -> tuple[dict | None, JsonResponse | None]:
+    """Collecte tout ce que l'espace abonné montre, ou l'erreur à renvoyer.
 
-    Réponse JSON :
+    Rend `(donnees, None)` ou `(None, reponse_d_erreur)`.
+
+    Extraite en fonction le jour où l'export CSV est arrivé : la validation du
+    token, la lecture des factures et l'enrichissement par les soldes sont
+    identiques pour les deux vues. Les écrire deux fois, c'est se garantir qu'un
+    jour l'une des deux montrera autre chose que l'autre — sur des données que
+    l'abonné va comparer.
+
+    Structure rendue :
     {
       "abonne_id": "...",
       "token_expiration": "YYYY-MM-DD",
@@ -39,6 +57,10 @@ def espace_abonne(request: HttpRequest, token: str) -> JsonResponse:
           "date_limite_paiement": "...",
           "solde_restant": 0.0,
           "montant_paye": 0.0,
+          "ancien_index": 0.0,
+          "nouveau_index": 0.0,
+          "consommation": 0.0,
+          "prix_m3": 0.0,
           "nature": "CONSOMMATION" | "REGULARISATION",
           "motif": ""
         }
@@ -50,10 +72,10 @@ def espace_abonne(request: HttpRequest, token: str) -> JsonResponse:
         token_resp = notification_client.valider_token(token)
     except grpc.RpcError as exc:
         logger.warning("ValiderToken gRPC error", extra={"error": str(exc)})
-        return _token_response_invalide()
+        return None, _token_response_invalide()
 
     if not token_resp.is_valid:
-        return _token_response_invalide()
+        return None, _token_response_invalide()
 
     abonne_id = token_resp.abonne_id
 
@@ -62,7 +84,7 @@ def espace_abonne(request: HttpRequest, token: str) -> JsonResponse:
         factures_resp = facturation_client.list_factures(abonne_id=abonne_id)
     except grpc.RpcError as exc:
         logger.error("ListFactures gRPC error", extra={"abonne_id": abonne_id, "error": str(exc)})
-        return JsonResponse({"erreur": "Impossible de récupérer les factures."}, status=503)
+        return None, JsonResponse({"erreur": "Impossible de récupérer les factures."}, status=503)
 
     # Enrichissement avec les soldes (Paiement Service)
     factures_json = []
@@ -86,6 +108,22 @@ def espace_abonne(request: HttpRequest, token: str) -> JsonResponse:
                 "date_limite_paiement": f.date_limite_paiement,
                 "solde_restant": solde_restant,
                 "montant_paye": montant_paye,
+                # ── Ce qui justifie le montant ─────────────────────────────
+                #
+                # L'abonné voyait des montants, jamais ses mètres cubes. Il ne
+                # pouvait donc pas vérifier sa facture : sans les index et la
+                # consommation, un montant n'est qu'un chiffre à croire.
+                #
+                # EF-NOTIF-003 le demande — « historique de consommation » — et
+                # §8.3 le redemande. Les quatre champs étaient dans
+                # `FactureResponse` depuis toujours ; personne ne les recopiait.
+                #
+                # Sur une régularisation, ils valent zéro : c'est le rôle de
+                # `nature` et `motif` d'expliquer le montant à leur place.
+                "ancien_index": f.ancien_index,
+                "nouveau_index": f.nouveau_index,
+                "consommation": f.consommation,
+                "prix_m3": f.prix_m3,
                 # Une régularisation n'a pas de relevé : sans sa nature et son
                 # motif, l'abonné lit un montant qu'aucun index ne justifie.
                 "nature": f.nature or "CONSOMMATION",
@@ -102,14 +140,76 @@ def espace_abonne(request: HttpRequest, token: str) -> JsonResponse:
     except grpc.RpcError as exc:
         logger.warning("Avoir indisponible", extra={"abonne_id": abonne_id, "error": str(exc)})
 
-    return JsonResponse(
-        {
-            "abonne_id": abonne_id,
-            "token_expiration": token_resp.date_expiration,
-            "avoir": avoir,
-            "factures": factures_json,
-        }
-    )
+    return {
+        "abonne_id": abonne_id,
+        "token_expiration": token_resp.date_expiration,
+        "avoir": avoir,
+        "factures": factures_json,
+    }, None
+
+
+@require_GET
+def espace_abonne(request: HttpRequest, token: str) -> JsonResponse:
+    """Vue JSON de l'espace abonné — factures, soldes, consommation, avoir."""
+    donnees, erreur = _donnees_abonne(token)
+    if erreur is not None:
+        return erreur
+    return JsonResponse(donnees)
+
+
+@require_GET
+def espace_abonne_csv(request: HttpRequest, token: str):
+    """Export CSV du relevé de compte de l'abonné — EF-NOTIF-003, §8.3.
+
+    Le SRS promet des « boutons d'export : PDF et CSV » à deux endroits. Seuls le
+    PDF d'une facture et la vue JSON existaient : l'abonné pouvait télécharger
+    une facture à la fois, jamais l'état de son compte.
+
+    Le même token que le reste de l'espace abonné, donc les mêmes garanties : il
+    n'identifie qu'un abonné, et ne donne accès qu'à ses factures.
+    """
+    donnees, erreur = _donnees_abonne(token)
+    if erreur is not None:
+        return erreur
+
+    header = [
+        "numero_facture",
+        "nature",
+        "motif",
+        "date_releve",
+        "ancien_index",
+        "nouveau_index",
+        "consommation_m3",
+        "prix_m3",
+        "montant",
+        "montant_paye",
+        "solde_restant",
+        "statut",
+        "date_limite_paiement",
+    ]
+    rows = [
+        [
+            f["numero"],
+            f["nature"],
+            f["motif"],
+            f["date_releve"],
+            f["ancien_index"],
+            f["nouveau_index"],
+            f["consommation"],
+            f["prix_m3"],
+            f["montant"],
+            f["montant_paye"],
+            f["solde_restant"],
+            f["statut"],
+            f["date_limite_paiement"],
+        ]
+        for f in donnees["factures"]
+    ]
+
+    # Le nom porte l'identifiant de l'abonné, pas son token : un fichier reste
+    # dans un dossier de téléchargements, et un token dans un nom de fichier est
+    # un identifiant d'accès qui traîne.
+    return csv_response(f"mon-compte-{donnees['abonne_id'][:8]}.csv", header, rows)
 
 
 @require_GET

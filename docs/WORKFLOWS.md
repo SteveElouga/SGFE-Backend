@@ -365,7 +365,20 @@ Ne fait **pas** partie du cron — se produit **immédiatement** au moment du pa
 **Liste des factures** — `GET /espace-abonne/<token>/` :
 1. `[Gateway]` → `Notification.ValiderToken(token)` — vérifie existence, `is_active`, non-expiration. Retourne `abonne_id`.
 2. `[Gateway]` → `Facturation.ListFactures(abonne_id)` — **toutes** les factures de cet `abonne_id` (dérivé du token, jamais fourni par le client — empêche la fuite d'autres abonnés à ce niveau).
-3. `[Gateway]` Enrichit chaque facture avec son solde via `Paiement.GetSolde` (dégradé : continue sans le solde si indisponible).
+3. `[Gateway]` Enrichit chaque facture avec son solde via `Paiement.GetSolde` (dégradé : continue sans le solde si indisponible), et lit l'avoir de l'abonné via `Paiement.GetAvoirAbonne`.
+4. Chaque facture porte **ce qui justifie son montant** : `ancien_index`, `nouveau_index`, `consommation`, `prix_m3` — plus `nature` et `motif` pour une régularisation, qui n'a pas de relevé.
+
+> ⚠️ **Corrigé le 1er septembre 2026.** Le payload ne portait **ni index ni consommation**. L'abonné voyait des montants, jamais ses mètres cubes : il ne pouvait donc pas vérifier sa facture, et un montant qu'on ne peut pas vérifier est un montant qu'on contestera.
+>
+> EF-NOTIF-003 demande un « historique de consommation » et §8.3 le redemande. Les quatre champs étaient dans `FactureResponse` **depuis toujours** — personne ne les recopiait.
+
+**Relevé de compte CSV** — `GET /espace-abonne/<token>/factures.csv` :
+1. Même validation de token, même collecte que la vue JSON — `_donnees_abonne` est partagée entre les deux, pour qu'aucune des deux ne montre un jour autre chose que l'autre sur des données que l'abonné va comparer.
+2. Treize colonnes : numéro, nature, motif, date de relevé, les deux index, la consommation, le prix du m³, le montant, le payé, le solde restant, le statut, l'échéance.
+3. Séparateur `;` et BOM UTF-8 — sans quoi Excel FR affiche tout en une colonne, ou casse les accents. Écriture partagée avec les exports back-office (`schema/csv_export.py`), pour la même raison.
+4. Le nom du fichier porte les premiers caractères de l'`abonne_id`, **jamais le token** : un fichier reste dans un dossier de téléchargements, et un token dans un nom de fichier est un identifiant d'accès qui traîne.
+
+> ⚠️ Le SRS promet « boutons d'export : **PDF et CSV** » à deux endroits (EF-NOTIF-003 et §8.3). Seuls la vue JSON et le PDF d'**une** facture existaient : l'abonné pouvait télécharger une facture à la fois, jamais l'état de son compte.
 
 **Téléchargement PDF** — `GET /espace-abonne/<token>/facture/<facture_id>/pdf/` :
 1. `[Gateway]` → `Notification.ValiderToken(token)` (même validation).
