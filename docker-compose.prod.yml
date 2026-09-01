@@ -103,6 +103,12 @@ services:
     <<: *prod
     environment:
       DJANGO_DEBUG: "False"
+      # Le lien d'activation de compte et celui de réinitialisation de mot de
+      # passe partent par e-mail avec cette base. En développement, le compose
+      # de base pose `http://localhost:4200` — juste pour un poste de développeur,
+      # faux pour tout le reste. Sans ce garde-fou, la valeur de développement
+      # s'hériterait en silence et les liens envoyés seraient inouvrables.
+      FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL manquant — les liens d'activation et l'espace abonné partiraient sur localhost}
   abonne-service:
     command: python manage.py grpc_server
     image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/abonne-service:${IMAGE_TAG:?IMAGE_TAG manquant}
@@ -133,6 +139,13 @@ services:
     <<: *prod
     environment:
       DJANGO_DEBUG: "False"
+      # C'est ICI que ça compte le plus : `notifications/grpc_server.py` et
+      # `services.py` construisent le lien de l'espace abonné en
+      # `{FRONTEND_URL}/espace/{token}`, et ce lien part par WhatsApp sur le
+      # téléphone de l'abonné. Avec la valeur de développement, chaque message
+      # envoyé porte un lien vers `localhost` — inouvrable, et l'abonné n'a aucun
+      # moyen de savoir que c'est nous qui nous sommes trompés.
+      FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL manquant — le lien de l'espace abonné partirait sur localhost dans chaque WhatsApp}
   config-service:
     command: python manage.py grpc_server
     image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/config-service:${IMAGE_TAG:?IMAGE_TAG manquant}
