@@ -202,10 +202,27 @@ class AbonneServiceClient:
                 extra={"abonne_id": abonne_id, "error": str(exc)},
             )
 
-    def reactiver_abonne(self, abonne_id: str) -> None:
+    def reactiver_abonne(self, abonne_id: str) -> bool:
         """
-        Réactive un abonné suspendu dans Abonné Service après paiement complet.
+        Réactive un abonné suspendu dans Abonné Service après extinction de sa dette.
         Dégradation gracieuse en cas d'erreur gRPC.
+
+        **Rend `True` seulement si une suspension a réellement été levée.**
+
+        Le cas « il n'était pas suspendu » n'est pas une anomalie. Abonné Service
+        refuse de réactiver un abonné déjà ACTIF (`ValidationError` →
+        INVALID_ARGUMENT), et c'est le cas le PLUS FRÉQUENT : la grande majorité
+        des abonnés qui soldent leur dette n'ont jamais été coupés.
+
+        Deux conséquences, et c'est pour ça que la méthode rend un booléen :
+
+        1. Le journaliser en WARNING remplissait les journaux d'alertes sur le
+           chemin normal — et c'est ainsi qu'on n'y voit plus les vraies.
+        2. Le message « votre ligne d'eau est maintenant rétablie » partait à des
+           abonnés qui n'avaient jamais été coupés. L'appelant a besoin de savoir.
+
+        En cas de panne (autre code d'erreur), rend `False` : on ne prétend pas
+        avoir rétabli une ligne quand on ne le sait pas.
         """
         try:
             self._stub.ReactiverAbonne(self._pb.AbonneIdRequest(abonne_id=abonne_id))
@@ -213,16 +230,25 @@ class AbonneServiceClient:
                 "Abonné réactivé via Abonné Service",
                 extra={"abonne_id": abonne_id},
             )
+            return True
         except grpc.RpcError as exc:
+            if exc.code() == grpc.StatusCode.INVALID_ARGUMENT:
+                logger.info(
+                    "Pas de réactivation — l'abonné n'était pas suspendu",
+                    extra={"abonne_id": abonne_id},
+                )
+                return False
             logger.warning(
                 "ReactiverAbonne échoué — dégradation gracieuse",
                 extra={"abonne_id": abonne_id, "error": str(exc)},
             )
+            return False
         except Exception as exc:
             logger.warning(
                 "ReactiverAbonne erreur inattendue — dégradation gracieuse",
                 extra={"abonne_id": abonne_id, "error": str(exc)},
             )
+            return False
 
 
 class ConfigServiceClient:

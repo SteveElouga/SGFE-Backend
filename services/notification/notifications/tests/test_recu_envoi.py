@@ -34,16 +34,28 @@ def _abonne_mock(abonne_id: str, nom: str = "KONE", prenom: str = "Mariam") -> M
 
 
 class TestBuildMessageRecu(TestCase):
-    def test_versement_partiel_mentionne_le_solde(self):
+    """Le reçu dit ce que l'abonné a versé, et ce qu'il doit ENCORE EN TOUT.
+
+    Les deux libellés ont changé, et c'est délibéré. Le solde transmis est
+    désormais la dette de l'abonné, plus le reste d'une facture : parler de
+    « votre facture » évoquait donc la mauvaise chose. Et le reçu PDF joint,
+    lui, atteste l'imputation sur UNE facture — deux chiffres justes qui
+    mesurent deux choses, chacun devant dire laquelle.
+    """
+
+    def test_versement_partiel_annonce_la_dette_totale(self):
         msg = build_message_recu("Jean DUPONT", "Juin 2026", 10750.0, 10750.0)
-        self.assertIn("10750 FCFA", msg)
-        self.assertIn("Solde restant dû : 10750 FCFA", msg)
+        self.assertIn("Montant réglé : 10750 FCFA", msg)
+        self.assertIn("Reste dû, toutes factures : 10750 FCFA", msg)
         self.assertIn("pièce jointe", msg)
 
-    def test_facture_soldee_ne_mentionne_pas_de_solde(self):
+    def test_dette_eteinte_ne_parle_pas_d_une_facture(self):
         msg = build_message_recu("Jean DUPONT", "Juin 2026", 21500.0, 0.0)
-        self.assertIn("soldée", msg)
-        self.assertNotIn("Solde restant", msg)
+        self.assertIn("Vous êtes à jour", msg)
+        self.assertNotIn("Reste dû", msg)
+        # Ne doit surtout pas dire « votre facture est soldée » : le versement
+        # peut en avoir couvert trois, et le PDF joint n'en atteste qu'une.
+        self.assertNotIn("facture est soldée", msg)
 
 
 class TestEnvoiServiceEnvoyerRecu(TestCase):

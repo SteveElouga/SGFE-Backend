@@ -54,6 +54,113 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
         )
         return solde_to_proto(solde)
 
+    def _propager_versement(self, imputations: list, montant_recu: float) -> None:
+        """Applique à TOUT un versement les conséquences de l'encaissement.
+
+        ── Pourquoi cette méthode existe ────────────────────────────────────────
+
+        Deux RPC encaissent : `EnregistrerPaiement` (le caissier vise une facture)
+        et `EnregistrerPaiementAbonne` (il saisit un montant, le système
+        répartit). La documentation du second le désigne comme **« le geste
+        courant »**, et c'est celui que l'interface emploie.
+
+        Le premier portait ses sept effets aval en propre. Le second appelait la
+        couche métier et **retournait**. Aucun appel. Conséquences, sur le geste
+        le plus fréquent de l'exploitation :
+
+          • l'abonné suspendu qui venait payer restait coupé ;
+          • la facture restait affichée IMPAYÉE après avoir été réglée ;
+          • aucun reçu ne partait, alors que tout le mécanisme existe ;
+          • les relances continuaient malgré l'acompte, et la suspension tombait
+            quand même à J+10 ;
+          • le montant encaissé du tableau de bord ignorait ces recettes.
+
+        Un seul chemin porte désormais ces effets, pour les deux RPC. Un
+        troisième point d'entrée n'a plus qu'une chose à faire : appeler ceci.
+
+        ── Par facture, et non par versement ────────────────────────────────────
+
+        Les effets s'appliquent à **chaque** écriture du versement, cascade
+        comprise. Une vieille facture éteinte par le débordement d'un versement
+        restait sinon IMPAYÉE côté Facturation, avec un `SuiviImpaye` jamais
+        résolu — deux écrans du même outil en désaccord sur qui doit quoi.
+
+        Exception : ce qui ne vaut qu'une fois par versement ne se répète pas —
+        le reçu, et le rétablissement de l'abonné.
+        """
+        if not imputations:
+            return
+
+        abonne_id = imputations[0][0].abonne_id
+
+        for paiement, solde in imputations:
+            # 1) Statut de la facture vers Facturation Service (dégradation gracieuse)
+            try:
+                self._facturation_client.update_statut_facture(
+                    facture_id=solde.facture_id,
+                    statut=solde.statut,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Sync statut facture échouée — dégradation gracieuse",
+                    extra={"facture_id": solde.facture_id, "error": str(exc)},
+                )
+
+            # 2) Résolution du suivi d'impayé, ou pause des relances
+            self._svc.marquer_facture_payee_si_applicable(solde)
+            self._svc.suspendre_relances_si_partiel(solde)
+
+            # 3) Statistiques Reporting (read model aval, événementiel — ADR-019).
+            #
+            # Le montant publié est la part imputée à CETTE facture, et la
+            # campagne est la sienne. Publier le montant reçu en entier sur la
+            # campagne de la première facture attribuait toute la recette d'un
+            # versement à une seule campagne — et comptait deux fois l'excédent,
+            # qui sera compté à nouveau quand l'avoir s'imputera (le mode AVOIR
+            # crée une seconde écriture).
+            publish_reporting_event(
+                "PAIEMENT_STATS",
+                campagne_id=solde.campagne_id,
+                montant_paiement=float(paiement.montant),
+                type_update="PAIEMENT",
+            )
+            if solde.statut == StatutSolde.PAYEE:
+                publish_reporting_event(
+                    "PAIEMENT_STATS",
+                    campagne_id=solde.campagne_id,
+                    montant_paiement=0.0,
+                    type_update="IMPAYE_RESOLU",
+                )
+
+            # 4) Souscription GraphQL `paiementCree` — une écriture, un événement.
+            publish_paiement_event(paiement, statut_facture=solde.statut)
+
+        # ── Une fois par versement ──────────────────────────────────────────
+        #
+        # Rétablissement d'abord : il tranche si l'abonné est à jour, et le reçu
+        # a besoin de cette réponse.
+        premier = imputations[0][0]
+        self._svc.retablir_si_dette_eteinte(abonne_id, premier.facture_id)
+
+        # Le reçu couvre le VERSEMENT, pas une de ses lignes.
+        #
+        # `montant` est ce que l'abonné a tendu, excédent compris — c'est ce qu'il
+        # attend de lire sur son reçu, et la somme des parts imputées ne le dirait
+        # pas quand une partie est partie en avoir.
+        #
+        # `solde_restant` est ce qu'il doit ENCORE EN TOUT, et non le reste d'une
+        # facture parmi trois : un versement au comptoir n'a pas de « reste » qui
+        # veuille dire quelque chose au niveau d'une ligne. C'est la même décision
+        # que celle prise côté frontend en #95 — dire ce que l'abonné doit
+        # ailleurs, plutôt que de le taire.
+        self._notification_client.envoyer_recu(
+            paiement_id=str(premier.id),
+            facture_id=premier.facture_id,
+            abonne_id=abonne_id,
+            montant=float(montant_recu),
+            solde_restant=float(self._svc.total_du_abonne(abonne_id)),
+        )
+
     def EnregistrerPaiement(
         self,
         request: pb.EnregistrerPaiementRequest,
@@ -71,52 +178,13 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
             enregistre_par=request.enregistre_par,
         )
 
-        # Synchronisation du statut vers Facturation Service (dégradation gracieuse)
-        try:
-            self._facturation_client.update_statut_facture(
-                facture_id=request.facture_id,
-                statut=solde.statut,
-            )
-        except Exception as exc:
-            logger.warning(
-                "Sync statut facture échouée — dégradation gracieuse",
-                extra={"facture_id": request.facture_id, "error": str(exc)},
-            )
-
-        # Résolution ou suspension des relances
-        self._svc.marquer_facture_payee_si_applicable(solde)
-        self._svc.suspendre_relances_si_partiel(solde)
-
-        # Envoi automatique du reçu de paiement à l'abonné (WhatsApp + PDF).
-        # Le client garantit une dégradation gracieuse : un échec notification
-        # n'impacte jamais l'enregistrement du paiement déjà committé.
-        self._notification_client.envoyer_recu(
-            paiement_id=str(paiement.id),
-            facture_id=paiement.facture_id,
-            abonne_id=paiement.abonne_id,
-            montant=float(paiement.montant),
-            solde_restant=float(solde.solde_restant),
+        # Toutes les factures touchées, pas seulement celle que le caissier a
+        # visée : un versement qui dépasse déborde sur les impayés, et ces
+        # factures-là ont les mêmes conséquences à porter.
+        self._propager_versement(
+            self._svc.imputations_du_versement(paiement.versement_id),
+            montant_recu=request.montant,
         )
-
-        # Publie les stats de paiement sur le flux Reporting (read model aval,
-        # événementiel durable — ADR-019). campagne_id porté par le solde.
-        publish_reporting_event(
-            "PAIEMENT_STATS",
-            campagne_id=solde.campagne_id,
-            montant_paiement=float(request.montant),
-            type_update="PAIEMENT",
-        )
-        if solde.statut == StatutSolde.PAYEE:
-            publish_reporting_event(
-                "PAIEMENT_STATS",
-                campagne_id=solde.campagne_id,
-                montant_paiement=0.0,
-                type_update="IMPAYE_RESOLU",
-            )
-
-        # Notifie la gateway (souscription paiementCree) — événement
-        # auto-porteur, avec le statut de facture résultant.
-        publish_paiement_event(paiement, statut_facture=solde.statut)
 
         return paiement_to_proto(paiement)
 
@@ -292,7 +360,13 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
         request: pb.EnregistrerPaiementAbonneRequest,
         context: grpc.ServicerContext,
     ) -> pb.PaiementAbonneResponse:
-        """Encaisse un versement imputé du plus ancien au plus récent."""
+        """Encaisse un versement imputé du plus ancien au plus récent.
+
+        C'est le geste courant du comptoir, et c'est celui que l'interface
+        emploie (`encaissement-sheet`). Il n'avait AUCUN effet aval : ni statut de
+        facture, ni réactivation de l'abonné suspendu, ni reçu, ni pause des
+        relances, ni statistiques. Voir `_propager_versement`.
+        """
         paiements, excedent = self._svc.enregistrer_paiement_abonne(
             abonne_id=request.abonne_id,
             montant=request.montant,
@@ -301,6 +375,17 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
             reference_transaction=request.reference_transaction,
             enregistre_par=request.enregistre_par,
         )
+
+        # `paiements` peut être vide : un abonné qui ne doit rien et qui verse
+        # quand même voit tout son versement partir en avoir, sans écriture
+        # d'imputation. Il n'y a alors rien à propager — mais l'avoir est bien
+        # crédité par la couche métier.
+        if paiements:
+            self._propager_versement(
+                self._svc.imputations_du_versement(paiements[0].versement_id),
+                montant_recu=request.montant,
+            )
+
         return pb.PaiementAbonneResponse(
             paiements=[paiement_to_proto(p) for p in paiements],
             excedent_en_avoir=float(excedent),
