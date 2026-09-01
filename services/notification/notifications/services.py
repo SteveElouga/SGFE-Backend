@@ -65,6 +65,26 @@ def _format_date_fr(date_str: str) -> str:
         return date_str
 
 
+def _jours_de_retard(date_limite: str) -> int:
+    """Jours écoulés depuis l'échéance. 0 si elle n'est pas encore passée.
+
+    Le retard annoncé dans une relance doit être le VRAI retard, pas le délai que
+    le cron était censé respecter. Les deux coïncident quand le cron passe le bon
+    jour ; ils divergent dès qu'une dette est saisie avec une échéance passée, ou
+    que le cron a manqué des jours.
+
+    Une date illisible rend 0 : le message se rabat sur « aujourd'hui », ce qui
+    est vague mais jamais faux dans un sens qui rassure à tort.
+    """
+    if not date_limite:
+        return 0
+    try:
+        limite = date.fromisoformat(str(date_limite)[:10])
+    except ValueError:
+        return 0
+    return max(0, (date.today() - limite).days)
+
+
 def _periode_from_date(date_str: str) -> str:
     """Extrait 'Mois AAAA' depuis une date ISO (utilisé pour la période de facture)."""
     _MOIS = {
@@ -269,15 +289,24 @@ class EnvoiService:
         # Renvoi avec un nouveau token
         return self.envoyer_facture(facture_id, abonne_id)
 
-    def envoyer_relance(self, facture_id: str, abonne_id: str, etape: int) -> Envoi:
+    def envoyer_relance(
+        self,
+        facture_id: str,
+        abonne_id: str,
+        etape: int,
+        jours_avant_suspension: int = 0,
+    ) -> Envoi:
         """Envoie le message correspondant à l'étape (0 à 5).
 
         Args:
             facture_id: Identifiant de la facture.
             abonne_id: Identifiant de l'abonné.
-            etape: 0 = confirmation de paiement / rétablissement, 1 = rappel
-                   doux, 2 = rappel ferme, 3 = avertissement, 4 = suspension,
-                   5 = annulation d'un versement.
+            etape: 0 = rétablissement, 1 = rappel doux, 2 = rappel ferme,
+                   3 = avertissement, 4 = suspension, 5 = annulation d'un
+                   versement.
+            jours_avant_suspension: Étape 3 seulement — jours restants avant la
+                coupure, lus dans Config par le cron. 0 = ne pas annoncer de
+                délai, plutôt qu'en annoncer un faux.
 
         Raises:
             ValidationError: Si l'étape est hors de la plage [0, 5].
@@ -296,6 +325,26 @@ class EnvoiService:
         prenom_nom = f"{abonne.prenom} {abonne.nom.upper()}"
         telephone = abonne.telephone_whatsapp
         periode = _periode_from_date(facture.date_releve)
+
+        # ── Le reste dû, et non le montant de la facture ────────────────────
+        #
+        # `facture.montant` est la consommation du mois × le prix. Les relances
+        # l'annonçaient tel quel : un abonné qui avait versé 8 000 sur 10 000
+        # lisait « votre facture de 10 000 FCFA est impayée ». Son versement
+        # n'était ni déduit ni même mentionné — et les factures PARTIELLE sont
+        # bien relancées, la pause après acompte ne durant que quelques jours.
+        #
+        # `FactureResponse` n'expose ni `montant_paye` ni `solde_restant` : la
+        # seule source de vérité est Paiement Service, et le client existait déjà
+        # (il ne servait qu'à l'étape 5). `None` = illisible → le montant n'est
+        # pas imprimé, plutôt qu'imprimé faux.
+        reste_du = paiement_client.get_solde_restant(facture_id) if 1 <= etape <= 3 else None
+
+        # Le retard RÉEL, calculé depuis l'échéance de la facture. Les gabarits
+        # écrivaient « depuis 3 jours » / « depuis 7 jours » en dur, en supposant
+        # que le cron passe le jour exact. Une régularisation saisie avec sa
+        # vraie échéance est immédiatement à plusieurs mois de retard.
+        jours_retard = _jours_de_retard(facture.date_limite_paiement)
 
         if etape == 0:
             # Plus de montant : `facture.montant` n'est pas le versement, et
@@ -320,19 +369,25 @@ class EnvoiService:
             message = build_message_relance_1(
                 prenom_nom=prenom_nom,
                 periode=periode,
-                montant=facture.montant,
+                montant=reste_du,
                 lien_espace=lien,
+                jours_retard=jours_retard,
             )
         elif etape == 2:
             message = build_message_relance_2(
                 prenom_nom=prenom_nom,
                 periode=periode,
-                montant=facture.montant,
+                montant=reste_du,
+                jours_retard=jours_retard,
             )
         elif etape == 3:
             message = build_message_relance_3(
                 prenom_nom=prenom_nom,
-                montant=facture.montant,
+                montant=reste_du,
+                jours_retard=jours_retard,
+                # Transmis par le cron, qui a lu le délai dans Config. 0 = ne
+                # rien annoncer, plutôt qu'annoncer un délai faux.
+                jours_avant_suspension=jours_avant_suspension,
             )
         elif etape == 4:
             try:
@@ -340,9 +395,12 @@ class EnvoiService:
                 telephone_societe = infos.telephone
             except Exception:
                 telephone_societe = ""
+            # La SUSPENSION doit dire quoi payer pour être rétabli — et depuis
+            # RS-005, c'est la dette TOTALE, pas le montant d'une facture.
+            total_du, _, _ = paiement_client.get_dette_abonne(abonne_id)
             message = build_message_relance_4(
                 prenom_nom=prenom_nom,
-                montant=facture.montant,
+                montant=total_du if total_du > 0 else None,
                 periode=periode,
                 telephone_societe=telephone_societe,
             )
@@ -351,15 +409,20 @@ class EnvoiService:
             # `facture.montant` est le montant du mois, pas ce qui reste dû après
             # d'éventuels autres versements.
             #
-            # Le client dégrade gracieusement et rend zéro s'il est injoignable.
-            # Un « reste à payer : 0 » serait alors un mensonge tranquille — on
-            # se rabat sur le montant de la facture, qui est au moins du bon
-            # ordre de grandeur et jamais rassurant à tort.
+            # Le client rend `None` s'il est injoignable — et non zéro. Un
+            # « reste à payer : 0 » serait un mensonge tranquille ; on se rabat
+            # alors sur le montant de la facture, du bon ordre de grandeur et
+            # jamais rassurant à tort.
+            #
+            # Le zéro LÉGITIME, lui, est désormais distingué de l'inconnu : une
+            # facture restée couverte après l'annulation (avoir imputé, autre
+            # versement) annonce bien qu'il n'y a rien à payer, là où l'ancien
+            # `> 0` faisait ressortir le montant plein d'une facture soldée.
             solde_restant = paiement_client.get_solde_restant(facture_id)
             message = build_message_annulation_paiement(
                 prenom_nom=prenom_nom,
                 periode=periode,
-                solde_restant=solde_restant if solde_restant > 0 else facture.montant,
+                solde_restant=facture.montant if solde_restant is None else solde_restant,
             )
 
         type_envoi = _ETAPE_TO_TYPE[etape]

@@ -35,6 +35,15 @@ message EnvoyerRelanceRequest {
   string facture_id = 1;
   string abonne_id = 2;
   int32 etape = 3;
+  // Jours restants avant la suspension automatique, pour l'AVERTISSEMENT
+  // (étape 3). 0 = ne pas annoncer de délai.
+  //
+  // Le gabarit écrivait « suspendue dans 3 jours » en dur, alors que le délai
+  // est configurable (`impaye_delai_suspension`) et que le cron le lit bien.
+  // Un admin qui le règle à 10 faisait annoncer 3. Le cron a la vraie valeur
+  // sous la main : il la transmet, plutôt que le service de notification aille
+  // relire une source de vérité qui n'est pas la sienne.
+  int32 jours_avant_suspension = 4;
 }
 
 message FactureIdRequest { string facture_id = 1; }

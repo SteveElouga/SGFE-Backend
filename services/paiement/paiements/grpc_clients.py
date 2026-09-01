@@ -93,24 +93,52 @@ class NotificationServiceClient:
                 extra={"evenement": evenement, "error": str(exc)},
             )
 
-    def envoyer_relance(self, facture_id: str, abonne_id: str, etape: int) -> None:
+    def envoyer_relance(
+        self,
+        facture_id: str,
+        abonne_id: str,
+        etape: int,
+        jours_avant_suspension: int = 0,
+    ) -> bool:
         """
         Déclenche l'envoi d'une relance WhatsApp pour une facture impayée.
-        Dégradation gracieuse en cas d'erreur gRPC.
+
+        **Rend `True` seulement si le message est réellement parti.**
+
+        La méthode rendait `None` et avalait tout : erreur gRPC comme échec
+        WhatsApp. L'appelant marquait alors l'étape « envoyée » sans savoir, et un
+        abonné pouvait être relancé quatre fois sans rien recevoir, puis coupé.
+
+        Deux niveaux d'échec, tous deux couverts :
+          • le RPC lui-même échoue (service injoignable) → exception, ici ;
+          • le RPC réussit mais l'envoi WhatsApp a échoué → `EnvoiResponse` rend
+            un `statut` ECHEC, que le servicer ne convertit pas en erreur.
+
+        La dégradation reste gracieuse — rien ne remonte à l'appelant — mais il
+        sait désormais à quoi s'en tenir.
         """
         try:
-            self._stub.EnvoyerRelance(
+            reponse = self._stub.EnvoyerRelance(
                 self._pb.EnvoyerRelanceRequest(
                     facture_id=facture_id,
                     abonne_id=abonne_id,
                     etape=etape,
+                    jours_avant_suspension=jours_avant_suspension,
                 )
             )
+            if reponse.statut == "ECHEC":
+                logger.warning(
+                    "Relance étape %d non délivrée (WhatsApp en échec)",
+                    etape,
+                    extra={"facture_id": facture_id, "abonne_id": abonne_id, "erreur": reponse.erreur},
+                )
+                return False
             logger.info(
                 "Relance étape %d envoyée",
                 etape,
                 extra={"facture_id": facture_id, "abonne_id": abonne_id},
             )
+            return True
         except grpc.RpcError as exc:
             logger.warning(
                 "EnvoyerRelance échoué — dégradation gracieuse",
@@ -121,11 +149,13 @@ class NotificationServiceClient:
                     "error": str(exc),
                 },
             )
+            return False
         except Exception as exc:
             logger.warning(
                 "EnvoyerRelance erreur inattendue — dégradation gracieuse",
                 extra={"error": str(exc)},
             )
+            return False
 
     def envoyer_recu(
         self,
