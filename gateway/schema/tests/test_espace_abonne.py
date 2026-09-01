@@ -95,3 +95,138 @@ class EspaceAbonnePdfTests(SimpleTestCase):
         ):
             response = self.client.get("/espace-abonne/token-valide/facture/inconnue/pdf/")
         self.assertEqual(response.status_code, 404)
+
+
+def make_facture_consommation(
+    facture_id="facture-conso",
+    numero="FACT-2026-07-0002",
+    ancien=1240.0,
+    nouveau=1283.0,
+    conso=43.0,
+    prix=500.0,
+):
+    """Une facture de consommation, index compris — ce que l'abonné doit pouvoir vérifier."""
+    return facturation_pb.FactureResponse(
+        facture_id=facture_id,
+        abonne_id="abonne-1",
+        numero_facture=numero,
+        ancien_index=ancien,
+        nouveau_index=nouveau,
+        consommation=conso,
+        prix_m3=prix,
+        montant=conso * prix,
+        statut="IMPAYEE",
+        date_releve="2026-07-01",
+        date_limite_paiement="2026-07-06",
+        nature="CONSOMMATION",
+    )
+
+
+class EspaceAbonneConsommationTests(SimpleTestCase):
+    """L'abonné voit ses mètres cubes, pas seulement des montants.
+
+    EF-NOTIF-003 demande un « historique de consommation », §8.3 du SRS le
+    redemande. Le payload ne portait ni index ni consommation : l'abonné lisait
+    un montant qu'il n'avait aucun moyen de vérifier. Les quatre champs étaient
+    dans `FactureResponse` depuis toujours — personne ne les recopiait.
+    """
+
+    def _get(self, facture):
+        with (
+            patch.object(notification_client, "valider_token", return_value=make_token_response()),
+            patch.object(facturation_client, "list_factures", return_value=make_list_factures_response(facture)),
+            patch.object(paiement_client, "get_solde", return_value=Mock(solde_restant=21500.0, montant_paye=0.0)),
+            patch.object(paiement_client, "get_avoir_abonne", return_value=Mock(montant=0.0)),
+        ):
+            return self.client.get("/espace-abonne/token-valide/")
+
+    def test_les_index_et_la_consommation_sont_dans_le_payload(self):
+        data = self._get(make_facture_consommation()).json()
+        f = data["factures"][0]
+        self.assertEqual(f["ancien_index"], 1240.0)
+        self.assertEqual(f["nouveau_index"], 1283.0)
+        self.assertEqual(f["consommation"], 43.0)
+        self.assertEqual(f["prix_m3"], 500.0)
+
+    def test_le_montant_se_verifie_depuis_ce_que_le_payload_porte(self):
+        """C'est tout l'intérêt : conso × prix doit redonner le montant.
+
+        Sans ces champs, l'abonné ne pouvait que croire le chiffre.
+        """
+        f = self._get(make_facture_consommation()).json()["factures"][0]
+        self.assertAlmostEqual(f["consommation"] * f["prix_m3"], f["montant"])
+        self.assertAlmostEqual(f["nouveau_index"] - f["ancien_index"], f["consommation"])
+
+    def test_une_regularisation_porte_des_index_nuls_et_son_motif(self):
+        """Elle n'a pas de relevé — ce sont `nature` et `motif` qui expliquent
+        le montant à la place des index."""
+        reg = facturation_pb.FactureResponse(
+            facture_id="facture-reg",
+            abonne_id="abonne-1",
+            numero_facture="REG-2026-07-0001",
+            montant=12000.0,
+            statut="IMPAYEE",
+            date_releve="2026-07-20",
+            date_limite_paiement="2026-07-25",
+            nature="REGULARISATION",
+            motif="Arriéré antérieur à la mise en service",
+        )
+        f = self._get(reg).json()["factures"][0]
+        self.assertEqual(f["consommation"], 0.0)
+        self.assertEqual(f["nature"], "REGULARISATION")
+        self.assertEqual(f["motif"], "Arriéré antérieur à la mise en service")
+
+
+class EspaceAbonneCsvTests(SimpleTestCase):
+    """Le relevé de compte en CSV — promis deux fois par le SRS, absent.
+
+    Seuls la vue JSON et le PDF d'UNE facture existaient : l'abonné pouvait
+    télécharger une facture à la fois, jamais l'état de son compte.
+    """
+
+    _URL = "/espace-abonne/token-valide/factures.csv"
+
+    def test_token_invalide_retourne_401(self):
+        with patch.object(notification_client, "valider_token", return_value=make_token_response(is_valid=False)):
+            response = self.client.get("/espace-abonne/token-invalide/factures.csv")
+        self.assertEqual(response.status_code, 401)
+
+    def _csv(self, *factures):
+        with (
+            patch.object(notification_client, "valider_token", return_value=make_token_response()),
+            patch.object(facturation_client, "list_factures", return_value=make_list_factures_response(*factures)),
+            patch.object(paiement_client, "get_solde", return_value=Mock(solde_restant=21500.0, montant_paye=0.0)),
+            patch.object(paiement_client, "get_avoir_abonne", return_value=Mock(montant=0.0)),
+        ):
+            return self.client.get(self._URL)
+
+    def test_le_csv_porte_la_consommation_et_les_index(self):
+        response = self._csv(make_facture_consommation())
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/csv", response["Content-Type"])
+        corps = response.content.decode("utf-8-sig")
+        entete = corps.splitlines()[0]
+        for colonne in ("ancien_index", "nouveau_index", "consommation_m3", "prix_m3", "solde_restant"):
+            self.assertIn(colonne, entete)
+        self.assertIn("1240.0;1283.0;43.0;500.0", corps)
+
+    def test_le_separateur_et_le_bom_sont_ceux_qu_excel_attend(self):
+        """Séparateur `;` et BOM UTF-8 : sans eux, le fichier arrive en une
+        colonne ou avec les accents cassés."""
+        response = self._csv(make_facture_consommation())
+        self.assertTrue(response.content.startswith(b"\xef\xbb\xbf"))
+        self.assertIn(b";", response.content)
+
+    def test_le_nom_du_fichier_ne_contient_pas_le_token(self):
+        """Un fichier reste dans un dossier de téléchargements ; un token dans
+        un nom de fichier est un identifiant d'accès qui traîne."""
+        response = self._csv(make_facture_consommation())
+        disposition = response["Content-Disposition"]
+        self.assertIn("attachment", disposition)
+        self.assertNotIn("token-valide", disposition)
+        self.assertIn("mon-compte-", disposition)
+
+    def test_une_ligne_par_facture(self):
+        response = self._csv(make_facture_consommation(), make_facture_consommation("f2", "FACT-2026-08-0003"))
+        lignes = response.content.decode("utf-8-sig").strip().splitlines()
+        self.assertEqual(len(lignes), 3)  # en-tête + 2

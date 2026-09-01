@@ -28,7 +28,6 @@ Le bilan des impayés (PDF, global) reste sur sa route dédiée
 `/bilan-impayes/pdf/` (voir facturation_views.py).
 """
 
-import csv
 import datetime
 import io
 import logging
@@ -37,6 +36,7 @@ import grpc
 from django.http import FileResponse, HttpRequest, HttpResponse, JsonResponse
 
 from schema.context import extract_token
+from schema.csv_export import csv_response as _csv_response
 from schema.grpc_clients import auth_client, facturation_client, paiement_client
 
 logger = logging.getLogger(__name__)
@@ -99,20 +99,6 @@ def _criteres(request: HttpRequest) -> tuple[str, str, str, str] | JsonResponse:
     else:
         suffixe = "tout"
     return campagne_id, debut, fin, suffixe
-
-
-def _csv_response(filename: str, header: list[str], rows: list[list[object]]) -> HttpResponse:
-    """Sérialise des lignes en CSV UTF-8 (BOM pour Excel) en pièce jointe."""
-    buffer = io.StringIO()
-    # `;` comme séparateur : Excel FR l'attend par défaut pour un CSV localisé.
-    writer = csv.writer(buffer, delimiter=";")
-    writer.writerow(header)
-    writer.writerows(rows)
-    # BOM UTF-8 pour qu'Excel interprète correctement les accents.
-    content = "﻿" + buffer.getvalue()
-    response = HttpResponse(content, content_type="text/csv; charset=utf-8")
-    response["Content-Disposition"] = f'attachment; filename="{filename}"'
-    return response
 
 
 def factures_csv(request: HttpRequest) -> HttpResponse | JsonResponse:
