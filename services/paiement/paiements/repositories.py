@@ -87,13 +87,33 @@ class PaiementRepository:
         paiement.save(update_fields=["annule", "annule_le", "annule_par", "motif_annulation"])
         return paiement
 
-    def list_by_facture_and_abonne(self, facture_id: str, abonne_id: str) -> list[Paiement]:
-        """Liste les paiements filtrés par facture et/ou abonné."""
+    def list_by_facture_and_abonne(
+        self,
+        facture_id: str,
+        abonne_id: str,
+        date_debut: date | None = None,
+        date_fin: date | None = None,
+    ) -> list[Paiement]:
+        """Liste les paiements filtrés par facture, abonné et/ou PÉRIODE.
+
+        Les bornes portent sur `date_paiement` — la date de caisse, celle qu'un
+        journal demande. Incluses.
+
+        Tri chronologique dès qu'une borne est posée : un journal se lit dans
+        l'ordre où l'argent est entré. Sans borne, l'ordre reste celui d'avant,
+        pour ne pas changer le comportement des appelants existants.
+        """
         qs = Paiement.objects.all()
         if facture_id:
             qs = qs.filter(facture_id=facture_id)
         if abonne_id:
             qs = qs.filter(abonne_id=abonne_id)
+        if date_debut:
+            qs = qs.filter(date_paiement__gte=date_debut)
+        if date_fin:
+            qs = qs.filter(date_paiement__lte=date_fin)
+        if date_debut or date_fin:
+            qs = qs.order_by("date_paiement", "created_at")
         return list(qs)
 
     def list_by_campagne(self, campagne_id: str) -> list[Paiement]:

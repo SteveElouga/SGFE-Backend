@@ -194,6 +194,8 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
             campagne_id=request.campagne_id,
             abonne_id=request.abonne_id,
             statut=request.statut,
+            date_debut=request.date_debut,
+            date_fin=request.date_fin,
         )
         return pb.ListFacturesResponse(factures=[facture_to_proto(f) for f in factures])
 

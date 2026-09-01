@@ -252,10 +252,23 @@ class FacturationServiceClient:
         return self._stub.GetFacture(facturation_pb.FactureIdRequest(facture_id=facture_id))
 
     def list_factures(
-        self, campagne_id: str = "", abonne_id: str = "", statut: str = ""
+        self,
+        campagne_id: str = "",
+        abonne_id: str = "",
+        statut: str = "",
+        date_debut: str = "",
+        date_fin: str = "",
     ) -> facturation_pb.ListFacturesResponse:
+        """Factures filtrées. `date_debut`/`date_fin` : bornes ISO incluses, sur
+        la date de génération — la seule que portent les deux natures de facture."""
         return self._stub.ListFactures(
-            facturation_pb.ListFacturesRequest(campagne_id=campagne_id, abonne_id=abonne_id, statut=statut)
+            facturation_pb.ListFacturesRequest(
+                campagne_id=campagne_id,
+                abonne_id=abonne_id,
+                statut=statut,
+                date_debut=date_debut,
+                date_fin=date_fin,
+            )
         )
 
     def get_factures_par_campagne(self, campagne_id: str) -> facturation_pb.ListFacturesResponse:
@@ -314,8 +327,23 @@ class PaiementServiceClient:
     def get_solde(self, facture_id: str) -> paiement_pb.SoldeResponse:
         return self._stub.GetSolde(paiement_pb.FactureIdRequest(facture_id=facture_id))
 
-    def list_paiements(self, facture_id: str = "", abonne_id: str = "") -> paiement_pb.ListPaiementsResponse:
-        return self._stub.ListPaiements(paiement_pb.ListPaiementsRequest(facture_id=facture_id, abonne_id=abonne_id))
+    def list_paiements(
+        self,
+        facture_id: str = "",
+        abonne_id: str = "",
+        date_debut: str = "",
+        date_fin: str = "",
+    ) -> paiement_pb.ListPaiementsResponse:
+        """Paiements filtrés. `date_debut`/`date_fin` : bornes ISO incluses, sur
+        la date de paiement — la date de caisse, celle qu'un journal demande."""
+        return self._stub.ListPaiements(
+            paiement_pb.ListPaiementsRequest(
+                facture_id=facture_id,
+                abonne_id=abonne_id,
+                date_debut=date_debut,
+                date_fin=date_fin,
+            )
+        )
 
     def list_paiements_par_campagne(self, campagne_id: str) -> paiement_pb.ListPaiementsResponse:
         return self._stub.ListPaiementsParCampagne(paiement_pb.CampagneIdRequest(campagne_id=campagne_id))

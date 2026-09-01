@@ -56,6 +56,18 @@ message ListFacturesRequest {
   string campagne_id = 1;
   string abonne_id = 2;
   string statut = 3;
+  // Bornes de PÉRIODE (ISO `AAAA-MM-JJ`, incluses), sur la date de génération de
+  // la facture. Vides = pas de borne.
+  //
+  // Sans elles, un export ne pouvait viser qu'une campagne — donc aucun journal
+  // mensuel ni annuel, et les régularisations (`campagne_id` vide) étaient
+  // exportables par AUCUN chemin. Or c'est la seule dette qu'on saisit à la
+  // main : l'arriéré antérieur à la mise en service.
+  //
+  // La date de génération, et non `date_releve` : une régularisation n'a pas de
+  // relevé. C'est la seule date que portent les deux natures de facture.
+  string date_debut = 4;
+  string date_fin = 5;
 }
 
 message UpdateStatutRequest {

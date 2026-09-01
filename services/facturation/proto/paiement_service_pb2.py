@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16paiement_service.proto\x12\x08paiement\"\x8a\x01\n\x17InitialiserSoldeRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x15\n\rmontant_total\x18\x03 \x01(\x01\x12\x1c\n\x14\x64\x61te_limite_paiement\x18\x04 \x01(\t\x12\x13\n\x0b\x63\x61mpagne_id\x18\x05 \x01(\t\"\xb9\x01\n\x1a\x45nregistrerPaiementRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x0f\n\x07montant\x18\x03 \x01(\x01\x12\x15\n\rdate_paiement\x18\x04 \x01(\t\x12\x15\n\rmode_paiement\x18\x05 \x01(\t\x12\x1d\n\x15reference_transaction\x18\x06 \x01(\t\x12\x16\n\x0e\x65nregistre_par\x18\x07 \x01(\t\"P\n\x16\x41nnulerPaiementRequest\x12\x13\n\x0bpaiement_id\x18\x01 \x01(\t\x12\r\n\x05motif\x18\x02 \x01(\t\x12\x12\n\nannule_par\x18\x03 \x01(\t\"&\n\x10\x46\x61\x63tureIdRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\"(\n\x11\x43\x61mpagneIdRequest\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\"=\n\x14ListPaiementsRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\"\xa9\x02\n\x10PaiementResponse\x12\x13\n\x0bpaiement_id\x18\x01 \x01(\t\x12\x12\n\nfacture_id\x18\x02 \x01(\t\x12\x0f\n\x07montant\x18\x03 \x01(\x01\x12\x15\n\rdate_paiement\x18\x04 \x01(\t\x12\x15\n\rmode_paiement\x18\x05 \x01(\t\x12\x1d\n\x15reference_transaction\x18\x06 \x01(\t\x12\x12\n\ncreated_at\x18\x07 \x01(\t\x12\x16\n\x0e\x65nregistre_par\x18\x08 \x01(\t\x12\x11\n\tabonne_id\x18\t \x01(\t\x12\x0e\n\x06\x61nnule\x18\n \x01(\x08\x12\x11\n\tannule_le\x18\x0b \x01(\t\x12\x12\n\nannule_par\x18\x0c \x01(\t\x12\x18\n\x10motif_annulation\x18\r \x01(\t\"@\n\x12\x44\x65tteAbonneRequest\x12\x11\n\tabonne_id\x18\x01 \x01(\t\x12\x17\n\x0fhors_facture_id\x18\x02 \x01(\t\"\\\n\x13\x44\x65tteAbonneResponse\x12\x10\n\x08total_du\x18\x01 \x01(\x01\x12\x13\n\x0bnb_factures\x18\x02 \x01(\x05\x12\x1e\n\x16plus_ancienne_echeance\x18\x03 \x01(\t\"\xab\x01\n EnregistrerPaiementAbonneRequest\x12\x11\n\tabonne_id\x18\x01 \x01(\t\x12\x0f\n\x07montant\x18\x02 \x01(\x01\x12\x15\n\rdate_paiement\x18\x03 \x01(\t\x12\x15\n\rmode_paiement\x18\x04 \x01(\t\x12\x1d\n\x15reference_transaction\x18\x05 \x01(\t\x12\x16\n\x0e\x65nregistre_par\x18\x06 \x01(\t\"b\n\x16PaiementAbonneResponse\x12-\n\tpaiements\x18\x01 \x03(\x0b\x32\x1a.paiement.PaiementResponse\x12\x19\n\x11\x65xcedent_en_avoir\x18\x02 \x01(\x01\"\xbe\x01\n\rSoldeResponse\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x15\n\rmontant_total\x18\x02 \x01(\x01\x12\x14\n\x0cmontant_paye\x18\x03 \x01(\x01\x12\x15\n\rsolde_restant\x18\x04 \x01(\x01\x12\x0e\n\x06statut\x18\x05 \x01(\t\x12\x11\n\tabonne_id\x18\x06 \x01(\t\x12\x1c\n\x14\x64\x61te_limite_paiement\x18\x07 \x01(\t\x12\x14\n\x0c\x61voir_impute\x18\x08 \x01(\x01\"\x93\x01\n\x13SuiviImpayeResponse\x12\x10\n\x08suivi_id\x18\x01 \x01(\t\x12\x12\n\nfacture_id\x18\x02 \x01(\t\x12\x11\n\tabonne_id\x18\x03 \x01(\t\x12\x18\n\x10\x64\x61te_depassement\x18\x04 \x01(\t\x12\x16\n\x0e\x65tape_actuelle\x18\x05 \x01(\x05\x12\x11\n\tresolu_le\x18\x06 \x01(\t\"F\n\x15ListPaiementsResponse\x12-\n\tpaiements\x18\x01 \x03(\x0b\x32\x1a.paiement.PaiementResponse\"?\n\x13ListImpayesResponse\x12(\n\x07impayes\x18\x01 \x03(\x0b\x32\x17.paiement.SoldeResponse\"$\n\x0f\x41\x62onneIdRequest\x12\x11\n\tabonne_id\x18\x01 \x01(\t\"[\n\x14\x43rediterAvoirRequest\x12\x11\n\tabonne_id\x18\x01 \x01(\t\x12\x0f\n\x07montant\x18\x02 \x01(\x01\x12\r\n\x05motif\x18\x03 \x01(\t\x12\x10\n\x08\x63ree_par\x18\x04 \x01(\t\"\x82\x01\n\x0eMouvementAvoir\x12\x0f\n\x07montant\x18\x01 \x01(\x01\x12\x16\n\x0etype_mouvement\x18\x02 \x01(\t\x12\r\n\x05motif\x18\x03 \x01(\t\x12\x12\n\nfacture_id\x18\x04 \x01(\t\x12\x10\n\x08\x63ree_par\x18\x05 \x01(\t\x12\x12\n\ncreated_at\x18\x06 \x01(\t\"a\n\rAvoirResponse\x12\x11\n\tabonne_id\x18\x01 \x01(\t\x12\x0f\n\x07montant\x18\x02 \x01(\x01\x12,\n\nmouvements\x18\x03 \x03(\x0b\x32\x18.paiement.MouvementAvoir\"\x0e\n\x0c\x45mptyRequest\"8\n\x13\x41nnulerSoldeRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\r\n\x05motif\x18\x02 \x01(\t\"^\n\x14\x41nnulerSoldeResponse\x12&\n\x05solde\x18\x01 \x01(\x0b\x32\x17.paiement.SoldeResponse\x12\x1e\n\x16montant_porte_en_avoir\x18\x02 \x01(\x01\x32\xa4\x08\n\x0fPaiementService\x12N\n\x10InitialiserSolde\x12!.paiement.InitialiserSoldeRequest\x1a\x17.paiement.SoldeResponse\x12W\n\x13\x45nregistrerPaiement\x12$.paiement.EnregistrerPaiementRequest\x1a\x1a.paiement.PaiementResponse\x12O\n\x0f\x41nnulerPaiement\x12 .paiement.AnnulerPaiementRequest\x1a\x1a.paiement.PaiementResponse\x12?\n\x08GetSolde\x12\x1a.paiement.FactureIdRequest\x1a\x17.paiement.SoldeResponse\x12P\n\rListPaiements\x12\x1e.paiement.ListPaiementsRequest\x1a\x1f.paiement.ListPaiementsResponse\x12X\n\x18ListPaiementsParCampagne\x12\x1b.paiement.CampagneIdRequest\x1a\x1f.paiement.ListPaiementsResponse\x12\x44\n\x0bListImpayes\x12\x16.paiement.EmptyRequest\x1a\x1d.paiement.ListImpayesResponse\x12K\n\x0eGetSuiviImpaye\x12\x1a.paiement.FactureIdRequest\x1a\x1d.paiement.SuiviImpayeResponse\x12M\n\x0eGetDetteAbonne\x12\x1c.paiement.DetteAbonneRequest\x1a\x1d.paiement.DetteAbonneResponse\x12i\n\x19\x45nregistrerPaiementAbonne\x12*.paiement.EnregistrerPaiementAbonneRequest\x1a .paiement.PaiementAbonneResponse\x12H\n\rCrediterAvoir\x12\x1e.paiement.CrediterAvoirRequest\x1a\x17.paiement.AvoirResponse\x12\x44\n\x0eGetAvoirAbonne\x12\x19.paiement.AbonneIdRequest\x1a\x17.paiement.AvoirResponse\x12M\n\x0c\x41nnulerSolde\x12\x1d.paiement.AnnulerSoldeRequest\x1a\x1e.paiement.AnnulerSoldeResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16paiement_service.proto\x12\x08paiement\"\x8a\x01\n\x17InitialiserSoldeRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x15\n\rmontant_total\x18\x03 \x01(\x01\x12\x1c\n\x14\x64\x61te_limite_paiement\x18\x04 \x01(\t\x12\x13\n\x0b\x63\x61mpagne_id\x18\x05 \x01(\t\"\xb9\x01\n\x1a\x45nregistrerPaiementRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x0f\n\x07montant\x18\x03 \x01(\x01\x12\x15\n\rdate_paiement\x18\x04 \x01(\t\x12\x15\n\rmode_paiement\x18\x05 \x01(\t\x12\x1d\n\x15reference_transaction\x18\x06 \x01(\t\x12\x16\n\x0e\x65nregistre_par\x18\x07 \x01(\t\"P\n\x16\x41nnulerPaiementRequest\x12\x13\n\x0bpaiement_id\x18\x01 \x01(\t\x12\r\n\x05motif\x18\x02 \x01(\t\x12\x12\n\nannule_par\x18\x03 \x01(\t\"&\n\x10\x46\x61\x63tureIdRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\"(\n\x11\x43\x61mpagneIdRequest\x12\x13\n\x0b\x63\x61mpagne_id\x18\x01 \x01(\t\"c\n\x14ListPaiementsRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x11\n\tabonne_id\x18\x02 \x01(\t\x12\x12\n\ndate_debut\x18\x03 \x01(\t\x12\x10\n\x08\x64\x61te_fin\x18\x04 \x01(\t\"\xa9\x02\n\x10PaiementResponse\x12\x13\n\x0bpaiement_id\x18\x01 \x01(\t\x12\x12\n\nfacture_id\x18\x02 \x01(\t\x12\x0f\n\x07montant\x18\x03 \x01(\x01\x12\x15\n\rdate_paiement\x18\x04 \x01(\t\x12\x15\n\rmode_paiement\x18\x05 \x01(\t\x12\x1d\n\x15reference_transaction\x18\x06 \x01(\t\x12\x12\n\ncreated_at\x18\x07 \x01(\t\x12\x16\n\x0e\x65nregistre_par\x18\x08 \x01(\t\x12\x11\n\tabonne_id\x18\t \x01(\t\x12\x0e\n\x06\x61nnule\x18\n \x01(\x08\x12\x11\n\tannule_le\x18\x0b \x01(\t\x12\x12\n\nannule_par\x18\x0c \x01(\t\x12\x18\n\x10motif_annulation\x18\r \x01(\t\"@\n\x12\x44\x65tteAbonneRequest\x12\x11\n\tabonne_id\x18\x01 \x01(\t\x12\x17\n\x0fhors_facture_id\x18\x02 \x01(\t\"\\\n\x13\x44\x65tteAbonneResponse\x12\x10\n\x08total_du\x18\x01 \x01(\x01\x12\x13\n\x0bnb_factures\x18\x02 \x01(\x05\x12\x1e\n\x16plus_ancienne_echeance\x18\x03 \x01(\t\"\xab\x01\n EnregistrerPaiementAbonneRequest\x12\x11\n\tabonne_id\x18\x01 \x01(\t\x12\x0f\n\x07montant\x18\x02 \x01(\x01\x12\x15\n\rdate_paiement\x18\x03 \x01(\t\x12\x15\n\rmode_paiement\x18\x04 \x01(\t\x12\x1d\n\x15reference_transaction\x18\x05 \x01(\t\x12\x16\n\x0e\x65nregistre_par\x18\x06 \x01(\t\"b\n\x16PaiementAbonneResponse\x12-\n\tpaiements\x18\x01 \x03(\x0b\x32\x1a.paiement.PaiementResponse\x12\x19\n\x11\x65xcedent_en_avoir\x18\x02 \x01(\x01\"\xbe\x01\n\rSoldeResponse\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\x15\n\rmontant_total\x18\x02 \x01(\x01\x12\x14\n\x0cmontant_paye\x18\x03 \x01(\x01\x12\x15\n\rsolde_restant\x18\x04 \x01(\x01\x12\x0e\n\x06statut\x18\x05 \x01(\t\x12\x11\n\tabonne_id\x18\x06 \x01(\t\x12\x1c\n\x14\x64\x61te_limite_paiement\x18\x07 \x01(\t\x12\x14\n\x0c\x61voir_impute\x18\x08 \x01(\x01\"\x93\x01\n\x13SuiviImpayeResponse\x12\x10\n\x08suivi_id\x18\x01 \x01(\t\x12\x12\n\nfacture_id\x18\x02 \x01(\t\x12\x11\n\tabonne_id\x18\x03 \x01(\t\x12\x18\n\x10\x64\x61te_depassement\x18\x04 \x01(\t\x12\x16\n\x0e\x65tape_actuelle\x18\x05 \x01(\x05\x12\x11\n\tresolu_le\x18\x06 \x01(\t\"F\n\x15ListPaiementsResponse\x12-\n\tpaiements\x18\x01 \x03(\x0b\x32\x1a.paiement.PaiementResponse\"?\n\x13ListImpayesResponse\x12(\n\x07impayes\x18\x01 \x03(\x0b\x32\x17.paiement.SoldeResponse\"$\n\x0f\x41\x62onneIdRequest\x12\x11\n\tabonne_id\x18\x01 \x01(\t\"[\n\x14\x43rediterAvoirRequest\x12\x11\n\tabonne_id\x18\x01 \x01(\t\x12\x0f\n\x07montant\x18\x02 \x01(\x01\x12\r\n\x05motif\x18\x03 \x01(\t\x12\x10\n\x08\x63ree_par\x18\x04 \x01(\t\"\x82\x01\n\x0eMouvementAvoir\x12\x0f\n\x07montant\x18\x01 \x01(\x01\x12\x16\n\x0etype_mouvement\x18\x02 \x01(\t\x12\r\n\x05motif\x18\x03 \x01(\t\x12\x12\n\nfacture_id\x18\x04 \x01(\t\x12\x10\n\x08\x63ree_par\x18\x05 \x01(\t\x12\x12\n\ncreated_at\x18\x06 \x01(\t\"a\n\rAvoirResponse\x12\x11\n\tabonne_id\x18\x01 \x01(\t\x12\x0f\n\x07montant\x18\x02 \x01(\x01\x12,\n\nmouvements\x18\x03 \x03(\x0b\x32\x18.paiement.MouvementAvoir\"\x0e\n\x0c\x45mptyRequest\"8\n\x13\x41nnulerSoldeRequest\x12\x12\n\nfacture_id\x18\x01 \x01(\t\x12\r\n\x05motif\x18\x02 \x01(\t\"^\n\x14\x41nnulerSoldeResponse\x12&\n\x05solde\x18\x01 \x01(\x0b\x32\x17.paiement.SoldeResponse\x12\x1e\n\x16montant_porte_en_avoir\x18\x02 \x01(\x01\x32\xa4\x08\n\x0fPaiementService\x12N\n\x10InitialiserSolde\x12!.paiement.InitialiserSoldeRequest\x1a\x17.paiement.SoldeResponse\x12W\n\x13\x45nregistrerPaiement\x12$.paiement.EnregistrerPaiementRequest\x1a\x1a.paiement.PaiementResponse\x12O\n\x0f\x41nnulerPaiement\x12 .paiement.AnnulerPaiementRequest\x1a\x1a.paiement.PaiementResponse\x12?\n\x08GetSolde\x12\x1a.paiement.FactureIdRequest\x1a\x17.paiement.SoldeResponse\x12P\n\rListPaiements\x12\x1e.paiement.ListPaiementsRequest\x1a\x1f.paiement.ListPaiementsResponse\x12X\n\x18ListPaiementsParCampagne\x12\x1b.paiement.CampagneIdRequest\x1a\x1f.paiement.ListPaiementsResponse\x12\x44\n\x0bListImpayes\x12\x16.paiement.EmptyRequest\x1a\x1d.paiement.ListImpayesResponse\x12K\n\x0eGetSuiviImpaye\x12\x1a.paiement.FactureIdRequest\x1a\x1d.paiement.SuiviImpayeResponse\x12M\n\x0eGetDetteAbonne\x12\x1c.paiement.DetteAbonneRequest\x1a\x1d.paiement.DetteAbonneResponse\x12i\n\x19\x45nregistrerPaiementAbonne\x12*.paiement.EnregistrerPaiementAbonneRequest\x1a .paiement.PaiementAbonneResponse\x12H\n\rCrediterAvoir\x12\x1e.paiement.CrediterAvoirRequest\x1a\x17.paiement.AvoirResponse\x12\x44\n\x0eGetAvoirAbonne\x12\x19.paiement.AbonneIdRequest\x1a\x17.paiement.AvoirResponse\x12M\n\x0c\x41nnulerSolde\x12\x1d.paiement.AnnulerSoldeRequest\x1a\x1e.paiement.AnnulerSoldeResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -42,39 +42,39 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_CAMPAGNEIDREQUEST']._serialized_start=487
   _globals['_CAMPAGNEIDREQUEST']._serialized_end=527
   _globals['_LISTPAIEMENTSREQUEST']._serialized_start=529
-  _globals['_LISTPAIEMENTSREQUEST']._serialized_end=590
-  _globals['_PAIEMENTRESPONSE']._serialized_start=593
-  _globals['_PAIEMENTRESPONSE']._serialized_end=890
-  _globals['_DETTEABONNEREQUEST']._serialized_start=892
-  _globals['_DETTEABONNEREQUEST']._serialized_end=956
-  _globals['_DETTEABONNERESPONSE']._serialized_start=958
-  _globals['_DETTEABONNERESPONSE']._serialized_end=1050
-  _globals['_ENREGISTRERPAIEMENTABONNEREQUEST']._serialized_start=1053
-  _globals['_ENREGISTRERPAIEMENTABONNEREQUEST']._serialized_end=1224
-  _globals['_PAIEMENTABONNERESPONSE']._serialized_start=1226
-  _globals['_PAIEMENTABONNERESPONSE']._serialized_end=1324
-  _globals['_SOLDERESPONSE']._serialized_start=1327
-  _globals['_SOLDERESPONSE']._serialized_end=1517
-  _globals['_SUIVIIMPAYERESPONSE']._serialized_start=1520
-  _globals['_SUIVIIMPAYERESPONSE']._serialized_end=1667
-  _globals['_LISTPAIEMENTSRESPONSE']._serialized_start=1669
-  _globals['_LISTPAIEMENTSRESPONSE']._serialized_end=1739
-  _globals['_LISTIMPAYESRESPONSE']._serialized_start=1741
-  _globals['_LISTIMPAYESRESPONSE']._serialized_end=1804
-  _globals['_ABONNEIDREQUEST']._serialized_start=1806
-  _globals['_ABONNEIDREQUEST']._serialized_end=1842
-  _globals['_CREDITERAVOIRREQUEST']._serialized_start=1844
-  _globals['_CREDITERAVOIRREQUEST']._serialized_end=1935
-  _globals['_MOUVEMENTAVOIR']._serialized_start=1938
-  _globals['_MOUVEMENTAVOIR']._serialized_end=2068
-  _globals['_AVOIRRESPONSE']._serialized_start=2070
-  _globals['_AVOIRRESPONSE']._serialized_end=2167
-  _globals['_EMPTYREQUEST']._serialized_start=2169
-  _globals['_EMPTYREQUEST']._serialized_end=2183
-  _globals['_ANNULERSOLDEREQUEST']._serialized_start=2185
-  _globals['_ANNULERSOLDEREQUEST']._serialized_end=2241
-  _globals['_ANNULERSOLDERESPONSE']._serialized_start=2243
-  _globals['_ANNULERSOLDERESPONSE']._serialized_end=2337
-  _globals['_PAIEMENTSERVICE']._serialized_start=2340
-  _globals['_PAIEMENTSERVICE']._serialized_end=3400
+  _globals['_LISTPAIEMENTSREQUEST']._serialized_end=628
+  _globals['_PAIEMENTRESPONSE']._serialized_start=631
+  _globals['_PAIEMENTRESPONSE']._serialized_end=928
+  _globals['_DETTEABONNEREQUEST']._serialized_start=930
+  _globals['_DETTEABONNEREQUEST']._serialized_end=994
+  _globals['_DETTEABONNERESPONSE']._serialized_start=996
+  _globals['_DETTEABONNERESPONSE']._serialized_end=1088
+  _globals['_ENREGISTRERPAIEMENTABONNEREQUEST']._serialized_start=1091
+  _globals['_ENREGISTRERPAIEMENTABONNEREQUEST']._serialized_end=1262
+  _globals['_PAIEMENTABONNERESPONSE']._serialized_start=1264
+  _globals['_PAIEMENTABONNERESPONSE']._serialized_end=1362
+  _globals['_SOLDERESPONSE']._serialized_start=1365
+  _globals['_SOLDERESPONSE']._serialized_end=1555
+  _globals['_SUIVIIMPAYERESPONSE']._serialized_start=1558
+  _globals['_SUIVIIMPAYERESPONSE']._serialized_end=1705
+  _globals['_LISTPAIEMENTSRESPONSE']._serialized_start=1707
+  _globals['_LISTPAIEMENTSRESPONSE']._serialized_end=1777
+  _globals['_LISTIMPAYESRESPONSE']._serialized_start=1779
+  _globals['_LISTIMPAYESRESPONSE']._serialized_end=1842
+  _globals['_ABONNEIDREQUEST']._serialized_start=1844
+  _globals['_ABONNEIDREQUEST']._serialized_end=1880
+  _globals['_CREDITERAVOIRREQUEST']._serialized_start=1882
+  _globals['_CREDITERAVOIRREQUEST']._serialized_end=1973
+  _globals['_MOUVEMENTAVOIR']._serialized_start=1976
+  _globals['_MOUVEMENTAVOIR']._serialized_end=2106
+  _globals['_AVOIRRESPONSE']._serialized_start=2108
+  _globals['_AVOIRRESPONSE']._serialized_end=2205
+  _globals['_EMPTYREQUEST']._serialized_start=2207
+  _globals['_EMPTYREQUEST']._serialized_end=2221
+  _globals['_ANNULERSOLDEREQUEST']._serialized_start=2223
+  _globals['_ANNULERSOLDEREQUEST']._serialized_end=2279
+  _globals['_ANNULERSOLDERESPONSE']._serialized_start=2281
+  _globals['_ANNULERSOLDERESPONSE']._serialized_end=2375
+  _globals['_PAIEMENTSERVICE']._serialized_start=2378
+  _globals['_PAIEMENTSERVICE']._serialized_end=3438
 # @@protoc_insertion_point(module_scope)

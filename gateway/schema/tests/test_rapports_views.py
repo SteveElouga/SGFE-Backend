@@ -1,9 +1,13 @@
-"""Tests des vues d'export rapports par campagne (écran 13).
+"""Tests des vues d'export (écran 13).
 
 Trois exports back-office (JWT + rôle ADMIN/COMPTABLE) :
-    GET /rapports/factures.csv?campagne_id=
-    GET /rapports/paiements.csv?campagne_id=
-    GET /rapports/synthese/pdf/?campagne_id=
+    GET /rapports/factures.csv   ?campagne_id= et/ou ?date_debut=&date_fin=
+    GET /rapports/paiements.csv  ?campagne_id= et/ou ?date_debut=&date_fin=
+    GET /rapports/synthese/pdf/  ?campagne_id=
+
+`campagne_id` était obligatoire sur les deux CSV : aucun journal par période
+n'était possible, et les régularisations — créées avec `campagne_id` vide —
+étaient exportables par aucun chemin.
 """
 
 from unittest.mock import Mock, patch
@@ -31,9 +35,13 @@ _AUTH = {"HTTP_AUTHORIZATION": "Bearer jwt-valide"}
 _CID = "camp-1"
 
 
-def _facture(numero="FACT-2026-07-0001"):
+def _facture(numero="FACT-2026-07-0001", nature="CONSOMMATION", motif="", campagne_id=_CID):
     return Mock(
         numero_facture=numero,
+        nature=nature,
+        motif=motif,
+        campagne_id=campagne_id,
+        date_generation="2026-07-01T08:00:00+00:00",
         abonne_id="ab-1",
         ancien_index=10.0,
         nouveau_index=25.0,
@@ -46,7 +54,7 @@ def _facture(numero="FACT-2026-07-0001"):
     )
 
 
-def _paiement(pid="pay-1"):
+def _paiement(pid="pay-1", annule=False):
     return Mock(
         paiement_id=pid,
         facture_id="fac-1",
@@ -56,6 +64,10 @@ def _paiement(pid="pay-1"):
         mode_paiement="MOBILE_MONEY",
         reference_transaction="MM-123",
         enregistre_par="u-9",
+        annule=annule,
+        annule_le="2026-07-05" if annule else "",
+        annule_par="jane" if annule else "",
+        motif_annulation="erreur de saisie" if annule else "",
     )
 
 
@@ -75,17 +87,69 @@ class FacturesCsvViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 403)
         mock_c.assert_not_called()
 
-    def test_campagne_id_manquant_retourne_400(self):
-        with patch.object(auth_client, "validate_token", return_value=make_user()):
+    def test_sans_critere_exporte_tout(self):
+        """Une clôture d'exercice demande tout l'historique.
+
+        Le paramètre était obligatoire et la vue rendait 400. Ce refus était le
+        premier des deux verrous qui rendaient une clôture comptable infaisable
+        sans ressaisie.
+        """
+        with (
+            patch.object(auth_client, "validate_token", return_value=make_user()),
+            patch.object(facturation_client, "list_factures", return_value=Mock(factures=[_facture()])) as mock_l,
+        ):
             response = self.client.get(self._URL, **_AUTH)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mock_l.call_args.kwargs, {"campagne_id": "", "date_debut": "", "date_fin": ""})
+
+    def test_periode_transmise_au_service(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=make_user()),
+            patch.object(facturation_client, "list_factures", return_value=Mock(factures=[])) as mock_l,
+        ):
+            response = self.client.get(self._URL, {"date_debut": "2026-07-01", "date_fin": "2026-07-31"}, **_AUTH)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mock_l.call_args.kwargs["date_debut"], "2026-07-01")
+        self.assertEqual(mock_l.call_args.kwargs["date_fin"], "2026-07-31")
+        self.assertIn("2026-07-01_2026-07-31", response["Content-Disposition"])
+
+    def test_date_illisible_refusee(self):
+        """Ignorer la borne rendrait tout l'historique sans le dire."""
+        with patch.object(auth_client, "validate_token", return_value=make_user()):
+            response = self.client.get(self._URL, {"date_debut": "01/07/2026"}, **_AUTH)
         self.assertEqual(response.status_code, 400)
+        self.assertIn("AAAA-MM-JJ", response.json()["erreur"])
+
+    def test_bornes_inversees_refusees(self):
+        with patch.object(auth_client, "validate_token", return_value=make_user()):
+            response = self.client.get(self._URL, {"date_debut": "2026-07-31", "date_fin": "2026-07-01"}, **_AUTH)
+        self.assertEqual(response.status_code, 400)
+
+    def test_une_regularisation_apparait_avec_sa_nature_et_son_motif(self):
+        """Elle n'apparaissait dans AUCUN export.
+
+        Créée avec `campagne_id=""`, le filtre par campagne ne la trouvait jamais.
+        C'est pourtant la seule dette qu'on saisit à la main : l'arriéré antérieur
+        à la mise en service. Et sans la colonne `nature`, rien ne la distinguait
+        dans le fichier d'une facture de consommation à 0 m³.
+        """
+        reg = _facture("REG-2026-07-0001", nature="REGULARISATION", motif="Arriéré 2025", campagne_id="")
+        with (
+            patch.object(auth_client, "validate_token", return_value=make_user()),
+            patch.object(facturation_client, "list_factures", return_value=Mock(factures=[reg])),
+        ):
+            response = self.client.get(self._URL, {"date_debut": "2026-07-01"}, **_AUTH)
+        body = response.content.decode("utf-8-sig")
+        self.assertIn("REG-2026-07-0001", body)
+        self.assertIn("REGULARISATION", body)
+        self.assertIn("Arriéré 2025", body)
 
     def test_admin_recupere_le_csv(self):
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
             patch.object(
                 facturation_client,
-                "get_factures_par_campagne",
+                "list_factures",
                 return_value=Mock(factures=[_facture(), _facture("FACT-2026-07-0002")]),
             ),
         ):
@@ -103,7 +167,7 @@ class FacturesCsvViewTests(SimpleTestCase):
             patch.object(auth_client, "validate_token", return_value=make_user(role="COMPTABLE")),
             patch.object(
                 facturation_client,
-                "get_factures_par_campagne",
+                "list_factures",
                 side_effect=_FakeRpcError(grpc.StatusCode.INTERNAL),
             ),
         ):
@@ -118,10 +182,43 @@ class PaiementsCsvViewTests(SimpleTestCase):
         response = self.client.get(self._URL, {"campagne_id": _CID})
         self.assertEqual(response.status_code, 401)
 
-    def test_campagne_id_manquant_retourne_400(self):
-        with patch.object(auth_client, "validate_token", return_value=make_user()):
-            response = self.client.get(self._URL, **_AUTH)
-        self.assertEqual(response.status_code, 400)
+    def test_periode_passe_par_le_filtre_de_dates_et_non_par_campagne(self):
+        """`ListPaiementsParCampagne` filtre `SoldeFacture.campagne_id`.
+
+        Un paiement de régularisation a un `campagne_id` vide : ce chemin ne
+        pouvait donc jamais le trouver. Le filtre par date porte sur
+        `Paiement.date_paiement` et voit tous les versements.
+        """
+        with (
+            patch.object(auth_client, "validate_token", return_value=make_user()),
+            patch.object(paiement_client, "list_paiements", return_value=Mock(paiements=[_paiement()])) as mock_p,
+            patch.object(paiement_client, "list_paiements_par_campagne") as mock_c,
+        ):
+            response = self.client.get(self._URL, {"date_debut": "2026-07-01"}, **_AUTH)
+        self.assertEqual(response.status_code, 200)
+        mock_c.assert_not_called()
+        self.assertEqual(mock_p.call_args.kwargs["date_debut"], "2026-07-01")
+
+    def test_les_paiements_annules_sont_signales(self):
+        """Ils étaient DÉJÀ dans l'export, sans rien qui les signale.
+
+        Un comptable qui sommait la colonne `montant` comptait donc comme
+        recette des versements annulés — faux, et faux en silence.
+        """
+        with (
+            patch.object(auth_client, "validate_token", return_value=make_user()),
+            patch.object(
+                paiement_client,
+                "list_paiements",
+                return_value=Mock(paiements=[_paiement("pay-1"), _paiement("pay-2", annule=True)]),
+            ),
+        ):
+            response = self.client.get(self._URL, {"date_debut": "2026-07-01"}, **_AUTH)
+        body = response.content.decode("utf-8-sig")
+        self.assertIn("annule", body.splitlines()[0])
+        self.assertIn("erreur de saisie", body)
+        lignes = body.strip().splitlines()
+        self.assertEqual(len([ligne for ligne in lignes[1:] if ";OUI;" in ligne]), 1)
 
     def test_comptable_recupere_le_csv(self):
         with (

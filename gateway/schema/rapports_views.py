@@ -5,16 +5,31 @@ donc exposés via des vues Django classiques, protégées par JWT + rôle
 (ADMIN/COMPTABLE), qui relaient les RPC des microservices propriétaires de la
 donnée.
 
-Routes (toutes en query-string `?campagne_id=<uuid>`) :
-    GET /rapports/factures.csv    → liste des factures de la campagne (CSV)
-    GET /rapports/paiements.csv   → liste des paiements de la campagne (CSV)
-    GET /rapports/synthese/pdf/   → synthèse chiffrée de la campagne (PDF)
+Routes :
+    GET /rapports/factures.csv    → journal des factures (CSV)
+    GET /rapports/paiements.csv   → journal des paiements (CSV)
+    GET /rapports/synthese/pdf/   → synthèse chiffrée d'une campagne (PDF)
+
+Les deux CSV acceptent `?campagne_id=<uuid>` **ou** `?date_debut=&date_fin=`
+(ISO `AAAA-MM-JJ`, bornes incluses), ou les deux, ou aucun.
+
+`campagne_id` était OBLIGATOIRE. Deux conséquences, toutes deux bloquantes pour
+une clôture comptable :
+
+  1. **Aucun journal par période.** Un comptable qui voulait son mois devait
+     exporter campagne par campagne et recoller les fichiers à la main.
+  2. **Les régularisations étaient exportables par aucun chemin.** Une
+     régularisation — la dette antérieure à la mise en service, saisie à la main —
+     est créée avec `campagne_id=""`, et son `SoldeFacture` aussi. Le filtre par
+     campagne ne la trouvait donc jamais, ni elle ni ses paiements. La seule dette
+     qu'on saisit à la main était structurellement invisible de la comptabilité.
 
 Le bilan des impayés (PDF, global) reste sur sa route dédiée
 `/bilan-impayes/pdf/` (voir facturation_views.py).
 """
 
 import csv
+import datetime
 import io
 import logging
 
@@ -48,6 +63,44 @@ def _authoriser(request: HttpRequest) -> JsonResponse | None:
     return None
 
 
+def _criteres(request: HttpRequest) -> tuple[str, str, str, str] | JsonResponse:
+    """Lit et valide les critères d'export ; rend une réponse d'erreur si invalides.
+
+    Retourne `(campagne_id, date_debut, date_fin, suffixe_de_nom_de_fichier)`.
+
+    Aucun critère est permis — c'est ce qu'une clôture d'exercice demande — mais
+    une date mal formée est refusée plutôt qu'ignorée : un export
+    silencieusement non borné rendrait tout l'historique là où le comptable a
+    demandé un mois, et rien ne le lui dirait avant qu'il somme la colonne.
+    """
+    campagne_id = request.GET.get("campagne_id", "").strip()
+    debut = request.GET.get("date_debut", "").strip()
+    fin = request.GET.get("date_fin", "").strip()
+
+    for nom, valeur in (("date_debut", debut), ("date_fin", fin)):
+        if valeur:
+            try:
+                datetime.date.fromisoformat(valeur)
+            except ValueError:
+                return JsonResponse(
+                    {"erreur": f"{nom} doit être une date ISO AAAA-MM-JJ (reçu : {valeur})."},
+                    status=400,
+                )
+
+    if debut and fin and debut > fin:
+        return JsonResponse({"erreur": "date_debut doit précéder date_fin."}, status=400)
+
+    # Le nom du fichier porte le critère : trois exports du même mois dans le
+    # dossier des téléchargements doivent rester distinguables.
+    if campagne_id:
+        suffixe = campagne_id
+    elif debut or fin:
+        suffixe = f"{debut or 'debut'}_{fin or 'fin'}"
+    else:
+        suffixe = "tout"
+    return campagne_id, debut, fin, suffixe
+
+
 def _csv_response(filename: str, header: list[str], rows: list[list[object]]) -> HttpResponse:
     """Sérialise des lignes en CSV UTF-8 (BOM pour Excel) en pièce jointe."""
     buffer = io.StringIO()
@@ -63,9 +116,10 @@ def _csv_response(filename: str, header: list[str], rows: list[list[object]]) ->
 
 
 def factures_csv(request: HttpRequest) -> HttpResponse | JsonResponse:
-    """Exporte les factures d'une campagne en CSV — ADMIN, COMPTABLE.
+    """Exporte un journal des factures en CSV — ADMIN, COMPTABLE.
 
-    Query-string : `?campagne_id=<uuid>` (obligatoire).
+    Query-string : `campagne_id`, et/ou `date_debut`/`date_fin` (ISO, incluses).
+    Aucun critère = tout l'historique.
     """
     if request.method != "GET":
         return JsonResponse({"erreur": "Méthode non autorisée."}, status=405)
@@ -73,50 +127,80 @@ def factures_csv(request: HttpRequest) -> HttpResponse | JsonResponse:
     if erreur is not None:
         return erreur
 
-    campagne_id = request.GET.get("campagne_id", "").strip()
-    if not campagne_id:
-        return JsonResponse({"erreur": "Paramètre campagne_id requis."}, status=400)
+    criteres = _criteres(request)
+    if isinstance(criteres, JsonResponse):
+        return criteres
+    campagne_id, date_debut, date_fin, suffixe = criteres
 
     try:
-        resp = facturation_client.get_factures_par_campagne(campagne_id)
+        # `list_factures` et non `get_factures_par_campagne` : c'est le seul des
+        # deux qui accepte une période — et le seul, donc, qui voit une
+        # régularisation (campagne_id vide).
+        resp = facturation_client.list_factures(
+            campagne_id=campagne_id,
+            date_debut=date_debut,
+            date_fin=date_fin,
+        )
     except grpc.RpcError as exc:
-        logger.error("GetFacturesParCampagne gRPC error", extra={"campagne_id": campagne_id, "error": str(exc)})
+        logger.error(
+            "ListFactures gRPC error",
+            extra={"campagne_id": campagne_id, "date_debut": date_debut, "error": str(exc)},
+        )
         return JsonResponse({"erreur": "Export indisponible."}, status=503)
 
+    # `nature`, `motif` et `date_generation` sont neufs dans cet export.
+    #
+    # Sans `nature`, rien ne distingue dans le fichier une facture de
+    # consommation d'une régularisation — dont la consommation vaut 0 et dont
+    # les index sont vides. Le comptable lisait des lignes à 0 m³ sans savoir
+    # pourquoi, et n'avait aucun moyen de rapprocher le montant d'un motif.
+    #
+    # `date_generation` est la date sur laquelle porte le filtre de période : un
+    # export borné doit porter la colonne qui a servi à le borner, sinon on ne
+    # peut pas vérifier son propre extrait.
     header = [
         "numero_facture",
+        "nature",
+        "motif",
         "abonne_id",
+        "campagne_id",
         "ancien_index",
         "nouveau_index",
         "consommation",
         "prix_m3",
         "montant",
         "statut",
+        "date_generation",
         "date_releve",
         "date_limite_paiement",
     ]
     rows = [
         [
             f.numero_facture,
+            getattr(f, "nature", ""),
+            getattr(f, "motif", ""),
             f.abonne_id,
+            f.campagne_id,
             f.ancien_index,
             f.nouveau_index,
             f.consommation,
             f.prix_m3,
             f.montant,
             f.statut,
+            getattr(f, "date_generation", ""),
             f.date_releve,
             f.date_limite_paiement,
         ]
         for f in resp.factures
     ]
-    return _csv_response(f"factures-{campagne_id}.csv", header, rows)
+    return _csv_response(f"factures-{suffixe}.csv", header, rows)
 
 
 def paiements_csv(request: HttpRequest) -> HttpResponse | JsonResponse:
-    """Exporte les paiements d'une campagne en CSV — ADMIN, COMPTABLE.
+    """Exporte un journal des paiements en CSV — ADMIN, COMPTABLE.
 
-    Query-string : `?campagne_id=<uuid>` (obligatoire).
+    Query-string : `campagne_id`, et/ou `date_debut`/`date_fin` (ISO, incluses).
+    Aucun critère = tout l'historique.
     """
     if request.method != "GET":
         return JsonResponse({"erreur": "Méthode non autorisée."}, status=405)
@@ -124,16 +208,36 @@ def paiements_csv(request: HttpRequest) -> HttpResponse | JsonResponse:
     if erreur is not None:
         return erreur
 
-    campagne_id = request.GET.get("campagne_id", "").strip()
-    if not campagne_id:
-        return JsonResponse({"erreur": "Paramètre campagne_id requis."}, status=400)
+    criteres = _criteres(request)
+    if isinstance(criteres, JsonResponse):
+        return criteres
+    campagne_id, date_debut, date_fin, suffixe = criteres
 
     try:
-        resp = paiement_client.list_paiements_par_campagne(campagne_id)
+        if date_debut or date_fin:
+            # Le filtre par période porte sur `Paiement.date_paiement`, donc il
+            # voit TOUS les versements — y compris ceux d'une régularisation,
+            # dont le `SoldeFacture` porte un `campagne_id` vide et que
+            # `ListPaiementsParCampagne` ne pouvait pas trouver.
+            resp = paiement_client.list_paiements(date_debut=date_debut, date_fin=date_fin)
+        elif campagne_id:
+            resp = paiement_client.list_paiements_par_campagne(campagne_id)
+        else:
+            resp = paiement_client.list_paiements()
     except grpc.RpcError as exc:
-        logger.error("ListPaiementsParCampagne gRPC error", extra={"campagne_id": campagne_id, "error": str(exc)})
+        logger.error(
+            "Export paiements gRPC error",
+            extra={"campagne_id": campagne_id, "date_debut": date_debut, "error": str(exc)},
+        )
         return JsonResponse({"erreur": "Export indisponible."}, status=503)
 
+    # Les colonnes d'annulation sont neuves, et elles changent les totaux.
+    #
+    # Les paiements annulés étaient DÉJÀ dans l'export — ni le repo ni la vue ne
+    # les excluaient — mais rien ne les signalait. Un comptable qui sommait la
+    # colonne `montant` comptait donc comme recette des versements annulés, sans
+    # aucun moyen de le voir. C'est le pire cas de figure pour un export
+    # comptable : faux, et faux en silence.
     header = [
         "paiement_id",
         "facture_id",
@@ -143,6 +247,10 @@ def paiements_csv(request: HttpRequest) -> HttpResponse | JsonResponse:
         "mode_paiement",
         "reference_transaction",
         "enregistre_par",
+        "annule",
+        "annule_le",
+        "annule_par",
+        "motif_annulation",
     ]
     rows = [
         [
@@ -154,10 +262,14 @@ def paiements_csv(request: HttpRequest) -> HttpResponse | JsonResponse:
             p.mode_paiement,
             p.reference_transaction,
             p.enregistre_par,
+            "OUI" if getattr(p, "annule", False) else "",
+            getattr(p, "annule_le", ""),
+            getattr(p, "annule_par", ""),
+            getattr(p, "motif_annulation", ""),
         ]
         for p in resp.paiements
     ]
-    return _csv_response(f"paiements-{campagne_id}.csv", header, rows)
+    return _csv_response(f"paiements-{suffixe}.csv", header, rows)
 
 
 def synthese_pdf(request: HttpRequest) -> FileResponse | JsonResponse:
