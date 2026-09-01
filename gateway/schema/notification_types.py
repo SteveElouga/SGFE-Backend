@@ -16,6 +16,10 @@ class Envoi:
     # Conservés pour rétro-compatibilité (mêmes valeurs que message_id / raison_echec).
     telnyx_message_id: str
     erreur: str
+    # Versement dont cet envoi est le reçu — chaîne vide pour tout autre type.
+    # C'est ce qui rend un reçu renvoyable : sans lui, rien ne disait de quel
+    # versement il parlait.
+    paiement_id: str
 
 
 def envoi_from_grpc(r) -> Envoi:
@@ -30,6 +34,7 @@ def envoi_from_grpc(r) -> Envoi:
         raison_echec=r.erreur,
         telnyx_message_id=r.telnyx_message_id,
         erreur=r.erreur,
+        paiement_id=getattr(r, "paiement_id", ""),
     )
 
 

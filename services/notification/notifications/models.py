@@ -36,6 +36,13 @@ class Envoi(models.Model):
     facture_id = models.CharField(max_length=36)
     abonne_id = models.CharField(max_length=36)
     type_envoi = models.CharField(max_length=30, choices=TypeEnvoi.choices)
+    # Versement dont cet envoi est le reçu — vide pour tout autre type.
+    #
+    # Sans lui, un reçu ne pouvait pas être renvoyé : rien ne disait de quel
+    # versement il était le reçu. Le bouton « Renvoyer » de l'écran de suivi
+    # retombait sur `renvoyer_facture`, et l'abonné recevait une facture à la
+    # place de son reçu.
+    paiement_id = models.CharField(max_length=36, blank=True, default="")
     telephone = models.CharField(max_length=20)
     statut = models.CharField(
         max_length=20,
