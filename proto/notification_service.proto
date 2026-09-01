@@ -72,6 +72,13 @@ message EnvoiResponse {
   string erreur = 6;             // exposé en GraphQL sous raison_echec
   string type_envoi = 7;         // FACTURE | RELANCE_1..4 | AVERTISSEMENT | SUSPENSION | RETABLISSEMENT
   string abonne_id = 8;
+  // Versement dont cet envoi est le reçu — vide pour tout autre type.
+  //
+  // Un reçu ne se renvoie pas sans savoir de quel versement il est le reçu, et
+  // rien ne l'enregistrait. Le bouton « Renvoyer » de l'écran de suivi des
+  // envois appelait donc `renvoyer_facture` quel que soit le type de la ligne :
+  // relancer un reçu envoyait une facture à l'abonné.
+  string paiement_id = 9;
 }
 
 message ValiderTokenResponse {

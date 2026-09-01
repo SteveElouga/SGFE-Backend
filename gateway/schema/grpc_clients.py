@@ -440,6 +440,50 @@ class NotificationServiceClient:
     def renvoyer_facture(self, facture_id: str) -> notification_pb.EnvoiResponse:
         return self._stub.ReenvoyerFacture(notification_pb.FactureIdRequest(facture_id=facture_id))
 
+    def envoyer_recu(
+        self,
+        paiement_id: str,
+        facture_id: str,
+        abonne_id: str,
+        montant: float,
+        solde_restant: float,
+    ) -> notification_pb.EnvoiResponse:
+        """Envoie (ou renvoie) le reçu d'un versement.
+
+        Le service de paiement appelle ce même RPC après un encaissement ; la
+        gateway s'en sert pour le renvoi à la demande. Les deux passent les
+        mêmes chiffres, lus au moment de l'envoi : le montant du versement, qui
+        est fixe, et la dette restante, qui ne l'est pas — un reçu renvoyé six
+        semaines plus tard doit annoncer le solde du jour, pas celui d'alors,
+        sinon il contredit tous les autres écrans.
+        """
+        return self._stub.EnvoyerRecu(
+            notification_pb.EnvoyerRecuRequest(
+                paiement_id=paiement_id,
+                facture_id=facture_id,
+                abonne_id=abonne_id,
+                montant=montant,
+                solde_restant=solde_restant,
+            )
+        )
+
+    def envoyer_relance(
+        self,
+        facture_id: str,
+        abonne_id: str,
+        etape: int,
+        jours_avant_suspension: int = 0,
+    ) -> notification_pb.EnvoiResponse:
+        """Envoie (ou renvoie) le message de relance d'une étape donnée."""
+        return self._stub.EnvoyerRelance(
+            notification_pb.EnvoyerRelanceRequest(
+                facture_id=facture_id,
+                abonne_id=abonne_id,
+                etape=etape,
+                jours_avant_suspension=jours_avant_suspension,
+            )
+        )
+
     def get_envoi(self, envoi_id: str) -> notification_pb.EnvoiResponse:
         return self._stub.GetEnvoi(notification_pb.EnvoiIdRequest(envoi_id=envoi_id))
 

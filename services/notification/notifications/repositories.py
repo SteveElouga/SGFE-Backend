@@ -15,13 +15,19 @@ class EnvoiRepository:
         abonne_id: str,
         type_envoi: str,
         telephone: str,
+        paiement_id: str = "",
     ) -> Envoi:
-        """Crée un envoi en statut EN_ATTENTE."""
+        """Crée un envoi en statut EN_ATTENTE.
+
+        `paiement_id` n'est renseigné que pour un reçu : c'est ce qui permet de
+        le renvoyer plus tard sans deviner de quel versement il parlait.
+        """
         return Envoi.objects.create(
             facture_id=facture_id,
             abonne_id=abonne_id,
             type_envoi=type_envoi,
             telephone=telephone,
+            paiement_id=paiement_id,
             statut=StatutEnvoi.EN_ATTENTE,
         )
 

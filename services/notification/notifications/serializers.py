@@ -37,6 +37,7 @@ def envoi_to_proto(envoi: Envoi) -> pb.EnvoiResponse:
         erreur=envoi.erreur or "",
         type_envoi=envoi.type_envoi or "",
         abonne_id=envoi.abonne_id or "",
+        paiement_id=envoi.paiement_id or "",
     )
 
 

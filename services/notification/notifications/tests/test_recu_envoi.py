@@ -12,6 +12,7 @@ from django.test import TestCase
 
 from notifications.message_builder import build_message_recu
 from notifications.models import StatutEnvoi, TypeEnvoi
+from notifications.repositories import EnvoiRepository
 from notifications.services import EnvoiService
 
 
@@ -77,6 +78,50 @@ class TestEnvoiServiceEnvoyerRecu(TestCase):
         args = mock_wa.send_with_pdf.call_args.args
         self.assertEqual(args[2], b"%PDF recu")
         self.assertEqual(args[3], "REC-2026-06-0002-1.pdf")
+
+    @patch("notifications.services.whatsapp_client")
+    @patch("notifications.services.abonne_client")
+    @patch("notifications.services.facturation_client")
+    def test_l_envoi_garde_le_versement_dont_il_est_le_recu(self, mock_fact, mock_abonne, mock_wa):
+        """Sans lui, un reçu ne peut pas être renvoyé.
+
+        Le journal des envois notait la facture, jamais le versement. Or une
+        facture peut recevoir plusieurs versements, donc plusieurs reçus : rien
+        ne disait duquel une ligne parlait. Le bouton « Renvoyer » de l'écran de
+        suivi retombait donc sur `renvoyer_facture`, et l'abonné recevait une
+        facture au lieu de son reçu.
+
+        C'est ce champ qui rend le renvoi possible — et c'est la gateway qui
+        s'en sert (`_renvoyer_recu`).
+        """
+        fid, aid, pid = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+        mock_fact.get_facture.return_value = _facture_mock(fid, aid)
+        mock_fact.generer_recu_paiement_pdf.return_value = (b"%PDF recu", "REC.pdf")
+        mock_abonne.get_abonne.return_value = _abonne_mock(aid)
+
+        envoi = EnvoiService().envoyer_recu(pid, fid, aid, 10750.0, 2500.0)
+
+        self.assertEqual(envoi.paiement_id, pid)
+        # Relu depuis la base, pas seulement depuis l'objet en mémoire : c'est
+        # la persistance qui compte pour un renvoi qui aura lieu plus tard.
+        envoi.refresh_from_db()
+        self.assertEqual(envoi.paiement_id, pid)
+
+    def test_un_envoi_qui_n_est_pas_un_recu_ne_porte_aucun_versement(self):
+        """Le champ ne vaut que pour un reçu, et reste vide ailleurs.
+
+        Vérifié au niveau du dépôt plutôt qu'en montant un envoi de facture
+        complet : c'est le défaut du champ qui est en cause, et le tester là où
+        il est défini évite de mocker cinq services pour une assertion sur une
+        chaîne vide.
+        """
+        envoi = EnvoiRepository().create(
+            facture_id=str(uuid.uuid4()),
+            abonne_id=str(uuid.uuid4()),
+            type_envoi=TypeEnvoi.FACTURE,
+            telephone="+237600000000",
+        )
+        self.assertEqual(envoi.paiement_id, "")
 
     @patch("notifications.services.whatsapp_client")
     @patch("notifications.services.abonne_client")

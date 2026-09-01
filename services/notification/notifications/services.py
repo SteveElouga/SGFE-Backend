@@ -263,6 +263,7 @@ class EnvoiService:
             abonne_id=abonne_id,
             type_envoi=TypeEnvoi.RECU,
             telephone=telephone,
+            paiement_id=paiement_id,
         )
 
         # Reçu PDF depuis Facturation (dégradation gracieuse : si indisponible,
