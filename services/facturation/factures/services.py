@@ -911,7 +911,13 @@ class RecuPaiementService:
             return f"{hhmm[:2]}h{hhmm[3:]}"
         return ""
 
-    def generer_recu_pdf(self, paiement_id: str, facture_id: str) -> tuple[bytes, str]:
+    def generer_recu_pdf(
+        self,
+        paiement_id: str,
+        facture_id: str,
+        montant_versement: float = 0.0,
+        solde_restant_total: float = 0.0,
+    ) -> tuple[bytes, str]:
         """Retourne (pdf_bytes, filename) du reçu du versement `paiement_id`."""
         from .pdf_generator import _periode_fr
         from .recu_generator import DonneesRecu, build_recu_context, generer_recu_pdf_bytes
@@ -954,6 +960,12 @@ class RecuPaiementService:
             numero_recu=self._numero_recu(facture, versement, paiements),
             date_paiement=versement.get("date_paiement") or "",
             montant=Decimal(str(versement.get("montant") or 0)),
+            # Le versement tel que le caissier l'a reçu, et la dette qui reste —
+            # transmis par Paiement Service via Notification. À zéro (régénération
+            # manuelle depuis le back-office), le reçu retombe sur l'imputation
+            # seule, comme avant.
+            montant_versement=Decimal(str(montant_versement or 0)),
+            solde_restant_total=Decimal(str(solde_restant_total or 0)),
             mode_paiement=versement.get("mode_paiement") or "",
             reference_transaction=versement.get("reference_transaction") or "",
             enregistre_par=versement.get("enregistre_par") or "",

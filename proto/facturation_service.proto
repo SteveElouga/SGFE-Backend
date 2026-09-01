@@ -50,6 +50,18 @@ message CampagneIdRequest { string campagne_id = 1; }
 message GenererRecuRequest {
   string paiement_id = 1;
   string facture_id = 2;
+  // Le VERSEMENT, tel que le caissier l'a reçu — et la dette totale qui reste.
+  //
+  // Le reçu ne connaissait que l'imputation sur SA facture. Un abonné qui tend
+  // 30 000 couvrant trois factures recevait un message annonçant « Montant réglé :
+  // 30 000 » et un reçu officiel annonçant « Versement : 10 000 ». Deux chiffres
+  // dans le même envoi, dont l'un n'est pas ce qu'il a donné.
+  //
+  // Paiement Service connaît les deux et les transmet déjà à Notification dans
+  // `EnvoyerRecu` ; Notification les relaie ici. À zéro, le reçu retombe sur
+  // l'imputation seule — le comportement d'avant.
+  double montant_versement = 3;
+  double solde_restant_total = 4;
 }
 
 message ListFacturesRequest {

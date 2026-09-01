@@ -267,7 +267,16 @@ class EnvoiService:
 
         # Reçu PDF depuis Facturation (dégradation gracieuse : si indisponible,
         # generer_recu_paiement_pdf renvoie (b"", "") et le message part seul).
-        pdf_bytes, pdf_filename = facturation_client.generer_recu_paiement_pdf(paiement_id, facture_id)
+        # `montant` et `solde_restant` sont ceux du VERSEMENT : ce que l'abonné a
+        # tendu, et ce qu'il doit encore en tout. Les mêmes chiffres que le
+        # message ci-dessus — sans quoi le reçu joint annoncerait autre chose que
+        # le texte qui le transporte.
+        pdf_bytes, pdf_filename = facturation_client.generer_recu_paiement_pdf(
+            paiement_id,
+            facture_id,
+            montant_versement=montant,
+            solde_restant_total=solde_restant,
+        )
 
         return self._tenter_envoi(envoi, telephone, message, pdf_bytes=pdf_bytes, pdf_filename=pdf_filename)
 

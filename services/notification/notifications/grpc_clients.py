@@ -61,8 +61,20 @@ class FacturationServiceClient:
             logger.warning("Impossible de récupérer le PDF facture %s : %s", facture_id, exc)
             return b"", ""
 
-    def generer_recu_paiement_pdf(self, paiement_id: str, facture_id: str) -> tuple[bytes, str]:
+    def generer_recu_paiement_pdf(
+        self,
+        paiement_id: str,
+        facture_id: str,
+        montant_versement: float = 0.0,
+        solde_restant_total: float = 0.0,
+    ) -> tuple[bytes, str]:
         """Récupère le reçu PDF d'un versement depuis Facturation Service.
+
+        `montant_versement` et `solde_restant_total` sont ceux que Paiement
+        Service a transmis dans `EnvoyerRecu` : ce que l'abonné a réellement tendu
+        et ce qu'il doit encore en tout. Sans eux, le reçu ne connaissait que
+        l'imputation sur SA facture — et annonçait donc un autre chiffre que le
+        message qui le transporte.
 
         Returns:
             Tuple (pdf_content: bytes, filename: str).
@@ -71,7 +83,12 @@ class FacturationServiceClient:
         """
         try:
             response = self._stub.GenererRecuPaiementPDF(
-                self._pb.GenererRecuRequest(paiement_id=paiement_id, facture_id=facture_id)
+                self._pb.GenererRecuRequest(
+                    paiement_id=paiement_id,
+                    facture_id=facture_id,
+                    montant_versement=montant_versement,
+                    solde_restant_total=solde_restant_total,
+                )
             )
             return response.pdf_content, response.filename
         except grpc.RpcError as exc:
