@@ -361,3 +361,130 @@ class PaiementClientRecuTests(TestCase):
         client = self._client()
         client._stub.ListPaiements.side_effect = Exception("indisponible")
         self.assertEqual(client.list_paiements("f1"), [])
+
+
+class RecuAuNiveauDuVersementTests(TestCase):
+    """Le reçu annonce ce que l'abonné a TENDU, et ce qu'il doit encore en tout.
+
+    Il ne connaissait que l'imputation sur SA facture. Un abonné qui tend 30 000
+    couvrant trois factures recevait un message annonçant « Montant réglé :
+    30 000 » et un reçu officiel annonçant « Versement : 10 000 ». Deux chiffres
+    dans le même envoi, dont l'un n'était pas ce qu'il avait donné.
+
+    Paiement Service connaît les deux et les transmettait déjà à Notification ;
+    ils traversent maintenant jusqu'ici.
+    """
+
+    def test_le_versement_recu_est_affiche_quand_il_depasse_l_imputation(self):
+        ctx = build_recu_context(
+            _recu(montant=Decimal("10000"), montant_versement=Decimal("30000")),
+            InfosSociete(),
+        )
+        self.assertTrue(ctx["versement"]["porte_sur_plusieurs"])
+        self.assertEqual(ctx["versement"]["recu_total"], "30 000 FCFA")
+        self.assertIn("imputation de 10 000 FCFA", ctx["note"])
+        self.assertIn("30 000 FCFA", ctx["note"])
+        self.assertIn("d'autres factures", ctx["note"])
+
+    def test_il_reste_masque_quand_le_versement_ne_couvre_qu_une_facture(self):
+        """Une ligne qui répète la précédente fait douter des autres."""
+        ctx = build_recu_context(
+            _recu(montant=Decimal("10750"), montant_versement=Decimal("10750")),
+            InfosSociete(),
+        )
+        self.assertFalse(ctx["versement"]["porte_sur_plusieurs"])
+
+    def test_la_dette_totale_apparait_quand_elle_est_transmise(self):
+        """La seule question que l'abonné se pose : combien me reste-t-il ?
+
+        Le reçu ne connaissait que sa facture, et laissait donc croire qu'une
+        facture soldée valait un compte à jour.
+        """
+        ctx = build_recu_context(
+            _recu(
+                solde_restant=Decimal("0"),
+                statut="PAYEE",
+                montant_versement=Decimal("10750"),
+                solde_restant_total=Decimal("6000"),
+            ),
+            InfosSociete(),
+        )
+        self.assertTrue(ctx["situation"]["dette_totale_connue"])
+        self.assertTrue(ctx["situation"]["dette_totale_positive"])
+        self.assertEqual(ctx["situation"]["dette_totale"], "6 000 FCFA")
+        self.assertIn("Reste dû sur votre compte", ctx["note"])
+        self.assertIn("6 000 FCFA", ctx["note"])
+
+    def test_compte_a_jour_le_dit(self):
+        ctx = build_recu_context(
+            _recu(
+                solde_restant=Decimal("0"),
+                statut="PAYEE",
+                montant_versement=Decimal("21500"),
+                solde_restant_total=Decimal("0"),
+            ),
+            InfosSociete(),
+        )
+        self.assertIn("à jour", ctx["note"])
+        self.assertEqual(ctx["situation"]["dette_totale"], "0 FCFA")
+        self.assertFalse(ctx["situation"]["dette_totale_positive"])
+
+    def test_regeneration_manuelle_retombe_sur_l_imputation_seule(self):
+        """Sans les deux valeurs — régénération depuis le back-office — le reçu
+        garde exactement le comportement d'avant, sans ligne vide ni zéro trompeur.
+        """
+        ctx = build_recu_context(_recu(), InfosSociete())
+        self.assertFalse(ctx["versement"]["porte_sur_plusieurs"])
+        self.assertFalse(ctx["situation"]["dette_totale_connue"])
+        self.assertNotIn("Reste dû sur votre compte", ctx["note"])
+        self.assertNotIn("à jour", ctx["note"])
+
+    def test_le_service_propage_les_deux_valeurs_jusqu_au_rendu(self):
+        """De l'appel gRPC au contexte de rendu, sans perte en route."""
+        facture = Facture.objects.create(
+            numero_facture="FACT-2026-06-0009",
+            abonne_id="abonne-2",
+            campagne_id="camp-1",
+            ancien_index=Decimal("100"),
+            nouveau_index=Decimal("143"),
+            consommation=Decimal("43"),
+            prix_m3=Decimal("500"),
+            montant=Decimal("21500"),
+            statut=StatutFacture.IMPAYEE,
+            date_releve=datetime.date(2026, 6, 26),
+            date_limite_paiement=datetime.date(2026, 7, 1),
+        )
+        versement = {
+            "paiement_id": "p1",
+            "facture_id": str(facture.id),
+            "abonne_id": "abonne-2",
+            "montant": 10750.0,
+            "date_paiement": "2026-06-26",
+            "mode_paiement": "ESPECES",
+            "reference_transaction": "",
+            "created_at": "2026-06-26T11:20:00",
+            "enregistre_par": "c",
+            "annule": False,
+        }
+        svc = RecuPaiementService(
+            paiement_client=SimpleNamespace(
+                list_paiements=lambda fid, abonne_id="": [versement],
+                get_solde=lambda fid: {
+                    "facture_id": str(facture.id),
+                    "montant_total": 21500.0,
+                    "montant_paye": 10750.0,
+                    "solde_restant": 10750.0,
+                    "statut": "PARTIELLE",
+                },
+            ),
+            abonne_client=SimpleNamespace(get_abonne=lambda aid: None),
+            config_client=SimpleNamespace(get_infos_societe=lambda: InfosSociete(nom="Hydro CI")),
+        )
+
+        with patch("factures.recu_generator.generer_recu_pdf_bytes", return_value=b"%PDF") as mock_gen:
+            svc.generer_recu_pdf("p1", str(facture.id), montant_versement=30000.0, solde_restant_total=6000.0)
+
+        ctx = mock_gen.call_args.args[0]
+        self.assertEqual(ctx["versement"]["recu_total"], "30 000 FCFA")
+        self.assertTrue(ctx["versement"]["porte_sur_plusieurs"])
+        self.assertEqual(ctx["situation"]["dette_totale"], "6 000 FCFA")

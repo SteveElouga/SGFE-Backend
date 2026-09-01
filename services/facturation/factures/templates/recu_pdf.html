@@ -176,6 +176,15 @@ note           (chaîne, adaptée partiel / soldé)
       <div class="amount__label">Montant reçu</div>
       <div class="amount__value">{{ versement.montant }} <span>FCFA</span></div>
       <div class="amount__words">{{ versement.montant_lettres }}</div>
+      {% comment %}
+        Affiché SEULEMENT quand le versement dépasse l'imputation sur cette
+        facture. Sans cette ligne, un abonné qui a tendu 30 000 couvrant trois
+        factures lisait « 10 000 » sur son reçu officiel — pendant que le message
+        WhatsApp du même envoi annonçait 30 000.
+      {% endcomment %}
+      {% if versement.porte_sur_plusieurs %}
+        <div class="amount__ref">Versement reçu : <b>{{ versement.recu_total }}</b> — imputé sur plusieurs factures</div>
+      {% endif %}
     </div>
     <div class="amount__right">
       <div class="amount__mode">{{ versement.mode }}</div>
@@ -201,9 +210,20 @@ note           (chaîne, adaptée partiel / soldé)
         <td class="val">{{ situation.total_verse }}</td>
       </tr>
       <tr class="total">
-        <td class="lbl">Solde restant dû</td>
+        <td class="lbl">Solde restant dû sur cette facture</td>
         <td class="val {% if situation.solde_positif %}due{% else %}ok{% endif %}">{{ situation.solde_restant }}</td>
       </tr>
+      {% comment %}
+        La question que l'abonné se pose vraiment : combien me reste-t-il à payer,
+        en tout ? Le reçu ne connaissait que sa facture, et laissait donc croire
+        qu'une facture soldée valait un compte à jour.
+      {% endcomment %}
+      {% if situation.dette_totale_connue %}
+        <tr class="total">
+          <td class="lbl">Reste dû sur votre compte, toutes factures</td>
+          <td class="val {% if situation.dette_totale_positive %}due{% else %}ok{% endif %}">{{ situation.dette_totale }}</td>
+        </tr>
+      {% endif %}
     </tbody>
   </table>
 

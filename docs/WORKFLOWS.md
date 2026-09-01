@@ -165,9 +165,30 @@ Agrège les compteurs de relevés par statut (`A_RELEVER`/`RELEVE`/`NON_RELEVE`/
 1. `[Facturation]` → `Campagne.ListReleves(campagne_id)`, filtre côté client les relevés `statut == "RELEVE"` (les `NON_RELEVE`/`ESTIME` sont exclus — aucune facture générée pour eux). Échec bloquant si Campagne est indisponible (pas de dégradation ici, volontairement).
 2. `[Facturation]` → `Config.GetConfig("delai_paiement_jours")` — ✅ `ANO-001` résolu (PR #18) : la valeur configurée par l'ADMIN est désormais bien lue (défaut 5 jours si Config Service indisponible). → `Config.GetInfosSociete()` pour les informations à afficher sur le PDF.
 3. Pour chaque relevé : `montant = consommation × prix_m3` (tarif actif au moment de la génération, **copié**, jamais en FK), `date_limite = date_releve + delai_paiement_jours`, numéro séquentiel `FACT-AAAA-MM-XXXX`.
-4. Transaction atomique : création de la `Facture` (statut `IMPAYEE`) puis génération et sauvegarde du PDF (ReportLab). Si la génération PDF échoue, la facture reste créée avec `pdf_path=""` (régénérable à la demande via `GetFacturePDF`).
-5. Hors transaction, avec dégradation gracieuse : `[Facturation]` → `Paiement.InitialiserSolde(facture_id, montant_total, date_limite)`, puis si `envoyer_whatsapp_auto=True` → `Notification.EnvoyerFacture(facture_id)`.
-6. Aucun appel vers Reporting (service inexistant, `ANO-016`).
+4. Transaction atomique : création de la `Facture` (statut `IMPAYEE`). Rien d'autre — le rendu du PDF en est sorti, voir l'étape 6.
+5. Hors transaction, dégradation gracieuse : `[Facturation]` → `Paiement.InitialiserSolde(facture_id, montant_total, date_limite)`. **C'est cet appel qui impute l'avoir de l'abonné** sur la facture (mode `AVOIR`).
+6. **Puis** génération et sauvegarde du PDF (WeasyPrint). Il lit `GetSolde.avoir_impute`, désormais renseigné. Un rendu qui échoue laisse la facture et son solde en place, avec `pdf_path=""` — `GetFacturePDF` régénère à la demande.
+7. Enfin, si `envoyer_whatsapp_auto=True` → `Notification.EnvoyerFacture(facture_id)`. Le message lit le même état que la pièce jointe qu'il transporte.
+8. Stats de facturation publiées sur le flux Reporting, une fois pour tout le lot (`publish_reporting_event`).
+
+> ⚠️ **Corrigé le 1er septembre 2026.** Le PDF était rendu **avant**
+> `InitialiserSolde`, à l'intérieur de la transaction de création. Il interrogeait
+> donc un solde qui n'existait pas encore : `_lire_avoir_impute` échouait,
+> dégradait à zéro, et le document **persisté** annonçait le total plein.
+>
+> Le message WhatsApp part après et relit `GetSolde.avoir_impute`, non nul cette
+> fois. Pour un abonné avec un avoir et sans autre facture impayée, l'envoi
+> portait **deux totaux différents** : le message en déduisait l'avoir, la pièce
+> jointe non. Et `get_pdf_bytes` ne régénère que si l'abonné a une dette — le
+> document restait donc faux.
+>
+> Le chemin de régénération (`regenererFacture`, §4.4) faisait déjà les deux dans
+> le bon ordre, avec le commentaire qui l'explique : « le solde récupère au
+> passage l'avoir né de l'annulation ». Deux chemins pour une même chose, l'un
+> juste, l'autre non — et personne ne les avait comparés.
+>
+> Ce document décrivait par ailleurs le PDF comme rendu par **ReportLab** : c'est
+> WeasyPrint, depuis toujours.
 
 ### 4.2 Mise à jour du statut suite à un paiement
 

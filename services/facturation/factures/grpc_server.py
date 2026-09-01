@@ -239,7 +239,12 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.PDFResponse:
         """Génère le PDF du reçu d'un versement (document A5, ADMIN/COMPTABLE)."""
-        pdf_bytes, filename = self._recu_svc.generer_recu_pdf(request.paiement_id, request.facture_id)
+        pdf_bytes, filename = self._recu_svc.generer_recu_pdf(
+            request.paiement_id,
+            request.facture_id,
+            montant_versement=request.montant_versement,
+            solde_restant_total=request.solde_restant_total,
+        )
         return pb.PDFResponse(pdf_content=pdf_bytes, filename=filename)
 
     def UpdateStatutFacture(

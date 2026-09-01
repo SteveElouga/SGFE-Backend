@@ -211,7 +211,6 @@ class FactureService:
                             numero_facture=numero,
                             numero_mobile_money=numero_mobile_money,
                         )
-                        self._regenerer_et_persister(facture, societe=societe, campagne_nom=campagne_nom)
                     break
                 except IntegrityError:
                     if tentative == _MAX_NUMERO_RETRIES - 1:
@@ -229,6 +228,29 @@ class FactureService:
                 date_limite_paiement=date_limite.isoformat(),
                 campagne_id=campagne_id,
             )
+
+            # ── Le PDF APRÈS le solde, et pas avant ─────────────────────────
+            #
+            # C'est `initialiser_solde` qui impute l'avoir de l'abonné sur cette
+            # facture. Généré avant lui, le PDF interrogeait un solde qui
+            # n'existait pas encore : `_lire_avoir_impute` échouait, dégradait à
+            # zéro, et le document persisté annonçait le total plein.
+            #
+            # Le message WhatsApp part ensuite et relit `GetSolde.avoir_impute`,
+            # non nul cette fois. Pour un abonné avec un avoir et sans autre
+            # facture impayée, l'envoi portait donc DEUX totaux différents : le
+            # message en déduisait l'avoir, la pièce jointe non.
+            #
+            # Le chemin de régénération (`regenerer_facture`) faisait déjà les
+            # deux dans cet ordre, avec le commentaire qui l'explique — « le solde
+            # récupère au passage l'avoir né de l'annulation ». Deux chemins pour
+            # une même chose, l'un juste, l'autre non, et personne ne les avait
+            # comparés.
+            #
+            # Hors de la boucle de réessai : elle protège la numérotation, pas le
+            # rendu. Et si le rendu échoue, `get_pdf_bytes` régénère à la demande.
+            self._regenerer_et_persister(facture, societe=societe, campagne_nom=campagne_nom)
+
             # Envoi WhatsApp si activé sur la campagne (dégradation gracieuse si KO)
             if envoyer_whatsapp_auto:
                 self._notification_client.envoyer_facture(
@@ -889,7 +911,13 @@ class RecuPaiementService:
             return f"{hhmm[:2]}h{hhmm[3:]}"
         return ""
 
-    def generer_recu_pdf(self, paiement_id: str, facture_id: str) -> tuple[bytes, str]:
+    def generer_recu_pdf(
+        self,
+        paiement_id: str,
+        facture_id: str,
+        montant_versement: float = 0.0,
+        solde_restant_total: float = 0.0,
+    ) -> tuple[bytes, str]:
         """Retourne (pdf_bytes, filename) du reçu du versement `paiement_id`."""
         from .pdf_generator import _periode_fr
         from .recu_generator import DonneesRecu, build_recu_context, generer_recu_pdf_bytes
@@ -932,6 +960,12 @@ class RecuPaiementService:
             numero_recu=self._numero_recu(facture, versement, paiements),
             date_paiement=versement.get("date_paiement") or "",
             montant=Decimal(str(versement.get("montant") or 0)),
+            # Le versement tel que le caissier l'a reçu, et la dette qui reste —
+            # transmis par Paiement Service via Notification. À zéro (régénération
+            # manuelle depuis le back-office), le reçu retombe sur l'imputation
+            # seule, comme avant.
+            montant_versement=Decimal(str(montant_versement or 0)),
+            solde_restant_total=Decimal(str(solde_restant_total or 0)),
             mode_paiement=versement.get("mode_paiement") or "",
             reference_transaction=versement.get("reference_transaction") or "",
             enregistre_par=versement.get("enregistre_par") or "",
