@@ -38,7 +38,14 @@ class CompteurRepository:
         return Compteur.objects.get(abonne_id=abonne_id, statut=StatutCompteur.ACTIF)
 
     def create(
-        self, abonne: Abonne, numero_compteur: int, quartier: str, camp: int, index_initial: float, date_pose: str
+        self,
+        abonne: Abonne,
+        numero_compteur: int,
+        quartier: str,
+        camp: int,
+        index_initial: float,
+        date_pose: str,
+        position: str = "",
     ) -> Compteur:
         return Compteur.objects.create(
             abonne=abonne,
@@ -47,6 +54,7 @@ class CompteurRepository:
             camp=camp,
             index_initial=index_initial,
             date_pose=date_pose,
+            position=position,
         )
 
     def save(self, compteur: Compteur) -> Compteur:

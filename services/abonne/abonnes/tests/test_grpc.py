@@ -112,6 +112,10 @@ class AbonneServiceServicerTests(TestCase):
         response = self.servicer.GetCompteur(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
         self.assertEqual(response.numero_compteur, 1)
 
+    def test_create_abonne_transporte_la_position(self):
+        created = self._create(position="3e maison à gauche")
+        self.assertEqual(created.compteur.position, "3e maison à gauche")
+
     def test_update_compteur(self):
         created = self._create(quartier="Ancien", camp=1)
         response = self.servicer.UpdateCompteur(
@@ -120,6 +124,14 @@ class AbonneServiceServicerTests(TestCase):
         )
         self.assertEqual(response.quartier, "Nouveau")
         self.assertEqual(response.camp, 2)
+
+    def test_update_compteur_position(self):
+        created = self._create(position="Ancienne")
+        response = self.servicer.UpdateCompteur(
+            pb.UpdateCompteurRequest(abonne_id=created.abonne_id, position="Nouvelle position"),
+            self.context,
+        )
+        self.assertEqual(response.position, "Nouvelle position")
 
     def test_remplacer_compteur(self):
         created = self._create()
@@ -136,6 +148,23 @@ class AbonneServiceServicerTests(TestCase):
             self.context,
         )
         self.assertEqual(response.numero_compteur, 2)
+
+    def test_remplacer_compteur_transporte_la_nouvelle_position(self):
+        created = self._create()
+        response = self.servicer.RemplacerCompteur(
+            pb.RemplacerCompteurRequest(
+                abonne_id=created.abonne_id,
+                index_fermeture=100,
+                nouveau_numero_compteur=2,
+                nouveau_quartier="Nouveau",
+                nouveau_camp=2,
+                nouvel_index_initial=0,
+                date_remplacement="2024-06-01",
+                nouvelle_position="Près du portail bleu",
+            ),
+            self.context,
+        )
+        self.assertEqual(response.position, "Près du portail bleu")
 
     def test_remplacer_compteur_motif_persiste_et_ressort_dans_historique(self):
         created = self._create()

@@ -47,6 +47,11 @@ class Compteur(models.Model):
     camp = models.IntegerField()
     index_initial = models.DecimalField(max_digits=10, decimal_places=3, default=0)
     date_pose = models.DateField()
+    # Emplacement du compteur dans le camp : texte libre (un numéro de
+    # parcelle, "3e maison à gauche"...) — quartier/camp regroupent la zone,
+    # ce champ précise où chercher *dans* cette zone. Optionnel : les
+    # compteurs existants n'en ont pas.
+    position = models.CharField(max_length=255, blank=True, default="")
     statut = models.CharField(max_length=20, choices=StatutCompteur.choices, default=StatutCompteur.ACTIF)
     created_at = models.DateTimeField(auto_now_add=True)
 

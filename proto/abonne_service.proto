@@ -33,6 +33,9 @@ message CreateAbonneRequest {
   int32 camp = 7;
   double index_initial = 8;
   string date_pose = 9;
+  // Emplacement du compteur dans le camp (texte libre : "3e maison à
+  // gauche", un numéro de parcelle...). Optionnel.
+  string position = 10;
 }
 
 message UpdateAbonneRequest {
@@ -49,6 +52,7 @@ message UpdateCompteurRequest {
   optional int32 camp = 3;
   optional double index_initial = 4;
   optional string date_pose = 5;
+  optional string position = 6;
 }
 
 message RemplacerCompteurRequest {
@@ -61,6 +65,7 @@ message RemplacerCompteurRequest {
   string date_remplacement = 7;
   // Motif du remplacement (ex. « Compteur défectueux »). Optionnel.
   string motif = 8;
+  string nouvelle_position = 9;
 }
 
 message AbonneResponse {
@@ -83,6 +88,7 @@ message CompteurResponse {
   double index_initial = 5;
   string date_pose = 6;
   string statut = 7;
+  string position = 8;
 }
 
 message ListAbonnesResponse { repeated AbonneResponse abonnes = 1; }

@@ -29,6 +29,7 @@ class AbonneMutations:
             camp=input.camp,
             index_initial=input.index_initial,
             date_pose=input.date_pose,
+            position=input.position or "",
         )
         return abonne_from_grpc(response)
 
@@ -73,6 +74,8 @@ class AbonneMutations:
             kwargs["index_initial"] = input.index_initial
         if input.date_pose is not None:
             kwargs["date_pose"] = input.date_pose
+        if input.position is not None:
+            kwargs["position"] = input.position
         response = abonne_client.update_compteur(str(abonne_id), **kwargs)
         return compteur_from_grpc(response)
 
@@ -90,5 +93,6 @@ class AbonneMutations:
             nouvel_index_initial=input.nouvel_index_initial,
             date_remplacement=input.date_remplacement,
             motif=input.motif,
+            nouvelle_position=input.nouvelle_position,
         )
         return compteur_from_grpc(response)

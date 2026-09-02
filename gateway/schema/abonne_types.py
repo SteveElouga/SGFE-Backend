@@ -26,6 +26,7 @@ class Compteur:
     index_initial: float
     date_pose: str
     statut: StatutCompteur
+    position: str
 
 
 @strawberry.type
@@ -52,6 +53,7 @@ class CreateAbonneInput:
     camp: int
     index_initial: float
     date_pose: str
+    position: str | None = None
 
 
 @strawberry.input
@@ -68,6 +70,7 @@ class UpdateCompteurInput:
     camp: int | None = None
     index_initial: float | None = None
     date_pose: str | None = None
+    position: str | None = None
 
 
 @strawberry.input
@@ -79,6 +82,7 @@ class RemplacerCompteurInput:
     nouvel_index_initial: float
     date_remplacement: str
     motif: str = ""
+    nouvelle_position: str = ""
 
 
 @strawberry.type
@@ -101,6 +105,7 @@ def compteur_from_grpc(compteur_response) -> Compteur:
         index_initial=compteur_response.index_initial,
         date_pose=compteur_response.date_pose,
         statut=StatutCompteur(compteur_response.statut),
+        position=compteur_response.position,
     )
 
 

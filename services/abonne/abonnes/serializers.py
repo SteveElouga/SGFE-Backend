@@ -17,6 +17,7 @@ def compteur_to_response(compteur: Compteur) -> dict:
         "index_initial": float(compteur.index_initial),
         "date_pose": _date_to_str(compteur.date_pose),
         "statut": compteur.statut,
+        "position": compteur.position,
     }
 
 
