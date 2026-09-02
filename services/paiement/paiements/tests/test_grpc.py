@@ -526,8 +526,13 @@ class TestAnnulerSoldeRPC(TestCase):
     @patch("paiements.grpc_server.publish_reporting_event")
     @patch("paiements.grpc_server.NotificationServiceClient")
     @patch("paiements.grpc_server.FacturationServiceClient")
-    def test_annuler_solde_sans_versement_ne_publie_rien(self, mock_fact_cls, mock_notif_cls, mock_pub) -> None:
-        """Rien n'a jamais été versé : rien à décrémenter, personne à prévenir."""
+    def test_annuler_solde_sans_versement_ne_decremente_rien_mais_previent_quand_meme(
+        self, mock_fact_cls, mock_notif_cls, mock_pub
+    ) -> None:
+        """Rien n'a jamais été versé : rien à décrémenter côté Reporting, mais
+        l'abonné doit être prévenu quand même — PDF déjà reçu, il croirait
+        sinon cette facture toujours due. Étape 6, pas 5 : aucun versement à
+        annuler ici."""
         _creer_solde("facture-annulee-vide", "abonne-001", 300.00, campagne_id="camp-ann")
         servicer = PaiementServicer()
 
@@ -537,7 +542,9 @@ class TestAnnulerSoldeRPC(TestCase):
         )
 
         mock_pub.assert_not_called()
-        mock_notif_cls.return_value.envoyer_relance.assert_not_called()
+        mock_notif_cls.return_value.envoyer_relance.assert_called_once_with(
+            facture_id="facture-annulee-vide", abonne_id="abonne-001", etape=6
+        )
 
 
 class TestGetSoldeRPC(TestCase):

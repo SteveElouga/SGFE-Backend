@@ -414,3 +414,28 @@ def build_message_annulation_paiement(
         f"Si vous avez bien effectué ce versement, contactez-nous : il s'agit "
         f"probablement d'une correction de saisie de notre part."
     )
+
+
+def build_message_annulation_facture(prenom_nom: str, periode: str) -> str:
+    """Construit le message d'annulation d'une facture jamais payée.
+
+    `build_message_annulation_paiement` parle d'un VERSEMENT annulé — le mot
+    juste quand de l'argent a changé de main. Une facture annulée avant tout
+    paiement n'a jamais eu de versement à annuler : reprendre ce message lui
+    ferait dire « votre versement a été annulé » à quelqu'un qui n'en a jamais
+    fait. Sans ce message dédié, ce cas restait muet — l'abonné continuait de
+    croire cette facture due, PDF déjà reçu à l'appui.
+
+    Args:
+        prenom_nom: Prénom et NOM de l'abonné.
+        periode: Période de la facture annulée (ex. « Août 2026 »).
+
+    Returns:
+        Message WhatsApp formaté.
+    """
+    return (
+        f"Bonjour {prenom_nom},\n\n"
+        f"Votre facture de {periode} a été annulée par nos services.\n\n"
+        f"Vous n'avez rien à payer pour cette facture.\n\n"
+        f"Si vous avez des questions, contactez-nous."
+    )
