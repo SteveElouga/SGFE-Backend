@@ -69,7 +69,7 @@ services:
       BREVO_API_KEY: ${BREVO_API_KEY:-dev-fake-key}
       BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-SGFE}
       BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-no-reply@sgfe.example.com}
-      FRONTEND_URL: http://localhost:4200
+      FRONTEND_URL: http://localhost:4321
       WHATSAPP_SERVICE_URL: http://whatsapp-service:3000
       WHATSAPP_INTERNAL_API_KEY: ${WHATSAPP_INTERNAL_API_KEY:-whatsapp-dev-placeholder-do-not-use-in-production}
       PHONE_OTP_VALIDITY_MINUTES: "10"
@@ -264,7 +264,7 @@ services:
       CONFIG_GRPC_PORT: "50058"
       WHATSAPP_SERVICE_URL: http://whatsapp-service:3000
       WHATSAPP_INTERNAL_API_KEY: ${WHATSAPP_INTERNAL_API_KEY:-whatsapp-dev-placeholder-do-not-use-in-production}
-      FRONTEND_URL: http://localhost:4200
+      FRONTEND_URL: http://localhost:4321
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
   abonne-service:

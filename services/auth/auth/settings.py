@@ -177,7 +177,7 @@ BREVO_SENDER_EMAIL = env("BREVO_SENDER_EMAIL", default="no-reply@sgfe.example.co
 
 # Lien envoyé dans l'e-mail d'activation/réinitialisation : le frontend Angular
 # lit le token dans l'URL et appelle activateAccount/resetPassword.
-FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:4200")
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:4321")
 PASSWORD_SETUP_TOKEN_VALIDITY_HOURS = env.int("PASSWORD_SETUP_TOKEN_VALIDITY_HOURS", default=48)
 
 # --- WhatsApp OTP (whatsapp-web.js service) ---

@@ -115,7 +115,7 @@ WHATSAPP_SERVICE_URL = env("WHATSAPP_SERVICE_URL", default="http://localhost:300
 WHATSAPP_INTERNAL_API_KEY = env("WHATSAPP_INTERNAL_API_KEY", default="")
 
 # --- Frontend (pour les liens tokenisés) ---
-FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:4200")
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:4321")
 
 # --- Token d'accès abonné ---
 DEFAULT_TOKEN_VALIDITE_JOURS = env.int("DEFAULT_TOKEN_VALIDITE_JOURS", default=20)
