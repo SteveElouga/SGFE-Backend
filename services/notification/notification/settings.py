@@ -115,7 +115,13 @@ WHATSAPP_SERVICE_URL = env("WHATSAPP_SERVICE_URL", default="http://localhost:300
 WHATSAPP_INTERNAL_API_KEY = env("WHATSAPP_INTERNAL_API_KEY", default="")
 
 # --- Frontend (pour les liens tokenisés) ---
-FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:4321")
+# En dev, l'URL est connue d'avance (port fixe du `ng serve` de ce dépot) :
+# aucune configuration à fournir. En production, elle dépend du domaine réel
+# de déploiement et ne peut pas être devinée — un défaut silencieux sur
+# localhost enverrait le lien de l'espace abonné mort dans chaque WhatsApp.
+# `env(...)` sans `default` lève `ImproperlyConfigured` si la variable
+# manque : le service refuse de démarrer plutôt que d'envoyer un lien mort.
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:4321") if DEBUG else env("FRONTEND_URL")
 
 # --- Token d'accès abonné ---
 DEFAULT_TOKEN_VALIDITE_JOURS = env.int("DEFAULT_TOKEN_VALIDITE_JOURS", default=20)
