@@ -350,6 +350,17 @@ class EnvoiService:
         # pas imprimé, plutôt qu'imprimé faux.
         reste_du = paiement_client.get_solde_restant(facture_id) if 1 <= etape <= 3 else None
 
+        # ── Les AUTRES impayés de l'abonné ───────────────────────────────────
+        #
+        # Une relance ne parlait que de LA facture qui la déclenche. Un abonné
+        # avec trois factures en retard reçoit trois relances distinctes,
+        # chacune muette sur les deux autres — alors que le message de facture
+        # initiale, lui, annonce déjà le solde antérieur avec `get_dette_abonne`.
+        # Même source, même exclusion de la facture courante.
+        autres_du, autres_nb, _ = (
+            paiement_client.get_dette_abonne(abonne_id, hors_facture_id=facture_id) if 1 <= etape <= 3 else (0.0, 0, "")
+        )
+
         # Le retard RÉEL, calculé depuis l'échéance de la facture. Les gabarits
         # écrivaient « depuis 3 jours » / « depuis 7 jours » en dur, en supposant
         # que le cron passe le jour exact. Une régularisation saisie avec sa
@@ -382,6 +393,8 @@ class EnvoiService:
                 montant=reste_du,
                 lien_espace=lien,
                 jours_retard=jours_retard,
+                autres_impayes_total=autres_du,
+                autres_impayes_nb=autres_nb,
             )
         elif etape == 2:
             message = build_message_relance_2(
@@ -389,6 +402,8 @@ class EnvoiService:
                 periode=periode,
                 montant=reste_du,
                 jours_retard=jours_retard,
+                autres_impayes_total=autres_du,
+                autres_impayes_nb=autres_nb,
             )
         elif etape == 3:
             message = build_message_relance_3(
@@ -398,6 +413,8 @@ class EnvoiService:
                 # Transmis par le cron, qui a lu le délai dans Config. 0 = ne
                 # rien annoncer, plutôt qu'annoncer un délai faux.
                 jours_avant_suspension=jours_avant_suspension,
+                autres_impayes_total=autres_du,
+                autres_impayes_nb=autres_nb,
             )
         elif etape == 4:
             try:
