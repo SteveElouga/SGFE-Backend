@@ -30,6 +30,15 @@ class CompteurModelTests(TestCase):
         self.assertEqual(compteur.statut, StatutCompteur.ACTIF)
         self.assertIn(str(compteur.numero_compteur), str(compteur))
 
+    def test_position_par_defaut_vide(self):
+        abonne = Abonne.objects.create(
+            numero_abonne="AB-0099", nom="Doe", prenom="Jill", telephone_whatsapp="+241000099"
+        )
+        compteur = Compteur.objects.create(
+            abonne=abonne, numero_compteur=99, quartier="Centre", camp=1, index_initial=0, date_pose="2024-01-01"
+        )
+        self.assertEqual(compteur.position, "")
+
     def test_deux_compteurs_actifs_pour_le_meme_abonne_leve_erreur(self):
         """Régression ANO-017 : la contrainte DB unique_compteur_actif_par_abonne
         doit empêcher un deuxième compteur ACTIF pour le même abonné, même en

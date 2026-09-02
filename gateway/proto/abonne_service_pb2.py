@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x14\x61\x62onne_service.proto\x12\x06\x61\x62onne\"$\n\x0f\x41\x62onneIdRequest\x12\x11\n\tabonne_id\x18\x01 \x01(\t\"$\n\x12ListAbonnesRequest\x12\x0e\n\x06statut\x18\x01 \x01(\t\"\xc2\x01\n\x13\x43reateAbonneRequest\x12\x0b\n\x03nom\x18\x01 \x01(\t\x12\x0e\n\x06prenom\x18\x02 \x01(\t\x12\x1a\n\x12telephone_whatsapp\x18\x03 \x01(\t\x12\x0f\n\x07\x61\x64resse\x18\x04 \x01(\t\x12\x17\n\x0fnumero_compteur\x18\x05 \x01(\x05\x12\x10\n\x08quartier\x18\x06 \x01(\t\x12\x0c\n\x04\x63\x61mp\x18\x07 \x01(\x05\x12\x15\n\rindex_initial\x18\x08 \x01(\x01\x12\x11\n\tdate_pose\x18\t \x01(\t\"r\n\x13UpdateAbonneRequest\x12\x11\n\tabonne_id\x18\x01 \x01(\t\x12\x0b\n\x03nom\x18\x02 \x01(\t\x12\x0e\n\x06prenom\x18\x03 \x01(\t\x12\x1a\n\x12telephone_whatsapp\x18\x04 \x01(\t\x12\x0f\n\x07\x61\x64resse\x18\x05 \x01(\t\"\xbe\x01\n\x15UpdateCompteurRequest\x12\x11\n\tabonne_id\x18\x01 \x01(\t\x12\x15\n\x08quartier\x18\x02 \x01(\tH\x00\x88\x01\x01\x12\x11\n\x04\x63\x61mp\x18\x03 \x01(\x05H\x01\x88\x01\x01\x12\x1a\n\rindex_initial\x18\x04 \x01(\x01H\x02\x88\x01\x01\x12\x16\n\tdate_pose\x18\x05 \x01(\tH\x03\x88\x01\x01\x42\x0b\n\t_quartierB\x07\n\x05_campB\x10\n\x0e_index_initialB\x0c\n\n_date_pose\"\xdf\x01\n\x18RemplacerCompteurRequest\x12\x11\n\tabonne_id\x18\x01 \x01(\t\x12\x17\n\x0findex_fermeture\x18\x02 \x01(\x01\x12\x1f\n\x17nouveau_numero_compteur\x18\x03 \x01(\x05\x12\x18\n\x10nouveau_quartier\x18\x04 \x01(\t\x12\x14\n\x0cnouveau_camp\x18\x05 \x01(\x05\x12\x1c\n\x14nouvel_index_initial\x18\x06 \x01(\x01\x12\x19\n\x11\x64\x61te_remplacement\x18\x07 \x01(\t\x12\r\n\x05motif\x18\x08 \x01(\t\"\xd4\x01\n\x0e\x41\x62onneResponse\x12\x11\n\tabonne_id\x18\x01 \x01(\t\x12\x15\n\rnumero_abonne\x18\x02 \x01(\t\x12\x0b\n\x03nom\x18\x03 \x01(\t\x12\x0e\n\x06prenom\x18\x04 \x01(\t\x12\x1a\n\x12telephone_whatsapp\x18\x05 \x01(\t\x12\x0f\n\x07\x61\x64resse\x18\x06 \x01(\t\x12\x0e\n\x06statut\x18\x07 \x01(\t\x12*\n\x08\x63ompteur\x18\x08 \x01(\x0b\x32\x18.abonne.CompteurResponse\x12\x12\n\ncreated_at\x18\t \x01(\t\"\x9a\x01\n\x10\x43ompteurResponse\x12\x13\n\x0b\x63ompteur_id\x18\x01 \x01(\t\x12\x17\n\x0fnumero_compteur\x18\x02 \x01(\x05\x12\x10\n\x08quartier\x18\x03 \x01(\t\x12\x0c\n\x04\x63\x61mp\x18\x04 \x01(\x05\x12\x15\n\rindex_initial\x18\x05 \x01(\x01\x12\x11\n\tdate_pose\x18\x06 \x01(\t\x12\x0e\n\x06statut\x18\x07 \x01(\t\">\n\x13ListAbonnesResponse\x12\'\n\x07\x61\x62onnes\x18\x01 \x03(\x0b\x32\x16.abonne.AbonneResponse\"\x0e\n\x0c\x45mptyRequest\">\n\x08ZoneStat\x12\x10\n\x08quartier\x18\x01 \x01(\t\x12\x0c\n\x04\x63\x61mp\x18\x02 \x01(\x05\x12\x12\n\nnb_abonnes\x18\x03 \x01(\x05\"4\n\x11ListZonesResponse\x12\x1f\n\x05zones\x18\x01 \x03(\x0b\x32\x10.abonne.ZoneStat\"\xf1\x01\n\x1aHistoriqueCompteurResponse\x12\x15\n\rhistorique_id\x18\x01 \x01(\t\x12\x31\n\x0f\x61ncien_compteur\x18\x02 \x01(\x0b\x32\x18.abonne.CompteurResponse\x12\x32\n\x10nouveau_compteur\x18\x03 \x01(\x0b\x32\x18.abonne.CompteurResponse\x12\x17\n\x0findex_fermeture\x18\x04 \x01(\x01\x12\x19\n\x11\x64\x61te_remplacement\x18\x05 \x01(\t\x12\x12\n\ncreated_at\x18\x06 \x01(\t\x12\r\n\x05motif\x18\x07 \x01(\t\"P\n\x16ListHistoriqueResponse\x12\x36\n\nhistorique\x18\x01 \x03(\x0b\x32\".abonne.HistoriqueCompteurResponse2\xa0\x07\n\rAbonneService\x12<\n\tGetAbonne\x12\x17.abonne.AbonneIdRequest\x1a\x16.abonne.AbonneResponse\x12\x46\n\x0bListAbonnes\x12\x1a.abonne.ListAbonnesRequest\x1a\x1b.abonne.ListAbonnesResponse\x12\x46\n\x11ListAbonnesActifs\x12\x14.abonne.EmptyRequest\x1a\x1b.abonne.ListAbonnesResponse\x12\x43\n\x0c\x43reateAbonne\x12\x1b.abonne.CreateAbonneRequest\x1a\x16.abonne.AbonneResponse\x12\x43\n\x0cUpdateAbonne\x12\x1b.abonne.UpdateAbonneRequest\x1a\x16.abonne.AbonneResponse\x12\x42\n\x0fSuspendreAbonne\x12\x17.abonne.AbonneIdRequest\x1a\x16.abonne.AbonneResponse\x12\x42\n\x0fReactiverAbonne\x12\x17.abonne.AbonneIdRequest\x1a\x16.abonne.AbonneResponse\x12\x41\n\x0eResilierAbonne\x12\x17.abonne.AbonneIdRequest\x1a\x16.abonne.AbonneResponse\x12@\n\x0bGetCompteur\x12\x17.abonne.AbonneIdRequest\x1a\x18.abonne.CompteurResponse\x12I\n\x0eUpdateCompteur\x12\x1d.abonne.UpdateCompteurRequest\x1a\x18.abonne.CompteurResponse\x12O\n\x11RemplacerCompteur\x12 .abonne.RemplacerCompteurRequest\x1a\x18.abonne.CompteurResponse\x12P\n\x15GetHistoriqueCompteur\x12\x17.abonne.AbonneIdRequest\x1a\x1e.abonne.ListHistoriqueResponse\x12<\n\tListZones\x12\x14.abonne.EmptyRequest\x1a\x19.abonne.ListZonesResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x14\x61\x62onne_service.proto\x12\x06\x61\x62onne\"$\n\x0f\x41\x62onneIdRequest\x12\x11\n\tabonne_id\x18\x01 \x01(\t\"$\n\x12ListAbonnesRequest\x12\x0e\n\x06statut\x18\x01 \x01(\t\"\xd4\x01\n\x13\x43reateAbonneRequest\x12\x0b\n\x03nom\x18\x01 \x01(\t\x12\x0e\n\x06prenom\x18\x02 \x01(\t\x12\x1a\n\x12telephone_whatsapp\x18\x03 \x01(\t\x12\x0f\n\x07\x61\x64resse\x18\x04 \x01(\t\x12\x17\n\x0fnumero_compteur\x18\x05 \x01(\x05\x12\x10\n\x08quartier\x18\x06 \x01(\t\x12\x0c\n\x04\x63\x61mp\x18\x07 \x01(\x05\x12\x15\n\rindex_initial\x18\x08 \x01(\x01\x12\x11\n\tdate_pose\x18\t \x01(\t\x12\x10\n\x08position\x18\n \x01(\t\"r\n\x13UpdateAbonneRequest\x12\x11\n\tabonne_id\x18\x01 \x01(\t\x12\x0b\n\x03nom\x18\x02 \x01(\t\x12\x0e\n\x06prenom\x18\x03 \x01(\t\x12\x1a\n\x12telephone_whatsapp\x18\x04 \x01(\t\x12\x0f\n\x07\x61\x64resse\x18\x05 \x01(\t\"\xe2\x01\n\x15UpdateCompteurRequest\x12\x11\n\tabonne_id\x18\x01 \x01(\t\x12\x15\n\x08quartier\x18\x02 \x01(\tH\x00\x88\x01\x01\x12\x11\n\x04\x63\x61mp\x18\x03 \x01(\x05H\x01\x88\x01\x01\x12\x1a\n\rindex_initial\x18\x04 \x01(\x01H\x02\x88\x01\x01\x12\x16\n\tdate_pose\x18\x05 \x01(\tH\x03\x88\x01\x01\x12\x15\n\x08position\x18\x06 \x01(\tH\x04\x88\x01\x01\x42\x0b\n\t_quartierB\x07\n\x05_campB\x10\n\x0e_index_initialB\x0c\n\n_date_poseB\x0b\n\t_position\"\xfa\x01\n\x18RemplacerCompteurRequest\x12\x11\n\tabonne_id\x18\x01 \x01(\t\x12\x17\n\x0findex_fermeture\x18\x02 \x01(\x01\x12\x1f\n\x17nouveau_numero_compteur\x18\x03 \x01(\x05\x12\x18\n\x10nouveau_quartier\x18\x04 \x01(\t\x12\x14\n\x0cnouveau_camp\x18\x05 \x01(\x05\x12\x1c\n\x14nouvel_index_initial\x18\x06 \x01(\x01\x12\x19\n\x11\x64\x61te_remplacement\x18\x07 \x01(\t\x12\r\n\x05motif\x18\x08 \x01(\t\x12\x19\n\x11nouvelle_position\x18\t \x01(\t\"\xd4\x01\n\x0e\x41\x62onneResponse\x12\x11\n\tabonne_id\x18\x01 \x01(\t\x12\x15\n\rnumero_abonne\x18\x02 \x01(\t\x12\x0b\n\x03nom\x18\x03 \x01(\t\x12\x0e\n\x06prenom\x18\x04 \x01(\t\x12\x1a\n\x12telephone_whatsapp\x18\x05 \x01(\t\x12\x0f\n\x07\x61\x64resse\x18\x06 \x01(\t\x12\x0e\n\x06statut\x18\x07 \x01(\t\x12*\n\x08\x63ompteur\x18\x08 \x01(\x0b\x32\x18.abonne.CompteurResponse\x12\x12\n\ncreated_at\x18\t \x01(\t\"\xac\x01\n\x10\x43ompteurResponse\x12\x13\n\x0b\x63ompteur_id\x18\x01 \x01(\t\x12\x17\n\x0fnumero_compteur\x18\x02 \x01(\x05\x12\x10\n\x08quartier\x18\x03 \x01(\t\x12\x0c\n\x04\x63\x61mp\x18\x04 \x01(\x05\x12\x15\n\rindex_initial\x18\x05 \x01(\x01\x12\x11\n\tdate_pose\x18\x06 \x01(\t\x12\x0e\n\x06statut\x18\x07 \x01(\t\x12\x10\n\x08position\x18\x08 \x01(\t\">\n\x13ListAbonnesResponse\x12\'\n\x07\x61\x62onnes\x18\x01 \x03(\x0b\x32\x16.abonne.AbonneResponse\"\x0e\n\x0c\x45mptyRequest\">\n\x08ZoneStat\x12\x10\n\x08quartier\x18\x01 \x01(\t\x12\x0c\n\x04\x63\x61mp\x18\x02 \x01(\x05\x12\x12\n\nnb_abonnes\x18\x03 \x01(\x05\"4\n\x11ListZonesResponse\x12\x1f\n\x05zones\x18\x01 \x03(\x0b\x32\x10.abonne.ZoneStat\"\xf1\x01\n\x1aHistoriqueCompteurResponse\x12\x15\n\rhistorique_id\x18\x01 \x01(\t\x12\x31\n\x0f\x61ncien_compteur\x18\x02 \x01(\x0b\x32\x18.abonne.CompteurResponse\x12\x32\n\x10nouveau_compteur\x18\x03 \x01(\x0b\x32\x18.abonne.CompteurResponse\x12\x17\n\x0findex_fermeture\x18\x04 \x01(\x01\x12\x19\n\x11\x64\x61te_remplacement\x18\x05 \x01(\t\x12\x12\n\ncreated_at\x18\x06 \x01(\t\x12\r\n\x05motif\x18\x07 \x01(\t\"P\n\x16ListHistoriqueResponse\x12\x36\n\nhistorique\x18\x01 \x03(\x0b\x32\".abonne.HistoriqueCompteurResponse2\xa0\x07\n\rAbonneService\x12<\n\tGetAbonne\x12\x17.abonne.AbonneIdRequest\x1a\x16.abonne.AbonneResponse\x12\x46\n\x0bListAbonnes\x12\x1a.abonne.ListAbonnesRequest\x1a\x1b.abonne.ListAbonnesResponse\x12\x46\n\x11ListAbonnesActifs\x12\x14.abonne.EmptyRequest\x1a\x1b.abonne.ListAbonnesResponse\x12\x43\n\x0c\x43reateAbonne\x12\x1b.abonne.CreateAbonneRequest\x1a\x16.abonne.AbonneResponse\x12\x43\n\x0cUpdateAbonne\x12\x1b.abonne.UpdateAbonneRequest\x1a\x16.abonne.AbonneResponse\x12\x42\n\x0fSuspendreAbonne\x12\x17.abonne.AbonneIdRequest\x1a\x16.abonne.AbonneResponse\x12\x42\n\x0fReactiverAbonne\x12\x17.abonne.AbonneIdRequest\x1a\x16.abonne.AbonneResponse\x12\x41\n\x0eResilierAbonne\x12\x17.abonne.AbonneIdRequest\x1a\x16.abonne.AbonneResponse\x12@\n\x0bGetCompteur\x12\x17.abonne.AbonneIdRequest\x1a\x18.abonne.CompteurResponse\x12I\n\x0eUpdateCompteur\x12\x1d.abonne.UpdateCompteurRequest\x1a\x18.abonne.CompteurResponse\x12O\n\x11RemplacerCompteur\x12 .abonne.RemplacerCompteurRequest\x1a\x18.abonne.CompteurResponse\x12P\n\x15GetHistoriqueCompteur\x12\x17.abonne.AbonneIdRequest\x1a\x1e.abonne.ListHistoriqueResponse\x12<\n\tListZones\x12\x14.abonne.EmptyRequest\x1a\x19.abonne.ListZonesResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -36,29 +36,29 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_LISTABONNESREQUEST']._serialized_start=70
   _globals['_LISTABONNESREQUEST']._serialized_end=106
   _globals['_CREATEABONNEREQUEST']._serialized_start=109
-  _globals['_CREATEABONNEREQUEST']._serialized_end=303
-  _globals['_UPDATEABONNEREQUEST']._serialized_start=305
-  _globals['_UPDATEABONNEREQUEST']._serialized_end=419
-  _globals['_UPDATECOMPTEURREQUEST']._serialized_start=422
-  _globals['_UPDATECOMPTEURREQUEST']._serialized_end=612
-  _globals['_REMPLACERCOMPTEURREQUEST']._serialized_start=615
-  _globals['_REMPLACERCOMPTEURREQUEST']._serialized_end=838
-  _globals['_ABONNERESPONSE']._serialized_start=841
-  _globals['_ABONNERESPONSE']._serialized_end=1053
-  _globals['_COMPTEURRESPONSE']._serialized_start=1056
-  _globals['_COMPTEURRESPONSE']._serialized_end=1210
-  _globals['_LISTABONNESRESPONSE']._serialized_start=1212
-  _globals['_LISTABONNESRESPONSE']._serialized_end=1274
-  _globals['_EMPTYREQUEST']._serialized_start=1276
-  _globals['_EMPTYREQUEST']._serialized_end=1290
-  _globals['_ZONESTAT']._serialized_start=1292
-  _globals['_ZONESTAT']._serialized_end=1354
-  _globals['_LISTZONESRESPONSE']._serialized_start=1356
-  _globals['_LISTZONESRESPONSE']._serialized_end=1408
-  _globals['_HISTORIQUECOMPTEURRESPONSE']._serialized_start=1411
-  _globals['_HISTORIQUECOMPTEURRESPONSE']._serialized_end=1652
-  _globals['_LISTHISTORIQUERESPONSE']._serialized_start=1654
-  _globals['_LISTHISTORIQUERESPONSE']._serialized_end=1734
-  _globals['_ABONNESERVICE']._serialized_start=1737
-  _globals['_ABONNESERVICE']._serialized_end=2665
+  _globals['_CREATEABONNEREQUEST']._serialized_end=321
+  _globals['_UPDATEABONNEREQUEST']._serialized_start=323
+  _globals['_UPDATEABONNEREQUEST']._serialized_end=437
+  _globals['_UPDATECOMPTEURREQUEST']._serialized_start=440
+  _globals['_UPDATECOMPTEURREQUEST']._serialized_end=666
+  _globals['_REMPLACERCOMPTEURREQUEST']._serialized_start=669
+  _globals['_REMPLACERCOMPTEURREQUEST']._serialized_end=919
+  _globals['_ABONNERESPONSE']._serialized_start=922
+  _globals['_ABONNERESPONSE']._serialized_end=1134
+  _globals['_COMPTEURRESPONSE']._serialized_start=1137
+  _globals['_COMPTEURRESPONSE']._serialized_end=1309
+  _globals['_LISTABONNESRESPONSE']._serialized_start=1311
+  _globals['_LISTABONNESRESPONSE']._serialized_end=1373
+  _globals['_EMPTYREQUEST']._serialized_start=1375
+  _globals['_EMPTYREQUEST']._serialized_end=1389
+  _globals['_ZONESTAT']._serialized_start=1391
+  _globals['_ZONESTAT']._serialized_end=1453
+  _globals['_LISTZONESRESPONSE']._serialized_start=1455
+  _globals['_LISTZONESRESPONSE']._serialized_end=1507
+  _globals['_HISTORIQUECOMPTEURRESPONSE']._serialized_start=1510
+  _globals['_HISTORIQUECOMPTEURRESPONSE']._serialized_end=1751
+  _globals['_LISTHISTORIQUERESPONSE']._serialized_start=1753
+  _globals['_LISTHISTORIQUERESPONSE']._serialized_end=1833
+  _globals['_ABONNESERVICE']._serialized_start=1836
+  _globals['_ABONNESERVICE']._serialized_end=2764
 # @@protoc_insertion_point(module_scope)

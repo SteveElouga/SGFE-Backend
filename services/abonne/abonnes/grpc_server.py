@@ -63,6 +63,7 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
             camp=request.camp,
             index_initial=request.index_initial,
             date_pose=request.date_pose,
+            position=request.position,
         )
         publish_abonne_event(str(abonne.id), "ABONNE_CREATED")
         return self._response(abonne)
@@ -104,6 +105,7 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
             camp=request.camp if request.HasField("camp") else None,
             index_initial=request.index_initial if request.HasField("index_initial") else None,
             date_pose=request.date_pose if request.HasField("date_pose") else None,
+            position=request.position if request.HasField("position") else None,
         )
         publish_abonne_event(request.abonne_id)
         return pb.CompteurResponse(**compteur_to_response(compteur))
@@ -136,6 +138,7 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
             nouvel_index_initial=request.nouvel_index_initial,
             date_remplacement=request.date_remplacement,
             motif=request.motif,
+            nouvelle_position=request.nouvelle_position,
         )
         publish_abonne_event(request.abonne_id)
         return pb.CompteurResponse(**compteur_to_response(compteur))

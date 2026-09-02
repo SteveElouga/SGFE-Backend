@@ -50,6 +50,7 @@ class AbonneService:
         camp: int,
         index_initial: float,
         date_pose: str,
+        position: str = "",
     ) -> Abonne:
         # Un compteur est obligatoire à la création (EF-ABO-001).
         telephone_whatsapp = validate_telephone_whatsapp(telephone_whatsapp)
@@ -72,6 +73,7 @@ class AbonneService:
                 camp=camp,
                 index_initial=index_initial,
                 date_pose=date_pose,
+                position=position,
             )
         return abonne
 
@@ -138,6 +140,7 @@ class CompteurService:
         camp: int | None,
         index_initial: float | None,
         date_pose: str | None,
+        position: str | None = None,
     ) -> Compteur:
         compteur = self.compteurs.get_actif(abonne_id)
         if quartier is not None:
@@ -148,6 +151,8 @@ class CompteurService:
             compteur.index_initial = index_initial
         if date_pose is not None:
             compteur.date_pose = date_pose
+        if position is not None:
+            compteur.position = position
         return self.compteurs.save(compteur)
 
     def get_historique(self, abonne_id: str) -> list:
@@ -167,6 +172,7 @@ class CompteurService:
         nouvel_index_initial: float,
         date_remplacement: str,
         motif: str = "",
+        nouvelle_position: str = "",
     ) -> Compteur:
         abonne = self.abonnes.get_by_id(abonne_id)
         ancien_compteur = self.compteurs.get_actif(abonne_id)
@@ -185,6 +191,7 @@ class CompteurService:
                 camp=nouveau_camp,
                 index_initial=nouvel_index_initial,
                 date_pose=date_remplacement,
+                position=nouvelle_position,
             )
 
             self.historique.create(

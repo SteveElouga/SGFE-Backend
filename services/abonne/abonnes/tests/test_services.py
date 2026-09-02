@@ -43,6 +43,16 @@ class AbonneServiceTests(TestCase):
         self.assertEqual(compteur.statut, StatutCompteur.ACTIF)
         self.assertEqual(compteur.numero_compteur, 1)
 
+    def test_create_abonne_position_par_defaut_vide(self):
+        abonne = _create_abonne(self.service)
+        compteur = CompteurService().get_compteur_actif(str(abonne.id))
+        self.assertEqual(compteur.position, "")
+
+    def test_create_abonne_avec_position(self):
+        abonne = _create_abonne(self.service, position="3e maison à gauche")
+        compteur = CompteurService().get_compteur_actif(str(abonne.id))
+        self.assertEqual(compteur.position, "3e maison à gauche")
+
     def test_create_abonne_assigns_sequential_numero(self):
         a1 = _create_abonne(self.service)
         a2 = _create_abonne(self.service, numero_compteur=2)
@@ -177,6 +187,33 @@ class CompteurServiceTests(TestCase):
         historique = self.compteur_service.get_historique(str(abonne.id))
         self.assertEqual(historique[0].motif, "Compteur défectueux")
 
+    def test_remplacer_compteur_transporte_la_nouvelle_position(self):
+        abonne = _create_abonne(self.abonne_service, index_initial=0, numero_compteur=1, position="Ancienne")
+        nouveau = self.compteur_service.remplacer_compteur(
+            abonne_id=str(abonne.id),
+            index_fermeture=120,
+            nouveau_numero_compteur=2,
+            nouveau_quartier="Q2",
+            nouveau_camp=2,
+            nouvel_index_initial=0,
+            date_remplacement="2024-06-01",
+            nouvelle_position="Près du portail bleu",
+        )
+        self.assertEqual(nouveau.position, "Près du portail bleu")
+
+    def test_remplacer_compteur_position_optionnelle_defaut_vide(self):
+        abonne = _create_abonne(self.abonne_service, index_initial=0, numero_compteur=1)
+        nouveau = self.compteur_service.remplacer_compteur(
+            abonne_id=str(abonne.id),
+            index_fermeture=120,
+            nouveau_numero_compteur=2,
+            nouveau_quartier="Q2",
+            nouveau_camp=2,
+            nouvel_index_initial=0,
+            date_remplacement="2024-06-01",
+        )
+        self.assertEqual(nouveau.position, "")
+
     def test_remplacer_compteur_motif_optionnel_defaut_vide(self):
         abonne = _create_abonne(self.abonne_service, index_initial=0, numero_compteur=1)
         self.compteur_service.remplacer_compteur(
@@ -222,6 +259,31 @@ class CompteurServiceTests(TestCase):
         compteur = self.compteur_service.get_compteur_actif(str(abonne.id))
         self.assertEqual(compteur.quartier, "Nlongkak")
         self.assertEqual(float(compteur.index_initial), 50.0)
+
+    def test_update_compteur_position(self):
+        abonne = _create_abonne(self.abonne_service, position="Ancienne position")
+        self.compteur_service.update_compteur(
+            abonne_id=str(abonne.id),
+            quartier=None,
+            camp=None,
+            index_initial=None,
+            date_pose=None,
+            position="Près du transformateur",
+        )
+        compteur = self.compteur_service.get_compteur_actif(str(abonne.id))
+        self.assertEqual(compteur.position, "Près du transformateur")
+
+    def test_update_compteur_position_non_fournie_ne_change_rien(self):
+        abonne = _create_abonne(self.abonne_service, position="Position initiale")
+        self.compteur_service.update_compteur(
+            abonne_id=str(abonne.id),
+            quartier="Autre",
+            camp=None,
+            index_initial=None,
+            date_pose=None,
+        )
+        compteur = self.compteur_service.get_compteur_actif(str(abonne.id))
+        self.assertEqual(compteur.position, "Position initiale")
 
     def test_remplacer_compteur_is_atomic_on_numero_collision(self):
         # nouveau_numero_compteur=1 collisionne avec le compteur actif

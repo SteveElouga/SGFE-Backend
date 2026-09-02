@@ -7,7 +7,7 @@ from schema.schema import schema
 from schema.tests.test_auth import context
 
 
-def make_compteur_response(numero_compteur=1, statut="ACTIF"):
+def make_compteur_response(numero_compteur=1, statut="ACTIF", position=""):
     return Mock(
         compteur_id="compteur-1",
         numero_compteur=numero_compteur,
@@ -16,6 +16,7 @@ def make_compteur_response(numero_compteur=1, statut="ACTIF"):
         index_initial=0.0,
         date_pose="2024-01-01",
         statut=statut,
+        position=position,
     )
 
 
@@ -116,6 +117,32 @@ class AbonneMutationTests(SimpleTestCase):
         self.assertIsNone(result.errors)
         self.assertEqual(result.data["createAbonne"]["numeroAbonne"], "AB-0001")
 
+    def test_create_abonne_transporte_la_position(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(abonne_client, "create_abonne", return_value=make_abonne_response()) as mock_create,
+        ):
+            schema.execute_sync(
+                'mutation { createAbonne(input: {nom: "Doe", prenom: "John", telephoneWhatsapp: "+241", '
+                'numeroCompteur: 1, quartier: "Centre", camp: 1, indexInitial: 0, datePose: "2024-01-01", '
+                'position: "3e maison à gauche"}) { numeroAbonne } }',
+                context_value=self._admin_context(),
+            )
+            self.assertEqual(mock_create.call_args.kwargs["position"], "3e maison à gauche")
+
+    def test_create_abonne_position_absente_transporte_chaine_vide(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(abonne_client, "create_abonne", return_value=make_abonne_response()) as mock_create,
+        ):
+            schema.execute_sync(
+                'mutation { createAbonne(input: {nom: "Doe", prenom: "John", telephoneWhatsapp: "+241", '
+                'numeroCompteur: 1, quartier: "Centre", camp: 1, indexInitial: 0, datePose: "2024-01-01"}) '
+                "{ numeroAbonne } }",
+                context_value=self._admin_context(),
+            )
+            self.assertEqual(mock_create.call_args.kwargs["position"], "")
+
     def test_update_abonne_success_as_admin(self):
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
@@ -166,6 +193,23 @@ class AbonneMutationTests(SimpleTestCase):
             mock_update.assert_called_once_with("abonne-1", quartier="Bastos", camp=2)
 
         self.assertIsNone(result.errors)
+
+    def test_update_compteur_position(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(
+                abonne_client, "update_compteur", return_value=make_compteur_response(position="Près du portail")
+            ) as mock_update,
+        ):
+            result = schema.execute_sync(
+                'mutation { updateCompteur(abonneId: "abonne-1", input: { position: "Près du portail" }) '
+                "{ position } }",
+                context_value=self._admin_context(),
+            )
+            mock_update.assert_called_once_with("abonne-1", position="Près du portail")
+
+        self.assertIsNone(result.errors)
+        self.assertEqual(result.data["updateCompteur"]["position"], "Près du portail")
 
     def test_update_compteur_requires_admin_role(self):
         with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="AGENT")):
@@ -227,6 +271,26 @@ class AbonneMutationTests(SimpleTestCase):
 
         self.assertIsNone(result.errors)
         self.assertEqual(result.data["remplacerCompteur"]["numeroCompteur"], 2)
+
+    def test_remplacer_compteur_transporte_la_nouvelle_position(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(
+                abonne_client,
+                "remplacer_compteur",
+                return_value=make_compteur_response(numero_compteur=2, position="Près du portail bleu"),
+            ) as mock_remplacer,
+        ):
+            result = schema.execute_sync(
+                'mutation { remplacerCompteur(abonneId: "abonne-1", input: {indexFermeture: 100, '
+                'nouveauNumeroCompteur: 2, nouveauQuartier: "Q", nouveauCamp: 2, nouvelIndexInitial: 0, '
+                'dateRemplacement: "2024-06-01", nouvellePosition: "Près du portail bleu"}) { position } }',
+                context_value=self._admin_context(),
+            )
+            self.assertEqual(mock_remplacer.call_args.kwargs["nouvelle_position"], "Près du portail bleu")
+
+        self.assertIsNone(result.errors)
+        self.assertEqual(result.data["remplacerCompteur"]["position"], "Près du portail bleu")
 
 
 class AbonnesActifsQueryTests(SimpleTestCase):
