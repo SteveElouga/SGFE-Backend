@@ -25,6 +25,12 @@ env:
   # voulu — un service qui démarre sans secret serait un service ouvert — mais
   # il vaut aussi pour la CI, qui est un environnement comme un autre.
   INTERNAL_GRPC_KEY: ci-not-a-real-grpc-key-for-tests-only
+  # Même raison, pour auth-service et notification-service : DJANGO_DEBUG
+  # n'étant pas positionné ici, ces settings tournent en DEBUG=False, ce qui
+  # exige FRONTEND_URL sans repli (le service refuse un défaut silencieux sur
+  # localhost en dehors du dev — voir settings.py). `.invalid` (RFC 2606) :
+  # jamais censé résoudre, jamais confondu avec un vrai domaine.
+  FRONTEND_URL: http://ci.invalid
 
 jobs:
 

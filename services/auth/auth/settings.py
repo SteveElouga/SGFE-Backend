@@ -177,7 +177,14 @@ BREVO_SENDER_EMAIL = env("BREVO_SENDER_EMAIL", default="no-reply@sgfe.example.co
 
 # Lien envoyé dans l'e-mail d'activation/réinitialisation : le frontend Angular
 # lit le token dans l'URL et appelle activateAccount/resetPassword.
-FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:4200")
+#
+# En dev, l'URL est connue d'avance (port fixe du `ng serve` de ce dépot) :
+# aucune configuration à fournir. En production, elle dépend du domaine réel
+# de déploiement et ne peut pas être devinée — un défaut silencieux sur
+# localhost enverrait des liens cassés à de vrais utilisateurs. `env(...)`
+# sans `default` lève `ImproperlyConfigured` si la variable manque : le
+# service refuse de démarrer plutôt que d'envoyer un lien mort.
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:4321") if DEBUG else env("FRONTEND_URL")
 PASSWORD_SETUP_TOKEN_VALIDITY_HOURS = env.int("PASSWORD_SETUP_TOKEN_VALIDITY_HOURS", default=48)
 
 # --- WhatsApp OTP (whatsapp-web.js service) ---
