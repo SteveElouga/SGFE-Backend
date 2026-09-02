@@ -151,6 +151,13 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
             motif=request.motif,
             annule_par=request.annule_par,
         )
+        # `UpdateStatutFacture` publie cet événement à chaque transition de
+        # statut déclenchée par un paiement — l'annulation en est une aussi
+        # (IMPAYEE/PARTIELLE/PAYEE → ANNULEE), fixée directement en base par
+        # `annuler_facture` sans passer par ce chemin commun. Sans lui, un
+        # écran de facture ouvert au moment de l'annulation ne le voyait
+        # qu'au prochain rechargement.
+        publish_facture_event(str(facture.id), str(facture.campagne_id), "FACTURE_UPDATED")
         return facture_to_proto(facture)
 
     def RegenererFacture(

@@ -52,6 +52,47 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
             date_limite_paiement=date_limite,
             campagne_id=request.campagne_id,
         )
+
+        # Un avoir disponible (trop-perçu antérieur) s'impute automatiquement
+        # sur toute facture nouvellement créée (`_appliquer_avoir`, dans la
+        # même transaction qu'`initialiser_solde`) — sans que rien de cela
+        # n'atteigne Facturation, Reporting, ou le rétablissement d'un abonné
+        # suspendu. Une facture déjà soldée par avoir restait donc affichée
+        # IMPAYÉE côté Facturation pour toujours, et un abonné suspendu dont
+        # l'avoir éteignait la dette totale n'était jamais rétabli — même
+        # défaut que celui déjà corrigé côté encaissement, ici pour le seul
+        # autre chemin qui fait varier `montant_paye` d'un solde tout neuf.
+        if solde.montant_paye > 0:
+            try:
+                self._facturation_client.update_statut_facture(
+                    facture_id=solde.facture_id,
+                    statut=solde.statut,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Sync statut facture (avoir imputé à la création) échouée — dégradation gracieuse",
+                    extra={"facture_id": solde.facture_id, "error": str(exc)},
+                )
+
+            # Le trop-perçu d'origine n'a jamais été compté en recette : voir
+            # `_propager_versement`, étape 3 (« sera compté à nouveau quand
+            # l'avoir s'imputera, le mode AVOIR crée une seconde écriture »).
+            # C'est cette seconde écriture, et jusqu'ici rien ne la comptait.
+            publish_reporting_event(
+                "PAIEMENT_STATS",
+                campagne_id=solde.campagne_id,
+                montant_paiement=float(solde.montant_paye),
+                type_update="PAIEMENT",
+            )
+            if solde.statut == StatutSolde.PAYEE:
+                publish_reporting_event(
+                    "PAIEMENT_STATS",
+                    campagne_id=solde.campagne_id,
+                    montant_paiement=0.0,
+                    type_update="IMPAYE_RESOLU",
+                )
+                self._svc.retablir_si_dette_eteinte(solde.abonne_id, solde.facture_id)
+
         return solde_to_proto(solde)
 
     def _propager_versement(self, imputations: list, montant_recu: float) -> None:
@@ -199,46 +240,57 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
             motif=request.motif,
             annule_par=request.annule_par,
         )
-        # Synchronise le statut de facture rétabli vers Facturation (dégradation gracieuse)
-        try:
-            self._facturation_client.update_statut_facture(
-                facture_id=paiement.facture_id,
-                statut=solde.statut,
+
+        # Un versement s'impute sur la facture visée, puis en cascade sur les
+        # impayés : `annuler_paiement` défait CHAQUE écriture qui en est née,
+        # mais ne rend que celle demandée. Sans cette relecture, les autres
+        # factures touchées restaient PAYÉE pour toujours côté Facturation, et
+        # leurs recettes jamais décrémentées côté Reporting — même défaut que
+        # celui déjà corrigé côté encaissement (voir `_propager_versement`).
+        # `imputations_du_versement` rend les soldes déjà relus après
+        # l'annulation : ils portent donc son statut définitif.
+        for ecriture, solde_ecriture in self._svc.imputations_du_versement(paiement.versement_id):
+            # Synchronise le statut de facture rétabli vers Facturation (dégradation gracieuse)
+            try:
+                self._facturation_client.update_statut_facture(
+                    facture_id=solde_ecriture.facture_id,
+                    statut=solde_ecriture.statut,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Sync statut facture (annulation) échouée — dégradation gracieuse",
+                    extra={"facture_id": solde_ecriture.facture_id, "error": str(exc)},
+                )
+
+            # Décrémente les recettes du read model Reporting.
+            #
+            # L'enregistrement d'un versement publiait `PAIEMENT` ; son annulation ne
+            # publiait rien. Le read model surévaluait donc les recettes de façon
+            # permanente, en désaccord avec `statsParMois` que la gateway calcule en
+            # excluant les paiements annulés.
+            publish_reporting_event(
+                "PAIEMENT_STATS",
+                campagne_id=solde_ecriture.campagne_id,
+                montant_paiement=float(ecriture.montant),
+                type_update="PAIEMENT_ANNULE",
             )
-        except Exception as exc:
-            logger.warning(
-                "Sync statut facture (annulation) échouée — dégradation gracieuse",
-                extra={"facture_id": paiement.facture_id, "error": str(exc)},
+
+            # Notifie la gateway pour que les écrans ouverts se rafraîchissent : un
+            # solde qui remonte doit se voir sans recharger la page, comme un
+            # versement se voit.
+            publish_paiement_event(ecriture, statut_facture=solde_ecriture.statut)
+
+            # Prévient l'abonné (dégradation gracieuse assurée par le client).
+            #
+            # Il détenait un reçu et croyait cette facture soldée. Se taire le
+            # laisse découvrir la chose à la relance suivante — et le message
+            # d'étape 5 dit ce qui reste dû, plus qu'il ne rappelle ce qui a
+            # été défait.
+            self._notification_client.envoyer_relance(
+                facture_id=ecriture.facture_id,
+                abonne_id=ecriture.abonne_id,
+                etape=5,
             )
-
-        # Décrémente les recettes du read model Reporting.
-        #
-        # L'enregistrement d'un versement publiait `PAIEMENT` ; son annulation ne
-        # publiait rien. Le read model surévaluait donc les recettes de façon
-        # permanente, en désaccord avec `statsParMois` que la gateway calcule en
-        # excluant les paiements annulés.
-        publish_reporting_event(
-            "PAIEMENT_STATS",
-            campagne_id=solde.campagne_id,
-            montant_paiement=float(paiement.montant),
-            type_update="PAIEMENT_ANNULE",
-        )
-
-        # Notifie la gateway pour que les écrans ouverts se rafraîchissent : un
-        # solde qui remonte doit se voir sans recharger la page, comme un
-        # versement se voit.
-        publish_paiement_event(paiement, statut_facture=solde.statut)
-
-        # Prévient l'abonné (dégradation gracieuse assurée par le client).
-        #
-        # Il détenait un reçu et croyait sa facture soldée. Se taire le laisse
-        # découvrir la chose à la relance suivante — et le message d'étape 5 dit
-        # ce qui reste dû, plus qu'il ne rappelle ce qui a été défait.
-        self._notification_client.envoyer_relance(
-            facture_id=paiement.facture_id,
-            abonne_id=paiement.abonne_id,
-            etape=5,
-        )
 
         return paiement_to_proto(paiement)
 
@@ -277,6 +329,34 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
         plutôt que de créditer l'abonné une seconde fois.
         """
         solde, porte_en_avoir = self._svc.annuler_solde(facture_id=request.facture_id, motif=request.motif)
+
+        # Ce qui avait déjà été versé sur cette facture était compté en recette
+        # (événement `PAIEMENT`, publié à l'encaissement). L'annulation le porte
+        # à l'avoir de l'abonné — où il sera compté À NOUVEAU quand il s'imputera
+        # sur une facture future (voir `InitialiserSolde`) — mais rien ne
+        # décrémentait la recette d'origine : Reporting surévaluait donc les
+        # encaissements de cette campagne pour toujours, en double emploi avec
+        # le futur re-comptage. Même correction que `AnnulerPaiement`, pour
+        # l'autre façon dont une facture cesse d'être due.
+        if porte_en_avoir > 0:
+            publish_reporting_event(
+                "PAIEMENT_STATS",
+                campagne_id=solde.campagne_id,
+                montant_paiement=float(porte_en_avoir),
+                type_update="PAIEMENT_ANNULE",
+            )
+
+            # Prévient l'abonné (dégradation gracieuse assurée par le client,
+            # comme dans `AnnulerPaiement`). Il détenait un reçu pour un
+            # versement dont la facture n'existe plus : se taire le laisse
+            # croire cette facture toujours due, ou découvrir le crédit par
+            # hasard à la prochaine relance.
+            self._notification_client.envoyer_relance(
+                facture_id=solde.facture_id,
+                abonne_id=solde.abonne_id,
+                etape=5,
+            )
+
         return pb.AnnulerSoldeResponse(
             solde=solde_to_proto(solde),
             montant_porte_en_avoir=float(porte_en_avoir),

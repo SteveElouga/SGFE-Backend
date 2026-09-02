@@ -206,3 +206,62 @@ class UpdateStatutFactureTests(TestCase):
                 self._pb.FactureIdRequest(facture_id="00000000-0000-0000-0000-000000000000"),
                 _make_context(),
             )
+
+
+class AnnulerFactureTests(TestCase):
+    """`AnnulerFacture` (le RPC, pas le service) doit notifier la gateway
+    comme le fait déjà `UpdateStatutFacture` — sinon un écran de facture
+    ouvert au moment de l'annulation ne le voit qu'au prochain rechargement."""
+
+    def setUp(self):
+        from factures.grpc_server import FacturationServicer
+        from factures.tests.helpers import service_avec_clients_mockes
+
+        self.servicer = FacturationServicer.__new__(FacturationServicer)
+        self.servicer._tarif_svc = TarifService()
+        self.servicer._facture_svc = service_avec_clients_mockes()
+        self.servicer._campagne_client = MagicMock()
+        self.servicer._config_client = MagicMock()
+        self.servicer._config_client.get_delai_paiement_jours.return_value = 5
+        self.servicer._config_client.get_infos_societe.return_value = InfosSociete(nom="SGFE")
+
+        TarifService().update_tarif(Decimal("500.00"), datetime.date(2025, 7, 1))
+        self.servicer._campagne_client.list_releves.return_value = [
+            {
+                "abonne_id": "abo-001",
+                "ancien_index": 100.0,
+                "nouveau_index": 115.0,
+                "consommation": 15.0,
+                "date_releve": "2025-07-15",
+                "statut": "RELEVE",
+            }
+        ]
+
+        import sys
+        from pathlib import Path
+
+        from django.conf import settings
+
+        sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
+        import facturation_service_pb2 as pb
+
+        self._pb = pb
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("factures.services.settings") as mock_settings:
+                mock_settings.PDF_STORAGE_DIR = tmpdir
+                response = self.servicer.GenererFactures(
+                    pb.GenererFacturesRequest(campagne_id="camp-annulation"), MagicMock()
+                )
+        self.facture_id = response.factures[0].facture_id
+        self.campagne_id = response.factures[0].campagne_id
+
+    @patch("factures.grpc_server.publish_facture_event")
+    def test_annuler_facture_notifie_la_gateway(self, mock_publish):
+        response = self.servicer.AnnulerFacture(
+            self._pb.AnnulerFactureRequest(facture_id=self.facture_id, motif="erreur d'index", annule_par="admin-1"),
+            _make_context(),
+        )
+
+        self.assertEqual(response.statut, StatutFacture.ANNULEE)
+        mock_publish.assert_called_once_with(self.facture_id, self.campagne_id, "FACTURE_UPDATED")
