@@ -459,6 +459,7 @@ class FactureService:
         facture = self._repo.get_by_id(facture_id)
         if facture.statut == StatutFacture.ANNULEE:
             raise ValidationError("Cette facture est déjà annulée.")
+        ancien_statut = facture.statut
 
         # Éteindre le solde d'abord : si le service paiement est indisponible,
         # mieux vaut ne pas annuler du tout que d'annuler une facture dont la
@@ -473,6 +474,20 @@ class FactureService:
         logger.info(
             "Facture annulée",
             extra={"facture_id": facture_id, "numero": facture.numero_facture, "par": annule_par},
+        )
+
+        # Une facture annulée n'a jamais existé pour le lecteur des stats : la
+        # retirer du total facturé et de son compteur (impayées ou payées,
+        # selon ce qu'elle était juste avant) évite qu'une régularisation
+        # (annulation + nouvelle facture corrigée) ne gonfle le montant
+        # facturé de la campagne en comptant les deux à la fois.
+        publish_reporting_event(
+            "FACTURATION_STATS",
+            campagne_id=str(facture.campagne_id),
+            delta_factures=1,
+            delta_montant=float(facture.montant),
+            type_update="ANNULEE",
+            etait_payee=ancien_statut == StatutFacture.PAYEE,
         )
         return facture
 

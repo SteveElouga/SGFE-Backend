@@ -47,6 +47,73 @@ class ApplyEventTests(TestCase):
         self.assertEqual(stats.total_factures, 3)
         self.assertEqual(stats.montant_total_facture, Decimal("30000.00"))
 
+    def test_facturation_stats_annulee_transmet_etait_payee(self) -> None:
+        apply_event(
+            self.agg,
+            {
+                "event_id": "f2",
+                "type": "FACTURATION_STATS",
+                "campagne_id": CAMP,
+                "delta_factures": 5,
+                "delta_montant": 50000.0,
+                "type_update": "GENEREE",
+            },
+        )
+        apply_event(
+            self.agg,
+            {
+                "event_id": "f3",
+                "type": "FACTURATION_STATS",
+                "campagne_id": CAMP,
+                "delta_factures": 2,
+                "delta_montant": 0,
+                "type_update": "PAYEE",
+            },
+        )
+        apply_event(
+            self.agg,
+            {
+                "event_id": "f4",
+                "type": "FACTURATION_STATS",
+                "campagne_id": CAMP,
+                "delta_factures": 1,
+                "delta_montant": 10000.0,
+                "type_update": "ANNULEE",
+                "etait_payee": True,
+            },
+        )
+        stats = StatsFacturation.objects.get(campagne_id=CAMP)
+        self.assertEqual(stats.total_factures, 4)
+        self.assertEqual(stats.nb_factures_payees, 1)
+
+    def test_facturation_stats_annulee_sans_etait_payee_suppose_impayee(self) -> None:
+        """Absent du payload (ancien producteur), le repli est « impayée » —
+        le sens le plus fréquent, jamais un compteur qui devient négatif."""
+        apply_event(
+            self.agg,
+            {
+                "event_id": "f5",
+                "type": "FACTURATION_STATS",
+                "campagne_id": CAMP,
+                "delta_factures": 5,
+                "delta_montant": 50000.0,
+                "type_update": "GENEREE",
+            },
+        )
+        apply_event(
+            self.agg,
+            {
+                "event_id": "f6",
+                "type": "FACTURATION_STATS",
+                "campagne_id": CAMP,
+                "delta_factures": 1,
+                "delta_montant": 10000.0,
+                "type_update": "ANNULEE",
+            },
+        )
+        stats = StatsFacturation.objects.get(campagne_id=CAMP)
+        self.assertEqual(stats.nb_factures_impayees, 4)
+
     def test_paiement_stats_increment(self) -> None:
         apply_event(
             self.agg,

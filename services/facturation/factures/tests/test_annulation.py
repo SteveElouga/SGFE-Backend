@@ -12,6 +12,7 @@ produire la facture juste, pas reproduire fidèlement l'erreur qu'on répare.
 
 import datetime
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -94,6 +95,32 @@ class AnnulerFactureTest(TestCase):
         f = _facture(self.svc, nature=NatureFacture.REGULARISATION, campagne_id="", numero="REG-2026-08-0001")
         annulee = self.svc.annuler_facture(str(f.id), motif="Saisie en double", annule_par="admin")
         self.assertEqual(annulee.statut, StatutFacture.ANNULEE)
+
+    @patch("factures.services.publish_reporting_event")
+    def test_annulation_retire_la_facture_impayee_des_stats(self, mock_pub):
+        """Sans ce retrait, une régularisation (annulation + facture corrigée)
+        compte le montant facturé deux fois : celui de l'ancienne, jamais
+        retiré, et celui de la nouvelle."""
+        f = _facture(self.svc, montant=Decimal("10000"))
+        self.svc.annuler_facture(str(f.id), motif="Erreur", annule_par="admin")
+
+        mock_pub.assert_called_once()
+        args, kwargs = mock_pub.call_args
+        self.assertEqual(args[0], "FACTURATION_STATS")
+        self.assertEqual(kwargs["campagne_id"], CAMPAGNE)
+        self.assertEqual(kwargs["type_update"], "ANNULEE")
+        self.assertAlmostEqual(kwargs["delta_montant"], 10000.0)
+        self.assertFalse(kwargs["etait_payee"])
+
+    @patch("factures.services.publish_reporting_event")
+    def test_annulation_d_une_facture_deja_payee_le_signale(self, mock_pub):
+        """Une facture payée peut aussi être annulée (erreur découverte après
+        coup) : le compteur à décrémenter n'est pas le même."""
+        f = _facture(self.svc, statut=StatutFacture.PAYEE)
+        self.svc.annuler_facture(str(f.id), motif="Erreur decouverte apres paiement", annule_par="admin")
+
+        kwargs = mock_pub.call_args.kwargs
+        self.assertTrue(kwargs["etait_payee"])
 
 
 class RegenererFactureTest(TestCase):
