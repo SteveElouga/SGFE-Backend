@@ -183,7 +183,7 @@ note           (chaîne, adaptée partiel / soldé)
         WhatsApp du même envoi annonçait 30 000.
       {% endcomment %}
       {% if versement.porte_sur_plusieurs %}
-        <div class="amount__ref">Versement reçu : <b>{{ versement.recu_total }}</b> — imputé sur plusieurs factures</div>
+        <div class="amount__ref">Versement reçu : <b>{{ versement.recu_total }}</b>, imputé sur plusieurs factures</div>
       {% endif %}
     </div>
     <div class="amount__right">
@@ -243,7 +243,7 @@ note           (chaîne, adaptée partiel / soldé)
 
   <!-- Pied de page répété -->
   <div class="foot">
-    <span>{{ societe.nom }} — Reçu généré par AquaBill</span>
+    <span>{{ societe.nom }} · Reçu généré par AquaBill</span>
     <span>{{ recu.numero }} · {{ recu.date }}</span>
   </div>
 

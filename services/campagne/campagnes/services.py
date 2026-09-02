@@ -49,8 +49,8 @@ class CampagneService:
             ) from exc
         if abonne.statut != "ACTIF":
             raise ValidationError(
-                f"L'abonné {abonne_id} n'est pas ACTIF (statut actuel : {abonne.statut}) — "
-                "un abonné suspendu ou résilié ne peut pas être relevé."
+                f"L'abonné {abonne_id} n'est pas ACTIF (statut actuel : {abonne.statut}). "
+                "Un abonné suspendu ou résilié ne peut pas être relevé."
             )
         return abonne
 

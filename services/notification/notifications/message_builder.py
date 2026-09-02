@@ -49,7 +49,7 @@ def build_message_facture(
     lien = f"{frontend_url}/espace/{token}"
     consommation_str = f"{consommation:.0f}" if consommation == int(consommation) else f"{consommation}"
 
-    paiement_mobile = f"\n💳 Paiement Mobile Money : {numero_mobile_money}\n" if numero_mobile_money else ""
+    paiement_mobile = f"\nPaiement Mobile Money : {numero_mobile_money}\n" if numero_mobile_money else ""
 
     # Le total réellement dû, identique à celui du PDF joint : consommation du
     # mois, plus la dette antérieure, moins l'avoir déjà imputé. Il ne descend
@@ -70,25 +70,24 @@ def build_message_facture(
             )
         if avoir_impute > 0:
             lignes_detail += f"Avoir appliqué : − {_fcfa(avoir_impute)} FCFA\n"
-        lignes_detail += "──────────────────\n"
 
     # L'âge de la dette pèse plus que son montant : c'est lui qui fait payer.
     # Le PDF porte déjà cette mention, le message la reprend.
     note_anciennete = ""
     if solde_anterieur > 0 and plus_ancienne_echeance:
-        note_anciennete = f"\n⚠️ Dont {_fcfa(solde_anterieur)} FCFA dus depuis le {plus_ancienne_echeance}.\n"
+        note_anciennete = f"\nDont {_fcfa(solde_anterieur)} FCFA dus depuis le {plus_ancienne_echeance}.\n"
 
     return (
         f"Bonjour {prenom_nom},\n\n"
-        f"Votre facture d'eau - {periode}\n\n"
+        f"Votre facture d'eau du mois de {periode}\n\n"
         f"Consommation : {consommation_str} m³\n"
         f"{lignes_detail}"
         f"TOTAL À PAYER : {_fcfa(total)} FCFA\n"
         f"Date limite : {date_limite}\n"
         f"{note_anciennete}"
         f"{paiement_mobile}\n"
-        f"📄 Votre facture est en pièce jointe.\n\n"
-        f"🔗 Consultez votre historique :\n"
+        f"Votre facture est en pièce jointe.\n\n"
+        f"Consultez votre historique :\n"
         f"{lien}\n\n"
         f"(Lien valable jusqu'au {date_expiration_token})"
     )
@@ -120,17 +119,17 @@ def build_message_recu(
     """
     montant_str = f"{montant:.0f}" if montant == int(montant) else f"{montant}"
     if solde_restant <= 0:
-        situation = "✅ Vous êtes à jour, plus rien n'est dû. Merci !"
+        situation = "Vous êtes à jour, plus rien n'est dû. Merci !"
     else:
         solde_str = f"{solde_restant:.0f}" if solde_restant == int(solde_restant) else f"{solde_restant}"
         situation = f"Reste dû, toutes factures : {solde_str} FCFA"
 
     return (
         f"Bonjour {prenom_nom},\n\n"
-        f"Nous confirmons la réception de votre paiement - {periode}\n\n"
+        f"Nous confirmons la réception de votre paiement du mois de {periode}\n\n"
         f"Montant réglé : {montant_str} FCFA\n"
         f"{situation}\n\n"
-        f"📄 Votre reçu officiel est en pièce jointe.\n\n"
+        f"Votre reçu officiel est en pièce jointe.\n\n"
         f"Merci de votre confiance."
     )
 
@@ -198,7 +197,7 @@ def build_message_relance_1(
         f"{echeance}\n\n"
         f"Merci de régulariser votre situation dans les\n"
         f"meilleurs délais.\n\n"
-        f"🔗 {lien_espace}"
+        f"{lien_espace}"
     )
 
 
@@ -226,7 +225,7 @@ def build_message_relance_2(
         f"Bonjour {prenom_nom},\n\n"
         f"Votre facture de {periode}{somme} est impayée\n"
         f"{_depuis_quand(jours_retard)}.\n\n"
-        f"⚠️ Sans paiement, votre ligne d'eau fera l'objet\n"
+        f"Sans paiement, votre ligne d'eau fera l'objet\n"
         f"d'un avertissement."
     )
 
@@ -254,13 +253,13 @@ def build_message_relance_3(
 
     if jours_avant_suspension > 0:
         jour = "jour" if jours_avant_suspension == 1 else "jours"
-        menace = f"🚨 Sans paiement dans les {jours_avant_suspension} {jour}, votre\nligne d'eau sera suspendue."
+        menace = f"Sans paiement dans les {jours_avant_suspension} {jour}, votre\nligne d'eau sera suspendue."
     else:
-        menace = "🚨 Sans paiement, votre ligne d'eau sera suspendue."
+        menace = "Sans paiement, votre ligne d'eau sera suspendue."
 
     return (
         f"Bonjour {prenom_nom},\n\n"
-        f"AVERTISSEMENT — Votre ligne d'eau est en situation\n"
+        f"AVERTISSEMENT : votre ligne d'eau est en situation\n"
         f"d'impayé {_depuis_quand(jours_retard)}{somme}.\n\n"
         f"{menace}"
     )
