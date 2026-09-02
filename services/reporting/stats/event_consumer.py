@@ -62,6 +62,7 @@ def apply_event(agg: AgregateurDashboard, event: dict) -> None:
                 delta_factures=event["delta_factures"],
                 delta_montant=event["delta_montant"],
                 type_update=event["type_update"],
+                etait_payee=event.get("etait_payee", False),
             )
         elif event_type == EVENT_PAIEMENT:
             agg.update_stats_paiements(

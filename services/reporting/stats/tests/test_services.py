@@ -61,6 +61,40 @@ class UpdateStatsFacturationTests(TestCase):
         stats = self.agg.update_stats_facturation(self.cid, 40, 0, "ENVOYEE")
         self.assertEqual(stats.nb_factures_envoyees, 40)
 
+    def test_annulee_retire_du_total_et_des_impayees(self):
+        """Une régularisation (annulation + facture corrigée) ne doit pas
+        compter le montant facturé deux fois."""
+        self.agg.update_stats_facturation(self.cid, 10, 100000, "GENEREE")
+        stats = self.agg.update_stats_facturation(self.cid, 1, 10000, "ANNULEE", etait_payee=False)
+        self.assertEqual(stats.total_factures, 9)
+        self.assertEqual(stats.montant_total_facture, Decimal("90000"))
+        self.assertEqual(stats.nb_factures_impayees, 9)
+        self.assertEqual(stats.nb_factures_payees, 0)
+
+    def test_annulee_d_une_facture_deja_payee_decremente_payees(self):
+        self.agg.update_stats_facturation(self.cid, 10, 100000, "GENEREE")
+        self.agg.update_stats_facturation(self.cid, 4, 0, "PAYEE")
+        stats = self.agg.update_stats_facturation(self.cid, 1, 10000, "ANNULEE", etait_payee=True)
+        self.assertEqual(stats.total_factures, 9)
+        self.assertEqual(stats.nb_factures_payees, 3)
+        self.assertEqual(stats.nb_factures_impayees, 6)
+
+    def test_annulee_ne_touche_pas_les_factures_envoyees(self):
+        """Un envoi WhatsApp est un fait du passé, indépendant de l'annulation
+        qui a suivi."""
+        self.agg.update_stats_facturation(self.cid, 10, 100000, "GENEREE")
+        self.agg.update_stats_facturation(self.cid, 10, 0, "ENVOYEE")
+        stats = self.agg.update_stats_facturation(self.cid, 1, 10000, "ANNULEE")
+        self.assertEqual(stats.nb_factures_envoyees, 10)
+
+    def test_annulee_ne_descend_jamais_sous_zero(self):
+        """Filet de sécurité : un flux tronqué (Reporting reconstruit après
+        incident) ne doit jamais produire de compteur négatif."""
+        stats = self.agg.update_stats_facturation(self.cid, 1, 10000, "ANNULEE")
+        self.assertEqual(stats.total_factures, 0)
+        self.assertEqual(stats.montant_total_facture, Decimal("0"))
+        self.assertEqual(stats.nb_factures_impayees, 0)
+
 
 class UpdateStatsPaiementsTests(TestCase):
     def setUp(self):
