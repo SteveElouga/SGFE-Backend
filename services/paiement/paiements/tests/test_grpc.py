@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 import paiement_service_pb2 as pb
 
 from paiements.grpc_server import PaiementServicer
-from paiements.models import ModePaiement, SoldeFacture, StatutSolde
+from paiements.models import AvoirAbonne, ModePaiement, SoldeFacture, StatutSolde
 from paiements.repositories import SoldeFactureRepository
 from paiements.services import PaiementService
 
@@ -102,6 +102,119 @@ class TestInitialiserSoldeRPC(TestCase):
         )
         with self.assertRaises(ValueError):
             self.servicer.InitialiserSolde(request, _mock_context())
+
+
+class TestInitialiserSoldeAvecAvoirRPC(TestCase):
+    """Tests de la propagation quand un avoir s'impute à la création d'une facture.
+
+    `_appliquer_avoir` (appelée dans la même transaction qu'`initialiser_solde`)
+    peut immédiatement partiellement ou totalement soldé une facture toute
+    neuve. Ces tests vérifient que `InitialiserSolde` en tire les mêmes
+    conséquences que `_propager_versement` en tire d'un encaissement direct."""
+
+    @patch("paiements.grpc_server.publish_reporting_event")
+    @patch("paiements.grpc_server.FacturationServiceClient")
+    def test_avoir_suffisant_solde_la_facture_et_sync_facturation(self, mock_fact_cls, mock_pub) -> None:
+        AvoirAbonne.objects.create(abonne_id="abonne-avoir", montant=Decimal("500.00"))
+        servicer = PaiementServicer()
+
+        response = servicer.InitialiserSolde(
+            pb.InitialiserSoldeRequest(
+                facture_id="facture-avoir-total",
+                abonne_id="abonne-avoir",
+                montant_total=300.00,
+                date_limite_paiement="2026-07-31",
+                campagne_id="camp-avoir",
+            ),
+            _mock_context(),
+        )
+
+        self.assertEqual(response.statut, StatutSolde.PAYEE)
+        mock_fact_cls.return_value.update_statut_facture.assert_called_once_with(
+            facture_id="facture-avoir-total", statut=StatutSolde.PAYEE
+        )
+
+        types_publies = [c.kwargs["type_update"] for c in mock_pub.call_args_list]
+        self.assertIn("PAIEMENT", types_publies)
+        self.assertIn("IMPAYE_RESOLU", types_publies)
+        paiement_call = next(c for c in mock_pub.call_args_list if c.kwargs["type_update"] == "PAIEMENT")
+        self.assertAlmostEqual(paiement_call.kwargs["montant_paiement"], 300.00)
+        self.assertEqual(paiement_call.kwargs["campagne_id"], "camp-avoir")
+
+    @patch("paiements.grpc_server.publish_reporting_event")
+    @patch("paiements.grpc_server.FacturationServiceClient")
+    def test_avoir_partiel_sync_facturation_sans_impaye_resolu(self, mock_fact_cls, mock_pub) -> None:
+        """Un avoir qui ne couvre qu'une partie laisse la facture PARTIELLE :
+        toujours à synchroniser, mais sans le déclencheur de rétablissement
+        (aucune dette éteinte)."""
+        AvoirAbonne.objects.create(abonne_id="abonne-avoir-partiel", montant=Decimal("100.00"))
+        servicer = PaiementServicer()
+
+        response = servicer.InitialiserSolde(
+            pb.InitialiserSoldeRequest(
+                facture_id="facture-avoir-partiel",
+                abonne_id="abonne-avoir-partiel",
+                montant_total=300.00,
+                date_limite_paiement="2026-07-31",
+                campagne_id="camp-avoir",
+            ),
+            _mock_context(),
+        )
+
+        self.assertEqual(response.statut, StatutSolde.PARTIELLE)
+        mock_fact_cls.return_value.update_statut_facture.assert_called_once_with(
+            facture_id="facture-avoir-partiel", statut=StatutSolde.PARTIELLE
+        )
+        types_publies = [c.kwargs["type_update"] for c in mock_pub.call_args_list]
+        self.assertEqual(types_publies, ["PAIEMENT"])
+
+    @patch("paiements.grpc_server.FacturationServiceClient")
+    def test_sans_avoir_aucune_propagation(self, mock_fact_cls) -> None:
+        """Le cas courant (pas d'avoir) ne doit rien changer : pas d'appel
+        Facturation superflu sur une facture qui vient de naître IMPAYÉE."""
+        servicer = PaiementServicer()
+
+        servicer.InitialiserSolde(
+            pb.InitialiserSoldeRequest(
+                facture_id="facture-sans-avoir",
+                abonne_id="abonne-sans-avoir",
+                montant_total=300.00,
+                date_limite_paiement="2026-07-31",
+            ),
+            _mock_context(),
+        )
+
+        mock_fact_cls.return_value.update_statut_facture.assert_not_called()
+
+    @patch("paiements.services.NotificationServiceClient")
+    @patch("paiements.services.AbonneServiceClient")
+    @patch("paiements.grpc_server.publish_reporting_event")
+    @patch("paiements.grpc_server.FacturationServiceClient")
+    def test_avoir_qui_eteint_la_dette_totale_retablit_l_abonne_suspendu(
+        self, mock_fact_cls, mock_pub, mock_abonne_cls, mock_notif_cls
+    ) -> None:
+        """Un abonné suspendu dont l'avoir couvre entièrement cette nouvelle
+        facture — et donc sa dette totale — doit être rétabli. C'était le seul
+        chemin de `retablir_si_dette_eteinte` jamais atteint par cette
+        imputation : un abonné qui ne devait plus rien restait coupé."""
+        AvoirAbonne.objects.create(abonne_id="abonne-suspendu", montant=Decimal("300.00"))
+        mock_abonne_cls.return_value.reactiver_abonne.return_value = True
+        servicer = PaiementServicer()
+
+        servicer.InitialiserSolde(
+            pb.InitialiserSoldeRequest(
+                facture_id="facture-reactivation",
+                abonne_id="abonne-suspendu",
+                montant_total=300.00,
+                date_limite_paiement="2026-07-31",
+            ),
+            _mock_context(),
+        )
+
+        mock_abonne_cls.return_value.reactiver_abonne.assert_called_once_with("abonne-suspendu")
+        mock_notif_cls.return_value.envoyer_relance.assert_called_once_with(
+            facture_id="facture-reactivation", abonne_id="abonne-suspendu", etape=0
+        )
 
 
 class TestEnregistrerPaiementRPC(TestCase):
@@ -271,6 +384,160 @@ class TestEnregistrerPaiementRPC(TestCase):
         )
         with self.assertRaises(ValidationError):
             self.servicer.EnregistrerPaiement(request, _mock_context())
+
+
+class TestAnnulerPaiementRPC(TestCase):
+    """Tests du RPC AnnulerPaiement."""
+
+    def setUp(self) -> None:
+        with (
+            patch("paiements.grpc_server.FacturationServiceClient"),
+            patch("paiements.grpc_server.NotificationServiceClient"),
+        ):
+            self.servicer = PaiementServicer()
+
+    def test_annuler_paiement_succes(self) -> None:
+        _creer_solde("facture-ann", "abonne-001", 300.00)
+        enreg = self.servicer.EnregistrerPaiement(
+            pb.EnregistrerPaiementRequest(
+                facture_id="facture-ann",
+                abonne_id="abonne-001",
+                montant=100.00,
+                date_paiement="2026-06-20",
+                mode_paiement="ESPECES",
+                reference_transaction="",
+                enregistre_par="user-001",
+            ),
+            _mock_context(),
+        )
+
+        response = self.servicer.AnnulerPaiement(
+            pb.AnnulerPaiementRequest(paiement_id=enreg.paiement_id, motif="erreur de saisie", annule_par="admin-1"),
+            _mock_context(),
+        )
+
+        self.assertEqual(response.paiement_id, enreg.paiement_id)
+        self.assertTrue(response.annule)
+
+    @patch("paiements.grpc_server.publish_reporting_event")
+    @patch("paiements.grpc_server.NotificationServiceClient")
+    @patch("paiements.grpc_server.FacturationServiceClient")
+    def test_annuler_paiement_versement_cascade_resynchronise_toutes_les_factures(
+        self, mock_fact_cls, mock_notif_cls, mock_pub
+    ) -> None:
+        """Un versement qui a soldé deux factures d'un coup : l'annuler doit
+        resynchroniser LES DEUX, pas seulement celle sur laquelle on a cliqué —
+        même défaut que celui déjà corrigé côté encaissement pour
+        `EnregistrerPaiementAbonne` (voir `_propager_versement`)."""
+        _creer_solde("facture-casc-1", "abonne-casc", 200.00, date(2026, 6, 30), "camp-casc")
+        _creer_solde("facture-casc-2", "abonne-casc", 150.00, date(2026, 7, 31), "camp-casc")
+        servicer = PaiementServicer()
+
+        encaissement = servicer.EnregistrerPaiementAbonne(
+            pb.EnregistrerPaiementAbonneRequest(
+                abonne_id="abonne-casc",
+                montant=350.00,  # exactement les deux factures, sans excédent
+                date_paiement="2026-06-20",
+                mode_paiement="ESPECES",
+                reference_transaction="",
+                enregistre_par="user-001",
+            ),
+            _mock_context(),
+        )
+        self.assertEqual(len(encaissement.paiements), 2)
+
+        # Ce qui compte est ce que l'ANNULATION déclenche, pas l'encaissement
+        # qui l'a précédée dans le même test.
+        mock_fact_cls.return_value.update_statut_facture.reset_mock()
+        mock_pub.reset_mock()
+        mock_notif_cls.return_value.envoyer_relance.reset_mock()
+
+        servicer.AnnulerPaiement(
+            pb.AnnulerPaiementRequest(
+                paiement_id=encaissement.paiements[0].paiement_id,
+                motif="erreur de saisie",
+                annule_par="admin-1",
+            ),
+            _mock_context(),
+        )
+
+        factures_sync = {
+            c.kwargs["facture_id"] for c in mock_fact_cls.return_value.update_statut_facture.call_args_list
+        }
+        self.assertEqual(factures_sync, {"facture-casc-1", "facture-casc-2"})
+
+        types_publies = [c.kwargs["type_update"] for c in mock_pub.call_args_list]
+        self.assertEqual(types_publies, ["PAIEMENT_ANNULE", "PAIEMENT_ANNULE"])
+
+        factures_relancees = {
+            c.kwargs["facture_id"] for c in mock_notif_cls.return_value.envoyer_relance.call_args_list
+        }
+        self.assertEqual(factures_relancees, {"facture-casc-1", "facture-casc-2"})
+        etapes = {c.kwargs["etape"] for c in mock_notif_cls.return_value.envoyer_relance.call_args_list}
+        self.assertEqual(etapes, {5})
+
+
+class TestAnnulerSoldeRPC(TestCase):
+    """Tests du RPC AnnulerSolde (annulation d'une FACTURE, pas d'un paiement)."""
+
+    @patch("paiements.grpc_server.publish_reporting_event")
+    @patch("paiements.grpc_server.NotificationServiceClient")
+    @patch("paiements.grpc_server.FacturationServiceClient")
+    def test_annuler_solde_avec_versement_decremente_reporting_et_notifie(
+        self, mock_fact_cls, mock_notif_cls, mock_pub
+    ) -> None:
+        """Ce qui avait déjà été versé sur cette facture était compté en
+        recette : l'annuler doit décrémenter Reporting (comme
+        `AnnulerPaiement` le fait déjà) et prévenir l'abonné, qui détient un
+        reçu pour une facture qui n'existe plus."""
+        _creer_solde("facture-annulee-versee", "abonne-001", 300.00, campagne_id="camp-ann")
+        servicer = PaiementServicer()
+        servicer.EnregistrerPaiement(
+            pb.EnregistrerPaiementRequest(
+                facture_id="facture-annulee-versee",
+                abonne_id="abonne-001",
+                montant=120.00,
+                date_paiement="2026-06-20",
+                mode_paiement="ESPECES",
+                reference_transaction="",
+                enregistre_par="user-001",
+            ),
+            _mock_context(),
+        )
+        mock_pub.reset_mock()
+        mock_notif_cls.return_value.envoyer_relance.reset_mock()
+
+        response = servicer.AnnulerSolde(
+            pb.AnnulerSoldeRequest(facture_id="facture-annulee-versee", motif="erreur d'index"),
+            _mock_context(),
+        )
+
+        self.assertAlmostEqual(response.montant_porte_en_avoir, 120.00)
+        mock_pub.assert_called_once()
+        _, kwargs = mock_pub.call_args
+        self.assertEqual(kwargs["type_update"], "PAIEMENT_ANNULE")
+        self.assertEqual(kwargs["campagne_id"], "camp-ann")
+        self.assertAlmostEqual(kwargs["montant_paiement"], 120.00)
+
+        mock_notif_cls.return_value.envoyer_relance.assert_called_once_with(
+            facture_id="facture-annulee-versee", abonne_id="abonne-001", etape=5
+        )
+
+    @patch("paiements.grpc_server.publish_reporting_event")
+    @patch("paiements.grpc_server.NotificationServiceClient")
+    @patch("paiements.grpc_server.FacturationServiceClient")
+    def test_annuler_solde_sans_versement_ne_publie_rien(self, mock_fact_cls, mock_notif_cls, mock_pub) -> None:
+        """Rien n'a jamais été versé : rien à décrémenter, personne à prévenir."""
+        _creer_solde("facture-annulee-vide", "abonne-001", 300.00, campagne_id="camp-ann")
+        servicer = PaiementServicer()
+
+        servicer.AnnulerSolde(
+            pb.AnnulerSoldeRequest(facture_id="facture-annulee-vide", motif="erreur d'index"),
+            _mock_context(),
+        )
+
+        mock_pub.assert_not_called()
+        mock_notif_cls.return_value.envoyer_relance.assert_not_called()
 
 
 class TestGetSoldeRPC(TestCase):
