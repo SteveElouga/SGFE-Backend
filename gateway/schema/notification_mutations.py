@@ -49,27 +49,20 @@ def _delai_suspension() -> int:
         return _DELAI_SUSPENSION_DEFAUT
 
 
-def _renvoyer_recu(envoi):  # type: ignore[no-untyped-def]
-    """Renvoie le reçu d'un versement, avec les chiffres du jour.
+def _envoyer_recu_paiement(paiement_id: str, facture_id: str, abonne_id: str):  # type: ignore[no-untyped-def]
+    """Envoie le reçu d'un versement identifié directement par son id, avec
+    les chiffres du jour.
 
-    Le versement est retrouvé par son identifiant, désormais porté par l'envoi.
-    Il ne l'était pas : rien ne disait de quel versement un reçu était le reçu,
-    et c'est ce qui rendait le renvoi impossible autrement qu'en devinant.
+    Cœur partagé par `_renvoyer_recu` (renvoi depuis le journal des envois) et
+    `envoyer_recu_paiement` (envoi direct depuis l'écran du versement) — les
+    deux chemins que peut emprunter le même geste, selon que l'envoi d'origine
+    porte ou non l'identifiant de son versement.
 
-    Un reçu dont le versement a été annulé depuis n'est pas renvoyé : le
+    Un reçu dont le versement a été annulé depuis n'est pas envoyé : le
     document affirmerait un encaissement qui n'existe plus.
     """
-    if not envoi.paiement_id:
-        # Reçu émis avant que l'envoi ne garde son versement. Le renvoi le dit
-        # plutôt que de renvoyer autre chose à sa place.
-        raise ValueError(
-            "Ce reçu date d'avant l'enregistrement du versement dans le journal "
-            "des envois : il ne peut pas être renvoyé. Renvoyez-le depuis l'écran "
-            "du versement."
-        )
-
-    paiements = paiement_client.list_paiements(facture_id=envoi.facture_id).paiements
-    paiement = next((p for p in paiements if p.paiement_id == envoi.paiement_id), None)
+    paiements = paiement_client.list_paiements(facture_id=facture_id).paiements
+    paiement = next((p for p in paiements if p.paiement_id == paiement_id), None)
     if paiement is None:
         raise ValueError("Le versement de ce reçu n'existe plus.")
     if paiement.annule:
@@ -79,18 +72,38 @@ def _renvoyer_recu(envoi):  # type: ignore[no-untyped-def]
     # la même source. Deux chiffres différents sur un même message, c'est le
     # défaut qui a déjà été corrigé sur la génération des factures.
     try:
-        solde_restant = paiement_client.get_solde(envoi.facture_id).solde_restant
+        solde_restant = paiement_client.get_solde(facture_id).solde_restant
     except grpc.RpcError:
-        logger.warning("GetSolde injoignable au renvoi d'un reçu", extra={"envoi_id": envoi.envoi_id})
-        raise ValueError("Le solde de cette facture est indisponible : le reçu n'est pas renvoyé.") from None
+        logger.warning("GetSolde injoignable à l'envoi d'un reçu", extra={"paiement_id": paiement_id})
+        raise ValueError("Le solde de cette facture est indisponible : le reçu n'est pas envoyé.") from None
 
     return notification_client.envoyer_recu(
-        paiement_id=envoi.paiement_id,
-        facture_id=envoi.facture_id,
-        abonne_id=envoi.abonne_id,
+        paiement_id=paiement_id,
+        facture_id=facture_id,
+        abonne_id=abonne_id,
         montant=paiement.montant,
         solde_restant=solde_restant,
     )
+
+
+def _renvoyer_recu(envoi):  # type: ignore[no-untyped-def]
+    """Renvoie le reçu d'un versement, avec les chiffres du jour.
+
+    Le versement est retrouvé par son identifiant, désormais porté par l'envoi.
+    Il ne l'était pas : rien ne disait de quel versement un reçu était le reçu,
+    et c'est ce qui rendait le renvoi impossible autrement qu'en devinant.
+    """
+    if not envoi.paiement_id:
+        # Reçu émis avant que l'envoi ne garde son versement : ce chemin ne
+        # peut pas retrouver le versement. `envoyer_recu_paiement` le peut,
+        # lui, puisqu'il part du versement — c'est le chemin que l'écran du
+        # versement emprunte désormais.
+        raise ValueError(
+            "Ce reçu date d'avant l'enregistrement du versement dans le journal "
+            "des envois : il ne peut pas être renvoyé. Renvoyez-le depuis l'écran "
+            "du versement."
+        )
+    return _envoyer_recu_paiement(envoi.paiement_id, envoi.facture_id, envoi.abonne_id)
 
 
 @strawberry.type
@@ -108,6 +121,23 @@ class NotificationMutations:
         require_auth(info)
         require_role(info, "ADMIN", "COMPTABLE")
         return envoi_from_grpc(notification_client.renvoyer_facture(facture_id=facture_id))
+
+    @strawberry.mutation
+    def envoyer_recu_paiement(
+        self, info: strawberry.types.Info, paiement_id: str, facture_id: str, abonne_id: str
+    ) -> Envoi:
+        """Envoie le reçu d'un versement directement depuis l'écran du versement
+        — ADMIN, COMPTABLE.
+
+        `renvoyer_envoi` retrouve le versement d'un reçu par l'identifiant que
+        l'envoi porte — absent des envois faits avant que ce lien n'existe, ce
+        qu'il dit alors plutôt que de renvoyer autre chose à sa place. Cette
+        mutation part du versement lui-même : elle marche toujours, y compris
+        pour ces envois-là.
+        """
+        require_auth(info)
+        require_role(info, "ADMIN", "COMPTABLE")
+        return envoi_from_grpc(_envoyer_recu_paiement(paiement_id, facture_id, abonne_id))
 
     @strawberry.mutation
     def renvoyer_envoi(self, info: strawberry.types.Info, envoi_id: str) -> Envoi:
