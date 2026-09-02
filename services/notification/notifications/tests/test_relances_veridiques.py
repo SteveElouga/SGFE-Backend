@@ -129,6 +129,73 @@ class TestGabaritsVeridiques(TestCase):
         self.assertNotIn("au .", msg)
         self.assertIn("Contactez notre service", msg)
 
+    def test_relance_1_ne_coupe_pas_la_phrase_au_milieu(self):
+        """WhatsApp replie déjà le texte à la largeur de l'écran du lecteur : un
+        saut de ligne posé en dur au milieu d'une phrase produit un repli qui
+        s'ajoute au sien, et coupe la phrase à un endroit arbitraire, différent
+        d'un appareil à l'autre."""
+        msg = build_message_relance_1("Jean DUPONT", "Août", 36000.0, "https://x", jours_retard=1)
+        self.assertIn("d'un montant de 36000 FCFA est échue depuis 1 jour.", msg)
+        self.assertIn("dans les meilleurs délais.", msg)
+
+    def test_relance_2_ne_coupe_pas_la_phrase_au_milieu(self):
+        msg = build_message_relance_2("Jean DUPONT", "Août", 36000.0, jours_retard=1)
+        self.assertIn("est impayée depuis 1 jour.", msg)
+        self.assertIn("fera l'objet d'un avertissement.", msg)
+
+    def test_relance_3_ne_coupe_pas_la_phrase_au_milieu(self):
+        msg = build_message_relance_3("Jean DUPONT", 36000.0, jours_retard=8, jours_avant_suspension=2)
+        self.assertIn("est en situation d'impayé depuis 8 jours", msg)
+        self.assertIn("dans les 2 jours, votre ligne d'eau sera suspendue.", msg)
+
+    def test_relance_4_ne_coupe_pas_la_phrase_au_milieu(self):
+        msg = build_message_relance_4("Jean DUPONT", 27500.0, "Juillet", "+237 690")
+        self.assertIn("suspendue pour un impayé (Facture Juillet).", msg)
+        self.assertIn("réglez la totalité de votre dette : 27500 FCFA.", msg)
+
+    def test_relance_1_mentionne_les_autres_impayes(self):
+        """Une relance ne parlait que de LA facture qui la déclenche — un
+        abonné avec plusieurs factures en retard ne l'apprenait jamais."""
+        msg = build_message_relance_1(
+            "Jean DUPONT",
+            "Juillet",
+            2000.0,
+            "https://x",
+            jours_retard=3,
+            autres_impayes_total=15000.0,
+            autres_impayes_nb=2,
+        )
+        self.assertIn("2 autres factures impayées", msg)
+        self.assertIn("15 000 FCFA au total", msg)
+
+    def test_relance_1_une_seule_autre_facture_accorde_le_singulier(self):
+        msg = build_message_relance_1(
+            "Jean DUPONT",
+            "Juillet",
+            2000.0,
+            "https://x",
+            jours_retard=3,
+            autres_impayes_total=5000.0,
+            autres_impayes_nb=1,
+        )
+        self.assertIn("1 autre facture impayée", msg)
+        self.assertNotIn("impayées", msg)
+
+    def test_relance_1_sans_autres_impayes_reste_silencieux(self):
+        msg = build_message_relance_1("Jean DUPONT", "Juillet", 2000.0, "https://x", jours_retard=3)
+        self.assertNotIn("autre", msg)
+
+    def test_relance_2_et_3_mentionnent_aussi_les_autres_impayes(self):
+        msg2 = build_message_relance_2(
+            "Jean DUPONT", "Juillet", 2000.0, jours_retard=5, autres_impayes_total=8000.0, autres_impayes_nb=1
+        )
+        self.assertIn("1 autre facture impayée", msg2)
+
+        msg3 = build_message_relance_3(
+            "Jean DUPONT", 2000.0, jours_retard=9, autres_impayes_total=8000.0, autres_impayes_nb=1
+        )
+        self.assertIn("1 autre facture impayée", msg3)
+
 
 @patch("notifications.services.whatsapp_client")
 @patch("notifications.services.paiement_client")
@@ -145,6 +212,7 @@ class TestEnvoiLitLaBonneSource(TestCase):
         mock_fact.get_facture.return_value = _facture(fid, aid, jours_retard=4, montant=10000.0)
         mock_abonne.get_abonne.return_value = _abonne(aid)
         mock_paiement.get_solde_restant.return_value = 2000.0
+        mock_paiement.get_dette_abonne.return_value = (0.0, 0, "")
         mock_wa.send.return_value = None
 
         envoi = EnvoiService().envoyer_relance(fid, aid, etape=2)
@@ -163,6 +231,7 @@ class TestEnvoiLitLaBonneSource(TestCase):
         mock_fact.get_facture.return_value = _facture(fid, aid, jours_retard=4)
         mock_abonne.get_abonne.return_value = _abonne(aid)
         mock_paiement.get_solde_restant.return_value = None
+        mock_paiement.get_dette_abonne.return_value = (0.0, 0, "")
         mock_wa.send.return_value = None
 
         EnvoiService().envoyer_relance(fid, aid, etape=2)
@@ -185,6 +254,26 @@ class TestEnvoiLitLaBonneSource(TestCase):
         self.assertIn("27500 FCFA", texte)
         self.assertIn("Pour être rétabli", texte)
 
+    def test_relance_signale_les_autres_impayes_de_l_abonne(
+        self, mock_fact, mock_abonne, mock_paiement, mock_wa
+    ) -> None:
+        """`get_dette_abonne` est interrogé hors la facture courante — même
+        appel que celui qui alimente déjà le solde antérieur du message de
+        facture initiale."""
+        fid, aid = str(uuid.uuid4()), str(uuid.uuid4())
+        mock_fact.get_facture.return_value = _facture(fid, aid, jours_retard=4, montant=10000.0)
+        mock_abonne.get_abonne.return_value = _abonne(aid)
+        mock_paiement.get_solde_restant.return_value = 2000.0
+        mock_paiement.get_dette_abonne.return_value = (12000.0, 2, "2026-04-01")
+        mock_wa.send.return_value = None
+
+        EnvoiService().envoyer_relance(fid, aid, etape=2)
+
+        mock_paiement.get_dette_abonne.assert_called_once_with(aid, hors_facture_id=fid)
+        texte = mock_wa.send.call_args.args[1]
+        self.assertIn("2 autres factures impayées", texte)
+        self.assertIn("12 000 FCFA au total", texte)
+
     def test_le_delai_avant_suspension_vient_de_l_appelant(
         self, mock_fact, mock_abonne, mock_paiement, mock_wa
     ) -> None:
@@ -192,6 +281,7 @@ class TestEnvoiLitLaBonneSource(TestCase):
         mock_fact.get_facture.return_value = _facture(fid, aid, jours_retard=8)
         mock_abonne.get_abonne.return_value = _abonne(aid)
         mock_paiement.get_solde_restant.return_value = 2000.0
+        mock_paiement.get_dette_abonne.return_value = (0.0, 0, "")
         mock_wa.send.return_value = None
 
         EnvoiService().envoyer_relance(fid, aid, etape=3, jours_avant_suspension=2)

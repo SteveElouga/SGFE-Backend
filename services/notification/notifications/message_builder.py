@@ -167,12 +167,32 @@ def _depuis_quand(jours_retard: int) -> str:
     return f"depuis {jours_retard} jours"
 
 
+def _note_autres_impayes(autres_impayes_total: float, autres_impayes_nb: int) -> str:
+    """« Vous avez également N autre(s) facture(s) impayée(s)… », ou rien.
+
+    Une relance ne parlait que de LA facture qui la déclenche — un abonné
+    avec trois factures en retard reçoit trois relances distinctes, chacune
+    muette sur les deux autres, alors que le message de facture initiale,
+    lui, annonce déjà le solde antérieur. Même logique ici : silence si
+    `autres_impayes_nb` est nul, une ligne sinon.
+    """
+    if autres_impayes_nb <= 0:
+        return ""
+    pluriel = "s" if autres_impayes_nb > 1 else ""
+    return (
+        f"\nVous avez également {autres_impayes_nb} autre{pluriel} "
+        f"facture{pluriel} impayée{pluriel}, pour {_fcfa(autres_impayes_total)} FCFA au total.\n"
+    )
+
+
 def build_message_relance_1(
     prenom_nom: str,
     periode: str,
     montant: float | None,
     lien_espace: str,
     jours_retard: int = 0,
+    autres_impayes_total: float = 0,
+    autres_impayes_nb: int = 0,
 ) -> str:
     """Relance étape 1 — rappel doux (EF-NOTIF-004).
 
@@ -182,6 +202,9 @@ def build_message_relance_1(
         montant: **Reste dû** sur la facture, ou None si illisible.
         lien_espace: URL complète de l'espace abonné (avec token).
         jours_retard: Jours écoulés depuis l'échéance (0 = échue ce jour).
+        autres_impayes_total: Total dû sur les AUTRES factures impayées de
+            l'abonné (hors celle-ci), ou 0 s'il n'y en a pas / si illisible.
+        autres_impayes_nb: Nombre de ces autres factures impayées.
 
     Returns:
         Message WhatsApp formaté.
@@ -190,13 +213,13 @@ def build_message_relance_1(
     somme = f" d'un montant de {montant_str} FCFA" if montant_str else ""
     quand = _depuis_quand(jours_retard)
     echeance = "est arrivée à échéance aujourd'hui." if jours_retard <= 0 else f"est échue {quand}."
+    note_autres = _note_autres_impayes(autres_impayes_total, autres_impayes_nb)
 
     return (
         f"Bonjour {prenom_nom},\n\n"
-        f"Votre facture de {periode}{somme}\n"
-        f"{echeance}\n\n"
-        f"Merci de régulariser votre situation dans les\n"
-        f"meilleurs délais.\n\n"
+        f"Votre facture de {periode}{somme} {echeance}\n"
+        f"{note_autres}\n"
+        f"Merci de régulariser votre situation dans les meilleurs délais.\n\n"
         f"{lien_espace}"
     )
 
@@ -206,6 +229,8 @@ def build_message_relance_2(
     periode: str,
     montant: float | None,
     jours_retard: int = 0,
+    autres_impayes_total: float = 0,
+    autres_impayes_nb: int = 0,
 ) -> str:
     """Relance étape 2 — rappel ferme (EF-NOTIF-004).
 
@@ -214,19 +239,22 @@ def build_message_relance_2(
         periode: Mois de la facture impayée.
         montant: **Reste dû** sur la facture, ou None si illisible.
         jours_retard: Jours écoulés depuis l'échéance — le vrai, plus « 3 » en dur.
+        autres_impayes_total: Total dû sur les AUTRES factures impayées de
+            l'abonné (hors celle-ci), ou 0 s'il n'y en a pas / si illisible.
+        autres_impayes_nb: Nombre de ces autres factures impayées.
 
     Returns:
         Message WhatsApp formaté.
     """
     montant_str = _montant_ou_rien(montant)
     somme = f" ({montant_str} FCFA)" if montant_str else ""
+    note_autres = _note_autres_impayes(autres_impayes_total, autres_impayes_nb)
 
     return (
         f"Bonjour {prenom_nom},\n\n"
-        f"Votre facture de {periode}{somme} est impayée\n"
-        f"{_depuis_quand(jours_retard)}.\n\n"
-        f"Sans paiement, votre ligne d'eau fera l'objet\n"
-        f"d'un avertissement."
+        f"Votre facture de {periode}{somme} est impayée {_depuis_quand(jours_retard)}.\n"
+        f"{note_autres}\n"
+        f"Sans paiement, votre ligne d'eau fera l'objet d'un avertissement."
     )
 
 
@@ -235,6 +263,8 @@ def build_message_relance_3(
     montant: float | None,
     jours_retard: int = 0,
     jours_avant_suspension: int = 0,
+    autres_impayes_total: float = 0,
+    autres_impayes_nb: int = 0,
 ) -> str:
     """Relance étape 3 — avertissement (EF-NOTIF-004).
 
@@ -244,6 +274,9 @@ def build_message_relance_3(
         jours_retard: Jours écoulés depuis l'échéance — le vrai, plus « 7 » en dur.
         jours_avant_suspension: Jours restants avant la coupure automatique.
             0 = ne pas annoncer de délai, plutôt qu'en annoncer un faux.
+        autres_impayes_total: Total dû sur les AUTRES factures impayées de
+            l'abonné (hors celle-ci), ou 0 s'il n'y en a pas / si illisible.
+        autres_impayes_nb: Nombre de ces autres factures impayées.
 
     Returns:
         Message WhatsApp formaté.
@@ -253,14 +286,16 @@ def build_message_relance_3(
 
     if jours_avant_suspension > 0:
         jour = "jour" if jours_avant_suspension == 1 else "jours"
-        menace = f"Sans paiement dans les {jours_avant_suspension} {jour}, votre\nligne d'eau sera suspendue."
+        menace = f"Sans paiement dans les {jours_avant_suspension} {jour}, votre ligne d'eau sera suspendue."
     else:
         menace = "Sans paiement, votre ligne d'eau sera suspendue."
 
+    note_autres = _note_autres_impayes(autres_impayes_total, autres_impayes_nb)
+
     return (
         f"Bonjour {prenom_nom},\n\n"
-        f"AVERTISSEMENT : votre ligne d'eau est en situation\n"
-        f"d'impayé {_depuis_quand(jours_retard)}{somme}.\n\n"
+        f"AVERTISSEMENT : votre ligne d'eau est en situation d'impayé {_depuis_quand(jours_retard)}{somme}.\n"
+        f"{note_autres}\n"
         f"{menace}"
     )
 
@@ -297,10 +332,10 @@ def build_message_relance_4(
     montant_str = _montant_ou_rien(montant)
 
     if montant_str:
-        cause = f"Votre ligne d'eau a été suspendue pour un impayé\n(Facture {periode})."
-        action = f"Pour être rétabli, réglez la totalité de votre dette :\n{montant_str} FCFA.\n\n"
+        cause = f"Votre ligne d'eau a été suspendue pour un impayé (Facture {periode})."
+        action = f"Pour être rétabli, réglez la totalité de votre dette : {montant_str} FCFA.\n\n"
     else:
-        cause = f"Votre ligne d'eau a été suspendue en raison d'un\nimpayé (Facture {periode})."
+        cause = f"Votre ligne d'eau a été suspendue en raison d'un impayé (Facture {periode})."
         action = ""
 
     contact = (
