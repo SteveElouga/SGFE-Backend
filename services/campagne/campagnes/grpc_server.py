@@ -17,7 +17,7 @@ import campagne_service_pb2 as pb
 import campagne_service_pb2_grpc as pb_grpc
 
 from campagnes.event_publisher import publish_progression_event, publish_reporting_event
-from campagnes.grpc_clients import FacturationServiceClient
+from campagnes.grpc_clients import AbonneServiceClient, FacturationServiceClient
 from campagnes.grpc_interceptors import ErrorHandlingInterceptor
 from campagnes.grpc_auth import AuthServerInterceptor
 from campagnes.models import StatutCampagne, StatutReleve
@@ -47,6 +47,7 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         self._campagne_repo = CampagneRepository()
         self._agent_repo = CampagneAgentRepository()
         self._facturation_client = FacturationServiceClient()
+        self._abonne_client = AbonneServiceClient()
 
     # ------------------------------------------------------------------ #
     # Campagnes
@@ -359,8 +360,7 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.DernierIndexResponse:
         """Retourne le dernier index relevé pour un abonné (pour pré-remplissage)."""
-        valeur = self._get_dernier_index_value(request.abonne_id)
-        est_initial = valeur < 1e-9
+        valeur, est_initial = self._get_dernier_index(request.abonne_id)
         return pb.DernierIndexResponse(
             abonne_id=request.abonne_id,
             dernier_index=valeur,
@@ -372,7 +372,29 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
     # ------------------------------------------------------------------ #
 
     def _get_dernier_index_value(self, abonne_id: str) -> float:
-        """Retourne le dernier nouveau_index pour un abonné, ou 0.0 si aucun."""
+        """Valeur seule de `_get_dernier_index` — pour les appelants qui n'ont
+        pas besoin de savoir si elle vient d'un relevé ou d'un repli."""
+        return self._get_dernier_index(abonne_id)[0]
+
+    def _get_dernier_index(self, abonne_id: str) -> tuple[float, bool]:
+        """Retourne (dernier nouveau_index pour un abonné, est-ce un repli).
+
+        Sans relevé, l'index initial de son compteur actif sert de repli
+        (compteur neuf, jamais lu) — jamais 0.0 en dur, qui n'était vrai que
+        par coïncidence. Cette valeur sert de pré-remplissage à l'index de
+        fermeture lors d'un remplacement de compteur (écran 19), que le
+        service Abonné rejette si elle est inférieure à l'index initial de
+        l'ancien compteur : tout abonné dont le compteur a un index de départ
+        non nul et n'a encore jamais été relevé voyait son remplacement de
+        compteur toujours refusé. Elle sert aussi d'`ancien_index` au premier
+        relevé d'un abonné (`AjouterAbonnesCampagne`, `SaisirIndex`) : sans ce
+        repli, sa toute première consommation se calculait depuis 0 plutôt
+        que depuis l'index réel de pose.
+
+        `est_initial` (second élément) dit la provenance de la valeur — jamais
+        déduit de sa magnitude, un compteur neuf pouvant très bien avoir un
+        index de départ nul.
+        """
         from campagnes.models import Releve
         from campagnes.models import StatutReleve as SR
 
@@ -382,7 +404,14 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
             .values_list("nouveau_index", flat=True)
             .first()
         )
-        return float(dernier) if dernier is not None else 0.0
+        if dernier is not None:
+            return float(dernier), False
+
+        try:
+            return float(self._abonne_client.get_abonne(abonne_id).compteur.index_initial), True
+        except grpc.RpcError:
+            logger.warning("Index initial introuvable pour l'abonné %s — repli sur 0.0", abonne_id)
+            return 0.0, True
 
 
 def serve() -> None:
