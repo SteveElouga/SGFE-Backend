@@ -21,7 +21,15 @@ from campagnes.services import CampagneService
 
 # Voir campagnes/tests/test_services.py : ajouter_abonne_campagne vérifie
 # désormais le statut ACTIF de l'abonné (ANO-003) via un appel gRPC réel.
-_abonne_patcher = patch.object(AbonneServiceClient, "get_abonne", return_value=SimpleNamespace(statut="ACTIF"))
+# `compteur` reflète la forme réelle d'un AbonneResponse (message protobuf
+# toujours présent, jamais absent) — `_get_dernier_index` s'y replie pour tout
+# abonné sans relevé, y compris dans les tests qui ne portent pas eux-mêmes
+# sur ce repli.
+_abonne_patcher = patch.object(
+    AbonneServiceClient,
+    "get_abonne",
+    return_value=SimpleNamespace(statut="ACTIF", compteur=SimpleNamespace(index_initial=0.0)),
+)
 
 
 def setUpModule() -> None:
@@ -225,7 +233,11 @@ class TestAjouterAbonnesCampagneRPC(TestCase):
 
     def test_ajouter_ignore_abonne_non_actif(self) -> None:
         cid = str(self.campagne.id)
-        with patch.object(AbonneServiceClient, "get_abonne", return_value=SimpleNamespace(statut="SUSPENDU")):
+        with patch.object(
+            AbonneServiceClient,
+            "get_abonne",
+            return_value=SimpleNamespace(statut="SUSPENDU", compteur=SimpleNamespace(index_initial=0.0)),
+        ):
             req = pb.AjouterAbonnesCampagneRequest(campagne_id=cid, abonne_ids=["ab-x"])
             resp = self.servicer.AjouterAbonnesCampagne(req, _mock_context())
         self.assertEqual(resp.nb_ajoutes, 0)
@@ -337,7 +349,11 @@ class TestSaisirIndexRPC(TestCase):
             nouveau_index=200.0,
             agent_id="agent-001",
         )
-        with patch.object(AbonneServiceClient, "get_abonne", return_value=SimpleNamespace(statut="SUSPENDU")):
+        with patch.object(
+            AbonneServiceClient,
+            "get_abonne",
+            return_value=SimpleNamespace(statut="SUSPENDU", compteur=SimpleNamespace(index_initial=0.0)),
+        ):
             with self.assertRaises(ValidationError):
                 self.servicer.SaisirIndex(request, _mock_context())
 
@@ -554,9 +570,27 @@ class TestGetDernierIndexRPC(TestCase):
         self.campagne = campagne
         self.svc = svc
 
-    def test_dernier_index_sans_releve_retourne_zero(self) -> None:
-        request = pb.AbonneIdRequest(abonne_id="abonne-001")
-        response = self.servicer.GetDernierIndex(request, _mock_context())
+    def test_dernier_index_sans_releve_replie_sur_index_initial_du_compteur(self) -> None:
+        """Un compteur neuf, jamais relevé, n'a pas 0.0 pour dernier index connu.
+
+        Rendre 0.0 en dur ici — vrai seulement par coïncidence — faisait
+        toujours échouer le remplacement d'un tel compteur : le service Abonné
+        rejette un index de fermeture inférieur à l'index initial, non nul
+        dès qu'un compteur est posé avec un index de départ."""
+        with patch.object(
+            AbonneServiceClient,
+            "get_abonne",
+            return_value=SimpleNamespace(statut="ACTIF", compteur=SimpleNamespace(index_initial=48.0)),
+        ):
+            request = pb.AbonneIdRequest(abonne_id="abonne-001")
+            response = self.servicer.GetDernierIndex(request, _mock_context())
+        self.assertAlmostEqual(response.dernier_index, 48.0)
+        self.assertTrue(response.est_index_initial)
+
+    def test_dernier_index_sans_releve_et_abonne_service_injoignable_replie_sur_zero(self) -> None:
+        with patch.object(AbonneServiceClient, "get_abonne", side_effect=grpc.RpcError("indisponible")):
+            request = pb.AbonneIdRequest(abonne_id="abonne-001")
+            response = self.servicer.GetDernierIndex(request, _mock_context())
         self.assertAlmostEqual(response.dernier_index, 0.0)
         self.assertTrue(response.est_index_initial)
 
