@@ -237,11 +237,11 @@ def _note(d: DonneesRecu, solde: Decimal) -> str:
             "a également été imputé sur d'autres factures de votre compte."
         )
     elif solde <= 0:
-        parties.append(f"Facture soldée — ce reçu confirme le règlement intégral de la facture {d.numero_facture}.")
+        parties.append(f"Facture soldée : ce reçu confirme le règlement intégral de la facture {d.numero_facture}.")
     else:
         parties.append(
             f"Un versement partiel suspend les relances pendant {d.delai_pause_jours} jours. "
-            "Le solde restant demeure exigible — un reçu est émis pour chaque versement."
+            "Le solde restant demeure exigible. Un reçu est émis pour chaque versement."
         )
 
     # La dette totale, quand l'appelant l'a transmise : c'est la seule phrase qui

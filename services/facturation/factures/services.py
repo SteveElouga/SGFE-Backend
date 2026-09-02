@@ -137,7 +137,7 @@ class FactureService:
         try:
             tarif = self._tarif_repo.get_actif()
         except ObjectDoesNotExist as exc:
-            raise PreconditionError("Aucun tarif actif — configurez un tarif avant de générer des factures.") from exc
+            raise PreconditionError("Aucun tarif actif : configurez un tarif avant de générer des factures.") from exc
 
         # Récupéré une seule fois pour toute la campagne (dégradation gracieuse
         # vers "" si Campagne Service est inaccessible — purement informatif).
@@ -509,25 +509,25 @@ class FactureService:
                 "Annulez-la et saisissez-en une nouvelle."
             )
         if not ancienne.campagne_id:
-            raise ValidationError("Cette facture n'est rattachée à aucune campagne — régénération impossible.")
+            raise ValidationError("Cette facture n'est rattachée à aucune campagne : régénération impossible.")
 
         releve = self._relire_releve(ancienne.campagne_id, ancienne.abonne_id)
         if releve is None:
             raise PreconditionError(
-                "Aucun relevé trouvé pour cet abonné dans la campagne — corrigez le relevé avant de régénérer."
+                "Aucun relevé trouvé pour cet abonné dans la campagne. Corrigez le relevé avant de régénérer."
             )
 
         try:
             tarif = self._tarif_repo.get_actif()
         except ObjectDoesNotExist as exc:
-            raise PreconditionError("Aucun tarif actif — configurez un tarif avant de régénérer.") from exc
+            raise PreconditionError("Aucun tarif actif : configurez un tarif avant de régénérer.") from exc
 
         ancien_index = Decimal(str(releve["ancien_index"]))
         nouveau_index = Decimal(str(releve["nouveau_index"]))
         if nouveau_index < ancien_index:
             raise ValidationError(
-                "Le relevé actuel est incohérent (index de fin inférieur à l'index de départ) — "
-                "corrigez-le avant de régénérer."
+                "Le relevé actuel est incohérent (index de fin inférieur à l'index de départ). "
+                "Corrigez-le avant de régénérer."
             )
 
         consommation = (nouveau_index - ancien_index).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
@@ -605,7 +605,7 @@ class FactureService:
         try:
             releves = self._campagne_client.list_releves(campagne_id)
         except Exception as exc:  # noqa: BLE001 - dégradation explicite
-            raise PreconditionError(f"Campagne Service indisponible — régénération impossible : {exc}") from exc
+            raise PreconditionError(f"Campagne Service indisponible, régénération impossible : {exc}") from exc
         for r in releves:
             if r.get("abonne_id") == abonne_id and r.get("nouveau_index") is not None:
                 return r

@@ -19,5 +19,5 @@ def validate_telephone_whatsapp(telephone: str) -> str:
         raise ValidationError("Le numéro WhatsApp est obligatoire")
     cleaned = telephone.strip().replace(" ", "").replace("-", "")
     if not _E164_RE.match(cleaned):
-        raise ValidationError("Numéro WhatsApp invalide — format attendu : +<indicatif><numéro> (E.164)")
+        raise ValidationError("Numéro WhatsApp invalide, format attendu : +<indicatif><numéro> (E.164)")
     return cleaned

@@ -322,7 +322,7 @@ espace         .url .date_expiration — lien de l'espace abonné ; Facturation
 
   <!-- Historique conso -->
   <div class="hist">
-    <div class="hist__label">Votre consommation — 6 derniers mois</div>
+    <div class="hist__label">Votre consommation sur les 6 derniers mois</div>
     <div class="hist__bars">
       {% for mois in historique %}
       <div class="hist__col">
@@ -343,7 +343,7 @@ espace         .url .date_expiration — lien de l'espace abonné ; Facturation
     <div class="terms">
       <div class="terms__title">Modalités de paiement</div>
       <div class="terms__body">
-        Règlement {{ facture.modalite_delai }} : Espèces · Mobile Money · Virement — auprès de notre service comptable.<br>
+        Règlement {{ facture.modalite_delai }} : Espèces · Mobile Money · Virement, auprès de notre service comptable.<br>
         {% if espace.url %}
         Consultez votre historique en ligne :
         <span class="terms__link">{{ espace.url }}</span>
@@ -352,8 +352,8 @@ espace         .url .date_expiration — lien de l'espace abonné ; Facturation
       </div>
     </div>
     <div class="footer-line">
-      <span>{{ societe.nom }} — Système de facturation d'eau AquaBill</span>
-      <span>Facture générée automatiquement le {{ facture.date_generation }} — <span class="page-num"></span></span>
+      <span>{{ societe.nom }} · Système de facturation d'eau AquaBill</span>
+      <span>Facture générée automatiquement le {{ facture.date_generation }} · <span class="page-num"></span></span>
     </div>
   </div>
 

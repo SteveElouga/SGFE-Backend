@@ -282,7 +282,7 @@ def _build_context(
             "numero": facture.numero_facture,
             "date_releve": _date_fr(facture.date_releve),
             "date_limite_paiement": _date_fr(facture.date_limite_paiement),
-            "designation": f"Consommation d'eau — {_periode_fr(facture.date_releve)}",
+            "designation": f"Consommation d'eau de {_periode_fr(facture.date_releve)}",
             "ancien_index": _num(facture.ancien_index),
             "nouveau_index": _num(facture.nouveau_index),
             "consommation": _num(facture.consommation),
