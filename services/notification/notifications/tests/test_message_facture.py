@@ -146,3 +146,25 @@ class MessageAnnulationPaiementTest(SimpleTestCase):
 
         self.assertIn(_fcfa(1234567), self._msg(solde_restant=1234567))
         self.assertNotIn("1234567", self._msg(solde_restant=1234567))
+
+
+class MessageAnnulationFactureTest(SimpleTestCase):
+    """Une facture annulée avant tout paiement n'a pas de versement à annuler —
+    le dire comme tel serait faux pour quelqu'un qui n'a jamais payé."""
+
+    def _msg(self, **surcharges):
+        from notifications.message_builder import build_message_annulation_facture
+
+        base = {"prenom_nom": "Jean DUPONT", "periode": "Août 2026"}
+        return build_message_annulation_facture(**{**base, **surcharges})
+
+    def test_ne_parle_pas_de_versement(self):
+        m = self._msg().lower()
+        for mot in ("versement", "reçu"):
+            self.assertNotIn(mot, m)
+
+    def test_dit_qu_il_n_y_a_rien_a_payer(self):
+        self.assertIn("rien à payer", self._msg())
+
+    def test_nomme_la_periode_concernee(self):
+        self.assertIn("Août 2026", self._msg())

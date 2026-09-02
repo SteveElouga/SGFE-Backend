@@ -346,16 +346,19 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
                 type_update="PAIEMENT_ANNULE",
             )
 
-            # Prévient l'abonné (dégradation gracieuse assurée par le client,
-            # comme dans `AnnulerPaiement`). Il détenait un reçu pour un
-            # versement dont la facture n'existe plus : se taire le laisse
-            # croire cette facture toujours due, ou découvrir le crédit par
-            # hasard à la prochaine relance.
-            self._notification_client.envoyer_relance(
-                facture_id=solde.facture_id,
-                abonne_id=solde.abonne_id,
-                etape=5,
-            )
+        # Prévient l'abonné dans tous les cas (dégradation gracieuse assurée
+        # par le client, comme dans `AnnulerPaiement`) — pas seulement quand de
+        # l'argent était en jeu. Une facture annulée alors qu'elle était encore
+        # entièrement impayée ne déclenchait rien : l'abonné, PDF déjà reçu,
+        # continuait de croire cette facture due. Étape 5 (un versement existait
+        # et devient un avoir) et étape 6 (aucun argent n'a changé de main)
+        # racontent deux histoires différentes — le motif « versement annulé »
+        # de l'étape 5 serait faux pour quelqu'un qui n'a jamais payé.
+        self._notification_client.envoyer_relance(
+            facture_id=solde.facture_id,
+            abonne_id=solde.abonne_id,
+            etape=5 if porte_en_avoir > 0 else 6,
+        )
 
         return pb.AnnulerSoldeResponse(
             solde=solde_to_proto(solde),

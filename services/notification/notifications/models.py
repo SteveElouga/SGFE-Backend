@@ -27,6 +27,9 @@ class TypeEnvoi(models.TextChoices):
     # Un versement annulé laisse l'abonné avec un reçu qui ne vaut plus rien, et
     # une dette qu'il croyait éteinte. On le lui dit.
     ANNULATION_PAIEMENT = "ANNULATION_PAIEMENT", "Annulation d'un paiement"
+    # Une facture annulée avant tout paiement : rien à rembourser, mais
+    # l'abonné qui a déjà reçu le PDF croit toujours la devoir sans ce message.
+    ANNULATION_FACTURE = "ANNULATION_FACTURE", "Annulation d'une facture"
 
 
 class Envoi(models.Model):

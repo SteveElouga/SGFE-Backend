@@ -26,6 +26,7 @@ from notifications.message_builder import (
     build_message_relance_2,
     build_message_relance_3,
     build_message_relance_4,
+    build_message_annulation_facture,
     build_message_annulation_paiement,
     build_message_retablissement,
 )
@@ -51,6 +52,11 @@ _ETAPE_TO_TYPE: dict[int, str] = {
     # si une seconde notification hors relance s'ajoute, cette échelle méritera
     # d'être remplacée par un type explicite.
     5: TypeEnvoi.ANNULATION_PAIEMENT,
+    # Étape 6 = annulation d'une facture jamais payée — la seconde notification
+    # hors relance annoncée par le commentaire ci-dessus. Distincte de l'étape 5 :
+    # là, un versement existait et devient un avoir ; ici, aucun argent n'a
+    # changé de main, et le dire comme un versement annulé serait faux.
+    6: TypeEnvoi.ANNULATION_FACTURE,
 }
 
 
@@ -306,23 +312,23 @@ class EnvoiService:
         etape: int,
         jours_avant_suspension: int = 0,
     ) -> Envoi:
-        """Envoie le message correspondant à l'étape (0 à 5).
+        """Envoie le message correspondant à l'étape (0 à 6).
 
         Args:
             facture_id: Identifiant de la facture.
             abonne_id: Identifiant de l'abonné.
             etape: 0 = rétablissement, 1 = rappel doux, 2 = rappel ferme,
                    3 = avertissement, 4 = suspension, 5 = annulation d'un
-                   versement.
+                   versement, 6 = annulation d'une facture jamais payée.
             jours_avant_suspension: Étape 3 seulement — jours restants avant la
                 coupure, lus dans Config par le cron. 0 = ne pas annoncer de
                 délai, plutôt qu'en annoncer un faux.
 
         Raises:
-            ValidationError: Si l'étape est hors de la plage [0, 5].
+            ValidationError: Si l'étape est hors de la plage [0, 6].
         """
         if etape not in _ETAPE_TO_TYPE:
-            raise ValidationError(f"Étape de relance invalide : {etape}. Les étapes valides sont 0 à 5.")
+            raise ValidationError(f"Étape de relance invalide : {etape}. Les étapes valides sont 0 à 6.")
 
         # Même dégradation gracieuse que envoyer_facture : un service amont
         # injoignable donne un Envoi ECHEC, pas une RpcError brute.
@@ -431,7 +437,7 @@ class EnvoiService:
                 periode=periode,
                 telephone_societe=telephone_societe,
             )
-        else:  # etape == 5 — annulation d'un versement
+        elif etape == 5:  # annulation d'un versement
             # Le solde restant vient du service paiement, seule source de vérité :
             # `facture.montant` est le montant du mois, pas ce qui reste dû après
             # d'éventuels autres versements.
@@ -451,6 +457,8 @@ class EnvoiService:
                 periode=periode,
                 solde_restant=facture.montant if solde_restant is None else solde_restant,
             )
+        else:  # etape == 6 — annulation d'une facture jamais payée
+            message = build_message_annulation_facture(prenom_nom=prenom_nom, periode=periode)
 
         type_envoi = _ETAPE_TO_TYPE[etape]
         envoi = self._envois.create(
