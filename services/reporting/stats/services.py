@@ -122,6 +122,7 @@ class AgregateurDashboard:
         delta_factures: int,
         delta_montant: float,
         type_update: str,
+        etait_payee: bool = False,
     ) -> StatsFacturation:
         stats = self._facturation.get_or_create(campagne_id)
         if type_update == "GENEREE":
@@ -134,6 +135,19 @@ class AgregateurDashboard:
         elif type_update == "PAYEE":
             stats.nb_factures_payees += delta_factures
             stats.nb_factures_impayees = max(0, stats.nb_factures_impayees - delta_factures)
+        elif type_update == "ANNULEE":
+            # Une facture annulée n'a jamais existé pour le lecteur des stats :
+            # sans ce retrait, une régularisation (annulation + facture
+            # corrigée) comptait les deux à la fois dans le montant facturé.
+            # `nb_factures_envoyees` n'est volontairement pas touché : qu'un
+            # message soit parti est un fait du passé, indépendant de
+            # l'annulation qui a suivi.
+            stats.total_factures = max(0, stats.total_factures - delta_factures)
+            stats.montant_total_facture = max(Decimal("0"), stats.montant_total_facture - _dec(delta_montant))
+            if etait_payee:
+                stats.nb_factures_payees = max(0, stats.nb_factures_payees - delta_factures)
+            else:
+                stats.nb_factures_impayees = max(0, stats.nb_factures_impayees - delta_factures)
         return self._facturation.save(stats)
 
     def update_stats_paiements(
