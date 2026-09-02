@@ -431,6 +431,14 @@ async function shutdown(signal) {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`[WhatsApp] ${signal} reçu — fermeture propre en cours…`);
+    // Publié AVANT de fermer le client/Redis, et avant tout, sinon ce badge
+    // reste bloqué sur « Actif » pour toute la durée de l'arrêt : jusqu'ici
+    // seuls les événements du client (`disconnected`, `auth_failure`, le
+    // chien de garde d'initialisation) publiaient un statut. Un arrêt propre
+    // (`docker compose stop/restart/up --build`, SIGTERM d'un redéploiement)
+    // n'en déclenche aucun — le badge de Configuration reste donc « Actif »
+    // pendant toute la coupure, jusqu'au prochain rechargement de la page.
+    await publishStatus({ ready: false, qr: '', number: '', phase: 'rupture', motif: signal });
     try {
         if (activeClient) await activeClient.destroy();
     } catch (err) {
