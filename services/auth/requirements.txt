@@ -3,7 +3,7 @@
 # de dépendances partagé entre services).
 
 Django==5.2.17
-djangorestframework==3.17.1
+djangorestframework==3.17.2
 djangorestframework-simplejwt==5.5.1
 cryptography==50.0.1
 grpcio==1.81.1
