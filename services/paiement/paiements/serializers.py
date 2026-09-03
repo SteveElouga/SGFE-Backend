@@ -12,7 +12,7 @@ import paiement_service_pb2 as pb
 from django.db.models import Sum
 from decimal import Decimal
 
-from paiements.models import ModePaiement, Paiement, SoldeFacture, SuiviImpaye
+from paiements.models import ModePaiement, MouvementAvoir, Paiement, SoldeFacture, SuiviImpaye
 
 
 def paiement_to_proto(p: Paiement) -> pb.PaiementResponse:
@@ -70,7 +70,7 @@ def suivi_to_proto(s: SuiviImpaye) -> pb.SuiviImpayeResponse:
     )
 
 
-def avoir_to_proto(abonne_id: str, montant: object, mouvements: list) -> pb.AvoirResponse:
+def avoir_to_proto(abonne_id: str, montant: Decimal, mouvements: list[MouvementAvoir]) -> pb.AvoirResponse:
     """Construit le message AvoirResponse (solde d'avoir + journal des mouvements)."""
     return pb.AvoirResponse(
         abonne_id=str(abonne_id),

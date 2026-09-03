@@ -1,3 +1,5 @@
 """URLs du Paiement Service — service gRPC uniquement, pas d'API REST."""
 
-urlpatterns: list = []
+from django.urls import URLPattern, URLResolver
+
+urlpatterns: list[URLPattern | URLResolver] = []

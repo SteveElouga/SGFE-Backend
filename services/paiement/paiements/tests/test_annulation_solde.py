@@ -47,7 +47,7 @@ class AnnulerSoldeTest(TestCase):
     def setUp(self) -> None:
         self.service = PaiementService()
 
-    def test_une_facture_intacte_s_annule_sans_rien_crediter(self):
+    def test_une_facture_intacte_s_annule_sans_rien_crediter(self) -> None:
         _solde("f-1", "10000")
         solde, credite = self.service.annuler_solde("f-1", motif="Erreur d'index")
         self.assertEqual(solde.statut, StatutSolde.ANNULEE)
@@ -55,7 +55,7 @@ class AnnulerSoldeTest(TestCase):
         self.assertEqual(credite, Decimal("0"))
         self.assertIsNone(AvoirAbonne.objects.filter(abonne_id=ABONNE).first())
 
-    def test_ce_qui_a_ete_verse_revient_a_l_abonne(self):
+    def test_ce_qui_a_ete_verse_revient_a_l_abonne(self) -> None:
         _solde("f-1", "10000")
         self.service.enregistrer_paiement(
             facture_id="f-1",
@@ -71,7 +71,7 @@ class AnnulerSoldeTest(TestCase):
         avoir = AvoirAbonne.objects.get(abonne_id=ABONNE)
         self.assertEqual(avoir.montant, Decimal("4000"))
 
-    def test_une_facture_entierement_payee_rend_tout(self):
+    def test_une_facture_entierement_payee_rend_tout(self) -> None:
         _solde("f-1", "10000")
         self.service.enregistrer_paiement(
             facture_id="f-1",
@@ -85,7 +85,7 @@ class AnnulerSoldeTest(TestCase):
         _s, credite = self.service.annuler_solde("f-1", motif="Doublon")
         self.assertEqual(credite, Decimal("10000"))
 
-    def test_le_mouvement_est_trace_comme_annulation_pas_comme_trop_percu(self):
+    def test_le_mouvement_est_trace_comme_annulation_pas_comme_trop_percu(self) -> None:
         """L'abonné n'a pas versé de trop : c'est la facture qui a disparu."""
         _solde("f-1", "10000")
         self.service.enregistrer_paiement(
@@ -100,9 +100,11 @@ class AnnulerSoldeTest(TestCase):
         self.service.annuler_solde("f-1", motif="Erreur d'index")
         mouvements = MouvementAvoir.objects.filter(abonne_id=ABONNE, type_mouvement=TypeMouvementAvoir.ANNULATION)
         self.assertEqual(mouvements.count(), 1)
-        self.assertEqual(mouvements.first().facture_id, "f-1")
+        premier = mouvements.first()
+        assert premier is not None
+        self.assertEqual(premier.facture_id, "f-1")
 
-    def test_annuler_deux_fois_ne_credite_qu_une_fois(self):
+    def test_annuler_deux_fois_ne_credite_qu_une_fois(self) -> None:
         """Un double-clic ne doit pas doubler l'avoir."""
         _solde("f-1", "10000")
         self.service.enregistrer_paiement(
@@ -119,27 +121,27 @@ class AnnulerSoldeTest(TestCase):
         self.assertEqual(credite2, Decimal("0"))
         self.assertEqual(AvoirAbonne.objects.get(abonne_id=ABONNE).montant, Decimal("4000"))
 
-    def test_annulee_n_est_pas_payee(self):
+    def test_annulee_n_est_pas_payee(self) -> None:
         """Confondre les deux ferait entrer dans les recettes ce que nul n'a versé."""
         _solde("f-1", "10000")
         solde, _ = self.service.annuler_solde("f-1", motif="Erreur")
         self.assertNotEqual(solde.statut, StatutSolde.PAYEE)
         self.assertEqual(solde.statut, StatutSolde.ANNULEE)
 
-    def test_un_solde_annule_sort_des_impayes(self):
+    def test_un_solde_annule_sort_des_impayes(self) -> None:
         _solde("f-1", "10000", jours=40)
         self.assertEqual(len(self.service._solde_repo.list_impayes()), 1)
         self.service.annuler_solde("f-1", motif="Erreur")
         self.assertEqual(self.service._solde_repo.list_impayes(), [])
 
-    def test_un_solde_annule_sort_de_la_dette_de_l_abonne(self):
+    def test_un_solde_annule_sort_de_la_dette_de_l_abonne(self) -> None:
         _solde("f-1", "10000")
         _solde("f-2", "3000")
         self.assertEqual(self.service._solde_repo.total_du_abonne(ABONNE), Decimal("13000"))
         self.service.annuler_solde("f-1", motif="Erreur")
         self.assertEqual(self.service._solde_repo.total_du_abonne(ABONNE), Decimal("3000"))
 
-    def test_un_versement_ulterieur_ne_s_impute_plus_dessus(self):
+    def test_un_versement_ulterieur_ne_s_impute_plus_dessus(self) -> None:
         """La dette annulée ne doit plus capter l'argent, même la plus ancienne."""
         _solde("annulee", "10000", jours=90)  # la plus ancienne
         _solde("vivante", "5000", jours=10)
@@ -156,7 +158,7 @@ class AnnulerSoldeTest(TestCase):
         vivante = SoldeFacture.objects.get(facture_id="vivante")
         self.assertEqual(vivante.solde_restant, Decimal("0"))
 
-    def test_l_avoir_rendu_s_impute_sur_la_facture_suivante(self):
+    def test_l_avoir_rendu_s_impute_sur_la_facture_suivante(self) -> None:
         """Bout à bout : c'est le comportement que l'abonné constate."""
         _solde("f-1", "10000")
         self.service.enregistrer_paiement(

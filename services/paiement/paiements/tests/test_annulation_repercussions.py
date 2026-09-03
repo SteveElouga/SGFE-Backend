@@ -18,7 +18,7 @@ from datetime import date, timedelta
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 
-from paiements.models import ModePaiement, StatutSolde, TypeMouvementAvoir
+from paiements.models import ModePaiement, StatutSolde, SuiviImpaye, TypeMouvementAvoir
 from paiements.services import PaiementService
 
 ABONNE = "abonne-test"
@@ -28,10 +28,10 @@ DEMAIN = date.today() + timedelta(days=5)
 class SoldeRetabliDeLaPartImputee(TestCase):
     """Le solde ne doit rendre que ce qui l'avait touché."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.svc = PaiementService()
 
-    def test_un_versement_exact_rend_tout(self):
+    def test_un_versement_exact_rend_tout(self) -> None:
         self.svc.initialiser_solde("f-1", ABONNE, 5000, DEMAIN)
         p, _ = self.svc.enregistrer_paiement("f-1", ABONNE, 5000, date.today(), ModePaiement.ESPECES, "", "caissier")
 
@@ -40,7 +40,7 @@ class SoldeRetabliDeLaPartImputee(TestCase):
         self.assertEqual(solde.solde_restant, 5000)
         self.assertEqual(solde.statut, StatutSolde.IMPAYEE)
 
-    def test_un_trop_percu_ne_rend_que_la_part_imputee(self):
+    def test_un_trop_percu_ne_rend_que_la_part_imputee(self) -> None:
         # C'est ici que l'ancien code s'appuyait sur un garde-fou anti-négatif
         # au lieu d'être juste : il retirait 10 000 d'un solde qui n'en avait
         # reçu que 5 000, puis remontait le résultat à zéro.
@@ -57,7 +57,7 @@ class SoldeRetabliDeLaPartImputee(TestCase):
         self.assertEqual(solde.solde_restant, 5000)
         self.assertEqual(solde.montant_paye, 0)
 
-    def test_un_versement_partiel_laisse_le_reste_du(self):
+    def test_un_versement_partiel_laisse_le_reste_du(self) -> None:
         self.svc.initialiser_solde("f-1", ABONNE, 20500, DEMAIN)
         p, _ = self.svc.enregistrer_paiement("f-1", ABONNE, 8000, date.today(), ModePaiement.ESPECES, "", "caissier")
 
@@ -70,10 +70,10 @@ class SoldeRetabliDeLaPartImputee(TestCase):
 class AvoirRepris(TestCase):
     """L'excédent porté au crédit repart avec le versement qui l'a produit."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.svc = PaiementService()
 
-    def test_l_avoir_est_debite_de_l_excedent(self):
+    def test_l_avoir_est_debite_de_l_excedent(self) -> None:
         self.svc.initialiser_solde("f-1", ABONNE, 5000, DEMAIN)
         p, _ = self.svc.enregistrer_paiement("f-1", ABONNE, 10000, date.today(), ModePaiement.ESPECES, "", "caissier")
         avoir_avant, _ = self.svc.get_avoir_abonne(ABONNE)
@@ -88,7 +88,7 @@ class AvoirRepris(TestCase):
         types = [m.type_mouvement for m in mouvements]
         self.assertIn(TypeMouvementAvoir.REPRISE_TROP_PERCU, types)
 
-    def test_un_versement_sans_excedent_ne_touche_pas_l_avoir(self):
+    def test_un_versement_sans_excedent_ne_touche_pas_l_avoir(self) -> None:
         self.svc.crediter_avoir_manuel(ABONNE, 3000, "geste commercial", "admin")
         self.svc.initialiser_solde("f-1", ABONNE, 20500, DEMAIN)
         # L'avoir s'est imputé à la création : 20 500 − 3 000 = 17 500 restants.
@@ -101,7 +101,7 @@ class AvoirRepris(TestCase):
         # annuler le versement ne doit rien lui reprendre.
         self.assertEqual(avoir, 0)
 
-    def test_refuse_l_annulation_quand_l_excedent_est_deja_depense(self):
+    def test_refuse_l_annulation_quand_l_excedent_est_deja_depense(self) -> None:
         """Le cas qu'on ne peut pas corriger à moitié.
 
         L'excédent a été consommé par la facture suivante à sa naissance. Le
@@ -133,13 +133,11 @@ class AvoirRepris(TestCase):
 class SuiviImpayeRouvert(TestCase):
     """Une dette rétablie doit redevenir relançable."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.svc = PaiementService()
 
-    def _suivi_resolu(self, facture_id, abonne_id):
+    def _suivi_resolu(self, facture_id: str, abonne_id: str) -> SuiviImpaye:
         """Crée un suivi d'impayé déjà résolu, comme après un paiement complet."""
-        from paiements.models import SuiviImpaye
-
         return SuiviImpaye.objects.create(
             facture_id=facture_id,
             abonne_id=abonne_id,
@@ -148,7 +146,7 @@ class SuiviImpayeRouvert(TestCase):
             resolu_le=date.today(),
         )
 
-    def test_le_suivi_est_rouvert_quand_la_facture_redevient_impayee(self):
+    def test_le_suivi_est_rouvert_quand_la_facture_redevient_impayee(self) -> None:
         # C'était le manque le plus coûteux : `resolu_le` restait daté, le cron
         # de 8 h sautait la facture, et la dette vieillissait sans relance.
         self.svc.initialiser_solde("f-1", ABONNE, 5000, DEMAIN)
@@ -161,7 +159,7 @@ class SuiviImpayeRouvert(TestCase):
         suivi.refresh_from_db()
         self.assertIsNone(suivi.resolu_le)
 
-    def test_le_suivi_reste_resolu_si_la_facture_est_encore_soldee(self):
+    def test_le_suivi_reste_resolu_si_la_facture_est_encore_soldee(self) -> None:
         # Deux versements, on n'annule que le second : la facture reste payée
         # par le premier, il n'y a rien à relancer.
         self.svc.initialiser_solde("f-1", ABONNE, 5000, DEMAIN)
@@ -180,7 +178,7 @@ class SuiviImpayeRouvert(TestCase):
         suivi.refresh_from_db()
         self.assertIsNotNone(suivi.resolu_le)
 
-    def test_une_facture_jamais_tombee_en_impaye_n_a_rien_a_rouvrir(self):
+    def test_une_facture_jamais_tombee_en_impaye_n_a_rien_a_rouvrir(self) -> None:
         self.svc.initialiser_solde("f-1", ABONNE, 5000, DEMAIN)
         p, _ = self.svc.enregistrer_paiement("f-1", ABONNE, 5000, date.today(), ModePaiement.ESPECES, "", "caissier")
 
@@ -192,10 +190,10 @@ class SuiviImpayeRouvert(TestCase):
 class VersementAbonneMultiFactures(TestCase):
     """Un versement réparti sur plusieurs factures : l'excédent tient à la dernière écriture."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.svc = PaiementService()
 
-    def test_l_excedent_se_rattache_a_la_derniere_ecriture(self):
+    def test_l_excedent_se_rattache_a_la_derniere_ecriture(self) -> None:
         self.svc.initialiser_solde("f-1", ABONNE, 3000, date.today() - timedelta(days=30))
         self.svc.initialiser_solde("f-2", ABONNE, 5000, DEMAIN)
 
@@ -211,7 +209,7 @@ class VersementAbonneMultiFactures(TestCase):
         crees[1].refresh_from_db()
         self.assertEqual(crees[1].montant_excedent, 2000)
 
-    def test_annuler_une_ecriture_annule_tout_le_versement(self):
+    def test_annuler_une_ecriture_annule_tout_le_versement(self) -> None:
         self.svc.initialiser_solde("f-1", ABONNE, 3000, date.today() - timedelta(days=30))
         self.svc.initialiser_solde("f-2", ABONNE, 5000, DEMAIN)
         crees, _ = self.svc.enregistrer_paiement_abonne(

@@ -1,10 +1,11 @@
 """Accès base de données du Paiement Service."""
 
+import uuid
 from datetime import date
 from decimal import Decimal
 
 from django.core.exceptions import ObjectDoesNotExist
-from django.db.models import Sum
+from django.db.models import QuerySet, Sum
 
 from .models import AvoirAbonne, MouvementAvoir, Paiement, SoldeFacture, StatutSolde, SuiviImpaye
 
@@ -16,13 +17,13 @@ class PaiementRepository:
         self,
         facture_id: str,
         abonne_id: str,
-        montant: object,
+        montant: Decimal,
         date_paiement: date,
         mode_paiement: str,
         reference_transaction: str,
         enregistre_par: str,
-        montant_excedent: object = 0,
-        versement_id: object = None,
+        montant_excedent: Decimal = Decimal("0"),
+        versement_id: "uuid.UUID | str | None" = None,
     ) -> Paiement:
         """Crée une écriture de paiement.
 
@@ -51,7 +52,7 @@ class PaiementRepository:
             champs["versement_id"] = versement_id
         return Paiement.objects.create(**champs)
 
-    def list_du_versement(self, versement_id: object) -> list[Paiement]:
+    def list_du_versement(self, versement_id: "uuid.UUID | str") -> list[Paiement]:
         """Toutes les écritures nées d'un même versement, dans l'ordre d'imputation.
 
         Un versement s'impute sur la facture visée puis sur les impayés : il
@@ -60,7 +61,7 @@ class PaiementRepository:
         """
         return list(Paiement.objects.filter(versement_id=versement_id).order_by("created_at"))
 
-    def dernier_du_versement(self, versement_id: object) -> Paiement | None:
+    def dernier_du_versement(self, versement_id: "uuid.UUID | str") -> Paiement | None:
         """Dernière écriture d'un versement — celle qui porte l'excédent."""
         return Paiement.objects.filter(versement_id=versement_id).order_by("-created_at").first()
 
@@ -93,7 +94,7 @@ class PaiementRepository:
         abonne_id: str = "",
         date_debut: date | None = None,
         date_fin: date | None = None,
-    ):
+    ) -> QuerySet[Paiement]:
         """Queryset filtré, partagé par `list_by_facture_and_abonne` et
         `count_by_facture_and_abonne` — le comptage et la page rendue portent
         ainsi toujours sur les mêmes critères, jamais sur la table entière."""
@@ -171,7 +172,7 @@ class SoldeFactureRepository:
         self,
         facture_id: str,
         abonne_id: str,
-        montant_total: object,
+        montant_total: Decimal,
         date_limite_paiement: date,
         campagne_id: str = "",
     ) -> SoldeFacture:
@@ -207,7 +208,7 @@ class SoldeFactureRepository:
         (ré-init / réconciliation d'une facture orpheline)."""
         return SoldeFacture.objects.filter(pk=facture_id).first()
 
-    def update_after_paiement(self, solde: SoldeFacture, montant_verse: object) -> SoldeFacture:
+    def update_after_paiement(self, solde: SoldeFacture, montant_verse: Decimal) -> SoldeFacture:
         """Met à jour le solde après un versement et recalcule le statut."""
         from decimal import Decimal
 
@@ -226,7 +227,7 @@ class SoldeFactureRepository:
         solde.save(update_fields=["montant_paye", "solde_restant", "statut", "updated_at"])
         return solde
 
-    def update_after_annulation(self, solde: SoldeFacture, montant_annule: object) -> SoldeFacture:
+    def update_after_annulation(self, solde: SoldeFacture, montant_annule: Decimal) -> SoldeFacture:
         """Rétablit le solde après annulation d'un paiement (retire le montant versé)."""
         from decimal import Decimal
 
@@ -342,7 +343,7 @@ class AvoirAbonneRepository:
         transaction pour sérialiser l'imputation concurrente du crédit."""
         return AvoirAbonne.objects.select_for_update().filter(pk=abonne_id).first()
 
-    def crediter(self, abonne_id: str, montant: object) -> AvoirAbonne:
+    def crediter(self, abonne_id: str, montant: Decimal) -> AvoirAbonne:
         """Ajoute `montant` au crédit de l'abonné (crée la ligne au besoin)."""
         from decimal import Decimal
 
@@ -351,7 +352,7 @@ class AvoirAbonneRepository:
         avoir.save(update_fields=["montant", "updated_at"])
         return avoir
 
-    def consommer(self, avoir: AvoirAbonne, montant: object) -> AvoirAbonne:
+    def consommer(self, avoir: AvoirAbonne, montant: Decimal) -> AvoirAbonne:
         """Décrémente le crédit de `montant` (borné à zéro)."""
         from decimal import Decimal
 
@@ -367,7 +368,7 @@ class MouvementAvoirRepository:
     def create(
         self,
         abonne_id: str,
-        montant: object,
+        montant: Decimal,
         type_mouvement: str,
         motif: str = "",
         facture_id: str = "",

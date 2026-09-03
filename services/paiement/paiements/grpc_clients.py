@@ -3,9 +3,11 @@
 import logging
 import sys
 from pathlib import Path
+from typing import Callable, cast
 
 import grpc
 from django.conf import settings
+from paiements.dtos import DelaisImpayesDict
 from paiements.grpc_auth import canal_authentifie
 
 logger = logging.getLogger(__name__)
@@ -299,12 +301,12 @@ class ConfigServiceClient:
         except Exception:
             self._available = False
 
-    def get_delais_impayes(self) -> dict[str, object]:
+    def get_delais_impayes(self) -> DelaisImpayesDict:
         """
         Récupère les délais de relance depuis Config Service.
         Retourne les valeurs par défaut si le service est indisponible.
         """
-        defaults: dict[str, object] = {
+        defaults: DelaisImpayesDict = {
             "rappel_1": getattr(settings, "DEFAULT_DELAI_RAPPEL_1", 0),
             "rappel_2": getattr(settings, "DEFAULT_DELAI_RAPPEL_2", 3),
             "avertissement": getattr(settings, "DEFAULT_DELAI_AVERTISSEMENT", 7),
@@ -316,7 +318,7 @@ class ConfigServiceClient:
         if not self._available:
             return defaults
 
-        cles = [
+        cles: list[tuple[str, str, Callable[[str], object]]] = [
             ("impaye_delai_rappel_1", "rappel_1", int),
             ("impaye_delai_rappel_2", "rappel_2", int),
             ("impaye_delai_avertissement", "avertissement", int),
@@ -329,7 +331,12 @@ class ConfigServiceClient:
             ("impaye_suspension_relances", "suspension_relances", int),
         ]
 
-        result = dict(defaults)
+        # Mutation par clé dynamique : un dict simple le permet, un TypedDict
+        # non (ses clés doivent être des littéraux). On revient à la forme
+        # typée juste avant de renvoyer (voir le TypedDict ci-dessous) — les
+        # `cast` sont sûrs : chaque valeur vient soit des défauts (déjà
+        # int/bool), soit d'un `converter` de `cles` qui rend l'un des deux.
+        result: dict[str, object] = dict(defaults)
         for cle, key, converter in cles:
             try:
                 response = self._stub.GetConfig(self._pb.ConfigKeyRequest(cle=cle))
@@ -339,7 +346,14 @@ class ConfigServiceClient:
             except (ValueError, AttributeError):
                 pass  # Valeur mal formée — défaut conservé
 
-        return result
+        return {
+            "rappel_1": cast(int, result["rappel_1"]),
+            "rappel_2": cast(int, result["rappel_2"]),
+            "avertissement": cast(int, result["avertissement"]),
+            "suspension": cast(int, result["suspension"]),
+            "suspension_auto": cast(bool, result["suspension_auto"]),
+            "suspension_relances": cast(int, result["suspension_relances"]),
+        }
 
 
 class ReportingServiceClient:

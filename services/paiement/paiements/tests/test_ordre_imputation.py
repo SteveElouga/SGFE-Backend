@@ -35,10 +35,10 @@ def _demain(jours: int = 5) -> date:
 
 
 class LaFactureViseeDabord(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.svc = PaiementService()
 
-    def test_le_versement_eteint_la_facture_visee_avant_les_impayes(self):
+    def test_le_versement_eteint_la_facture_visee_avant_les_impayes(self) -> None:
         # Deux dettes : un arriéré de juillet et la facture d'août. L'abonné
         # règle celle d'août — c'est le message qu'il a reçu.
         self.svc.initialiser_solde("juillet", ABONNE, 3000, _hier())
@@ -50,7 +50,7 @@ class LaFactureViseeDabord(TestCase):
         # L'arriéré n'a pas été servi : le versement suffisait juste pour août.
         self.assertEqual(self.svc.get_solde("juillet").solde_restant, 3000)
 
-    def test_l_excedent_part_sur_les_impayes_pas_a_l_avoir(self):
+    def test_l_excedent_part_sur_les_impayes_pas_a_l_avoir(self) -> None:
         # Le cœur de la règle.
         self.svc.initialiser_solde("juillet", ABONNE, 3000, _hier())
         self.svc.initialiser_solde("aout", ABONNE, 5000, _demain())
@@ -63,7 +63,7 @@ class LaFactureViseeDabord(TestCase):
         avoir, _ = self.svc.get_avoir_abonne(ABONNE)
         self.assertEqual(avoir, 2000)
 
-    def test_aucun_avoir_tant_qu_il_reste_une_dette(self):
+    def test_aucun_avoir_tant_qu_il_reste_une_dette(self) -> None:
         self.svc.initialiser_solde("juillet", ABONNE, 8000, _hier())
         self.svc.initialiser_solde("aout", ABONNE, 5000, _demain())
 
@@ -75,7 +75,7 @@ class LaFactureViseeDabord(TestCase):
         self.assertEqual(self.svc.get_solde("juillet").solde_restant, 3000)
         self.assertEqual(self.svc.get_solde("juillet").statut, StatutSolde.PARTIELLE)
 
-    def test_les_impayes_sont_servis_du_plus_ancien_au_plus_recent(self):
+    def test_les_impayes_sont_servis_du_plus_ancien_au_plus_recent(self) -> None:
         # L'ancienneté déclenche relances et suspension : éteindre la dette
         # récente en laissant vieillir l'ancienne serait le mauvais ordre.
         self.svc.initialiser_solde("mai", ABONNE, 2000, _hier(90))
@@ -88,7 +88,7 @@ class LaFactureViseeDabord(TestCase):
         self.assertEqual(self.svc.get_solde("mai").solde_restant, 0)
         self.assertEqual(self.svc.get_solde("juin").solde_restant, 1000)
 
-    def test_une_facture_deja_soldee_ne_bloque_pas_la_cascade(self):
+    def test_une_facture_deja_soldee_ne_bloque_pas_la_cascade(self) -> None:
         # Payer une facture déjà éteinte : tout part sur les impayés.
         self.svc.initialiser_solde("juillet", ABONNE, 3000, _hier())
         self.svc.initialiser_solde("aout", ABONNE, 5000, _demain())
@@ -102,10 +102,10 @@ class LaFactureViseeDabord(TestCase):
 
 
 class EcrituresGroupeesParVersement(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.svc = PaiementService()
 
-    def test_un_versement_reparti_partage_un_versement_id(self):
+    def test_un_versement_reparti_partage_un_versement_id(self) -> None:
         self.svc.initialiser_solde("juillet", ABONNE, 3000, _hier())
         self.svc.initialiser_solde("aout", ABONNE, 5000, _demain())
 
@@ -119,7 +119,7 @@ class EcrituresGroupeesParVersement(TestCase):
         self.assertEqual(montants["aout"], 5000)
         self.assertEqual(montants["juillet"], 3000)
 
-    def test_l_excedent_ne_se_pose_que_sur_la_derniere_ecriture(self):
+    def test_l_excedent_ne_se_pose_que_sur_la_derniere_ecriture(self) -> None:
         self.svc.initialiser_solde("juillet", ABONNE, 3000, _hier())
         self.svc.initialiser_solde("aout", ABONNE, 5000, _demain())
 
@@ -132,7 +132,7 @@ class EcrituresGroupeesParVersement(TestCase):
         # plusieurs fois.
         self.assertEqual(len([e for e in excedents if e > 0]), 1)
 
-    def test_deux_versements_ne_partagent_pas_leur_identifiant(self):
+    def test_deux_versements_ne_partagent_pas_leur_identifiant(self) -> None:
         self.svc.initialiser_solde("aout", ABONNE, 20000, _demain())
         p1, _ = self.svc.enregistrer_paiement("aout", ABONNE, 5000, date.today(), ModePaiement.ESPECES, "", "c")
         p2, _ = self.svc.enregistrer_paiement("aout", ABONNE, 5000, date.today(), ModePaiement.ESPECES, "", "c")
@@ -141,10 +141,10 @@ class EcrituresGroupeesParVersement(TestCase):
 
 
 class AnnulationDuVersementEntier(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.svc = PaiementService()
 
-    def test_annuler_defait_toutes_les_imputations_du_versement(self):
+    def test_annuler_defait_toutes_les_imputations_du_versement(self) -> None:
         # Sans le regroupement, annuler l'écriture d'août aurait laissé les
         # 3 000 de juillet imputés — un solde faux, exactement le défaut qu'on
         # venait de corriger sur le trop-perçu.
@@ -159,7 +159,7 @@ class AnnulationDuVersementEntier(TestCase):
         avoir, _ = self.svc.get_avoir_abonne(ABONNE)
         self.assertEqual(avoir, 0)
 
-    def test_toutes_les_ecritures_sont_marquees_annulees(self):
+    def test_toutes_les_ecritures_sont_marquees_annulees(self) -> None:
         self.svc.initialiser_solde("juillet", ABONNE, 3000, _hier())
         self.svc.initialiser_solde("aout", ABONNE, 5000, _demain())
         p, _ = self.svc.enregistrer_paiement("aout", ABONNE, 10000, date.today(), ModePaiement.ESPECES, "", "caissier")
@@ -170,7 +170,7 @@ class AnnulationDuVersementEntier(TestCase):
         self.assertTrue(all(e.annule for e in ecritures))
         self.assertTrue(all(e.motif_annulation == "erreur" for e in ecritures))
 
-    def test_annuler_depuis_n_importe_quelle_ecriture_donne_le_meme_resultat(self):
+    def test_annuler_depuis_n_importe_quelle_ecriture_donne_le_meme_resultat(self) -> None:
         self.svc.initialiser_solde("juillet", ABONNE, 3000, _hier())
         self.svc.initialiser_solde("aout", ABONNE, 5000, _demain())
         p, _ = self.svc.enregistrer_paiement("aout", ABONNE, 10000, date.today(), ModePaiement.ESPECES, "", "caissier")
@@ -183,7 +183,7 @@ class AnnulationDuVersementEntier(TestCase):
         self.assertEqual(self.svc.get_solde("aout").solde_restant, 5000)
         self.assertEqual(self.svc.get_solde("juillet").solde_restant, 3000)
 
-    def test_l_avoir_est_repris_une_seule_fois(self):
+    def test_l_avoir_est_repris_une_seule_fois(self) -> None:
         self.svc.initialiser_solde("juillet", ABONNE, 3000, _hier())
         self.svc.initialiser_solde("aout", ABONNE, 5000, _demain())
         p, _ = self.svc.enregistrer_paiement("aout", ABONNE, 12000, date.today(), ModePaiement.ESPECES, "", "caissier")
@@ -197,7 +197,7 @@ class AnnulationDuVersementEntier(TestCase):
         reprises = [m for m in mouvements if m.type_mouvement == TypeMouvementAvoir.REPRISE_TROP_PERCU]
         self.assertEqual(len(reprises), 1)
 
-    def test_refuse_si_l_avoir_du_versement_est_deja_depense(self):
+    def test_refuse_si_l_avoir_du_versement_est_deja_depense(self) -> None:
         self.svc.initialiser_solde("aout", ABONNE, 5000, _demain())
         p, _ = self.svc.enregistrer_paiement("aout", ABONNE, 10000, date.today(), ModePaiement.ESPECES, "", "caissier")
         # La facture suivante consomme l'avoir à sa naissance.

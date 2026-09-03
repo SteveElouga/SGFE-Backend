@@ -36,7 +36,7 @@ class ImputationFifoTest(TestCase):
     def setUp(self) -> None:
         self.service = PaiementService()
 
-    def _encaisser(self, montant: str, reference: str = ""):
+    def _encaisser(self, montant: str, reference: str = "") -> tuple[list[Paiement], Decimal]:
         return self.service.enregistrer_paiement_abonne(
             abonne_id=ABONNE,
             montant=float(Decimal(montant)),
