@@ -15,8 +15,17 @@ un Redis indisponible ne doit jamais faire échouer une lecture ou une écriture
 il fait simplement retomber sur la base (source de vérité).
 """
 
+from __future__ import annotations
+
 import json
 import logging
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    # Import réservé au typage : le code exécuté importe `redis` localement
+    # dans chaque fonction (voir `_redis_client`), pour que les tests puissent
+    # simuler son absence via `patch.dict(sys.modules, {"redis": None})`.
+    import redis
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +39,7 @@ _CONFIG_KEY_PREFIX = "config:cache:param:"
 _INFOS_SOCIETE_KEY = "config:cache:infos_societe"
 
 
-def _redis_client():
+def _redis_client() -> redis.Redis:
     from django.conf import settings
     import redis
 
@@ -41,8 +50,12 @@ def get_cached_param(cle: str) -> dict[str, str] | None:
     """Valeur en cache d'un ConfigParam (dict compatible ConfigResponse), ou None."""
     try:
         r = _redis_client()
-        raw = r.get(_CONFIG_KEY_PREFIX + cle)
-        r.close()
+        # `: Any` — les stubs redis-py typent get() en Awaitable[Any] | Any
+        # (client sync ET async partagent la même signature de stub) ; sans
+        # rapport avec un vrai bug, `redis.Redis.from_url` renvoie bien un
+        # client synchrone ici.
+        raw: Any = r.get(_CONFIG_KEY_PREFIX + cle)
+        r.close()  # type: ignore[no-untyped-call]  # redis-py : Redis.close() n'est pas annoté
         return json.loads(raw) if raw else None
     except Exception as exc:
         logger.warning("Cache Config ignoré (lecture, %s) : %s", cle, exc)
@@ -54,7 +67,7 @@ def set_cached_param(cle: str, data: dict[str, str]) -> None:
     try:
         r = _redis_client()
         r.setex(_CONFIG_KEY_PREFIX + cle, TTL_SECONDS, json.dumps(data))
-        r.close()
+        r.close()  # type: ignore[no-untyped-call]  # redis-py : Redis.close() n'est pas annoté
     except Exception as exc:
         logger.warning("Cache Config ignoré (écriture, %s) : %s", cle, exc)
 
@@ -69,7 +82,7 @@ def invalidate_param(cle: str) -> None:
     try:
         r = _redis_client()
         r.delete(_CONFIG_KEY_PREFIX + cle)
-        r.close()
+        r.close()  # type: ignore[no-untyped-call]  # redis-py : Redis.close() n'est pas annoté
     except Exception as exc:
         logger.warning("Cache Config ignoré (invalidation, %s) : %s", cle, exc)
 
@@ -78,8 +91,8 @@ def get_cached_infos_societe() -> dict[str, str] | None:
     """Valeur en cache des infos société (dict compatible InfosSocieteResponse), ou None."""
     try:
         r = _redis_client()
-        raw = r.get(_INFOS_SOCIETE_KEY)
-        r.close()
+        raw: Any = r.get(_INFOS_SOCIETE_KEY)
+        r.close()  # type: ignore[no-untyped-call]  # redis-py : Redis.close() n'est pas annoté
         return json.loads(raw) if raw else None
     except Exception as exc:
         logger.warning("Cache Config ignoré (lecture infos société) : %s", exc)
@@ -91,7 +104,7 @@ def set_cached_infos_societe(data: dict[str, str]) -> None:
     try:
         r = _redis_client()
         r.setex(_INFOS_SOCIETE_KEY, TTL_SECONDS, json.dumps(data))
-        r.close()
+        r.close()  # type: ignore[no-untyped-call]  # redis-py : Redis.close() n'est pas annoté
     except Exception as exc:
         logger.warning("Cache Config ignoré (écriture infos société) : %s", exc)
 
@@ -101,6 +114,6 @@ def invalidate_infos_societe() -> None:
     try:
         r = _redis_client()
         r.delete(_INFOS_SOCIETE_KEY)
-        r.close()
+        r.close()  # type: ignore[no-untyped-call]  # redis-py : Redis.close() n'est pas annoté
     except Exception as exc:
         logger.warning("Cache Config ignoré (invalidation infos société) : %s", exc)

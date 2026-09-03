@@ -25,7 +25,11 @@ from parametres.serializers import config_to_response, infos_to_response
 from parametres.services import ConfigService, InfosSocieteService
 
 
-class ConfigServiceServicer(pb_grpc.ConfigServiceServicer):
+class ConfigServiceServicer(pb_grpc.ConfigServiceServicer):  # type: ignore[misc]
+    # ^ ConfigServiceServicer vient du stub généré config_service_pb2_grpc,
+    # exclu de la vérification mypy (voir mypy.ini) — mypy le voit donc comme
+    # `Any`, ce qui rend toute sous-classe de lui structurellement "misc" ;
+    # rien à corriger côté code métier ici.
     """Implémentation des RPCs du Config Service.
 
     Les exceptions (ObjectDoesNotExist) sont gérées par ErrorHandlingInterceptor.
@@ -35,7 +39,7 @@ class ConfigServiceServicer(pb_grpc.ConfigServiceServicer):
         self.infos_service = InfosSocieteService()
         self.config_service = ConfigService()
 
-    def GetInfosSociete(self, request, context):
+    def GetInfosSociete(self, request: pb.EmptyRequest, context: grpc.ServicerContext) -> pb.InfosSocieteResponse:
         # Lu à chaque reçu de paiement généré côté Facturation (RecuPaiementService)
         # et à chaque lot de factures — cache court, invalidé explicitement par
         # UpdateInfosSociete (voir parametres/cache.py).
@@ -47,7 +51,9 @@ class ConfigServiceServicer(pb_grpc.ConfigServiceServicer):
         set_cached_infos_societe(data)
         return pb.InfosSocieteResponse(**data)
 
-    def UpdateInfosSociete(self, request, context):
+    def UpdateInfosSociete(
+        self, request: pb.UpdateInfosRequest, context: grpc.ServicerContext
+    ) -> pb.InfosSocieteResponse:
         infos = self.infos_service.update(
             nom=request.nom,
             adresse=request.adresse,
@@ -57,7 +63,7 @@ class ConfigServiceServicer(pb_grpc.ConfigServiceServicer):
         invalidate_infos_societe()
         return pb.InfosSocieteResponse(**infos_to_response(infos))
 
-    def GetConfig(self, request, context):
+    def GetConfig(self, request: pb.ConfigKeyRequest, context: grpc.ServicerContext) -> pb.ConfigResponse:
         # Lu à chaque escalade de relance impayé (Paiement Service) et à chaque
         # génération de facture — cache court, invalidé explicitement par
         # UpdateConfig (voir parametres/cache.py).
@@ -69,13 +75,13 @@ class ConfigServiceServicer(pb_grpc.ConfigServiceServicer):
         set_cached_param(request.cle, data)
         return pb.ConfigResponse(**data)
 
-    def UpdateConfig(self, request, context):
+    def UpdateConfig(self, request: pb.UpdateConfigRequest, context: grpc.ServicerContext) -> pb.ConfigResponse:
         param = self.config_service.update(request.cle, request.valeur)
         invalidate_param(param.cle)
         publish_config_event(param.cle, "CONFIG_UPDATED")
         return pb.ConfigResponse(**config_to_response(param))
 
-    def ListConfigs(self, request, context):
+    def ListConfigs(self, request: pb.EmptyRequest, context: grpc.ServicerContext) -> pb.ListConfigsResponse:
         params = self.config_service.list_all()
         return pb.ListConfigsResponse(configs=[pb.ConfigResponse(**config_to_response(p)) for p in params])
 
