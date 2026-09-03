@@ -1,10 +1,21 @@
-"""Tests du consumer d'événements reporting — dispatch + idempotence (apply_event)."""
+"""Tests du consumer d'événements reporting — dispatch + idempotence (apply_event)
+et de la boucle de redélivraison bornée + dead-letter (_handle_entries).
+"""
 
+import json
 from decimal import Decimal
 
 from django.test import TestCase
 
-from stats.event_consumer import apply_event
+from stats.event_consumer import (
+    CONSUMER_NAME,
+    DEAD_LETTER_STREAM,
+    GROUP,
+    MAX_DELIVERY_ATTEMPTS,
+    STREAM_KEY,
+    _handle_entries,
+    apply_event,
+)
 from stats.models import ProcessedEvent, StatsCampagne, StatsFacturation, StatsPaiements
 from stats.services import AgregateurDashboard
 
@@ -156,3 +167,153 @@ class ApplyEventTests(TestCase):
         apply_event(self.agg, {"event_id": "x1", "type": "INCONNU", "campagne_id": CAMP})
         self.assertTrue(ProcessedEvent.objects.filter(event_id="x1").exists())
         self.assertFalse(StatsPaiements.objects.filter(campagne_id=CAMP).exists())
+
+
+class _FakeRedis:
+    """Double minimal du client redis-py — seulement ce dont `_handle_entries`
+    a besoin (xack, xadd, xpending_range). `_handle_entries` reçoit déjà son
+    client Redis en paramètre : l'injection suffit, pas besoin d'un vrai Redis
+    ni de `fakeredis` (absent de requirements.txt).
+
+    `delivery_counts` simule ce que Redis renvoie via XPENDING pour
+    `times_delivered` — le compteur qui, dans l'incident réel, montait à 12-16
+    parce que rien ne le plafonnait.
+    """
+
+    def __init__(self, delivery_counts: dict[str, int]) -> None:
+        self._delivery_counts = delivery_counts
+        self.acked: list[str] = []
+        self.dead_lettered: list[dict] = []
+        self.xpending_calls = 0
+
+    def xack(self, stream, group, msg_id):
+        assert stream == STREAM_KEY
+        assert group == GROUP
+        self.acked.append(msg_id)
+
+    def xadd(self, stream, fields):
+        assert stream == DEAD_LETTER_STREAM
+        self.dead_lettered.append(fields)
+
+    def xpending_range(self, stream, group, min_id, max_id, count):
+        assert stream == STREAM_KEY
+        assert group == GROUP
+        self.xpending_calls += 1
+        times = self._delivery_counts.get(min_id, 1)
+        return [
+            {
+                "message_id": min_id,
+                "consumer": CONSUMER_NAME,
+                "time_since_delivered": 0,
+                "times_delivered": times,
+            }
+        ]
+
+
+def _evenement_paiement_campagne_vide(event_id: str) -> dict:
+    """Reproduit exactement la donnée invalide observée dans l'incident réel :
+    un événement PAIEMENT_STATS avec `campagne_id=""`, qui casse le champ
+    UUID de StatsPaiements (`django.core.exceptions.ValidationError:
+    '"" n'est pas un UUID valide'`, confirmé dans les logs de reporting-service)."""
+    return {
+        "data": json.dumps(
+            {
+                "event_id": event_id,
+                "type": "PAIEMENT_STATS",
+                "campagne_id": "",
+                "montant_paiement": 10.0,
+                "type_update": "PAIEMENT",
+            }
+        )
+    }
+
+
+class HandleEntriesRedeliveryTests(TestCase):
+    """Reproduit le scénario de l'incident (redélivraison bloquée) et vérifie
+    le correctif : compteur de tentatives borné (MAX_DELIVERY_ATTEMPTS) puis
+    dead-letter, plutôt qu'une boucle infinie de redélivraison sans XACK."""
+
+    def setUp(self) -> None:
+        self.agg = AgregateurDashboard()
+
+    def test_evenement_qui_echoue_reste_pending_sous_le_seuil(self) -> None:
+        """En dessous du seuil, on se comporte comme avant : pas de XACK, pas
+        de dead-letter — l'entrée reste pending pour être redélivrée (utile
+        pour absorber une panne transitoire, ex. Postgres injoignable)."""
+        fields = _evenement_paiement_campagne_vide("incident-2a")
+        entries = [(STREAM_KEY, [("2-0", fields)])]
+        fake = _FakeRedis({"2-0": 1})
+
+        _handle_entries(fake, self.agg, entries)
+
+        self.assertEqual(fake.acked, [])
+        self.assertEqual(fake.dead_lettered, [])
+        self.assertEqual(ProcessedEvent.objects.filter(event_id="incident-2a").count(), 0)
+
+    def test_evenement_qui_echoue_systematiquement_est_dead_lettre_au_seuil(self) -> None:
+        """Au seuil MAX_DELIVERY_ATTEMPTS, on renonce : XACK (l'entrée sort du
+        PEL, elle ne sera plus jamais redélivrée) + XADD vers le flux
+        dead-letter avec l'id d'origine, la donnée brute et l'erreur."""
+        fields = _evenement_paiement_campagne_vide("incident-2b")
+        entries = [(STREAM_KEY, [("3-0", fields)])]
+        fake = _FakeRedis({"3-0": MAX_DELIVERY_ATTEMPTS})
+
+        _handle_entries(fake, self.agg, entries)
+
+        self.assertEqual(fake.acked, ["3-0"])
+        self.assertEqual(len(fake.dead_lettered), 1)
+        dead = fake.dead_lettered[0]
+        self.assertEqual(dead["original_id"], "3-0")
+        self.assertEqual(dead["data"], fields["data"])
+        self.assertIn("ValidationError", dead["error"])
+        # Jamais marqué "traité" : la transaction a été annulée avec l'échec.
+        self.assertEqual(ProcessedEvent.objects.filter(event_id="incident-2b").count(), 0)
+
+    def test_incident_redelivrance_bloquee_resolue_par_dead_letter(self) -> None:
+        """Bout en bout : simule les redémarrages successifs du consumer qui,
+        avant le correctif, rejouaient indéfiniment la même entrée pending
+        (191 événements bloqués observés en prod, `times_delivered` jusqu'à
+        16). Chaque itération ici correspond à un redémarrage — le compteur
+        vient de Redis (XPENDING), pas d'un état en mémoire qui repartirait
+        de zéro à chaque process."""
+        fields = _evenement_paiement_campagne_vide("incident-3")
+        entries = [(STREAM_KEY, [("42-0", fields)])]
+
+        for attempt in range(1, MAX_DELIVERY_ATTEMPTS):
+            fake = _FakeRedis({"42-0": attempt})
+            _handle_entries(fake, self.agg, entries)
+            self.assertEqual(fake.acked, [], f"ne doit pas être acquitté à la tentative {attempt}")
+            self.assertEqual(fake.dead_lettered, [])
+
+        # Tentative MAX_DELIVERY_ATTEMPTS : on cesse de redélivrer.
+        fake_final = _FakeRedis({"42-0": MAX_DELIVERY_ATTEMPTS})
+        _handle_entries(fake_final, self.agg, entries)
+
+        self.assertEqual(fake_final.acked, ["42-0"])
+        self.assertEqual(len(fake_final.dead_lettered), 1)
+        self.assertEqual(fake_final.dead_lettered[0]["original_id"], "42-0")
+        self.assertEqual(ProcessedEvent.objects.filter(event_id="incident-3").count(), 0)
+
+    def test_traitement_reussi_nappelle_pas_xpending(self) -> None:
+        """Le chemin nominal ne doit pas payer le coût d'un appel XPENDING —
+        celui-ci n'a lieu que dans le chemin d'échec."""
+        fields = {
+            "data": json.dumps(
+                {
+                    "event_id": "ok-1",
+                    "type": "PAIEMENT_STATS",
+                    "campagne_id": CAMP,
+                    "montant_paiement": 100.0,
+                    "type_update": "PAIEMENT",
+                }
+            )
+        }
+        entries = [(STREAM_KEY, [("1-0", fields)])]
+        fake = _FakeRedis({})
+
+        _handle_entries(fake, self.agg, entries)
+
+        self.assertEqual(fake.acked, ["1-0"])
+        self.assertEqual(fake.dead_lettered, [])
+        self.assertEqual(fake.xpending_calls, 0)
+        self.assertEqual(StatsPaiements.objects.get(campagne_id=CAMP).montant_encaisse, Decimal("100.00"))
