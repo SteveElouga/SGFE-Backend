@@ -3,7 +3,7 @@
 import datetime
 from decimal import Decimal
 
-from django.db.models import Q
+from django.db.models import Q, QuerySet
 
 from .models import Facture, NatureFacture, StatutFacture, Tarif
 
@@ -112,7 +112,7 @@ class FactureRepository:
         statut: str = "",
         date_debut: "datetime.date | None" = None,
         date_fin: "datetime.date | None" = None,
-    ):
+    ) -> QuerySet[Facture]:
         """Queryset filtré, partagé par `list_by_filters` et `count_by_filters`
         — le comptage et la page rendue portent ainsi toujours sur les mêmes
         critères, jamais sur la table entière.

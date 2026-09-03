@@ -7,8 +7,10 @@ native, testable partout) ; seul `generer_synthese_pdf_bytes` importe WeasyPrint
 de façon paresseuse (comme le bilan des impayés).
 """
 
+import datetime
 import io
 from pathlib import Path
+from typing import Any
 
 from django.template.loader import render_to_string
 
@@ -25,11 +27,11 @@ def _pct(value: float | int) -> str:
 
 
 def build_synthese_context(
-    stats: dict,
+    stats: dict[str, Any],
     societe: InfosSociete,
     campagne_id: str,
-    date_edition,
-) -> dict:
+    date_edition: datetime.date,
+) -> dict[str, Any]:
     """Construit le contexte de rendu de la synthèse (3 blocs chiffrés).
 
     `stats` est le dict renvoyé par ReportingServiceClient.get_stats_completes :
@@ -75,7 +77,7 @@ def build_synthese_context(
     }
 
 
-def generer_synthese_pdf_bytes(context: dict) -> bytes:
+def generer_synthese_pdf_bytes(context: dict[str, Any]) -> bytes:
     """Rend le gabarit `synthese_campagne.html` en PDF (WeasyPrint, import paresseux)."""
     import weasyprint  # import paresseux — voir docstring du module
 

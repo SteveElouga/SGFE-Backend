@@ -4,6 +4,7 @@ import logging
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import grpc
 from django.conf import settings
@@ -91,7 +92,7 @@ class CampagneServiceClient:
         self._stub = pb_grpc.CampagneServiceStub(self._channel)
         self._pb = pb
 
-    def list_releves(self, campagne_id: str) -> list[dict]:
+    def list_releves(self, campagne_id: str) -> list[dict[str, Any]]:
         """Retourne la liste des relevés RELEVE (index saisi) pour une campagne."""
         try:
             response = self._stub.ListReleves(self._pb.CampagneIdRequest(campagne_id=campagne_id))
@@ -123,7 +124,7 @@ class CampagneServiceClient:
         """
         try:
             r = self._stub.GetCampagne(self._pb.CampagneIdRequest(campagne_id=campagne_id))
-            return r.nom
+            return str(r.nom)
         except grpc.RpcError as exc:
             logger.warning(
                 "Impossible de récupérer le nom de la campagne — PDF généré sans",
@@ -255,12 +256,16 @@ class PaiementServiceClient:
         """
         self._stub.AnnulerSolde(self._pb.AnnulerSoldeRequest(facture_id=facture_id, motif=motif))
 
-    def get_dette_abonne(self, abonne_id: str, hors_facture_id: str = ""):
+    def get_dette_abonne(self, abonne_id: str, hors_facture_id: str = "") -> Any:
         """Dette agrégée d'un abonné, hors une facture donnée.
 
         Sert au « solde antérieur » imprimé sur la facture : ce que l'abonné
         doit EN PLUS de celle qu'il tient en main. L'appelant gère l'échec —
         une facture doit s'imprimer même si Paiement est injoignable.
+
+        Renvoie directement la réponse protobuf brute (`DetteAbonneResponse`) —
+        `Any` car `paiement_service_pb2` est exclu de la vérification mypy
+        (stub généré, voir mypy.ini) ; l'appelant lit ses champs directement.
         """
         return self._stub.GetDetteAbonne(
             self._pb.DetteAbonneRequest(abonne_id=abonne_id, hors_facture_id=hors_facture_id)
@@ -296,7 +301,7 @@ class PaiementServiceClient:
             )
             return False
 
-    def list_impayes(self) -> list[dict]:
+    def list_impayes(self) -> list[dict[str, Any]]:
         """Retourne les soldes impayés (facture_id + montants) depuis Paiement Service.
 
         Dégradation gracieuse : liste vide si le service est inaccessible.
@@ -317,7 +322,7 @@ class PaiementServiceClient:
             logger.warning("Paiement Service inaccessible — ListImpayes vide", extra={"error": str(exc)})
             return []
 
-    def get_suivi_impaye(self, facture_id: str) -> dict | None:
+    def get_suivi_impaye(self, facture_id: str) -> dict[str, Any] | None:
         """Retourne le suivi de relance d'une facture (étape, date de dépassement).
 
         Dégradation gracieuse : None si le service est inaccessible ou sans suivi.
@@ -336,7 +341,7 @@ class PaiementServiceClient:
             )
             return None
 
-    def get_solde(self, facture_id: str) -> dict | None:
+    def get_solde(self, facture_id: str) -> dict[str, Any] | None:
         """Retourne la situation du solde d'une facture (total, payé, restant, statut).
 
         Dégradation gracieuse : None si Paiement Service est inaccessible.
@@ -360,7 +365,7 @@ class PaiementServiceClient:
             )
             return None
 
-    def list_paiements(self, facture_id: str, abonne_id: str = "") -> list[dict]:
+    def list_paiements(self, facture_id: str, abonne_id: str = "") -> list[dict[str, Any]]:
         """Retourne les versements enregistrés pour une facture (le plus récent
         des champs `annule` permet de distinguer les paiements annulés).
 
@@ -413,7 +418,7 @@ class ReportingServiceClient:
         self._stub = pb_grpc.ReportingServiceStub(self._channel)
         self._pb = pb
 
-    def get_stats_completes(self, campagne_id: str) -> dict | None:
+    def get_stats_completes(self, campagne_id: str) -> dict[str, Any] | None:
         """Stats agrégées des 3 domaines pour une campagne (synthèse PDF, écran 13).
 
         Retourne un dict `{campagne, facturation, paiements}` dont chaque bloc

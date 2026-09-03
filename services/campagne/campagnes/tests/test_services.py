@@ -2,7 +2,7 @@
 
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import grpc
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
@@ -623,7 +623,7 @@ class TestRetenterFacturationEnAttente(TestCase):
         self.assertNotIn(autre.id, [c.id for c in en_attente])
 
     @patch("campagnes.grpc_clients.FacturationServiceClient.notifier_campagne_cloturee", return_value=True)
-    def test_succes_leve_le_marqueur_et_rejoue_les_memes_parametres(self, mock_notif) -> None:
+    def test_succes_leve_le_marqueur_et_rejoue_les_memes_parametres(self, mock_notif: MagicMock) -> None:
         resolues = self.svc.retenter_facturation_en_attente()
 
         self.assertEqual([c.id for c in resolues], [self.campagne.id])
@@ -636,7 +636,7 @@ class TestRetenterFacturationEnAttente(TestCase):
         )
 
     @patch("campagnes.grpc_clients.FacturationServiceClient.notifier_campagne_cloturee", return_value=False)
-    def test_echec_persistant_laisse_le_marqueur_pose(self, mock_notif) -> None:
+    def test_echec_persistant_laisse_le_marqueur_pose(self, mock_notif: MagicMock) -> None:
         resolues = self.svc.retenter_facturation_en_attente()
 
         self.assertEqual(resolues, [])
@@ -644,7 +644,7 @@ class TestRetenterFacturationEnAttente(TestCase):
         self.assertTrue(self.campagne.facturation_en_attente)
 
     @patch("campagnes.grpc_clients.FacturationServiceClient.notifier_campagne_cloturee", return_value=True)
-    def test_aucune_campagne_en_attente_ne_fait_rien(self, mock_notif) -> None:
+    def test_aucune_campagne_en_attente_ne_fait_rien(self, mock_notif: MagicMock) -> None:
         CampagneRepository().marquer_facturation_en_attente(self.campagne, False)
         resolues = self.svc.retenter_facturation_en_attente()
         self.assertEqual(resolues, [])
@@ -662,7 +662,7 @@ class TestRegenererFactureSiNecessaire(TestCase):
 
     @patch("campagnes.grpc_clients.FacturationServiceClient.regenerer_facture")
     @patch("campagnes.grpc_clients.FacturationServiceClient.get_facture_active", return_value=None)
-    def test_sans_facture_existante_ne_fait_rien(self, mock_get_active, mock_regen) -> None:
+    def test_sans_facture_existante_ne_fait_rien(self, mock_get_active: MagicMock, mock_regen: MagicMock) -> None:
         ok = self.svc.regenerer_facture_si_necessaire(
             str(self.campagne.id), "abonne-001", motif="Correction", demande_par="admin-001"
         )
@@ -674,7 +674,9 @@ class TestRegenererFactureSiNecessaire(TestCase):
 
     @patch("campagnes.grpc_clients.FacturationServiceClient.regenerer_facture", return_value=True)
     @patch("campagnes.grpc_clients.FacturationServiceClient.get_facture_active", return_value="facture-001")
-    def test_avec_facture_existante_regenere_et_ne_laisse_rien_en_attente(self, mock_get_active, mock_regen) -> None:
+    def test_avec_facture_existante_regenere_et_ne_laisse_rien_en_attente(
+        self, mock_get_active: MagicMock, mock_regen: MagicMock
+    ) -> None:
         ok = self.svc.regenerer_facture_si_necessaire(
             str(self.campagne.id), "abonne-001", motif="Correction", demande_par="admin-001"
         )
@@ -685,7 +687,7 @@ class TestRegenererFactureSiNecessaire(TestCase):
         self.assertFalse(RegenerationFactureEnAttente.objects.exists())
 
     @patch("campagnes.grpc_clients.FacturationServiceClient.get_facture_active", side_effect=grpc.RpcError("down"))
-    def test_verification_indisponible_programme_un_retry(self, mock_get_active) -> None:
+    def test_verification_indisponible_programme_un_retry(self, mock_get_active: MagicMock) -> None:
         ok = self.svc.regenerer_facture_si_necessaire(
             str(self.campagne.id), "abonne-001", motif="Correction", demande_par="admin-001"
         )
@@ -698,7 +700,7 @@ class TestRegenererFactureSiNecessaire(TestCase):
 
     @patch("campagnes.grpc_clients.FacturationServiceClient.regenerer_facture", return_value=False)
     @patch("campagnes.grpc_clients.FacturationServiceClient.get_facture_active", return_value="facture-001")
-    def test_regeneration_echouee_programme_un_retry(self, mock_get_active, mock_regen) -> None:
+    def test_regeneration_echouee_programme_un_retry(self, mock_get_active: MagicMock, mock_regen: MagicMock) -> None:
         ok = self.svc.regenerer_facture_si_necessaire(
             str(self.campagne.id), "abonne-001", motif="Correction", demande_par="admin-001"
         )
@@ -726,7 +728,7 @@ class TestRetenterCorrectionsEnAttente(TestCase):
 
     @patch("campagnes.grpc_clients.FacturationServiceClient.regenerer_facture", return_value=True)
     @patch("campagnes.grpc_clients.FacturationServiceClient.get_facture_active", return_value="facture-001")
-    def test_resout_et_retire_lentree_en_attente(self, mock_get_active, mock_regen) -> None:
+    def test_resout_et_retire_lentree_en_attente(self, mock_get_active: MagicMock, mock_regen: MagicMock) -> None:
         resolues = self.svc.retenter_corrections_en_attente()
 
         self.assertEqual(resolues, [(str(self.campagne.id), "abonne-001")])
@@ -735,7 +737,7 @@ class TestRetenterCorrectionsEnAttente(TestCase):
         self.assertFalse(RegenerationFactureEnAttente.objects.exists())
 
     @patch("campagnes.grpc_clients.FacturationServiceClient.get_facture_active", side_effect=grpc.RpcError("down"))
-    def test_echec_persistant_laisse_lentree_et_compte_la_tentative(self, mock_get_active) -> None:
+    def test_echec_persistant_laisse_lentree_et_compte_la_tentative(self, mock_get_active: MagicMock) -> None:
         resolues = self.svc.retenter_corrections_en_attente()
 
         self.assertEqual(resolues, [])

@@ -29,60 +29,60 @@ def _redis_store_backed_client() -> tuple[MagicMock, dict[str, str]]:
 
 
 class ConfigServiceServicerTests(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.servicer = ConfigServiceServicer()
         self.context = MagicMock()
 
     # --- InfosSociete ---
 
-    def test_get_infos_societe_returns_empty_by_default(self):
+    def test_get_infos_societe_returns_empty_by_default(self) -> None:
         response = self.servicer.GetInfosSociete(pb.EmptyRequest(), self.context)
         self.assertEqual(response.nom, "")
 
-    def test_get_infos_societe_returns_existing(self):
+    def test_get_infos_societe_returns_existing(self) -> None:
         InfosSociete.objects.create(pk=1, nom="Eau SA", adresse="Yaoundé", telephone="+237")
         response = self.servicer.GetInfosSociete(pb.EmptyRequest(), self.context)
         self.assertEqual(response.nom, "Eau SA")
         self.assertEqual(response.adresse, "Yaoundé")
 
-    def test_update_infos_societe_updates_fields(self):
+    def test_update_infos_societe_updates_fields(self) -> None:
         request = pb.UpdateInfosRequest(nom="Nouvelle Société", adresse="Douala", telephone="+237699000000")
         response = self.servicer.UpdateInfosSociete(request, self.context)
         self.assertEqual(response.nom, "Nouvelle Société")
         self.assertEqual(response.adresse, "Douala")
 
-    def test_update_infos_societe_persists(self):
+    def test_update_infos_societe_persists(self) -> None:
         self.servicer.UpdateInfosSociete(pb.UpdateInfosRequest(nom="SGFE"), self.context)
         infos = InfosSociete.objects.get(pk=1)
         self.assertEqual(infos.nom, "SGFE")
 
     # --- ConfigParam ---
 
-    def test_get_config_returns_default(self):
+    def test_get_config_returns_default(self) -> None:
         response = self.servicer.GetConfig(pb.ConfigKeyRequest(cle="delai_paiement_jours"), self.context)
         self.assertEqual(response.cle, "delai_paiement_jours")
         self.assertEqual(response.valeur, "5")
 
-    def test_get_config_unknown_key_raises(self):
+    def test_get_config_unknown_key_raises(self) -> None:
         from django.core.exceptions import ObjectDoesNotExist
 
         with self.assertRaises(ObjectDoesNotExist):
             self.servicer.GetConfig(pb.ConfigKeyRequest(cle="CLE_INCONNUE"), self.context)
 
-    def test_update_config_changes_value(self):
+    def test_update_config_changes_value(self) -> None:
         response = self.servicer.UpdateConfig(
             pb.UpdateConfigRequest(cle="delai_paiement_jours", valeur="10"),
             self.context,
         )
         self.assertEqual(response.valeur, "10")
 
-    def test_update_config_unknown_key_raises(self):
+    def test_update_config_unknown_key_raises(self) -> None:
         from django.core.exceptions import ObjectDoesNotExist
 
         with self.assertRaises(ObjectDoesNotExist):
             self.servicer.UpdateConfig(pb.UpdateConfigRequest(cle="CLE_INCONNUE", valeur="42"), self.context)
 
-    def test_list_configs_returns_all_defaults(self):
+    def test_list_configs_returns_all_defaults(self) -> None:
         response = self.servicer.ListConfigs(pb.EmptyRequest(), self.context)
         cles = {c.cle for c in response.configs}
         self.assertIn("delai_paiement_jours", cles)
@@ -91,7 +91,7 @@ class ConfigServiceServicerTests(TestCase):
         self.assertIn("impaye_delai_rappel_1", cles)
         self.assertIn("impaye_delai_suspension", cles)
 
-    def test_list_configs_count_matches_defaults(self):
+    def test_list_configs_count_matches_defaults(self) -> None:
         from parametres.models import CONFIG_DEFAULTS
 
         response = self.servicer.ListConfigs(pb.EmptyRequest(), self.context)
@@ -99,7 +99,7 @@ class ConfigServiceServicerTests(TestCase):
 
     # --- Cache Redis (GetConfig / GetInfosSociete) ---
 
-    def test_get_config_sert_le_cache_sans_retourner_en_base(self):
+    def test_get_config_sert_le_cache_sans_retourner_en_base(self) -> None:
         """Une modification en base après le premier appel ne doit pas être vue
         tant que le cache n'est pas invalidé — c'est bien lui qui sert la 2e lecture."""
         client, _ = _redis_store_backed_client()
@@ -114,7 +114,7 @@ class ConfigServiceServicerTests(TestCase):
             seconde = self.servicer.GetConfig(pb.ConfigKeyRequest(cle="delai_paiement_jours"), self.context)
         self.assertEqual(seconde.valeur, "5")  # servie par le cache, pas par la base modifiée
 
-    def test_update_config_invalide_le_cache(self):
+    def test_update_config_invalide_le_cache(self) -> None:
         """Après UpdateConfig, un GetConfig qui suit ne doit JAMAIS resservir
         l'ancienne valeur mise en cache — invalidation explicite, jamais de
         valeur strictement obsolète après une modification volontaire."""
@@ -125,7 +125,7 @@ class ConfigServiceServicerTests(TestCase):
             apres = self.servicer.GetConfig(pb.ConfigKeyRequest(cle="delai_paiement_jours"), self.context)
         self.assertEqual(apres.valeur, "10")
 
-    def test_get_infos_societe_sert_le_cache_sans_retourner_en_base(self):
+    def test_get_infos_societe_sert_le_cache_sans_retourner_en_base(self) -> None:
         client, _ = _redis_store_backed_client()
         InfosSociete.objects.create(pk=1, nom="Eau SA", adresse="Yaoundé", telephone="+237")
         with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
@@ -137,7 +137,7 @@ class ConfigServiceServicerTests(TestCase):
             seconde = self.servicer.GetInfosSociete(pb.EmptyRequest(), self.context)
         self.assertEqual(seconde.nom, "Eau SA")  # servie par le cache
 
-    def test_update_infos_societe_invalide_le_cache(self):
+    def test_update_infos_societe_invalide_le_cache(self) -> None:
         client, _ = _redis_store_backed_client()
         with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
             self.servicer.GetInfosSociete(pb.EmptyRequest(), self.context)

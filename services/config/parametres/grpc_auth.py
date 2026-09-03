@@ -60,6 +60,7 @@ import logging
 import os
 from collections import namedtuple
 from pathlib import Path
+from typing import Any, Callable
 
 import grpc
 
@@ -108,25 +109,34 @@ class AuthServerInterceptor(grpc.ServerInterceptor):
 
     def __init__(self, cle_attendue: str) -> None:
         self._cle = exiger_cle(cle_attendue, self.__class__.__name__).encode()
-        self._refus = grpc.unary_unary_rpc_method_handler(
+        self._refus: grpc.RpcMethodHandler[Any, Any] = grpc.unary_unary_rpc_method_handler(
             lambda requete, contexte: contexte.abort(
                 grpc.StatusCode.UNAUTHENTICATED,
                 "Appel interne non authentifié.",
             )
         )
 
-    def intercept_service(self, continuation, handler_call_details):
+    def intercept_service(
+        self,
+        continuation: Callable[[grpc.HandlerCallDetails], grpc.RpcMethodHandler[Any, Any] | None],
+        handler_call_details: grpc.HandlerCallDetails,
+    ) -> grpc.RpcMethodHandler[Any, Any] | None:
         methode = getattr(handler_call_details, "method", "") or ""
         if methode in METHODES_PUBLIQUES:
             return continuation(handler_call_details)
 
-        fournie = ""
+        # La métadonnée gRPC peut porter une valeur bytes (clés "-bin") — jamais
+        # le cas ici (METADATA_KEY n'a pas ce suffixe), mais compare_digest
+        # exige des types homogènes : on couvre les deux pour rester correct
+        # même si ça changeait.
+        fournie: str | bytes = ""
         for cle, valeur in handler_call_details.invocation_metadata or ():
             if cle == METADATA_KEY:
                 fournie = valeur
                 break
 
-        if not hmac.compare_digest(fournie.encode(), self._cle):
+        fournie_bytes = fournie.encode() if isinstance(fournie, str) else fournie
+        if not hmac.compare_digest(fournie_bytes, self._cle):
             # Journalisé sans la valeur reçue : un secret erroné reste un
             # secret, et l'écrire dans les logs en ferait une fuite.
             logger.warning("Appel gRPC refusé — clé interne absente ou invalide : %s", methode)
@@ -161,7 +171,12 @@ class AuthClientInterceptor(grpc.UnaryUnaryClientInterceptor):
     def __init__(self, cle: str) -> None:
         self._cle = exiger_cle(cle, self.__class__.__name__)
 
-    def intercept_unary_unary(self, continuation, client_call_details, request):
+    def intercept_unary_unary(
+        self,
+        continuation: Callable[[grpc.ClientCallDetails, Any], Any],
+        client_call_details: grpc.ClientCallDetails,
+        request: Any,
+    ) -> Any:
         metadata = list(client_call_details.metadata or ())
         metadata.append((METADATA_KEY, self._cle))
         return continuation(

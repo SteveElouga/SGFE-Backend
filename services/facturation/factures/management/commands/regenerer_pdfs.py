@@ -16,6 +16,8 @@ Exemples :
 """
 
 import datetime
+from argparse import ArgumentParser
+from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError
 
@@ -27,7 +29,7 @@ from factures.services import FactureService
 class Command(BaseCommand):
     help = "Régénère les PDF de factures avec le gabarit courant (rendu à jour)."
 
-    def add_arguments(self, parser) -> None:
+    def add_arguments(self, parser: ArgumentParser) -> None:
         parser.add_argument(
             "--all",
             action="store_true",
@@ -51,7 +53,7 @@ class Command(BaseCommand):
             help="Liste les factures concernées sans rien régénérer.",
         )
 
-    def handle(self, *args, **options) -> None:
+    def handle(self, *args: Any, **options: Any) -> None:
         qs = Facture.objects.all().order_by("date_generation")
         if not options["all"]:
             qs = qs.exclude(pdf_template_version=PDF_TEMPLATE_VERSION)

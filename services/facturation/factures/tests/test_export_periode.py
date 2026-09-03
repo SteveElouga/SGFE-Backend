@@ -12,6 +12,7 @@ Le seul filtre existant était la campagne. Deux conséquences :
 
 import datetime
 from decimal import Decimal
+from typing import Any
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -51,7 +52,7 @@ class TestFiltrePeriode(TestCase):
         _facture("FACT-JUIL", datetime.date(2026, 7, 15), "camp-juillet", NatureFacture.CONSOMMATION)
         _facture("REG-JUIL", datetime.date(2026, 7, 20), "", NatureFacture.REGULARISATION)
 
-    def _numeros(self, **kw) -> set[str]:
+    def _numeros(self, **kw: Any) -> set[str]:
         return {f.numero_facture for f in self.repo.list_by_filters(**kw)}
 
     def test_un_mois(self) -> None:

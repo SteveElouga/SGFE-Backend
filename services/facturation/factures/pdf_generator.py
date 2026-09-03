@@ -16,6 +16,7 @@ import os
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from django.template.loader import render_to_string
 
@@ -255,7 +256,7 @@ def _build_context(
     facture: DonneesFacture,
     societe: InfosSociete,
     historique: list[MoisConsommation] | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Construit le contexte de rendu attendu par le gabarit `facture_pdf.html`.
 
     Toutes les valeurs numériques sont pré-formatées en chaînes (voir contrat

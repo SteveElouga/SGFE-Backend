@@ -18,6 +18,7 @@ import io
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from django.template.loader import render_to_string
 
@@ -257,7 +258,7 @@ def _note(d: DonneesRecu, solde: Decimal) -> str:
     return " ".join(parties)
 
 
-def build_recu_context(recu: DonneesRecu, societe: InfosSociete) -> dict:
+def build_recu_context(recu: DonneesRecu, societe: InfosSociete) -> dict[str, Any]:
     """Construit le contexte de rendu attendu par le gabarit `recu_pdf.html`.
 
     Toutes les valeurs numériques sont pré-formatées en chaînes (séparateur de
@@ -329,7 +330,7 @@ def build_recu_context(recu: DonneesRecu, societe: InfosSociete) -> dict:
     }
 
 
-def generer_recu_pdf_bytes(context: dict) -> bytes:  # pragma: no cover
+def generer_recu_pdf_bytes(context: dict[str, Any]) -> bytes:  # pragma: no cover
     """Rend le gabarit `recu_pdf.html` en PDF (WeasyPrint, import paresseux).
 
     Non couvert par les tests unitaires : dépend des bibliothèques natives

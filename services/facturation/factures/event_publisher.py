@@ -11,7 +11,7 @@ TARIF_CHANNEL = "tarif:events"
 REPORTING_STREAM = "reporting:stream"
 
 
-def publish_reporting_event(event_type: str, **payload) -> None:
+def publish_reporting_event(event_type: str, **payload: object) -> None:
     """Publie un événement de stats sur le flux Redis du Reporting Service (XADD).
 
     Transport durable (Streams) : l'événement persiste et sera consommé même si
@@ -25,7 +25,7 @@ def publish_reporting_event(event_type: str, **payload) -> None:
         r = redis.Redis.from_url(settings.REDIS_URL, socket_connect_timeout=1)
         event = {"event_id": str(uuid.uuid4()), "type": event_type, **payload}
         r.xadd(REPORTING_STREAM, {"data": json.dumps(event)})
-        r.close()
+        r.close()  # type: ignore[no-untyped-call]  # redis-py : Redis.close() n'est pas annoté
     except Exception as exc:
         logger.warning("publish_reporting_event ignoré (Redis indisponible) : %s", exc)
 
@@ -50,7 +50,7 @@ def publish_facture_event(
         r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=1)
         payload = json.dumps({"event_type": event_type, "facture_id": facture_id, "campagne_id": campagne_id})
         r.publish(CHANNEL, payload)
-        r.close()
+        r.close()  # type: ignore[no-untyped-call]  # redis-py : Redis.close() n'est pas annoté
     except Exception as exc:
         logger.warning("publish_facture_event ignoré (Redis indisponible) : %s", exc)
 
@@ -67,6 +67,6 @@ def publish_tarif_event(event_type: str = "TARIF_UPDATED") -> None:
 
         r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=1)
         r.publish(TARIF_CHANNEL, json.dumps({"event_type": event_type}))
-        r.close()
+        r.close()  # type: ignore[no-untyped-call]  # redis-py : Redis.close() n'est pas annoté
     except Exception as exc:
         logger.warning("publish_tarif_event ignoré (Redis indisponible) : %s", exc)
