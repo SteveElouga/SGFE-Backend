@@ -198,7 +198,7 @@ class TestCloturerCampagneRPC(TestCase):
             self.servicer.CloturerCampagne(request, _mock_context())
 
     @patch("campagnes.grpc_server.FacturationServiceClient.notifier_campagne_cloturee", return_value=False)
-    def test_cloturer_echec_facturation_pose_le_marqueur_en_attente(self, mock_notif) -> None:
+    def test_cloturer_echec_facturation_pose_le_marqueur_en_attente(self, mock_notif: MagicMock) -> None:
         """Régression : un échec gRPC de Facturation Service à la clôture ne
         doit plus être perdu silencieusement — il doit rester visible et
         rattrapable via `facturation_en_attente`."""
@@ -209,14 +209,14 @@ class TestCloturerCampagneRPC(TestCase):
         self.assertTrue(self.campagne.facturation_en_attente)
 
     @patch("campagnes.grpc_server.FacturationServiceClient.notifier_campagne_cloturee", return_value=True)
-    def test_cloturer_succes_ne_pose_pas_le_marqueur(self, mock_notif) -> None:
+    def test_cloturer_succes_ne_pose_pas_le_marqueur(self, mock_notif: MagicMock) -> None:
         request = pb.CampagneIdRequest(campagne_id=str(self.campagne.id))
         self.servicer.CloturerCampagne(request, _mock_context())
         self.campagne.refresh_from_db()
         self.assertFalse(self.campagne.facturation_en_attente)
 
     @patch("campagnes.grpc_server.FacturationServiceClient.notifier_campagne_cloturee")
-    def test_cloturer_generer_factures_auto_faux_ne_pose_pas_le_marqueur(self, mock_notif) -> None:
+    def test_cloturer_generer_factures_auto_faux_ne_pose_pas_le_marqueur(self, mock_notif: MagicMock) -> None:
         """Une campagne configurée sans génération automatique n'appelle jamais
         Facturation Service — pas de marqueur en attente à poser."""
         svc = CampagneService()
@@ -476,7 +476,7 @@ class TestCorrigerReleveRegenerationFactureRPC(TestCase):
         svc = CampagneService()
         campagne = svc.creer_campagne("C1", 1, 2026, created_by="user-A")
         svc.demarrer_campagne(str(campagne.id))
-        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", ancien_index=100.0)
+        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", ancien_index=Decimal("100"))
         self.servicer.SaisirIndex(
             pb.SaisirIndexRequest(
                 campagne_id=str(campagne.id),
@@ -492,7 +492,7 @@ class TestCorrigerReleveRegenerationFactureRPC(TestCase):
         self.campagne = campagne
         self._RegenerationFactureEnAttente = RegenerationFactureEnAttente
 
-    def _corriger_request(self, **kw) -> pb.CorrigerReleveRequest:
+    def _corriger_request(self, **kw: Any) -> pb.CorrigerReleveRequest:
         defaults = dict(
             campagne_id=str(self.campagne.id),
             abonne_id="abonne-001",
@@ -514,7 +514,9 @@ class TestCorrigerReleveRegenerationFactureRPC(TestCase):
 
     @patch("campagnes.grpc_clients.FacturationServiceClient.regenerer_facture", return_value=True)
     @patch("campagnes.grpc_clients.FacturationServiceClient.get_facture_active", return_value="facture-001")
-    def test_avec_facture_existante_declenche_la_regeneration(self, mock_get_active, mock_regen) -> None:
+    def test_avec_facture_existante_declenche_la_regeneration(
+        self, mock_get_active: MagicMock, mock_regen: MagicMock
+    ) -> None:
         self.servicer.CorrigerReleve(self._corriger_request(), _mock_context())
 
         mock_get_active.assert_called_once_with(str(self.campagne.id), "abonne-001")
@@ -527,7 +529,7 @@ class TestCorrigerReleveRegenerationFactureRPC(TestCase):
         self.assertFalse(self._RegenerationFactureEnAttente.objects.exists())
 
     @patch("campagnes.grpc_clients.FacturationServiceClient.get_facture_active", side_effect=grpc.RpcError("down"))
-    def test_facturation_indisponible_ne_perd_pas_la_correction(self, mock_get_active) -> None:
+    def test_facturation_indisponible_ne_perd_pas_la_correction(self, mock_get_active: MagicMock) -> None:
         """Facturation Service injoignable au moment de la correction : la
         correction elle-même doit tout de même réussir (dégradation propre),
         et une entrée de retry doit être posée pour rattraper la répercussion
@@ -541,7 +543,9 @@ class TestCorrigerReleveRegenerationFactureRPC(TestCase):
 
     @patch("campagnes.grpc_clients.FacturationServiceClient.regenerer_facture", return_value=False)
     @patch("campagnes.grpc_clients.FacturationServiceClient.get_facture_active", return_value="facture-001")
-    def test_echec_de_regeneration_pose_une_entree_de_retry(self, mock_get_active, mock_regen) -> None:
+    def test_echec_de_regeneration_pose_une_entree_de_retry(
+        self, mock_get_active: MagicMock, mock_regen: MagicMock
+    ) -> None:
         self.servicer.CorrigerReleve(self._corriger_request(), _mock_context())
 
         self.assertTrue(
