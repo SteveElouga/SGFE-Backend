@@ -512,7 +512,8 @@ class Subscription:
 
                 try:
                     r = await asyncio.to_thread(notification_client.get_diffusion, event_diffusion_id)
-                    yield diffusion_from_grpc(r)
+                    cree_par = await _resoudre_operateur(r.created_by)
+                    yield diffusion_from_grpc(r, cree_par=cree_par)
                 except Exception as exc:
                     logger.warning(
                         "diffusion_progression_updated: GetDiffusion(%s) échoué : %s", event_diffusion_id, exc
