@@ -7,6 +7,7 @@ from .models import (
     AffectationZone,
     Campagne,
     CampagneAgent,
+    RegenerationFactureEnAttente,
     Releve,
     ReleveAudit,
     StatutCampagne,
@@ -65,6 +66,16 @@ class CampagneRepository:
             campagne.date_cloture = timezone.now()
         campagne.save(update_fields=["statut", "date_cloture"])
         return campagne
+
+    def marquer_facturation_en_attente(self, campagne: Campagne, en_attente: bool) -> Campagne:
+        """Bascule le marqueur de retry posé à la clôture (voir Campagne.facturation_en_attente)."""
+        campagne.facturation_en_attente = en_attente
+        campagne.save(update_fields=["facturation_en_attente"])
+        return campagne
+
+    def list_facturation_en_attente(self) -> list[Campagne]:
+        """Campagnes clôturées dont la notification à Facturation Service a échoué."""
+        return list(Campagne.objects.filter(facturation_en_attente=True))
 
     def list_planifiees_pour_date(self, date_planifiee) -> list[Campagne]:
         """Retourne TOUTES les campagnes PLANIFIEE pour cette date (voir ANO-019 —
@@ -301,3 +312,39 @@ class AffectationZoneRepository:
 
     def list_for_agent(self, campagne_id: str, agent_id: str) -> list[AffectationZone]:
         return list(AffectationZone.objects.filter(campagne_id=campagne_id, agent_id=agent_id))
+
+
+class RegenerationFactureEnAttenteRepository:
+    """Accès base de données pour la file de régénérations de facture en attente."""
+
+    def upsert(
+        self,
+        campagne: Campagne,
+        abonne_id: str,
+        motif: str,
+        demande_par: str = "",
+    ) -> RegenerationFactureEnAttente:
+        """Crée l'entrée en attente, ou remplace motif/auteur si elle existe déjà.
+
+        Une correction avant que la précédente tentative n'ait été rejouée doit
+        gagner : le rejeu relit de toute façon le relevé courant, seuls le
+        motif et l'auteur affichés doivent refléter la dernière correction.
+        """
+        obj, _ = RegenerationFactureEnAttente.objects.update_or_create(
+            campagne=campagne,
+            abonne_id=abonne_id,
+            defaults={"motif": motif, "demande_par": demande_par},
+        )
+        return obj
+
+    def supprimer(self, campagne_id: str, abonne_id: str) -> None:
+        RegenerationFactureEnAttente.objects.filter(campagne_id=campagne_id, abonne_id=abonne_id).delete()
+
+    def list_all(self) -> list[RegenerationFactureEnAttente]:
+        return list(RegenerationFactureEnAttente.objects.select_related("campagne").order_by("date_creation"))
+
+    def marquer_tentative(self, entree: RegenerationFactureEnAttente) -> RegenerationFactureEnAttente:
+        entree.nb_tentatives += 1
+        entree.derniere_tentative = timezone.now()
+        entree.save(update_fields=["nb_tentatives", "derniere_tentative"])
+        return entree

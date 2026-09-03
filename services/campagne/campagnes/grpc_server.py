@@ -145,11 +145,19 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         """Clôture une campagne EN_COURS et notifie Facturation Service."""
         campagne = self._campagne_svc.cloturer_campagne(request.campagne_id)
         if campagne.generer_factures_auto:
-            self._facturation_client.notifier_campagne_cloturee(
+            ok = self._facturation_client.notifier_campagne_cloturee(
                 str(campagne.id),
                 numero_mobile_money=campagne.numero_mobile_money,
                 envoyer_whatsapp_auto=campagne.envoyer_whatsapp_auto,
             )
+            # La campagne reste CLOTUREE même si Facturation Service est
+            # injoignable à cet instant : la génération ne doit pas bloquer la
+            # clôture. Sans ce marqueur, l'échec de `notifier_campagne_cloturee`
+            # (déjà journalisé par le client) passait inaperçu et la
+            # génération des factures était perdue au-delà de la régénération
+            # manuelle — le job de retry (schedulers.py) la rattrape.
+            if not ok:
+                self._campagne_repo.marquer_facturation_en_attente(campagne, True)
         # Publie les stats de campagne sur le flux Reporting (CampagneCloturee,
         # read model aval, événementiel durable — ADR-019).
         stats = self._campagne_svc.get_stats_reporting(str(campagne.id))
@@ -306,6 +314,18 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
             auteur_username=request.auteur_username,
             auteur_role=request.auteur_role,
             observation=request.observation,
+        )
+        # La correction du relevé est déjà validée en base à cet instant.
+        # Si une facture a déjà été émise pour cet abonné dans cette campagne
+        # (correction postérieure à la clôture), elle est désormais obsolète :
+        # la répercuter dessus est best-effort (retry si Facturation Service
+        # est injoignable) et ne doit jamais faire échouer la correction.
+        motif = f"Correction du relevé par {request.auteur_username or request.auteur_id}."
+        self._campagne_svc.regenerer_facture_si_necessaire(
+            campagne_id=request.campagne_id,
+            abonne_id=request.abonne_id,
+            motif=motif,
+            demande_par=request.auteur_id,
         )
         return releve_to_proto(releve)
 

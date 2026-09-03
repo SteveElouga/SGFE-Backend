@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import grpc
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.test import TestCase
 
@@ -596,3 +597,182 @@ class TestAffectationZone(TestCase):
         agents = {a["agent_id"]: a for a in self.svc.list_agents_campagne(str(self.campagne.id))}
         self.assertIn("agent-global", agents)
         self.assertEqual(agents["agent-global"]["zones"], [])
+
+
+class TestRetenterFacturationEnAttente(TestCase):
+    """CampagneService.retenter_facturation_en_attente — retry de clôture (tâche 2)."""
+
+    def setUp(self) -> None:
+        self.svc = CampagneService()
+        campagne = self.svc.creer_campagne(
+            "C1", 1, 2026, created_by="user-A", numero_mobile_money="658552294", envoyer_whatsapp_auto=False
+        )
+        self.svc.demarrer_campagne(str(campagne.id))
+        campagne = CampagneRepository().update_statut(campagne, StatutCampagne.CLOTUREE)
+        self.campagne = CampagneRepository().marquer_facturation_en_attente(campagne, True)
+
+    def test_liste_uniquement_les_campagnes_en_attente(self) -> None:
+        autre = self.svc.creer_campagne("C2", 2, 2026, created_by="user-A")  # pas en attente
+        en_attente = CampagneRepository().list_facturation_en_attente()
+        self.assertEqual([c.id for c in en_attente], [self.campagne.id])
+        self.assertNotIn(autre.id, [c.id for c in en_attente])
+
+    @patch("campagnes.grpc_clients.FacturationServiceClient.notifier_campagne_cloturee", return_value=True)
+    def test_succes_leve_le_marqueur_et_rejoue_les_memes_parametres(self, mock_notif) -> None:
+        resolues = self.svc.retenter_facturation_en_attente()
+
+        self.assertEqual([c.id for c in resolues], [self.campagne.id])
+        self.campagne.refresh_from_db()
+        self.assertFalse(self.campagne.facturation_en_attente)
+        mock_notif.assert_called_once_with(
+            str(self.campagne.id),
+            numero_mobile_money="658552294",
+            envoyer_whatsapp_auto=False,
+        )
+
+    @patch("campagnes.grpc_clients.FacturationServiceClient.notifier_campagne_cloturee", return_value=False)
+    def test_echec_persistant_laisse_le_marqueur_pose(self, mock_notif) -> None:
+        resolues = self.svc.retenter_facturation_en_attente()
+
+        self.assertEqual(resolues, [])
+        self.campagne.refresh_from_db()
+        self.assertTrue(self.campagne.facturation_en_attente)
+
+    @patch("campagnes.grpc_clients.FacturationServiceClient.notifier_campagne_cloturee", return_value=True)
+    def test_aucune_campagne_en_attente_ne_fait_rien(self, mock_notif) -> None:
+        CampagneRepository().marquer_facturation_en_attente(self.campagne, False)
+        resolues = self.svc.retenter_facturation_en_attente()
+        self.assertEqual(resolues, [])
+        mock_notif.assert_not_called()
+
+
+class TestRegenererFactureSiNecessaire(TestCase):
+    """CampagneService.regenerer_facture_si_necessaire — retry de correction (tâche 3)."""
+
+    def setUp(self) -> None:
+        self.svc = CampagneService()
+        campagne = self.svc.creer_campagne("C1", 1, 2026, created_by="user-A")
+        self.svc.demarrer_campagne(str(campagne.id))
+        self.campagne = CampagneRepository().update_statut(campagne, StatutCampagne.CLOTUREE)
+
+    @patch("campagnes.grpc_clients.FacturationServiceClient.regenerer_facture")
+    @patch("campagnes.grpc_clients.FacturationServiceClient.get_facture_active", return_value=None)
+    def test_sans_facture_existante_ne_fait_rien(self, mock_get_active, mock_regen) -> None:
+        ok = self.svc.regenerer_facture_si_necessaire(
+            str(self.campagne.id), "abonne-001", motif="Correction", demande_par="admin-001"
+        )
+        self.assertTrue(ok)
+        mock_regen.assert_not_called()
+        from campagnes.models import RegenerationFactureEnAttente
+
+        self.assertFalse(RegenerationFactureEnAttente.objects.exists())
+
+    @patch("campagnes.grpc_clients.FacturationServiceClient.regenerer_facture", return_value=True)
+    @patch("campagnes.grpc_clients.FacturationServiceClient.get_facture_active", return_value="facture-001")
+    def test_avec_facture_existante_regenere_et_ne_laisse_rien_en_attente(self, mock_get_active, mock_regen) -> None:
+        ok = self.svc.regenerer_facture_si_necessaire(
+            str(self.campagne.id), "abonne-001", motif="Correction", demande_par="admin-001"
+        )
+        self.assertTrue(ok)
+        mock_regen.assert_called_once_with("facture-001", motif="Correction", regenere_par="admin-001")
+        from campagnes.models import RegenerationFactureEnAttente
+
+        self.assertFalse(RegenerationFactureEnAttente.objects.exists())
+
+    @patch("campagnes.grpc_clients.FacturationServiceClient.get_facture_active", side_effect=grpc.RpcError("down"))
+    def test_verification_indisponible_programme_un_retry(self, mock_get_active) -> None:
+        ok = self.svc.regenerer_facture_si_necessaire(
+            str(self.campagne.id), "abonne-001", motif="Correction", demande_par="admin-001"
+        )
+        self.assertFalse(ok)
+        from campagnes.models import RegenerationFactureEnAttente
+
+        entree = RegenerationFactureEnAttente.objects.get(campagne=self.campagne, abonne_id="abonne-001")
+        self.assertEqual(entree.motif, "Correction")
+        self.assertEqual(entree.demande_par, "admin-001")
+
+    @patch("campagnes.grpc_clients.FacturationServiceClient.regenerer_facture", return_value=False)
+    @patch("campagnes.grpc_clients.FacturationServiceClient.get_facture_active", return_value="facture-001")
+    def test_regeneration_echouee_programme_un_retry(self, mock_get_active, mock_regen) -> None:
+        ok = self.svc.regenerer_facture_si_necessaire(
+            str(self.campagne.id), "abonne-001", motif="Correction", demande_par="admin-001"
+        )
+        self.assertFalse(ok)
+        from campagnes.models import RegenerationFactureEnAttente
+
+        self.assertTrue(
+            RegenerationFactureEnAttente.objects.filter(campagne=self.campagne, abonne_id="abonne-001").exists()
+        )
+
+
+class TestRetenterCorrectionsEnAttente(TestCase):
+    """CampagneService.retenter_corrections_en_attente — boucle de retry (tâche 3)."""
+
+    def setUp(self) -> None:
+        self.svc = CampagneService()
+        campagne = self.svc.creer_campagne("C1", 1, 2026, created_by="user-A")
+        self.svc.demarrer_campagne(str(campagne.id))
+        self.campagne = CampagneRepository().update_statut(campagne, StatutCampagne.CLOTUREE)
+        from campagnes.repositories import RegenerationFactureEnAttenteRepository
+
+        RegenerationFactureEnAttenteRepository().upsert(
+            self.campagne, "abonne-001", motif="Correction", demande_par="admin-001"
+        )
+
+    @patch("campagnes.grpc_clients.FacturationServiceClient.regenerer_facture", return_value=True)
+    @patch("campagnes.grpc_clients.FacturationServiceClient.get_facture_active", return_value="facture-001")
+    def test_resout_et_retire_lentree_en_attente(self, mock_get_active, mock_regen) -> None:
+        resolues = self.svc.retenter_corrections_en_attente()
+
+        self.assertEqual(resolues, [(str(self.campagne.id), "abonne-001")])
+        from campagnes.models import RegenerationFactureEnAttente
+
+        self.assertFalse(RegenerationFactureEnAttente.objects.exists())
+
+    @patch("campagnes.grpc_clients.FacturationServiceClient.get_facture_active", side_effect=grpc.RpcError("down"))
+    def test_echec_persistant_laisse_lentree_et_compte_la_tentative(self, mock_get_active) -> None:
+        resolues = self.svc.retenter_corrections_en_attente()
+
+        self.assertEqual(resolues, [])
+        from campagnes.models import RegenerationFactureEnAttente
+
+        entree = RegenerationFactureEnAttente.objects.get(campagne=self.campagne, abonne_id="abonne-001")
+        self.assertEqual(entree.nb_tentatives, 1)
+        self.assertIsNotNone(entree.derniere_tentative)
+
+
+class TestFacturationRetryJob(TestCase):
+    """facturation_retry_job — orchestration des deux files de retry (tâches 2 et 3)."""
+
+    def test_job_rejoue_campagne_et_correction_en_attente(self) -> None:
+        from campagnes.schedulers import facturation_retry_job
+        from campagnes.repositories import RegenerationFactureEnAttenteRepository
+
+        svc = CampagneService()
+        campagne = svc.creer_campagne("C1", 1, 2026, created_by="user-A")
+        svc.demarrer_campagne(str(campagne.id))
+        campagne = CampagneRepository().update_statut(campagne, StatutCampagne.CLOTUREE)
+        campagne = CampagneRepository().marquer_facturation_en_attente(campagne, True)
+        RegenerationFactureEnAttenteRepository().upsert(campagne, "abonne-001", motif="Correction")
+
+        with (
+            patch("campagnes.grpc_clients.FacturationServiceClient.notifier_campagne_cloturee", return_value=True),
+            patch("campagnes.grpc_clients.FacturationServiceClient.get_facture_active", return_value="facture-001"),
+            patch("campagnes.grpc_clients.FacturationServiceClient.regenerer_facture", return_value=True),
+        ):
+            facturation_retry_job()  # ne doit lever aucune exception (SQLite bypass le verrou)
+
+        campagne.refresh_from_db()
+        self.assertFalse(campagne.facturation_en_attente)
+        from campagnes.models import RegenerationFactureEnAttente
+
+        self.assertFalse(RegenerationFactureEnAttente.objects.exists())
+
+    def test_job_ne_propage_pas_les_erreurs(self) -> None:
+        from campagnes.schedulers import facturation_retry_job
+
+        with patch(
+            "campagnes.services.CampagneService.retenter_facturation_en_attente",
+            side_effect=RuntimeError("boom"),
+        ):
+            facturation_retry_job()  # ne doit pas lever, l'erreur est journalisée

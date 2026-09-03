@@ -133,6 +133,46 @@ class FacturationServiceClient:
             )
             return False
 
+    def get_facture_active(self, campagne_id: str, abonne_id: str) -> str | None:
+        """Retourne l'id de la facture non annulée d'un abonné pour une campagne, ou None si aucune.
+
+        Contrairement aux autres méthodes de ce client, NE dégrade PAS
+        gracieusement : appelée après une correction de relevé postérieure à
+        la facturation, la distinction entre "aucune facture" (None) et
+        "Facturation Service injoignable" (RpcError propagée) est ce qui
+        permet à l'appelant de programmer un retry plutôt que de conclure à
+        tort qu'aucune facture n'existait.
+        """
+        response = self._stub.ListFactures(self._pb.ListFacturesRequest(campagne_id=campagne_id, abonne_id=abonne_id))
+        actives = [f for f in response.factures if f.statut != "ANNULEE"]
+        return actives[0].facture_id if actives else None
+
+    def regenerer_facture(self, facture_id: str, motif: str, regenere_par: str) -> bool:
+        """Régénère une facture existante depuis le relevé actuel (annule + réémet).
+
+        Retourne True si l'appel a réussi, False sinon (dégradation gracieuse
+        — l'appelant est responsable de programmer un retry).
+        """
+        try:
+            self._stub.RegenererFacture(
+                self._pb.RegenererFactureRequest(
+                    facture_id=facture_id,
+                    motif=motif,
+                    regenere_par=regenere_par,
+                )
+            )
+            logger.info(
+                "Facture régénérée après correction de relevé",
+                extra={"facture_id": facture_id},
+            )
+            return True
+        except grpc.RpcError as exc:
+            logger.warning(
+                "Impossible de régénérer la facture — dégradation gracieuse",
+                extra={"facture_id": facture_id, "error": str(exc)},
+            )
+            return False
+
 
 class ReportingServiceClient:
     """Client gRPC vers Reporting Service (port 50057) — stats de campagne (ADR-019).

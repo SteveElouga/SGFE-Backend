@@ -33,6 +33,12 @@ class Campagne(models.Model):
     envoyer_whatsapp_auto = models.BooleanField(default=True)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_cloture = models.DateTimeField(null=True, blank=True)
+    # Vrai si la clôture a échoué à notifier Facturation Service (gRPC
+    # injoignable à cet instant précis) : la campagne est bien CLOTUREE, mais
+    # la génération des factures n'a jamais été déclenchée. Le job de retry
+    # (schedulers.py::facturation_retry_job) rejoue périodiquement la même
+    # notification jusqu'à ce qu'elle réussisse, puis remet ce marqueur à faux.
+    facturation_en_attente = models.BooleanField(default=False)
 
     class Meta:
         db_table = "campagnes"
@@ -143,3 +149,41 @@ class AffectationZone(models.Model):
 
     def __str__(self) -> str:
         return f"{self.quartier}·{self.camp} → agent {self.agent_id} ({self.campagne_id})"
+
+
+class RegenerationFactureEnAttente(models.Model):
+    """Régénération de facture en attente après correction d'un relevé déjà facturé.
+
+    Créée quand ``CorrigerReleve`` détecte qu'une facture existe déjà pour cet
+    abonné dans cette campagne, mais que Facturation Service est resté
+    injoignable au moment de déclencher ``RegenererFacture`` (gRPC). La
+    correction du relevé elle-même est déjà validée en base à cet instant —
+    seule sa répercussion sur la facture est différée.
+
+    Le job de retry (``schedulers.py::facturation_retry_job``, même verrou
+    consultatif que le rattrapage de clôture) rejoue périodiquement le même
+    chemin de régénération jusqu'à ce qu'il réussisse, puis supprime l'entrée.
+    Une seule entrée par (campagne, abonné) : une nouvelle correction avant que
+    la précédente n'ait été rejouée remplace simplement le motif/l'auteur —
+    la régénération relit de toute façon le relevé courant, pas une valeur
+    figée à la création de l'entrée.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    campagne = models.ForeignKey(Campagne, on_delete=models.CASCADE, related_name="regenerations_facture_en_attente")
+    # ID de l'abonné dans Abonné Service — pas de FK inter-service
+    abonne_id = models.CharField(max_length=36)
+    motif = models.CharField(max_length=255)
+    # ID de l'auteur de la correction (Auth Service) — transmis à Facturation
+    # Service comme `regenere_par` lors du rejeu.
+    demande_par = models.CharField(max_length=36, blank=True, default="")
+    date_creation = models.DateTimeField(auto_now_add=True)
+    derniere_tentative = models.DateTimeField(null=True, blank=True)
+    nb_tentatives = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "regenerations_facture_en_attente"
+        unique_together = [("campagne", "abonne_id")]
+
+    def __str__(self) -> str:
+        return f"Régénération en attente — abonné {self.abonne_id} ({self.campagne_id})"
