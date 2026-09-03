@@ -105,7 +105,7 @@ class WhatsAppWebClient:
         if not data.get("success"):
             raise WhatsAppDeliveryError(data.get("error", "Erreur inconnue"))
 
-    def get_qr(self) -> tuple[bool, str, str]:
+    def get_qr(self) -> tuple[bool, str, str, str, int]:
         """Retourne (ready, qr_data_url, number, phase, depuis_ms) depuis le service Node.js.
 
         `ready` indique si WhatsApp est déjà connecté ; `qr` est une data-URL

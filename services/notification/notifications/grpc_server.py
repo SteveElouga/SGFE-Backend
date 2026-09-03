@@ -30,8 +30,8 @@ def _setup_proto_path() -> None:
 
 _setup_proto_path()
 
-import notification_service_pb2 as pb  # type: ignore[import]  # noqa: E402
-import notification_service_pb2_grpc as pb_grpc  # type: ignore[import]  # noqa: E402
+import notification_service_pb2 as pb  # noqa: E402
+import notification_service_pb2_grpc as pb_grpc  # noqa: E402
 
 from notifications.grpc_interceptors import ErrorHandlingInterceptor  # noqa: E402
 from notifications.grpc_auth import AuthServerInterceptor, ouvrir_port_grpc  # noqa: E402
@@ -40,7 +40,11 @@ from notifications.services import DiffusionService, EnvoiService, TokenService,
 from notifications.whatsapp_client import WhatsAppDeliveryError  # noqa: E402
 
 
-class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
+class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):  # type: ignore[misc]
+    # ^ NotificationServiceServicer vient du stub généré
+    # notification_service_pb2_grpc, exclu de la vérification mypy (voir
+    # mypy.ini) — mypy le voit donc comme `Any`, ce qui rend toute sous-classe
+    # de lui structurellement "misc" ; rien à corriger côté code métier ici.
     """Implémentation du servicer gRPC Notification Service.
 
     Les exceptions (ObjectDoesNotExist, ValueError, ValidationError,
@@ -54,7 +58,7 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
         self._token_service = TokenService()
         self._diffusion_service = DiffusionService()
 
-    def EnvoyerFacture(self, request, context):
+    def EnvoyerFacture(self, request: pb.EnvoyerFactureRequest, context: grpc.ServicerContext) -> pb.EnvoiResponse:
         """Envoie la facture par WhatsApp.
 
         En cas d'échec WhatsApp, retourne un EnvoiResponse ECHEC
@@ -66,12 +70,12 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
         )
         return envoi_to_proto(envoi)
 
-    def ReenvoyerFacture(self, request, context):
+    def ReenvoyerFacture(self, request: pb.FactureIdRequest, context: grpc.ServicerContext) -> pb.EnvoiResponse:
         """Révoque l'ancien token et renvoie la facture par WhatsApp."""
         envoi = self._envoi_service.renvoyer_facture(facture_id=request.facture_id)
         return envoi_to_proto(envoi)
 
-    def EnvoyerRelance(self, request, context):
+    def EnvoyerRelance(self, request: pb.EnvoyerRelanceRequest, context: grpc.ServicerContext) -> pb.EnvoiResponse:
         """Envoie un message de relance ou de rétablissement (étapes 0 à 4).
 
         Lève INVALID_ARGUMENT si l'étape est hors de la plage [0, 4].
@@ -85,7 +89,7 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
         )
         return envoi_to_proto(envoi)
 
-    def EnvoyerRecu(self, request, context):
+    def EnvoyerRecu(self, request: pb.EnvoyerRecuRequest, context: grpc.ServicerContext) -> pb.EnvoiResponse:
         """Envoie le reçu de paiement (PDF) à l'abonné après un versement.
 
         En cas d'échec WhatsApp, retourne un EnvoiResponse ECHEC sans lever
@@ -100,12 +104,12 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
         )
         return envoi_to_proto(envoi)
 
-    def GetEnvoi(self, request, context):
+    def GetEnvoi(self, request: pb.EnvoiIdRequest, context: grpc.ServicerContext) -> pb.EnvoiResponse:
         """Récupère un envoi par son UUID. Lève NOT_FOUND si absent."""
         envoi = self._envoi_service.get_envoi(envoi_id=request.envoi_id)
         return envoi_to_proto(envoi)
 
-    def ListEnvois(self, request, context):
+    def ListEnvois(self, request: pb.ListEnvoisRequest, context: grpc.ServicerContext) -> pb.ListEnvoisResponse:
         """Liste les envois filtrés par facture_id et/ou abonne_id."""
         envois = self._envoi_service.list_envois(
             facture_id=request.facture_id,
@@ -113,7 +117,7 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
         )
         return pb.ListEnvoisResponse(envois=[envoi_to_proto(e) for e in envois])
 
-    def ValiderToken(self, request, context):
+    def ValiderToken(self, request: pb.ValiderTokenRequest, context: grpc.ServicerContext) -> pb.ValiderTokenResponse:
         """Valide un token d'accès abonné.
 
         Retourne ValiderTokenResponse(is_valid=True) si le token est actif
@@ -126,12 +130,12 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
         except (ValueError, Exception):
             return pb.ValiderTokenResponse(is_valid=False, abonne_id="", date_expiration="")
 
-    def RevoquerToken(self, request, context):
+    def RevoquerToken(self, request: pb.TokenIdRequest, context: grpc.ServicerContext) -> pb.StatusResponse:
         """Révoque un token d'accès. Lève NOT_FOUND si le token est introuvable."""
         self._token_service.revoquer_token(token_id=request.token_id)
         return pb.StatusResponse(success=True, message="Token révoqué avec succès")
 
-    def GetEspaceUrl(self, request, context):
+    def GetEspaceUrl(self, request: pb.GetEspaceUrlRequest, context: grpc.ServicerContext) -> pb.EspaceUrlResponse:
         """Retourne l'URL de l'espace abonné (get-or-create token) pour affichage sur le PDF."""
         token = self._token_service.get_or_create_token(
             abonne_id=request.abonne_id,
@@ -140,7 +144,7 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
         url = f"{settings.FRONTEND_URL}/espace/{token.token}"
         return pb.EspaceUrlResponse(url=url, date_expiration=token.date_expiration.isoformat())
 
-    def NotifierAdmins(self, request, context):
+    def NotifierAdmins(self, request: pb.NotifierAdminsRequest, context: grpc.ServicerContext) -> pb.StatusResponse:
         """Envoie une notification email aux administrateurs via Brevo.
 
         Ne lève jamais d'erreur gRPC — dégradation gracieuse si Brevo est indisponible.
@@ -152,7 +156,7 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
         )
         return pb.StatusResponse(success=True, message="Notification admin traitée")
 
-    def GetWhatsAppQr(self, request, context):
+    def GetWhatsAppQr(self, request: pb.EmptyRequest, context: grpc.ServicerContext) -> pb.WhatsAppQrResponse:
         """Retourne le statut de connexion WhatsApp, le QR de liaison et le numéro appairé.
 
         Destiné à l'affichage admin (via la Gateway). Ne lève jamais d'erreur
@@ -162,12 +166,14 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
         ready, qr, number, phase, depuis_ms = self._envoi_service.get_whatsapp_qr()
         return pb.WhatsAppQrResponse(ready=ready, qr=qr, number=number, phase=phase, depuis_ms=depuis_ms)
 
-    def RevoquerTousTokens(self, request, context):
+    def RevoquerTousTokens(
+        self, request: pb.EmptyRequest, context: grpc.ServicerContext
+    ) -> pb.RevoquerTousTokensResponse:
         """Révoque en masse tous les tokens d'accès abonné actifs."""
         count = self._token_service.revoquer_tous_tokens()
         return pb.RevoquerTousTokensResponse(count=count)
 
-    def TesterEnvoi(self, request, context):
+    def TesterEnvoi(self, request: pb.TesterEnvoiRequest, context: grpc.ServicerContext) -> pb.StatusResponse:
         """Envoie un message de test WhatsApp.
 
         Renvoie success=False + le motif réel en cas d'échec d'envoi (WhatsApp
@@ -181,7 +187,7 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
             return pb.StatusResponse(success=False, message=str(exc))
         return pb.StatusResponse(success=True, message="Message de test envoyé")
 
-    def CreerDiffusion(self, request, context):
+    def CreerDiffusion(self, request: pb.CreerDiffusionRequest, context: grpc.ServicerContext) -> pb.DiffusionResponse:
         """Crée une diffusion et une ligne d'envoi par abonné dont le
         téléphone a pu être résolu — les envois eux-mêmes partent en fond
         (`schedulers.diffusion_processor_job`), jamais depuis ce RPC."""
@@ -192,13 +198,13 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
         )
         return diffusion_to_proto(diffusion, self._diffusion_service.compter(diffusion))
 
-    def GetDiffusion(self, request, context):
+    def GetDiffusion(self, request: pb.DiffusionIdRequest, context: grpc.ServicerContext) -> pb.DiffusionResponse:
         """Récupère une diffusion par son UUID. NOT_FOUND si absente (via
         l'intercepteur, ObjectDoesNotExist → NOT_FOUND)."""
         diffusion = self._diffusion_service.get_diffusion(request.diffusion_id)
         return diffusion_to_proto(diffusion, self._diffusion_service.compter(diffusion))
 
-    def ListDiffusions(self, request, context):
+    def ListDiffusions(self, request: pb.EmptyRequest, context: grpc.ServicerContext) -> pb.ListDiffusionsResponse:
         """Liste toutes les diffusions, la plus récente d'abord."""
         diffusions = self._diffusion_service.list_diffusions()
         return pb.ListDiffusionsResponse(

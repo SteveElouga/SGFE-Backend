@@ -44,13 +44,13 @@ class TestBuildMessageRecu(TestCase):
     mesurent deux choses, chacun devant dire laquelle.
     """
 
-    def test_versement_partiel_annonce_la_dette_totale(self):
+    def test_versement_partiel_annonce_la_dette_totale(self) -> None:
         msg = build_message_recu("Jean DUPONT", "Juin 2026", 10750.0, 10750.0, lien_espace="https://x/espace/tok")
         self.assertIn("Montant réglé : 10750 FCFA", msg)
         self.assertIn("Reste dû, toutes factures : 10750 FCFA", msg)
         self.assertIn("pièce jointe", msg)
 
-    def test_dette_eteinte_ne_parle_pas_d_une_facture(self):
+    def test_dette_eteinte_ne_parle_pas_d_une_facture(self) -> None:
         msg = build_message_recu("Jean DUPONT", "Juin 2026", 21500.0, 0.0, lien_espace="https://x/espace/tok")
         self.assertIn("Vous êtes à jour", msg)
         self.assertNotIn("Reste dû", msg)
@@ -58,7 +58,7 @@ class TestBuildMessageRecu(TestCase):
         # peut en avoir couvert trois, et le PDF joint n'en atteste qu'une.
         self.assertNotIn("facture est soldée", msg)
 
-    def test_inclut_le_lien_espace_abonne(self):
+    def test_inclut_le_lien_espace_abonne(self) -> None:
         """Le reçu n'a longtemps porté aucun lien vers l'espace abonné,
         contrairement au message de facture et à la relance 1."""
         msg = build_message_recu("Jean DUPONT", "Juin 2026", 10750.0, 0.0, lien_espace="https://x/espace/tok")
@@ -70,7 +70,9 @@ class TestEnvoiServiceEnvoyerRecu(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_succes_envoie_le_recu_en_piece_jointe(self, mock_fact, mock_abonne, mock_config, mock_wa):
+    def test_succes_envoie_le_recu_en_piece_jointe(
+        self, mock_fact: MagicMock, mock_abonne: MagicMock, mock_config: MagicMock, mock_wa: MagicMock
+    ) -> None:
         fid, aid, pid = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
         mock_fact.get_facture.return_value = _facture_mock(fid, aid)
         mock_fact.generer_recu_paiement_pdf.return_value = (b"%PDF recu", "REC-2026-06-0002-1.pdf")
@@ -94,7 +96,9 @@ class TestEnvoiServiceEnvoyerRecu(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_l_envoi_garde_le_versement_dont_il_est_le_recu(self, mock_fact, mock_abonne, mock_config, mock_wa):
+    def test_l_envoi_garde_le_versement_dont_il_est_le_recu(
+        self, mock_fact: MagicMock, mock_abonne: MagicMock, mock_config: MagicMock, mock_wa: MagicMock
+    ) -> None:
         """Sans lui, un reçu ne peut pas être renvoyé.
 
         Le journal des envois notait la facture, jamais le versement. Or une
@@ -120,7 +124,7 @@ class TestEnvoiServiceEnvoyerRecu(TestCase):
         envoi.refresh_from_db()
         self.assertEqual(envoi.paiement_id, pid)
 
-    def test_un_envoi_qui_n_est_pas_un_recu_ne_porte_aucun_versement(self):
+    def test_un_envoi_qui_n_est_pas_un_recu_ne_porte_aucun_versement(self) -> None:
         """Le champ ne vaut que pour un reçu, et reste vide ailleurs.
 
         Vérifié au niveau du dépôt plutôt qu'en montant un envoi de facture
@@ -140,7 +144,9 @@ class TestEnvoiServiceEnvoyerRecu(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_pdf_indisponible_envoie_le_message_seul(self, mock_fact, mock_abonne, mock_config, mock_wa):
+    def test_pdf_indisponible_envoie_le_message_seul(
+        self, mock_fact: MagicMock, mock_abonne: MagicMock, mock_config: MagicMock, mock_wa: MagicMock
+    ) -> None:
         fid, aid, pid = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
         mock_fact.get_facture.return_value = _facture_mock(fid, aid)
         mock_fact.generer_recu_paiement_pdf.return_value = (b"", "")  # Facturation KO
@@ -157,7 +163,9 @@ class TestEnvoiServiceEnvoyerRecu(TestCase):
     @patch("notifications.services.whatsapp_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_amont_ko_degrade_en_echec(self, mock_fact, mock_abonne, mock_wa, mock_notify):
+    def test_amont_ko_degrade_en_echec(
+        self, mock_fact: MagicMock, mock_abonne: MagicMock, mock_wa: MagicMock, mock_notify: MagicMock
+    ) -> None:
         import grpc
 
         class _RpcError(grpc.RpcError):

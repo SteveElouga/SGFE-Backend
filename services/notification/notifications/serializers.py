@@ -12,7 +12,7 @@ _proto_path = str(Path(settings.BASE_DIR) / "proto")
 if _proto_path not in sys.path:
     sys.path.insert(0, _proto_path)
 
-import notification_service_pb2 as pb  # type: ignore[import]  # noqa: E402
+import notification_service_pb2 as pb  # noqa: E402
 
 
 def envoi_to_proto(envoi: Envoi) -> pb.EnvoiResponse:

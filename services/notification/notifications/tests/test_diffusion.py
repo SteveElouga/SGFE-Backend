@@ -19,7 +19,7 @@ def _abonne_mock(abonne_id: str, telephone: str = "+237699000001") -> MagicMock:
 
 class TestCreerDiffusion(TestCase):
     @patch("notifications.services.abonne_client")
-    def test_cree_une_ligne_par_abonne_resolu(self, mock_abonne):
+    def test_cree_une_ligne_par_abonne_resolu(self, mock_abonne: MagicMock) -> None:
         aid1, aid2 = str(uuid.uuid4()), str(uuid.uuid4())
         mock_abonne.get_abonne.side_effect = lambda aid: _abonne_mock(aid, "+237699000001")
 
@@ -34,13 +34,13 @@ class TestCreerDiffusion(TestCase):
         )
 
     @patch("notifications.services.abonne_client")
-    def test_un_abonne_introuvable_n_empeche_pas_les_autres(self, mock_abonne):
+    def test_un_abonne_introuvable_n_empeche_pas_les_autres(self, mock_abonne: MagicMock) -> None:
         """Dégradation par abonné, pas par diffusion entière."""
         import grpc
 
         aid_ok, aid_ko = str(uuid.uuid4()), str(uuid.uuid4())
 
-        def _get_abonne(aid):
+        def _get_abonne(aid: str) -> MagicMock:
             if aid == aid_ko:
                 raise grpc.RpcError("introuvable")
             return _abonne_mock(aid)
@@ -53,7 +53,7 @@ class TestCreerDiffusion(TestCase):
         self.assertEqual(DiffusionEnvoi.objects.get(diffusion=diffusion).abonne_id, aid_ok)
 
     @patch("notifications.services.abonne_client")
-    def test_aucun_abonne_resolu_cree_une_diffusion_vide(self, mock_abonne):
+    def test_aucun_abonne_resolu_cree_une_diffusion_vide(self, mock_abonne: MagicMock) -> None:
         import grpc
 
         mock_abonne.get_abonne.side_effect = grpc.RpcError("introuvable")
@@ -64,7 +64,7 @@ class TestCreerDiffusion(TestCase):
 
 
 class TestCompter(TestCase):
-    def test_agrege_les_statuts_des_envois(self):
+    def test_agrege_les_statuts_des_envois(self) -> None:
         diffusion = Diffusion.objects.create(message="M")
         DiffusionEnvoi.objects.create(
             diffusion=diffusion, abonne_id="a1", telephone="+1", statut=StatutDiffusionEnvoi.ENVOYE
@@ -86,7 +86,7 @@ class TestCompter(TestCase):
 
 class TestTraiterLotEnAttente(TestCase):
     @patch("notifications.services.whatsapp_client")
-    def test_envoie_le_lot_et_met_a_jour_les_statuts(self, mock_wa):
+    def test_envoie_le_lot_et_met_a_jour_les_statuts(self, mock_wa: MagicMock) -> None:
         diffusion = Diffusion.objects.create(message="Annonce")
         DiffusionEnvoi.objects.create(diffusion=diffusion, abonne_id="a1", telephone="+237699000001")
         DiffusionEnvoi.objects.create(diffusion=diffusion, abonne_id="a2", telephone="+237699000002")
@@ -102,7 +102,7 @@ class TestTraiterLotEnAttente(TestCase):
         self.assertIn(str(diffusion.id), touched)
 
     @patch("notifications.services.whatsapp_client")
-    def test_echec_whatsapp_marque_la_ligne_echec(self, mock_wa):
+    def test_echec_whatsapp_marque_la_ligne_echec(self, mock_wa: MagicMock) -> None:
         diffusion = Diffusion.objects.create(message="Annonce")
         DiffusionEnvoi.objects.create(diffusion=diffusion, abonne_id="a1", telephone="+237699000001")
         mock_wa.send.side_effect = WhatsAppDeliveryError("service indisponible")
@@ -114,7 +114,7 @@ class TestTraiterLotEnAttente(TestCase):
         self.assertIn("indisponible", envoi.erreur)
 
     @patch("notifications.services.whatsapp_client")
-    def test_respecte_la_taille_du_lot(self, mock_wa):
+    def test_respecte_la_taille_du_lot(self, mock_wa: MagicMock) -> None:
         diffusion = Diffusion.objects.create(message="Annonce")
         for i in range(5):
             DiffusionEnvoi.objects.create(diffusion=diffusion, abonne_id=f"a{i}", telephone=f"+23769900000{i}")
@@ -128,7 +128,7 @@ class TestTraiterLotEnAttente(TestCase):
         )
 
     @patch("notifications.services.whatsapp_client")
-    def test_termine_la_diffusion_quand_tout_est_resolu(self, mock_wa):
+    def test_termine_la_diffusion_quand_tout_est_resolu(self, mock_wa: MagicMock) -> None:
         diffusion = Diffusion.objects.create(message="Annonce")
         DiffusionEnvoi.objects.create(diffusion=diffusion, abonne_id="a1", telephone="+237699000001")
         mock_wa.send.return_value = None
@@ -139,7 +139,7 @@ class TestTraiterLotEnAttente(TestCase):
         self.assertEqual(diffusion.statut, StatutDiffusion.TERMINEE)
 
     @patch("notifications.services.whatsapp_client")
-    def test_ne_termine_pas_tant_qu_il_reste_des_lignes_en_attente(self, mock_wa):
+    def test_ne_termine_pas_tant_qu_il_reste_des_lignes_en_attente(self, mock_wa: MagicMock) -> None:
         diffusion = Diffusion.objects.create(message="Annonce")
         for i in range(3):
             DiffusionEnvoi.objects.create(diffusion=diffusion, abonne_id=f"a{i}", telephone=f"+23769900000{i}")
