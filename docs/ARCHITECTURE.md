@@ -1952,7 +1952,7 @@ type Query {
   statsGlobales: StatsGlobalesResponse
 
   # Configuration
-  infosSociete: InfosSociete        # public — apparaît sur les factures PDF
+  infosSociete: InfosSociete        # authentification requise (corrigé le 3 sept. 2026 — voir gateway/schema/config_queries.py)
   config(cle: String!): Config      # ADMIN uniquement
   configs: [Config!]!               # ADMIN uniquement — retourne les 10 clés
 }

@@ -115,6 +115,31 @@ jobs:
     defaults:
       run:
         working-directory: services/auth
+    # PostgreSQL 16 — même moteur qu'en production (docker-compose.yml utilise
+    # postgres:16-alpine) plutôt que le SQLite en mémoire des tests locaux.
+    # settings.py bascule sur Postgres quand FORCE_POSTGRES_TESTS est vrai ;
+    # par défaut (dev local) il reste sur SQLite pour un cycle rapide.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: auth_db
+          POSTGRES_USER: auth_user
+          POSTGRES_PASSWORD: ci-postgres-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U auth_user -d auth_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      FORCE_POSTGRES_TESTS: "True"
+      AUTH_DB_HOST: localhost
+      AUTH_DB_PORT: "5432"
+      AUTH_DB_NAME: auth_db
+      AUTH_DB_USER: auth_user
+      AUTH_DB_PASSWORD: ci-postgres-password
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -167,6 +192,28 @@ jobs:
     defaults:
       run:
         working-directory: services/abonne
+    # PostgreSQL 16 — voir le commentaire équivalent sur test-auth.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: abonne_db
+          POSTGRES_USER: abonne_user
+          POSTGRES_PASSWORD: ci-postgres-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U abonne_user -d abonne_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      FORCE_POSTGRES_TESTS: "True"
+      ABONNE_DB_HOST: localhost
+      ABONNE_DB_PORT: "5432"
+      ABONNE_DB_NAME: abonne_db
+      ABONNE_DB_USER: abonne_user
+      ABONNE_DB_PASSWORD: ci-postgres-password
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -193,6 +240,28 @@ jobs:
     defaults:
       run:
         working-directory: services/campagne
+    # PostgreSQL 16 — voir le commentaire équivalent sur test-auth.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: campagne_db
+          POSTGRES_USER: campagne_user
+          POSTGRES_PASSWORD: ci-postgres-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U campagne_user -d campagne_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      FORCE_POSTGRES_TESTS: "True"
+      CAMPAGNE_DB_HOST: localhost
+      CAMPAGNE_DB_PORT: "5432"
+      CAMPAGNE_DB_NAME: campagne_db
+      CAMPAGNE_DB_USER: campagne_user
+      CAMPAGNE_DB_PASSWORD: ci-postgres-password
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -219,6 +288,28 @@ jobs:
     defaults:
       run:
         working-directory: services/facturation
+    # PostgreSQL 16 — voir le commentaire équivalent sur test-auth.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: facturation_db
+          POSTGRES_USER: facturation_user
+          POSTGRES_PASSWORD: ci-postgres-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U facturation_user -d facturation_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      FORCE_POSTGRES_TESTS: "True"
+      FACTURATION_DB_HOST: localhost
+      FACTURATION_DB_PORT: "5432"
+      FACTURATION_DB_NAME: facturation_db
+      FACTURATION_DB_USER: facturation_user
+      FACTURATION_DB_PASSWORD: ci-postgres-password
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -245,6 +336,28 @@ jobs:
     defaults:
       run:
         working-directory: services/paiement
+    # PostgreSQL 16 — voir le commentaire équivalent sur test-auth.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: paiement_db
+          POSTGRES_USER: paiement_user
+          POSTGRES_PASSWORD: ci-postgres-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U paiement_user -d paiement_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      FORCE_POSTGRES_TESTS: "True"
+      PAIEMENT_DB_HOST: localhost
+      PAIEMENT_DB_PORT: "5432"
+      PAIEMENT_DB_NAME: paiement_db
+      PAIEMENT_DB_USER: paiement_user
+      PAIEMENT_DB_PASSWORD: ci-postgres-password
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -271,6 +384,28 @@ jobs:
     defaults:
       run:
         working-directory: services/notification
+    # PostgreSQL 16 — voir le commentaire équivalent sur test-auth.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: notification_db
+          POSTGRES_USER: notification_user
+          POSTGRES_PASSWORD: ci-postgres-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U notification_user -d notification_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      FORCE_POSTGRES_TESTS: "True"
+      NOTIFICATION_DB_HOST: localhost
+      NOTIFICATION_DB_PORT: "5432"
+      NOTIFICATION_DB_NAME: notification_db
+      NOTIFICATION_DB_USER: notification_user
+      NOTIFICATION_DB_PASSWORD: ci-postgres-password
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -297,6 +432,28 @@ jobs:
     defaults:
       run:
         working-directory: services/config
+    # PostgreSQL 16 — voir le commentaire équivalent sur test-auth.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: config_db
+          POSTGRES_USER: config_user
+          POSTGRES_PASSWORD: ci-postgres-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U config_user -d config_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      FORCE_POSTGRES_TESTS: "True"
+      CONFIG_DB_HOST: localhost
+      CONFIG_DB_PORT: "5432"
+      CONFIG_DB_NAME: config_db
+      CONFIG_DB_USER: config_user
+      CONFIG_DB_PASSWORD: ci-postgres-password
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -323,6 +480,28 @@ jobs:
     defaults:
       run:
         working-directory: services/reporting
+    # PostgreSQL 16 — voir le commentaire équivalent sur test-auth.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: reporting_db
+          POSTGRES_USER: reporting_user
+          POSTGRES_PASSWORD: ci-postgres-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U reporting_user -d reporting_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      FORCE_POSTGRES_TESTS: "True"
+      REPORTING_DB_HOST: localhost
+      REPORTING_DB_PORT: "5432"
+      REPORTING_DB_NAME: reporting_db
+      REPORTING_DB_USER: reporting_user
+      REPORTING_DB_PASSWORD: ci-postgres-password
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5

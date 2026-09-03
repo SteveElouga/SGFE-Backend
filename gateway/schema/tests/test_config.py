@@ -20,24 +20,32 @@ def make_list_configs_response(*configs):
 
 
 class InfosSocieteQueryTests(SimpleTestCase):
-    def test_infos_societe_returns_data(self):
-        with patch.object(config_client, "get_infos_societe", return_value=make_infos_response()):
+    def test_infos_societe_returns_data_when_authenticated(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="u-1", role="COMPTABLE")),
+            patch.object(config_client, "get_infos_societe", return_value=make_infos_response()),
+        ):
             result = schema.execute_sync(
                 "query { infosSociete { nom adresse telephone } }",
-                context_value=context(),
+                context_value=context(token="access-1"),
             )
 
         self.assertIsNone(result.errors)
         self.assertEqual(result.data["infosSociete"]["nom"], "Eau SA")
         self.assertEqual(result.data["infosSociete"]["adresse"], "Yaoundé")
 
-    def test_infos_societe_does_not_require_auth(self):
+    def test_infos_societe_requires_auth(self):
+        """Consommé uniquement par l'écran /configuration, derrière roleGuard(['ADMIN'])
+        côté frontend (voir grep sur `infosSociete` dans SGFE-frontend/src) — aucun écran
+        public (login, espace-abonné) n'en a besoin. L'exception documentée dans
+        ARCHITECTURE.md/ETAT_DU_SYSTEME.md ne correspondait à aucun usage réel."""
         with patch.object(config_client, "get_infos_societe", return_value=make_infos_response()):
             result = schema.execute_sync(
                 "query { infosSociete { nom } }",
                 context_value=context(),
             )
-        self.assertIsNone(result.errors)
+        self.assertIsNotNone(result.errors)
+        self.assertIn("Authentification requise", str(result.errors))
 
 
 class ConfigQueryTests(SimpleTestCase):

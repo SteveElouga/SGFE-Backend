@@ -40,7 +40,11 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "paiement.wsgi.application"
 
-if TESTING:
+# La CI fait tourner ces tests sur PostgreSQL 16 (même moteur qu'en prod) en
+# positionnant FORCE_POSTGRES_TESTS=True (+ les PAIEMENT_DB_* habituels
+# pointés vers le service postgres du job). Par défaut (dev local), TESTING
+# seul suffit à retomber sur SQLite — rapide, zéro dépendance.
+if TESTING and not env.bool("FORCE_POSTGRES_TESTS", default=False):
     DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "dev.sqlite3"}}
 else:
     DATABASES = {

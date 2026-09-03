@@ -342,7 +342,7 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 - [ ] Réduire l'**access token** à 15‑30 min (`services/auth/auth/settings.py:101`). *(S)*
 - [ ] Forcer le cookie refresh `Secure=True` en prod indépendamment de `DEBUG` (`gateway/gateway/settings.py:84`). *(S)*
 - [ ] En‑têtes de sécurité : `SecurityMiddleware` Django + **HSTS** + **CSP** + `X-Content-Type-Options` + `Referrer-Policy` (gateway + nginx LB). *(M)*
-- [ ] Confirmer l'intention de `infosSociete` non authentifié, sinon `require_auth` (`gateway/schema/config_queries.py:11`). *(S)*
+- [x] Confirmer l'intention de `infosSociete` non authentifié, sinon `require_auth` (`gateway/schema/config_queries.py:11`). *(S)* — **Résolu le 3 sept. 2026** : usage frontend vérifié (seul consommateur, `features/configuration/`, déjà `roleGuard(['ADMIN'])`), aucun écran public. `require_auth(info)` ajouté + test.
 
 **D. Bugs d'alignement bloquants**
 
@@ -406,7 +406,7 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 - [ ] Tests frontend prioritaires : **file offline terrain**, refresh+retry, gardes de rôle, interceptor JWT. *(M)*
 - [ ] 🔗 Vrais **tests e2e Playwright** : ajouter les `data-testid`, parcours login / saisie index / paiement ; lancer en CI avec `webServer`. *(M)*
 - [ ] Lancer **Vitest** (tests unitaires front) en CI. *(S)*
-- [ ] Job CI backend sur **PostgreSQL** (pas seulement SQLite). *(S)*
+- [x] Job CI backend sur **PostgreSQL** (pas seulement SQLite). *(S)* — **Résolu le 3 sept. 2026** : service `postgres:16-alpine` ajouté aux 8 jobs `test-*` concernés (`.github/workflows/ci.yml`), `FORCE_POSTGRES_TESTS` bascule les `settings.py` correspondants sur Postgres (SQLite reste le défaut rapide en local). Câblage vérifié réellement (pas seulement le YAML) : suite `parametres` de `services/config` exécutée contre un Postgres 16 jetable, 31/31 tests verts.
 - [ ] **Trivy** sur l'image frontend. *(S)*
 - [ ] **Test de charge / performance** à la cible de trafic. *(M)*
 - [ ] **Test de pénétration** avant go‑live. *(M)*

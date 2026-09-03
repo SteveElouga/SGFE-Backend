@@ -1,3 +1,25 @@
+# ── Restart policy & limites de ressources ────────────────────────────────
+#
+# `restart: unless-stopped` sur tous les services : un redémarrage de l'hôte
+# ou un crash isolé ne doit pas laisser un service arrêté silencieusement.
+#
+# `deploy.resources.limits` : vérifié empiriquement (2026-09-03) que ces clés
+# sont bien honorées par `docker compose up` classique (Compose v2, hors
+# swarm) — `docker inspect --format '{{.HostConfig.Memory}}'` sur un conteneur
+# de test avec `limits.memory: 128M` / `cpus: "0.5"` renvoie 134217728 (128M
+# exacts) et NanoCPUs=500000000 (0.5 cpu) : les limites deviennent bien des
+# limites cgroup réelles sur le conteneur, pas un no-op réservé à `docker
+# stack deploy`.
+#
+# Barème choisi par rôle :
+#   - postgres (8 instances)   : 512M / 1 cpu   — bases par service, faible volumétrie
+#   - services Django (8 gRPC) : 512M / 1 cpu   — profil homogène, pas de traitement lourd en mémoire
+#   - gateway                  : 768M / 1.5 cpu — agrège les 8 appels gRPC + tient les subscriptions WebSocket
+#   - whatsapp-service         : 1.5G  / 1.5 cpu — Chromium (whatsapp-web.js) ; l'audit mesure ~929 Mo réels,
+#                                                   marge au-delà du plancher de 1.2G demandé pour absorber les pics
+#   - redis                    : 256M / 0.5 cpu — cache + pub/sub, faible empreinte
+#   - nginx                    : 128M / 0.5 cpu — reverse proxy, pas de traitement
+#   - db-backup                : 256M / 0.5 cpu — pg_dump + gzip séquentiel, pic bref une fois par jour
 services:
   redis:
     image: redis:7-alpine
@@ -12,13 +34,19 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
 
   auth-postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: auth_db
       POSTGRES_USER: auth_user
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U auth_user -d auth_db"]
       interval: 5s
@@ -26,6 +54,12 @@ services:
       retries: 10
     volumes:
       - auth_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
 
   whatsapp-service:
     build: ./whatsapp-service
@@ -44,6 +78,11 @@ services:
     # Laisse à Chromium le temps de se fermer proprement sur `docker stop` (le
     # défaut de 10 s peut être trop court) — voir le handler SIGTERM de server.js.
     stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+          cpus: "1.5"
 
   auth-service:
     build: ./services/auth
@@ -55,14 +94,14 @@ services:
       whatsapp-service:
         condition: service_started
     environment:
-      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
       DJANGO_DEBUG: "True"
       AUTH_DB_HOST: auth-postgres
       AUTH_DB_PORT: "5432"
       AUTH_DB_NAME: auth_db
       AUTH_DB_USER: auth_user
-      AUTH_DB_PASSWORD: devpassword
+      AUTH_DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
       AUTH_GRPC_PORT: "50051"
       REDIS_URL: "redis://redis:6379/0"
       JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
@@ -86,13 +125,19 @@ services:
       # ./scripts/generate-grpc-certs.sh en local. Absents -> repli en clair
       # (voir comptes/grpc_auth.py), jamais un échec au démarrage.
       - ./certs:/app/certs:ro
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
 
   abonne-postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: abonne_db
       POSTGRES_USER: abonne_user
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U abonne_user -d abonne_db"]
       interval: 5s
@@ -100,13 +145,19 @@ services:
       retries: 10
     volumes:
       - abonne_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
 
   campagne-postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: campagne_db
       POSTGRES_USER: campagne_user
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U campagne_user -d campagne_db"]
       interval: 5s
@@ -114,13 +165,19 @@ services:
       retries: 10
     volumes:
       - campagne_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
 
   facturation-postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: facturation_db
       POSTGRES_USER: facturation_user
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U facturation_user -d facturation_db"]
       interval: 5s
@@ -128,6 +185,12 @@ services:
       retries: 10
     volumes:
       - facturation_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
 
   facturation-service:
     build: ./services/facturation
@@ -143,14 +206,14 @@ services:
       abonne-service:
         condition: service_started
     environment:
-      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
       DJANGO_DEBUG: "True"
       FACTURATION_DB_HOST: facturation-postgres
       FACTURATION_DB_PORT: "5432"
       FACTURATION_DB_NAME: facturation_db
       FACTURATION_DB_USER: facturation_user
-      FACTURATION_DB_PASSWORD: devpassword
+      FACTURATION_DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
       FACTURATION_GRPC_PORT: "50054"
       CAMPAGNE_GRPC_HOST: campagne-service
       CAMPAGNE_GRPC_PORT: "50053"
@@ -174,13 +237,19 @@ services:
       - facturation_pdfs:/app/pdfs
       - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
 
   paiement-postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: paiement_db
       POSTGRES_USER: paiement_user
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U paiement_user -d paiement_db"]
       interval: 5s
@@ -188,6 +257,12 @@ services:
       retries: 10
     volumes:
       - paiement_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
 
   paiement-service:
     build: ./services/paiement
@@ -205,14 +280,14 @@ services:
       config-service:
         condition: service_started
     environment:
-      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
       DJANGO_DEBUG: "True"
       PAIEMENT_DB_HOST: paiement-postgres
       PAIEMENT_DB_PORT: "5432"
       PAIEMENT_DB_NAME: paiement_db
       PAIEMENT_DB_USER: paiement_user
-      PAIEMENT_DB_PASSWORD: devpassword
+      PAIEMENT_DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
       PAIEMENT_GRPC_PORT: "50055"
       REDIS_URL: "redis://redis:6379/0"
       FACTURATION_GRPC_HOST: facturation-service
@@ -232,13 +307,19 @@ services:
     volumes:
       - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
 
   notification-postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: notification_db
       POSTGRES_USER: notification_user
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U notification_user -d notification_db"]
       interval: 5s
@@ -246,6 +327,12 @@ services:
       retries: 10
     volumes:
       - notification_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
 
   notification-service:
     build: ./services/notification
@@ -263,14 +350,14 @@ services:
       whatsapp-service:
         condition: service_started
     environment:
-      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
       DJANGO_DEBUG: "True"
       NOTIFICATION_DB_HOST: notification-postgres
       NOTIFICATION_DB_PORT: "5432"
       NOTIFICATION_DB_NAME: notification_db
       NOTIFICATION_DB_USER: notification_user
-      NOTIFICATION_DB_PASSWORD: devpassword
+      NOTIFICATION_DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
       NOTIFICATION_GRPC_PORT: "50056"
       FACTURATION_GRPC_HOST: facturation-service
       FACTURATION_GRPC_PORT: "50054"
@@ -290,6 +377,12 @@ services:
     volumes:
       - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
 
   abonne-service:
     build: ./services/abonne
@@ -299,14 +392,14 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
       DJANGO_DEBUG: "True"
       ABONNE_DB_HOST: abonne-postgres
       ABONNE_DB_PORT: "5432"
       ABONNE_DB_NAME: abonne_db
       ABONNE_DB_USER: abonne_user
-      ABONNE_DB_PASSWORD: devpassword
+      ABONNE_DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
       ABONNE_GRPC_PORT: "50052"
       REDIS_URL: "redis://redis:6379/0"
       GRPC_TLS_CA: /app/certs/ca.crt
@@ -315,6 +408,12 @@ services:
     volumes:
       - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
 
   campagne-service:
     build: ./services/campagne
@@ -324,14 +423,14 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
       DJANGO_DEBUG: "True"
       CAMPAGNE_DB_HOST: campagne-postgres
       CAMPAGNE_DB_PORT: "5432"
       CAMPAGNE_DB_NAME: campagne_db
       CAMPAGNE_DB_USER: campagne_user
-      CAMPAGNE_DB_PASSWORD: devpassword
+      CAMPAGNE_DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
       CAMPAGNE_GRPC_PORT: "50053"
       REDIS_URL: "redis://redis:6379/0"
       NOTIFICATION_GRPC_HOST: notification-service
@@ -349,13 +448,19 @@ services:
     volumes:
       - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
 
   config-postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: config_db
       POSTGRES_USER: config_user
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U config_user -d config_db"]
       interval: 5s
@@ -363,6 +468,12 @@ services:
       retries: 10
     volumes:
       - config_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
 
   config-service:
     build: ./services/config
@@ -372,14 +483,14 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
       DJANGO_DEBUG: "True"
       CONFIG_DB_HOST: config-postgres
       CONFIG_DB_PORT: "5432"
       CONFIG_DB_NAME: config_db
       CONFIG_DB_USER: config_user
-      CONFIG_DB_PASSWORD: devpassword
+      CONFIG_DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
       CONFIG_GRPC_PORT: "50058"
       REDIS_URL: "redis://redis:6379/0"
       GRPC_TLS_CA: /app/certs/ca.crt
@@ -388,13 +499,19 @@ services:
     volumes:
       - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
 
   reporting-postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: reporting_db
       POSTGRES_USER: reporting_user
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U reporting_user -d reporting_db"]
       interval: 5s
@@ -402,6 +519,12 @@ services:
       retries: 10
     volumes:
       - reporting_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
 
   reporting-service:
     build: ./services/reporting
@@ -415,14 +538,14 @@ services:
       paiement-service:
         condition: service_started
     environment:
-      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
       DJANGO_DEBUG: "True"
       REPORTING_DB_HOST: reporting-postgres
       REPORTING_DB_PORT: "5432"
       REPORTING_DB_NAME: reporting_db
       REPORTING_DB_USER: reporting_user
-      REPORTING_DB_PASSWORD: devpassword
+      REPORTING_DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
       REPORTING_GRPC_PORT: "50057"
       # Consommés par le job de réconciliation nocturne (stats/schedulers.py).
       FACTURATION_GRPC_HOST: facturation-service
@@ -436,6 +559,12 @@ services:
     volumes:
       - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
 
   gateway:
     build: ./gateway
@@ -450,7 +579,7 @@ services:
       - reporting-service
       - redis
     environment:
-      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
       DJANGO_DEBUG: "True"
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
@@ -493,6 +622,12 @@ services:
     networks:
       - default
       - edge
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+          cpus: "1.5"
 
   nginx:
     build: ./nginx
@@ -500,6 +635,12 @@ services:
       - gateway
     ports:
       - "8080:80"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.5"
 
   # Sauvegardes PostgreSQL automatiques : pg_dump quotidien des 8 bases, gzip +
   # rétention (voir scripts/backup-databases.sh). Tourne sur le réseau interne
@@ -527,11 +668,22 @@ services:
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:-devpassword}
       RETENTION_DAYS: "7"
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:?BACKUP_ENCRYPTION_KEY requis pour chiffrer les sauvegardes}
     volumes:
       - ./backups:/backups
       - ./scripts/backup-databases.sh:/backup.sh:ro
-    entrypoint: ["/bin/sh", "-c", "while true; do sh /backup.sh || true; sleep 86400; done"]
+    # `apk add openssl` : postgres:16-alpine embarque libssl3/libcrypto3 (dépendance
+    # de postgres lui-même) mais PAS le binaire CLI `openssl` — vérifié empiriquement
+    # (`which openssl` échoue sur l'image nue). Sans ce paquet, backup-databases.sh
+    # échouerait au moment de chiffrer chaque dump. Installé une fois au démarrage,
+    # avant la boucle quotidienne.
+    entrypoint: ["/bin/sh", "-c", "apk add --no-cache openssl && while true; do sh /backup.sh || true; sleep 86400; done"]
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
 
 # ── Réseaux ──────────────────────────────────────────────────────────────────
 #
