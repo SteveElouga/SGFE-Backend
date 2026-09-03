@@ -1,3 +1,10 @@
+# ─────────────────────────────────────────────────────────────────────────
+# Fichier synchronisé — NE PAS ÉDITER DIRECTEMENT.
+#
+# Source canonique : libs/sgfe_common/sgfe_common/grpc_auth.py
+# Après modification de la source, relancer : ./scripts/sync-grpc-lib.sh
+# Vérifier l'absence de dérive       : ./scripts/sync-grpc-lib.sh --check
+# ─────────────────────────────────────────────────────────────────────────
 """Authentification et chiffrement de la couche gRPC interne.
 
 Jusqu'ici, quiconque atteignait les ports 50051-50058 appelait n'importe quel
@@ -33,6 +40,17 @@ le client sur `insecure_channel`, sans erreur. C'est le cas des suites de
 tests, qui instancient un serveur ou un canal en mémoire sans docker-compose
 ni certificats montés : elles n'ont pas à générer de PKI pour rester vertes.
 Voir `scripts/generate-grpc-certs.sh` pour la génération de la CA/certificat.
+
+**Ce module est partagé** entre les neuf composants gRPC (huit services +
+la gateway) via `scripts/sync-grpc-lib.sh`, qui le recopie tel quel (avec un
+bandeau d'en-tête indiquant la source) vers chaque emplacement de service —
+voir `libs/sgfe_common/README.md` pour le choix d'architecture. Si ce fichier
+porte le bandeau d'en-tête, c'est une copie : éditez la source canonique
+(`libs/sgfe_common/sgfe_common/grpc_auth.py`) puis relancez le script, jamais
+une copie directement. Volontairement copié plutôt qu'importé : chaque
+service reste un module Django autonome (`<app>.grpc_auth`, y compris pour le
+nom du logger `__name__` qu'inspectent les tests), et aucun `Dockerfile` n'a
+besoin de voir en dehors de son propre dossier de service au moment du build.
 """
 
 from __future__ import annotations
