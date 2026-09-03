@@ -1,3 +1,4 @@
+from typing import Any
 from unittest.mock import Mock, patch
 
 import grpc
@@ -21,31 +22,31 @@ class _FakeRpcError(grpc.RpcError):
         return self._code
 
 
-def make_user(role="ADMIN"):
+def make_user(role: str = "ADMIN") -> Mock:
     return Mock(role=role, user_id="u-1", username="jane", is_active=True)
 
 
-def make_pdf_response(pdf_content=b"%PDF-1.4 contenu", filename="facture-1.pdf"):
+def make_pdf_response(pdf_content: bytes = b"%PDF-1.4 contenu", filename: str = "facture-1.pdf") -> Mock:
     return Mock(pdf_content=pdf_content, filename=filename)
 
 
 _URL = "/factures/facture-1/pdf/"
-_AUTH = {"HTTP_AUTHORIZATION": "Bearer jwt-valide"}
+_AUTH: dict[str, Any] = {"HTTP_AUTHORIZATION": "Bearer jwt-valide"}
 
 
 class FacturePdfViewTests(SimpleTestCase):
     """Vue back-office GET /factures/<id>/pdf/ (JWT + rôle ADMIN/COMPTABLE)."""
 
-    def test_sans_token_retourne_401(self):
+    def test_sans_token_retourne_401(self) -> None:
         response = self.client.get(_URL)
         self.assertEqual(response.status_code, 401)
 
-    def test_token_invalide_retourne_401(self):
+    def test_token_invalide_retourne_401(self) -> None:
         with patch.object(auth_client, "validate_token", side_effect=grpc.RpcError("invalide")):
             response = self.client.get(_URL, **_AUTH)
         self.assertEqual(response.status_code, 401)
 
-    def test_role_insuffisant_retourne_403_sans_appeler_le_pdf(self):
+    def test_role_insuffisant_retourne_403_sans_appeler_le_pdf(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="AGENT")),
             patch.object(facturation_client, "get_facture_pdf") as mock_pdf,
@@ -54,17 +55,17 @@ class FacturePdfViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 403)
         mock_pdf.assert_not_called()
 
-    def test_admin_recupere_le_pdf(self):
+    def test_admin_recupere_le_pdf(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
             patch.object(facturation_client, "get_facture_pdf", return_value=make_pdf_response()),
         ):
-            response = self.client.get(_URL, **_AUTH)
+            response: Any = self.client.get(_URL, **_AUTH)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/pdf")
         self.assertEqual(b"".join(response.streaming_content), b"%PDF-1.4 contenu")
 
-    def test_comptable_autorise(self):
+    def test_comptable_autorise(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="COMPTABLE")),
             patch.object(facturation_client, "get_facture_pdf", return_value=make_pdf_response()),
@@ -72,7 +73,7 @@ class FacturePdfViewTests(SimpleTestCase):
             response = self.client.get(_URL, **_AUTH)
         self.assertEqual(response.status_code, 200)
 
-    def test_facture_introuvable_retourne_404(self):
+    def test_facture_introuvable_retourne_404(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
             patch.object(
@@ -84,7 +85,7 @@ class FacturePdfViewTests(SimpleTestCase):
             response = self.client.get(_URL, **_AUTH)
         self.assertEqual(response.status_code, 404)
 
-    def test_erreur_service_retourne_503(self):
+    def test_erreur_service_retourne_503(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
             patch.object(
@@ -102,11 +103,11 @@ class BilanImpayesPdfViewTests(SimpleTestCase):
 
     _URL = "/bilan-impayes/pdf/"
 
-    def test_sans_token_retourne_401(self):
+    def test_sans_token_retourne_401(self) -> None:
         response = self.client.get(self._URL)
         self.assertEqual(response.status_code, 401)
 
-    def test_role_insuffisant_retourne_403_sans_appeler_le_pdf(self):
+    def test_role_insuffisant_retourne_403_sans_appeler_le_pdf(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="AGENT")),
             patch.object(facturation_client, "generer_bilan_impayes_pdf") as mock_pdf,
@@ -115,7 +116,7 @@ class BilanImpayesPdfViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 403)
         mock_pdf.assert_not_called()
 
-    def test_admin_recupere_le_bilan(self):
+    def test_admin_recupere_le_bilan(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
             patch.object(
@@ -124,12 +125,12 @@ class BilanImpayesPdfViewTests(SimpleTestCase):
                 return_value=make_pdf_response(pdf_content=b"%PDF bilan", filename="bilan-impayes-2026-07-04.pdf"),
             ),
         ):
-            response = self.client.get(self._URL, **_AUTH)
+            response: Any = self.client.get(self._URL, **_AUTH)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/pdf")
         self.assertEqual(b"".join(response.streaming_content), b"%PDF bilan")
 
-    def test_comptable_autorise(self):
+    def test_comptable_autorise(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="COMPTABLE")),
             patch.object(facturation_client, "generer_bilan_impayes_pdf", return_value=make_pdf_response()),
@@ -137,7 +138,7 @@ class BilanImpayesPdfViewTests(SimpleTestCase):
             response = self.client.get(self._URL, **_AUTH)
         self.assertEqual(response.status_code, 200)
 
-    def test_erreur_service_retourne_503(self):
+    def test_erreur_service_retourne_503(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
             patch.object(

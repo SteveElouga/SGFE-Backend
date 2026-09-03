@@ -1,11 +1,11 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
 from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken, Token
 
 from comptes.email_client import email_client
 from comptes.models import User, _generate_otp
@@ -31,7 +31,7 @@ class AuthenticationError(Exception):
     """Échec d'authentification (identifiants invalides, compte verrouillé/inactif)."""
 
 
-def _refuser_si_anterieur_au_mot_de_passe(user, jeton) -> None:
+def _refuser_si_anterieur_au_mot_de_passe(user: User, jeton: Token) -> None:
     """Refuse un jeton émis avant le dernier changement de mot de passe.
 
     Changer son mot de passe parce qu'on pense son compte compromis n'a de sens
@@ -128,7 +128,9 @@ class AuthService:
 
     def validate_token(self, token: str) -> User:
         try:
-            access = AccessToken(token)
+            # simplejwt type ses stubs sur `Token`, mais accepte bel et bien une
+            # chaîne JWT brute au runtime (c'est même l'usage documenté).
+            access = AccessToken(token)  # type: ignore[arg-type]
         except TokenError as exc:
             raise AuthenticationError("Token invalide ou expiré") from exc
 
@@ -145,7 +147,8 @@ class AuthService:
 
     def refresh_token(self, refresh_token: str) -> tuple[str, str, int]:
         try:
-            refresh = RefreshToken(refresh_token)
+            # Même imprécision de stub que validate_token ci-dessus.
+            refresh = RefreshToken(refresh_token)  # type: ignore[arg-type]
         except TokenError as exc:
             raise AuthenticationError("Refresh token invalide ou expiré") from exc
 
@@ -167,20 +170,21 @@ class AuthService:
         # servi une fois.
         self.revoked_tokens.revoke(
             token_jti=refresh["jti"],
-            expires_at=timezone.datetime.fromtimestamp(refresh["exp"], tz=timezone.get_current_timezone()),
+            expires_at=datetime.fromtimestamp(refresh["exp"], tz=timezone.get_current_timezone()),
         )
 
         return nouveaux_tokens
 
     def logout(self, token: str) -> None:
         try:
-            access = AccessToken(token)
+            # Même imprécision de stub que validate_token ci-dessus.
+            access = AccessToken(token)  # type: ignore[arg-type]
         except TokenError as exc:
             raise AuthenticationError("Token invalide") from exc
 
         self.revoked_tokens.revoke(
             token_jti=access["jti"],
-            expires_at=timezone.datetime.fromtimestamp(access["exp"], tz=timezone.get_current_timezone()),
+            expires_at=datetime.fromtimestamp(access["exp"], tz=timezone.get_current_timezone()),
         )
 
 
@@ -308,6 +312,10 @@ class PasswordSetupService:
         expires_at = timezone.now() + timedelta(hours=settings.PASSWORD_SETUP_TOKEN_VALIDITY_HOURS)
         setup_token = self.tokens.create(user=user, expires_at=expires_at)
         link = f"{settings.FRONTEND_URL}/{link_path}?token={setup_token.token}"
+        # PasswordSetupService ne sert que le flux ADMIN (email par téléphone
+        # OTP pour les autres rôles) — email obligatoire pour ce rôle, imposé
+        # dès la création (UserAdminService.create_user).
+        assert user.email, "Email obligatoire pour le flux de mot de passe par e-mail (ADMIN)"
         email_client.send(
             to_email=user.email,
             to_name=user.username,

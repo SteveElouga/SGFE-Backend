@@ -18,7 +18,7 @@ _proto_path = str(Path(settings.BASE_DIR) / "proto")
 if _proto_path not in sys.path:
     sys.path.insert(0, _proto_path)
 
-import notification_service_pb2 as pb  # type: ignore[import]  # noqa: E402
+import notification_service_pb2 as pb  # noqa: E402
 
 from notifications.grpc_server import NotificationServiceServicer  # noqa: E402
 from notifications.models import (  # noqa: E402
@@ -72,7 +72,9 @@ class TestEnvoyerFactureRPC(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_facture_succes(self, mock_fact, mock_abonne, mock_config, mock_wa):
+    def test_envoyer_facture_succes(
+        self, mock_fact: MagicMock, mock_abonne: MagicMock, mock_config: MagicMock, mock_wa: MagicMock
+    ) -> None:
         """EnvoyerFacture retourne un EnvoiResponse ENVOYE en cas de succès."""
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
@@ -98,7 +100,9 @@ class TestEnvoyerFactureRPC(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_facture_whatsapp_ko_degradation_gracieuse(self, mock_fact, mock_abonne, mock_config, mock_wa):
+    def test_envoyer_facture_whatsapp_ko_degradation_gracieuse(
+        self, mock_fact: MagicMock, mock_abonne: MagicMock, mock_config: MagicMock, mock_wa: MagicMock
+    ) -> None:
         """Si WhatsApp échoue, EnvoyerFacture retourne ECHEC sans abort gRPC."""
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
@@ -128,7 +132,9 @@ class TestEnvoyerRelanceRPC(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_relance_etape_valide(self, mock_fact, mock_abonne, mock_config, mock_wa):
+    def test_envoyer_relance_etape_valide(
+        self, mock_fact: MagicMock, mock_abonne: MagicMock, mock_config: MagicMock, mock_wa: MagicMock
+    ) -> None:
         """EnvoyerRelance avec étape valide retourne un EnvoiResponse ENVOYE."""
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
@@ -147,7 +153,7 @@ class TestEnvoyerRelanceRPC(TestCase):
         self.assertIsInstance(response, pb.EnvoiResponse)
         self.assertEqual(response.statut, StatutEnvoi.ENVOYE)
 
-    def test_envoyer_relance_etape_invalide_leve_erreur(self):
+    def test_envoyer_relance_etape_invalide_leve_erreur(self) -> None:
         """EnvoyerRelance avec étape invalide doit lever ValidationError (interceptée en INVALID_ARGUMENT)."""
         from django.core.exceptions import ValidationError
 
@@ -162,7 +168,7 @@ class TestEnvoyerRelanceRPC(TestCase):
 class TestValiderTokenRPC(TestCase):
     """Tests du RPC ValiderToken."""
 
-    def test_valider_token_valide(self):
+    def test_valider_token_valide(self) -> None:
         """ValiderToken retourne is_valid=True pour un token actif non expiré."""
         token = TokenAcces.objects.create(
             abonne_id=str(uuid.uuid4()),
@@ -180,7 +186,7 @@ class TestValiderTokenRPC(TestCase):
         self.assertTrue(response.is_valid)
         self.assertEqual(response.abonne_id, token.abonne_id)
 
-    def test_valider_token_expire_retourne_invalide(self):
+    def test_valider_token_expire_retourne_invalide(self) -> None:
         """ValiderToken retourne is_valid=False pour un token expiré."""
         token = TokenAcces.objects.create(
             abonne_id=str(uuid.uuid4()),
@@ -197,7 +203,7 @@ class TestValiderTokenRPC(TestCase):
         self.assertFalse(response.is_valid)
         context.abort.assert_not_called()
 
-    def test_valider_token_inconnu_retourne_invalide(self):
+    def test_valider_token_inconnu_retourne_invalide(self) -> None:
         """ValiderToken retourne is_valid=False pour un UUID inexistant."""
         servicer = NotificationServiceServicer()
         request = pb.ValiderTokenRequest(token=str(uuid.uuid4()))
@@ -213,7 +219,7 @@ class TestGetEspaceUrlRPC(TestCase):
     """Tests du RPC GetEspaceUrl."""
 
     @patch("notifications.services.config_client")
-    def test_get_espace_url_cree_token_et_retourne_url(self, mock_config):
+    def test_get_espace_url_cree_token_et_retourne_url(self, mock_config: MagicMock) -> None:
         """GetEspaceUrl crée un token si besoin et renvoie l'URL + expiration ISO."""
         mock_config.get_token_validite_jours.return_value = 20
         servicer = NotificationServiceServicer()
@@ -227,7 +233,7 @@ class TestGetEspaceUrlRPC(TestCase):
         self.assertIn(str(token.token), response.url)
         self.assertEqual(response.date_expiration, token.date_expiration.isoformat())
 
-    def test_get_espace_url_reutilise_token_existant(self):
+    def test_get_espace_url_reutilise_token_existant(self) -> None:
         """Un token valide existant de l'abonné est réutilisé (pas de doublon)."""
         existant = TokenAcces.objects.create(
             abonne_id="abo-2",
@@ -247,7 +253,7 @@ class TestGetEspaceUrlRPC(TestCase):
 class TestRevoquerTokenRPC(TestCase):
     """Tests du RPC RevoquerToken."""
 
-    def test_revoquer_token_succes(self):
+    def test_revoquer_token_succes(self) -> None:
         """RevoquerToken retourne StatusResponse(success=True)."""
         token = TokenAcces.objects.create(
             abonne_id=str(uuid.uuid4()),
@@ -265,7 +271,7 @@ class TestRevoquerTokenRPC(TestCase):
         token.refresh_from_db()
         self.assertFalse(token.is_active)
 
-    def test_revoquer_token_introuvable_leve_erreur(self):
+    def test_revoquer_token_introuvable_leve_erreur(self) -> None:
         """RevoquerToken lève ObjectDoesNotExist si le token est introuvable."""
         from django.core.exceptions import ObjectDoesNotExist
 
@@ -280,7 +286,7 @@ class TestRevoquerTokenRPC(TestCase):
 class TestRevoquerTousTokensRPC(TestCase):
     """Tests du RPC RevoquerTousTokens (révocation de masse)."""
 
-    def test_revoque_les_actifs_et_retourne_le_compte(self):
+    def test_revoque_les_actifs_et_retourne_le_compte(self) -> None:
         for _ in range(2):
             TokenAcces.objects.create(
                 abonne_id=str(uuid.uuid4()),
@@ -307,7 +313,7 @@ class TestGetWhatsAppQrRPC(TestCase):
     """Tests du RPC GetWhatsAppQr (numéro appairé inclus)."""
 
     @patch("notifications.services.whatsapp_client")
-    def test_connecte_expose_le_numero(self, mock_wa):
+    def test_connecte_expose_le_numero(self, mock_wa: MagicMock) -> None:
         mock_wa.get_qr.return_value = (True, "", "237675799743", "connecte", 0)
 
         servicer = NotificationServiceServicer()
@@ -318,7 +324,7 @@ class TestGetWhatsAppQrRPC(TestCase):
         self.assertEqual(response.phase, "connecte")
 
     @patch("notifications.services.whatsapp_client")
-    def test_la_phase_survit_au_passage_en_protobuf(self, mock_wa):
+    def test_la_phase_survit_au_passage_en_protobuf(self, mock_wa: MagicMock) -> None:
         """C'est la frontière où l'information se perdait.
 
         Le message ne portait que ready/qr/number : tout ce qui expliquait
@@ -338,7 +344,7 @@ class TestTesterEnvoiRPC(TestCase):
     """Tests du RPC TesterEnvoi."""
 
     @patch("notifications.services.whatsapp_client")
-    def test_tester_envoi_succes(self, mock_wa):
+    def test_tester_envoi_succes(self, mock_wa: MagicMock) -> None:
         mock_wa.send.return_value = None
 
         servicer = NotificationServiceServicer()
@@ -348,7 +354,7 @@ class TestTesterEnvoiRPC(TestCase):
         mock_wa.send.assert_called_once()
 
     @patch("notifications.services.whatsapp_client")
-    def test_tester_envoi_echec_retourne_le_motif_reel(self, mock_wa):
+    def test_tester_envoi_echec_retourne_le_motif_reel(self, mock_wa: MagicMock) -> None:
         """En cas d'échec, le motif exact est renvoyé (pas d'abort ni de message générique)."""
         mock_wa.send.side_effect = WhatsAppDeliveryError(
             "WhatsApp n'est pas connecté. Un administrateur doit lier le compte "
@@ -365,7 +371,7 @@ class TestTesterEnvoiRPC(TestCase):
         self.assertNotIn("/qr", response.message)
         context.abort.assert_not_called()
 
-    def test_tester_envoi_numero_vide_leve_value_error(self):
+    def test_tester_envoi_numero_vide_leve_value_error(self) -> None:
         servicer = NotificationServiceServicer()
         with self.assertRaises(ValueError):
             servicer.TesterEnvoi(pb.TesterEnvoiRequest(phone_number=""), MagicMock())
@@ -374,7 +380,7 @@ class TestTesterEnvoiRPC(TestCase):
 class TestGetEnvoiRPC(TestCase):
     """Tests du RPC GetEnvoi."""
 
-    def test_get_envoi_introuvable_leve_erreur(self):
+    def test_get_envoi_introuvable_leve_erreur(self) -> None:
         """GetEnvoi lève ObjectDoesNotExist si l'envoi est introuvable."""
         from django.core.exceptions import ObjectDoesNotExist
 
@@ -385,7 +391,7 @@ class TestGetEnvoiRPC(TestCase):
         with self.assertRaises(ObjectDoesNotExist):
             servicer.GetEnvoi(request, context)
 
-    def test_get_envoi_existant(self):
+    def test_get_envoi_existant(self) -> None:
         """GetEnvoi retourne l'EnvoiResponse correspondant."""
         envoi = Envoi.objects.create(
             facture_id=str(uuid.uuid4()),
@@ -410,7 +416,7 @@ class TestCreerDiffusionRPC(TestCase):
     """Tests du RPC CreerDiffusion."""
 
     @patch("notifications.services.abonne_client")
-    def test_cree_la_diffusion_et_ses_lignes(self, mock_abonne):
+    def test_cree_la_diffusion_et_ses_lignes(self, mock_abonne: MagicMock) -> None:
         mock_abonne.get_abonne.return_value = _make_abonne_mock()
 
         servicer = NotificationServiceServicer()
@@ -434,7 +440,7 @@ class TestCreerDiffusionRPC(TestCase):
 class TestGetDiffusionRPC(TestCase):
     """Tests du RPC GetDiffusion."""
 
-    def test_diffusion_introuvable_leve_erreur(self):
+    def test_diffusion_introuvable_leve_erreur(self) -> None:
         from django.core.exceptions import ObjectDoesNotExist
 
         servicer = NotificationServiceServicer()
@@ -444,7 +450,7 @@ class TestGetDiffusionRPC(TestCase):
         with self.assertRaises(ObjectDoesNotExist):
             servicer.GetDiffusion(request, context)
 
-    def test_diffusion_existante_agrege_les_compteurs(self):
+    def test_diffusion_existante_agrege_les_compteurs(self) -> None:
         diffusion = Diffusion.objects.create(message="Annonce")
         DiffusionEnvoi.objects.create(
             diffusion=diffusion, abonne_id="a1", telephone="+1", statut=StatutDiffusionEnvoi.ENVOYE
@@ -467,7 +473,7 @@ class TestGetDiffusionRPC(TestCase):
 class TestListDiffusionsRPC(TestCase):
     """Tests du RPC ListDiffusions."""
 
-    def test_liste_toutes_les_diffusions(self):
+    def test_liste_toutes_les_diffusions(self) -> None:
         Diffusion.objects.create(message="Première")
         Diffusion.objects.create(message="Seconde")
 

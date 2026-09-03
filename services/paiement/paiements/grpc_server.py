@@ -18,14 +18,18 @@ from paiements.event_publisher import publish_paiement_event, publish_reporting_
 from paiements.grpc_clients import FacturationServiceClient, NotificationServiceClient
 from paiements.grpc_interceptors import ErrorHandlingInterceptor
 from paiements.grpc_auth import AuthServerInterceptor, ouvrir_port_grpc
-from paiements.models import StatutSolde
+from paiements.models import Paiement, SoldeFacture, StatutSolde
 from paiements.serializers import avoir_to_proto, paiement_to_proto, solde_to_proto, suivi_to_proto
 from paiements.services import PaiementService
 
 logger = logging.getLogger(__name__)
 
 
-class PaiementServicer(pb_grpc.PaiementServiceServicer):
+class PaiementServicer(pb_grpc.PaiementServiceServicer):  # type: ignore[misc]
+    # ^ PaiementServiceServicer vient du stub généré paiement_service_pb2_grpc,
+    # exclu de la vérification mypy (voir mypy.ini) — mypy le voit donc comme
+    # `Any`, ce qui rend toute sous-classe de lui structurellement "misc" ;
+    # rien à corriger côté code métier ici.
     """Implémentation de tous les RPCs du PaiementService.
 
     Les exceptions (ValidationError, ObjectDoesNotExist, ValueError) ne sont pas
@@ -95,7 +99,7 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
 
         return solde_to_proto(solde)
 
-    def _propager_versement(self, imputations: list, montant_recu: float) -> None:
+    def _propager_versement(self, imputations: list[tuple[Paiement, SoldeFacture]], montant_recu: float) -> None:
         """Applique à TOUT un versement les conséquences de l'encaissement.
 
         ── Pourquoi cette méthode existe ────────────────────────────────────────

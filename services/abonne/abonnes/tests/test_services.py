@@ -1,3 +1,5 @@
+from typing import Any
+
 from django.db import IntegrityError
 from django.test import TestCase
 
@@ -5,8 +7,8 @@ from abonnes.models import Abonne, Compteur, StatutAbonne, StatutCompteur
 from abonnes.services import AbonneService, CompteurService, NumerotationService, ValidationError
 
 
-def _create_abonne(service: AbonneService, **overrides):
-    defaults = dict(
+def _create_abonne(service: AbonneService, **overrides: Any) -> Abonne:
+    defaults: dict[str, Any] = dict(
         nom="Doe",
         prenom="John",
         telephone_whatsapp="+24100000000",
@@ -22,10 +24,10 @@ def _create_abonne(service: AbonneService, **overrides):
 
 
 class NumerotationServiceTests(TestCase):
-    def test_first_numero_is_ab_0001(self):
+    def test_first_numero_is_ab_0001(self) -> None:
         self.assertEqual(NumerotationService().generer(), "AB-0001")
 
-    def test_increments_sequentially(self):
+    def test_increments_sequentially(self) -> None:
         service = AbonneService()
         _create_abonne(service)
         self.assertEqual(NumerotationService().generer(), "AB-0002")
@@ -34,32 +36,32 @@ class NumerotationServiceTests(TestCase):
 
 
 class AbonneServiceTests(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.service = AbonneService()
 
-    def test_create_abonne_creates_compteur(self):
+    def test_create_abonne_creates_compteur(self) -> None:
         abonne = _create_abonne(self.service)
         compteur = CompteurService().get_compteur_actif(str(abonne.id))
         self.assertEqual(compteur.statut, StatutCompteur.ACTIF)
         self.assertEqual(compteur.numero_compteur, 1)
 
-    def test_create_abonne_position_par_defaut_vide(self):
+    def test_create_abonne_position_par_defaut_vide(self) -> None:
         abonne = _create_abonne(self.service)
         compteur = CompteurService().get_compteur_actif(str(abonne.id))
         self.assertEqual(compteur.position, "")
 
-    def test_create_abonne_avec_position(self):
+    def test_create_abonne_avec_position(self) -> None:
         abonne = _create_abonne(self.service, position="3e maison à gauche")
         compteur = CompteurService().get_compteur_actif(str(abonne.id))
         self.assertEqual(compteur.position, "3e maison à gauche")
 
-    def test_create_abonne_assigns_sequential_numero(self):
+    def test_create_abonne_assigns_sequential_numero(self) -> None:
         a1 = _create_abonne(self.service)
         a2 = _create_abonne(self.service, numero_compteur=2)
         self.assertEqual(a1.numero_abonne, "AB-0001")
         self.assertEqual(a2.numero_abonne, "AB-0002")
 
-    def test_update_abonne_partial(self):
+    def test_update_abonne_partial(self) -> None:
         abonne = _create_abonne(self.service)
         updated = self.service.update_abonne(
             str(abonne.id), nom="", prenom="", telephone_whatsapp="+24199999999", adresse=""
@@ -67,30 +69,30 @@ class AbonneServiceTests(TestCase):
         self.assertEqual(updated.nom, "Doe")
         self.assertEqual(updated.telephone_whatsapp, "+24199999999")
 
-    def test_suspendre_then_reactiver(self):
+    def test_suspendre_then_reactiver(self) -> None:
         abonne = _create_abonne(self.service)
         suspendu = self.service.suspendre_abonne(str(abonne.id))
         self.assertEqual(suspendu.statut, StatutAbonne.SUSPENDU)
         reactive = self.service.reactiver_abonne(str(abonne.id))
         self.assertEqual(reactive.statut, StatutAbonne.ACTIF)
 
-    def test_suspendre_abonne_deja_suspendu_raises(self):
+    def test_suspendre_abonne_deja_suspendu_raises(self) -> None:
         abonne = _create_abonne(self.service)
         self.service.suspendre_abonne(str(abonne.id))
         with self.assertRaises(ValidationError):
             self.service.suspendre_abonne(str(abonne.id))
 
-    def test_reactiver_abonne_non_suspendu_raises(self):
+    def test_reactiver_abonne_non_suspendu_raises(self) -> None:
         abonne = _create_abonne(self.service)
         with self.assertRaises(ValidationError):
             self.service.reactiver_abonne(str(abonne.id))
 
-    def test_resilier_abonne(self):
+    def test_resilier_abonne(self) -> None:
         abonne = _create_abonne(self.service)
         resilie = self.service.resilier_abonne(str(abonne.id))
         self.assertEqual(resilie.statut, StatutAbonne.RESILIE)
 
-    def test_resilier_abonne_desactive_le_compteur_actif(self):
+    def test_resilier_abonne_desactive_le_compteur_actif(self) -> None:
         """Régression ANO-017 : le compteur actif doit passer à DESACTIVE
         lors de la résiliation de l'abonné (il n'est ni remplacé, ni
         toujours en service)."""
@@ -99,30 +101,30 @@ class AbonneServiceTests(TestCase):
         compteur = Compteur.objects.get(abonne_id=abonne.id)
         self.assertEqual(compteur.statut, StatutCompteur.DESACTIVE)
 
-    def test_resilier_abonne_deja_resilie_raises(self):
+    def test_resilier_abonne_deja_resilie_raises(self) -> None:
         abonne = _create_abonne(self.service)
         self.service.resilier_abonne(str(abonne.id))
         with self.assertRaises(ValidationError):
             self.service.resilier_abonne(str(abonne.id))
 
-    def test_suspendre_abonne_resilie_raises(self):
+    def test_suspendre_abonne_resilie_raises(self) -> None:
         abonne = _create_abonne(self.service)
         self.service.resilier_abonne(str(abonne.id))
         with self.assertRaises(ValidationError):
             self.service.suspendre_abonne(str(abonne.id))
 
-    def test_anonymiser_abonne_actif_raises(self):
+    def test_anonymiser_abonne_actif_raises(self) -> None:
         abonne = _create_abonne(self.service)
         with self.assertRaises(ValidationError):
             self.service.anonymiser_abonne(str(abonne.id))
 
-    def test_anonymiser_abonne_suspendu_raises(self):
+    def test_anonymiser_abonne_suspendu_raises(self) -> None:
         abonne = _create_abonne(self.service)
         self.service.suspendre_abonne(str(abonne.id))
         with self.assertRaises(ValidationError):
             self.service.anonymiser_abonne(str(abonne.id))
 
-    def test_anonymiser_abonne_resilie_remplace_les_champs_nominatifs(self):
+    def test_anonymiser_abonne_resilie_remplace_les_champs_nominatifs(self) -> None:
         abonne = _create_abonne(self.service)
         self.service.resilier_abonne(str(abonne.id))
         anonymise = self.service.anonymiser_abonne(str(abonne.id))
@@ -131,7 +133,7 @@ class AbonneServiceTests(TestCase):
         self.assertEqual(anonymise.telephone_whatsapp, AbonneService.TELEPHONE_ANONYMISE)
         self.assertEqual(anonymise.adresse, AbonneService.ADRESSE_ANONYMISEE)
 
-    def test_anonymiser_abonne_preserve_id_et_numero_et_statut(self):
+    def test_anonymiser_abonne_preserve_id_et_numero_et_statut(self) -> None:
         abonne = _create_abonne(self.service)
         self.service.resilier_abonne(str(abonne.id))
         anonymise = self.service.anonymiser_abonne(str(abonne.id))
@@ -139,7 +141,7 @@ class AbonneServiceTests(TestCase):
         self.assertEqual(anonymise.numero_abonne, abonne.numero_abonne)
         self.assertEqual(anonymise.statut, StatutAbonne.RESILIE)
 
-    def test_anonymiser_abonne_est_idempotent(self):
+    def test_anonymiser_abonne_est_idempotent(self) -> None:
         abonne = _create_abonne(self.service)
         self.service.resilier_abonne(str(abonne.id))
         premier = self.service.anonymiser_abonne(str(abonne.id))
@@ -150,20 +152,20 @@ class AbonneServiceTests(TestCase):
         self.assertEqual(second.adresse, premier.adresse)
         self.assertEqual(second.statut, StatutAbonne.RESILIE)
 
-    def test_create_abonne_with_invalid_telephone_raises(self):
+    def test_create_abonne_with_invalid_telephone_raises(self) -> None:
         with self.assertRaises(ValidationError):
             _create_abonne(self.service, telephone_whatsapp="pas-un-numero")
 
-    def test_create_abonne_with_empty_telephone_raises(self):
+    def test_create_abonne_with_empty_telephone_raises(self) -> None:
         with self.assertRaises(ValidationError):
             _create_abonne(self.service, telephone_whatsapp="")
 
-    def test_update_abonne_with_invalid_telephone_raises(self):
+    def test_update_abonne_with_invalid_telephone_raises(self) -> None:
         abonne = _create_abonne(self.service)
         with self.assertRaises(ValidationError):
             self.service.update_abonne(str(abonne.id), nom="", prenom="", telephone_whatsapp="123", adresse="")
 
-    def test_create_abonne_is_atomic_on_compteur_failure(self):
+    def test_create_abonne_is_atomic_on_compteur_failure(self) -> None:
         # numero_compteur=1 existe déjà : la création du Compteur échoue
         # (contrainte unique) et ne doit pas laisser un Abonne orphelin.
         _create_abonne(self.service)
@@ -171,7 +173,7 @@ class AbonneServiceTests(TestCase):
             _create_abonne(self.service, numero_compteur=1)
         self.assertEqual(Abonne.objects.count(), 1)
 
-    def test_list_abonnes_actifs_excludes_suspendus(self):
+    def test_list_abonnes_actifs_excludes_suspendus(self) -> None:
         a1 = _create_abonne(self.service)
         a2 = _create_abonne(self.service, numero_compteur=2)
         self.service.suspendre_abonne(str(a2.id))
@@ -179,31 +181,31 @@ class AbonneServiceTests(TestCase):
         self.assertIn(a1.id, actifs)
         self.assertNotIn(a2.id, actifs)
 
-    def test_list_abonnes_filters_by_statut(self):
+    def test_list_abonnes_filters_by_statut(self) -> None:
         a1 = _create_abonne(self.service)
         self.service.suspendre_abonne(str(a1.id))
         suspendus = self.service.list_abonnes(StatutAbonne.SUSPENDU)
         self.assertEqual([a.id for a in suspendus], [a1.id])
 
-    def test_list_abonnes_sans_pagination_renvoie_tout(self):
+    def test_list_abonnes_sans_pagination_renvoie_tout(self) -> None:
         # Rétrocompatibilité stricte : `limit`/`offset` omis (valeur par
         # défaut `None`) doit préserver le comportement historique.
         for i in range(1, 4):
             _create_abonne(self.service, numero_compteur=i)
         self.assertEqual(len(self.service.list_abonnes()), 3)
 
-    def test_list_abonnes_avec_pagination_tronque_et_decale(self):
+    def test_list_abonnes_avec_pagination_tronque_et_decale(self) -> None:
         for i in range(1, 6):
             _create_abonne(self.service, numero_compteur=i)
         page = self.service.list_abonnes(limit=2, offset=1)
         self.assertEqual([a.numero_abonne for a in page], ["AB-0002", "AB-0003"])
 
-    def test_list_abonnes_pagination_hors_limites_renvoie_liste_vide(self):
+    def test_list_abonnes_pagination_hors_limites_renvoie_liste_vide(self) -> None:
         _create_abonne(self.service)
         page = self.service.list_abonnes(limit=10, offset=100)
         self.assertEqual(page, [])
 
-    def test_list_abonnes_pagination_se_combine_au_filtre_statut(self):
+    def test_list_abonnes_pagination_se_combine_au_filtre_statut(self) -> None:
         # La pagination doit s'appliquer sur le résultat FILTRÉ par statut,
         # pas sur la table brute.
         a1 = _create_abonne(self.service, numero_compteur=1)
@@ -213,7 +215,7 @@ class AbonneServiceTests(TestCase):
         self.assertEqual([a.id for a in page], [a1.id])
         self.assertEqual(self.service.count_abonnes(StatutAbonne.SUSPENDU), 1)
 
-    def test_count_abonnes_ignore_la_pagination(self):
+    def test_count_abonnes_ignore_la_pagination(self) -> None:
         for i in range(1, 4):
             _create_abonne(self.service, numero_compteur=i)
         self.assertEqual(self.service.count_abonnes(), 3)
@@ -223,11 +225,11 @@ class AbonneServiceTests(TestCase):
 
 
 class CompteurServiceTests(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.abonne_service = AbonneService()
         self.compteur_service = CompteurService()
 
-    def test_remplacer_compteur_archives_old_and_creates_new(self):
+    def test_remplacer_compteur_archives_old_and_creates_new(self) -> None:
         abonne = _create_abonne(self.abonne_service, index_initial=0)
         ancien = self.compteur_service.get_compteur_actif(str(abonne.id))
 
@@ -247,7 +249,7 @@ class CompteurServiceTests(TestCase):
         self.assertEqual(nouveau.numero_compteur, 2)
         self.assertEqual(self.compteur_service.get_compteur_actif(str(abonne.id)).id, nouveau.id)
 
-    def test_remplacer_compteur_enregistre_le_motif(self):
+    def test_remplacer_compteur_enregistre_le_motif(self) -> None:
         abonne = _create_abonne(self.abonne_service, index_initial=0, numero_compteur=1)
         self.compteur_service.remplacer_compteur(
             abonne_id=str(abonne.id),
@@ -262,7 +264,7 @@ class CompteurServiceTests(TestCase):
         historique = self.compteur_service.get_historique(str(abonne.id))
         self.assertEqual(historique[0].motif, "Compteur défectueux")
 
-    def test_remplacer_compteur_transporte_la_nouvelle_position(self):
+    def test_remplacer_compteur_transporte_la_nouvelle_position(self) -> None:
         abonne = _create_abonne(self.abonne_service, index_initial=0, numero_compteur=1, position="Ancienne")
         nouveau = self.compteur_service.remplacer_compteur(
             abonne_id=str(abonne.id),
@@ -276,7 +278,7 @@ class CompteurServiceTests(TestCase):
         )
         self.assertEqual(nouveau.position, "Près du portail bleu")
 
-    def test_remplacer_compteur_position_optionnelle_defaut_vide(self):
+    def test_remplacer_compteur_position_optionnelle_defaut_vide(self) -> None:
         abonne = _create_abonne(self.abonne_service, index_initial=0, numero_compteur=1)
         nouveau = self.compteur_service.remplacer_compteur(
             abonne_id=str(abonne.id),
@@ -289,7 +291,7 @@ class CompteurServiceTests(TestCase):
         )
         self.assertEqual(nouveau.position, "")
 
-    def test_remplacer_compteur_motif_optionnel_defaut_vide(self):
+    def test_remplacer_compteur_motif_optionnel_defaut_vide(self) -> None:
         abonne = _create_abonne(self.abonne_service, index_initial=0, numero_compteur=1)
         self.compteur_service.remplacer_compteur(
             abonne_id=str(abonne.id),
@@ -303,7 +305,7 @@ class CompteurServiceTests(TestCase):
         historique = self.compteur_service.get_historique(str(abonne.id))
         self.assertEqual(historique[0].motif, "")
 
-    def test_remplacer_compteur_with_index_fermeture_below_initial_raises(self):
+    def test_remplacer_compteur_with_index_fermeture_below_initial_raises(self) -> None:
         abonne = _create_abonne(self.abonne_service, index_initial=50)
 
         with self.assertRaises(ValidationError):
@@ -317,7 +319,7 @@ class CompteurServiceTests(TestCase):
                 date_remplacement="2024-06-01",
             )
 
-    def test_update_compteur_modifie_les_champs_fournis(self):
+    def test_update_compteur_modifie_les_champs_fournis(self) -> None:
         abonne = _create_abonne(self.abonne_service, quartier="Ancien", camp=1)
         self.compteur_service.update_compteur(
             abonne_id=str(abonne.id), quartier="Nouveau", camp=2, index_initial=None, date_pose=None
@@ -326,7 +328,7 @@ class CompteurServiceTests(TestCase):
         self.assertEqual(compteur.quartier, "Nouveau")
         self.assertEqual(compteur.camp, 2)
 
-    def test_update_compteur_ne_modifie_pas_les_champs_non_fournis(self):
+    def test_update_compteur_ne_modifie_pas_les_champs_non_fournis(self) -> None:
         abonne = _create_abonne(self.abonne_service, quartier="Bastos", index_initial=50)
         self.compteur_service.update_compteur(
             abonne_id=str(abonne.id), quartier="Nlongkak", camp=None, index_initial=None, date_pose=None
@@ -335,7 +337,7 @@ class CompteurServiceTests(TestCase):
         self.assertEqual(compteur.quartier, "Nlongkak")
         self.assertEqual(float(compteur.index_initial), 50.0)
 
-    def test_update_compteur_position(self):
+    def test_update_compteur_position(self) -> None:
         abonne = _create_abonne(self.abonne_service, position="Ancienne position")
         self.compteur_service.update_compteur(
             abonne_id=str(abonne.id),
@@ -348,7 +350,7 @@ class CompteurServiceTests(TestCase):
         compteur = self.compteur_service.get_compteur_actif(str(abonne.id))
         self.assertEqual(compteur.position, "Près du transformateur")
 
-    def test_update_compteur_position_non_fournie_ne_change_rien(self):
+    def test_update_compteur_position_non_fournie_ne_change_rien(self) -> None:
         abonne = _create_abonne(self.abonne_service, position="Position initiale")
         self.compteur_service.update_compteur(
             abonne_id=str(abonne.id),
@@ -360,7 +362,7 @@ class CompteurServiceTests(TestCase):
         compteur = self.compteur_service.get_compteur_actif(str(abonne.id))
         self.assertEqual(compteur.position, "Position initiale")
 
-    def test_remplacer_compteur_is_atomic_on_numero_collision(self):
+    def test_remplacer_compteur_is_atomic_on_numero_collision(self) -> None:
         # nouveau_numero_compteur=1 collisionne avec le compteur actif
         # lui-même : la création échoue et l'ancien compteur ne doit pas
         # rester archivé sans qu'un nouveau compteur ACTIF existe.
@@ -382,7 +384,7 @@ class CompteurServiceTests(TestCase):
         self.assertEqual(ancien.statut, StatutCompteur.ACTIF)
         self.assertEqual(self.compteur_service.get_compteur_actif(str(abonne.id)).id, ancien.id)
 
-    def test_get_historique_returns_entry_after_remplacement(self):
+    def test_get_historique_returns_entry_after_remplacement(self) -> None:
         abonne = _create_abonne(self.abonne_service, index_initial=0, numero_compteur=1)
         self.compteur_service.remplacer_compteur(
             abonne_id=str(abonne.id),
@@ -398,7 +400,7 @@ class CompteurServiceTests(TestCase):
         self.assertEqual(float(historique[0].index_fermeture), 100.0)
         self.assertEqual(historique[0].nouveau_compteur.numero_compteur, 2)
 
-    def test_get_historique_empty_for_new_abonne(self):
+    def test_get_historique_empty_for_new_abonne(self) -> None:
         abonne = _create_abonne(self.abonne_service)
         historique = self.compteur_service.get_historique(str(abonne.id))
         self.assertEqual(historique, [])

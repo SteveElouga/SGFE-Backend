@@ -24,6 +24,6 @@ def publish_diffusion_event(diffusion_id: str) -> None:
 
         r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=1)
         r.publish(CHANNEL, json.dumps({"diffusion_id": diffusion_id}))
-        r.close()
+        r.close()  # type: ignore[no-untyped-call]  # redis-py : Redis.close() n'est pas annoté
     except Exception as exc:
         logger.warning("publish_diffusion_event ignoré (Redis indisponible) : %s", exc)

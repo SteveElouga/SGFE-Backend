@@ -1,6 +1,6 @@
 """Tests du scheduler de réconciliation nocturne (stats/schedulers.py)."""
 
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from apscheduler.triggers.cron import CronTrigger
 from django.test import TestCase
@@ -13,7 +13,7 @@ class ReconciliationJobTests(TestCase):
     s'exécute directement (même bypass que campagne_planifiee_job)."""
 
     @patch.object(ReconciliateurStats, "reconcilier_toutes_campagnes", return_value=(3, 1))
-    def test_reconciliation_job_appelle_le_reconciliateur(self, mock_reconcilier) -> None:
+    def test_reconciliation_job_appelle_le_reconciliateur(self, mock_reconcilier: Mock) -> None:
         from stats.schedulers import reconciliation_job
 
         reconciliation_job()  # ne doit lever aucune exception
@@ -21,7 +21,7 @@ class ReconciliationJobTests(TestCase):
         mock_reconcilier.assert_called_once()
 
     @patch.object(ReconciliateurStats, "reconcilier_toutes_campagnes", side_effect=RuntimeError("boom"))
-    def test_reconciliation_job_ne_propage_pas_les_erreurs(self, mock_reconcilier) -> None:
+    def test_reconciliation_job_ne_propage_pas_les_erreurs(self, mock_reconcilier: Mock) -> None:
         """Un job de fond ne doit jamais planter le process gRPC qui l'héberge."""
         from stats.schedulers import reconciliation_job
 
@@ -42,6 +42,7 @@ class StartSchedulerTests(TestCase):
 
         from stats import schedulers
 
+        assert schedulers._scheduler is not None
         job = schedulers._scheduler.get_job("reporting_reconciliation")
         self.assertIsNotNone(job)
         self.assertIsInstance(job.trigger, CronTrigger)
@@ -54,4 +55,5 @@ class StartSchedulerTests(TestCase):
 
         from stats import schedulers
 
+        assert schedulers._scheduler is not None
         self.assertTrue(schedulers._scheduler.running)

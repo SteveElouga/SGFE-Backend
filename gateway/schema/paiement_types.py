@@ -1,5 +1,7 @@
 """Types Strawberry pour le Paiement Service."""
 
+from typing import Any
+
 import strawberry
 
 
@@ -54,7 +56,7 @@ class SuiviImpaye:
     resolu_le: str
 
 
-def solde_from_grpc(r) -> SoldeFacture:
+def solde_from_grpc(r: Any) -> SoldeFacture:
     return SoldeFacture(
         facture_id=r.facture_id,
         montant_total=r.montant_total,
@@ -67,7 +69,7 @@ def solde_from_grpc(r) -> SoldeFacture:
     )
 
 
-def paiement_from_grpc(r, operateur: str = "") -> Paiement:
+def paiement_from_grpc(r: Any, operateur: str = "") -> Paiement:
     return Paiement(
         paiement_id=r.paiement_id,
         facture_id=r.facture_id,
@@ -84,7 +86,7 @@ def paiement_from_grpc(r, operateur: str = "") -> Paiement:
     )
 
 
-def paiement_from_event(data: dict, operateur: str = "") -> Paiement:
+def paiement_from_event(data: dict[str, Any], operateur: str = "") -> Paiement:
     """Construit un Paiement depuis l'événement Redis auto-porteur (paiementCree).
 
     Le service paiement n'expose pas de GetPaiement : l'événement transporte
@@ -103,7 +105,7 @@ def paiement_from_event(data: dict, operateur: str = "") -> Paiement:
     )
 
 
-def suivi_from_grpc(r) -> SuiviImpaye:
+def suivi_from_grpc(r: Any) -> SuiviImpaye:
     return SuiviImpaye(
         suivi_id=r.suivi_id,
         facture_id=r.facture_id,
@@ -132,7 +134,7 @@ class Avoir:
     mouvements: list[MouvementAvoir]
 
 
-def avoir_from_grpc(r) -> Avoir:
+def avoir_from_grpc(r: Any) -> Avoir:
     return Avoir(
         abonne_id=r.abonne_id,
         montant=r.montant,

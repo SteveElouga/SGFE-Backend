@@ -1,14 +1,17 @@
+from datetime import date
+
+from abonnes.dtos import AbonneResponseDict, CompteurResponseDict, HistoriqueResponseDict
 from abonnes.models import Abonne, Compteur, HistoriqueCompteur
 
 
-def _date_to_str(value) -> str:
+def _date_to_str(value: "date | str") -> str:
     # `date_pose` reste une str tant que l'instance n'a pas été relue depuis
     # la BD (Django ne convertit pas les champs à l'assignation, seulement à
     # la lecture) — gère les deux cas plutôt que de supposer un objet `date`.
-    return value.isoformat() if hasattr(value, "isoformat") else value
+    return value.isoformat() if isinstance(value, date) else value
 
 
-def compteur_to_response(compteur: Compteur) -> dict:
+def compteur_to_response(compteur: Compteur) -> CompteurResponseDict:
     return {
         "compteur_id": str(compteur.id),
         "numero_compteur": compteur.numero_compteur,
@@ -21,7 +24,7 @@ def compteur_to_response(compteur: Compteur) -> dict:
     }
 
 
-def historique_to_response(h: HistoriqueCompteur) -> dict:
+def historique_to_response(h: HistoriqueCompteur) -> HistoriqueResponseDict:
     return {
         "historique_id": str(h.id),
         "ancien_compteur": compteur_to_response(h.ancien_compteur),
@@ -33,7 +36,7 @@ def historique_to_response(h: HistoriqueCompteur) -> dict:
     }
 
 
-def abonne_to_response(abonne: Abonne, compteur: Compteur | None = None) -> dict:
+def abonne_to_response(abonne: Abonne, compteur: Compteur | None = None) -> AbonneResponseDict:
     return {
         "abonne_id": str(abonne.id),
         "numero_abonne": abonne.numero_abonne,

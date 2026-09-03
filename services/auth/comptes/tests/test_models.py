@@ -4,7 +4,7 @@ from comptes.models import Role, User
 
 
 class UserModelTests(TestCase):
-    def test_create_user_hashes_password(self):
+    def test_create_user_hashes_password(self) -> None:
         user = User.objects.create_user(
             username="agent1", email="agent1@example.com", password="secret123", role=Role.AGENT
         )
@@ -13,17 +13,17 @@ class UserModelTests(TestCase):
         self.assertEqual(user.role, Role.AGENT)
         self.assertTrue(user.is_active)
 
-    def test_create_user_without_username_raises(self):
+    def test_create_user_without_username_raises(self) -> None:
         with self.assertRaises(ValueError):
             User.objects.create_user(username="", email="x@example.com", password="secret123", role=Role.AGENT)
 
-    def test_create_superuser_defaults_to_admin(self):
+    def test_create_superuser_defaults_to_admin(self) -> None:
         admin = User.objects.create_superuser(username="admin1", email="admin1@example.com", password="secret123")
         self.assertEqual(admin.role, Role.ADMIN)
         self.assertTrue(admin.is_staff)
         self.assertTrue(admin.is_superuser)
 
-    def test_str_returns_username(self):
+    def test_str_returns_username(self) -> None:
         user = User.objects.create_user(
             username="comptable2", email="comptable2@example.com", password="secret123", role=Role.COMPTABLE
         )

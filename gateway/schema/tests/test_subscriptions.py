@@ -1,3 +1,5 @@
+from collections.abc import AsyncGenerator
+from typing import Any
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -11,7 +13,7 @@ class SubscriptionAbonneUpdatedTests(IsolatedAsyncioTestCase):
     exige déjà ADMIN, la subscription doit se comporter pareil."""
 
     @patch("schema.subscriptions.require_role")
-    async def test_abonne_updated_sans_auth_leve_autherror(self, mock_require_role):
+    async def test_abonne_updated_sans_auth_leve_autherror(self, mock_require_role: MagicMock) -> None:
         mock_require_role.side_effect = AuthError("Authentification requise", code="UNAUTHENTICATED")
 
         info = MagicMock()
@@ -23,7 +25,7 @@ class SubscriptionAbonneUpdatedTests(IsolatedAsyncioTestCase):
         mock_require_role.assert_called_once_with(info, "ADMIN")
 
     @patch("schema.subscriptions.require_role")
-    async def test_abonne_updated_role_insuffisant_leve_autherror(self, mock_require_role):
+    async def test_abonne_updated_role_insuffisant_leve_autherror(self, mock_require_role: MagicMock) -> None:
         mock_require_role.side_effect = AuthError("Accès non autorisé", code="PERMISSION_DENIED")
 
         info = MagicMock()
@@ -36,13 +38,13 @@ class SubscriptionAbonneUpdatedTests(IsolatedAsyncioTestCase):
     @patch("schema.subscriptions.abonne_client")
     @patch("schema.subscriptions.require_role")
     async def test_abonne_updated_admin_recoit_les_mises_a_jour(
-        self, mock_require_role, mock_abonne_client, mock_redis_cls
-    ):
+        self, mock_require_role: MagicMock, mock_abonne_client: MagicMock, mock_redis_cls: MagicMock
+    ) -> None:
         """Une fois authentifié ADMIN, le flux Redis -> gRPC -> yield doit
         continuer à fonctionner normalement (pas de régression fonctionnelle)."""
         mock_require_role.return_value = MagicMock(role="ADMIN")
 
-        async def _listen():
+        async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": '{"abonne_id": "abonne-1"}'}
 
         mock_pubsub = MagicMock()
@@ -79,7 +81,7 @@ class SubscriptionWhatsappStatusTests(IsolatedAsyncioTestCase):
     réservé ADMIN comme la query whatsappQr équivalente."""
 
     @patch("schema.subscriptions.require_role")
-    async def test_whatsapp_status_role_insuffisant_leve_autherror(self, mock_require_role):
+    async def test_whatsapp_status_role_insuffisant_leve_autherror(self, mock_require_role: MagicMock) -> None:
         mock_require_role.side_effect = AuthError("Accès non autorisé", code="PERMISSION_DENIED")
 
         info = MagicMock()
@@ -94,8 +96,8 @@ class SubscriptionWhatsappStatusTests(IsolatedAsyncioTestCase):
     @patch("schema.subscriptions.notification_client")
     @patch("schema.subscriptions.require_role")
     async def test_whatsapp_status_admin_snapshot_puis_evenements(
-        self, mock_require_role, mock_notification_client, mock_redis_cls
-    ):
+        self, mock_require_role: MagicMock, mock_notification_client: MagicMock, mock_redis_cls: MagicMock
+    ) -> None:
         """ADMIN reçoit d'abord un snapshot initial de l'état courant, puis
         chaque changement publié sur Redis (nouveau QR, connexion…)."""
         mock_require_role.return_value = MagicMock(role="ADMIN")
@@ -108,7 +110,7 @@ class SubscriptionWhatsappStatusTests(IsolatedAsyncioTestCase):
         mock_notification_client.get_whatsapp_qr.return_value = snapshot
 
         # Événement poussé ensuite par whatsapp-service : connexion établie.
-        async def _listen():
+        async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": '{"ready": true, "qr": "", "number": "237690000000"}'}
 
         mock_pubsub = MagicMock()
@@ -136,7 +138,7 @@ class SubscriptionWhatsappStatusTests(IsolatedAsyncioTestCase):
         mock_pubsub.subscribe.assert_awaited_once_with("whatsapp:events")
 
 
-def _mock_redis(listen_gen, mock_redis_cls):
+def _mock_redis(listen_gen: Any, mock_redis_cls: MagicMock) -> MagicMock:
     """Câble un pubsub Redis mocké dont listen() renvoie l'async-gen fourni."""
     pubsub = MagicMock()
     pubsub.subscribe = AsyncMock()
@@ -153,7 +155,7 @@ class SubscriptionFactureUpdatedTests(IsolatedAsyncioTestCase):
     """factureUpdated : réservé ADMIN/COMPTABLE, pousse la facture re-fetchée."""
 
     @patch("schema.subscriptions.require_role")
-    async def test_factureupdated_role_insuffisant_leve_autherror(self, mock_require_role):
+    async def test_factureupdated_role_insuffisant_leve_autherror(self, mock_require_role: MagicMock) -> None:
         mock_require_role.side_effect = AuthError("Accès non autorisé", code="PERMISSION_DENIED")
 
         info = MagicMock()
@@ -166,11 +168,11 @@ class SubscriptionFactureUpdatedTests(IsolatedAsyncioTestCase):
     @patch("schema.subscriptions.facturation_client")
     @patch("schema.subscriptions.require_role")
     async def test_factureupdated_admin_pousse_la_facture(
-        self, mock_require_role, mock_facturation_client, mock_redis_cls
-    ):
+        self, mock_require_role: MagicMock, mock_facturation_client: MagicMock, mock_redis_cls: MagicMock
+    ) -> None:
         mock_require_role.return_value = MagicMock()
 
-        async def _listen():
+        async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": '{"facture_id": "fac-1", "campagne_id": "camp-1"}'}
 
         _mock_redis(_listen, mock_redis_cls)
@@ -203,12 +205,12 @@ class SubscriptionFactureUpdatedTests(IsolatedAsyncioTestCase):
     @patch("schema.subscriptions.facturation_client")
     @patch("schema.subscriptions.require_role")
     async def test_factureupdated_filtre_campagne_ecarte_les_autres(
-        self, mock_require_role, mock_facturation_client, mock_redis_cls
-    ):
+        self, mock_require_role: MagicMock, mock_facturation_client: MagicMock, mock_redis_cls: MagicMock
+    ) -> None:
         """Un événement d'une autre campagne ne doit rien pousser (ni re-fetch)."""
         mock_require_role.return_value = MagicMock()
 
-        async def _listen():
+        async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": '{"facture_id": "fac-1", "campagne_id": "AUTRE"}'}
 
         _mock_redis(_listen, mock_redis_cls)
@@ -223,7 +225,7 @@ class SubscriptionPaiementCreeTests(IsolatedAsyncioTestCase):
     """paiementCree : réservé ADMIN/COMPTABLE, événement Redis auto-porteur."""
 
     @patch("schema.subscriptions.require_role")
-    async def test_paiementcree_role_insuffisant_leve_autherror(self, mock_require_role):
+    async def test_paiementcree_role_insuffisant_leve_autherror(self, mock_require_role: MagicMock) -> None:
         mock_require_role.side_effect = AuthError("Accès non autorisé", code="PERMISSION_DENIED")
 
         info = MagicMock()
@@ -235,7 +237,9 @@ class SubscriptionPaiementCreeTests(IsolatedAsyncioTestCase):
     @patch("redis.asyncio.Redis")
     @patch("schema.subscriptions.auth_client")
     @patch("schema.subscriptions.require_role")
-    async def test_paiementcree_admin_pousse_le_paiement(self, mock_require_role, mock_auth_client, mock_redis_cls):
+    async def test_paiementcree_admin_pousse_le_paiement(
+        self, mock_require_role: MagicMock, mock_auth_client: MagicMock, mock_redis_cls: MagicMock
+    ) -> None:
         """Sans filtre : le paiement est reconstruit depuis l'événement, avec le
         statut de facture et l'opérateur résolu (aucun re-fetch de facture)."""
         mock_require_role.return_value = MagicMock()
@@ -248,7 +252,7 @@ class SubscriptionPaiementCreeTests(IsolatedAsyncioTestCase):
             ' "enregistre_par": "user-1", "statut_facture": "PARTIELLE"}'
         )
 
-        async def _listen():
+        async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": data}
 
         pubsub = _mock_redis(_listen, mock_redis_cls)
@@ -280,7 +284,7 @@ class SubscriptionUtilisateurUpdatedTests(IsolatedAsyncioTestCase):
     que son propre compte (cas « profil » sécurité)."""
 
     @patch("schema.subscriptions.require_auth")
-    async def test_non_admin_sans_filtre_soi_leve_autherror(self, mock_require_auth):
+    async def test_non_admin_sans_filtre_soi_leve_autherror(self, mock_require_auth: MagicMock) -> None:
         """Un non-ADMIN sans filtre (ou filtrant un autre id) est refusé."""
         mock_require_auth.return_value = MagicMock(role="COMPTABLE", user_id="u-1")
 
@@ -292,14 +296,14 @@ class SubscriptionUtilisateurUpdatedTests(IsolatedAsyncioTestCase):
     @patch("schema.subscriptions.auth_client")
     @patch("schema.subscriptions.require_auth")
     async def test_non_admin_sur_son_propre_id_recoit_son_compte(
-        self, mock_require_auth, mock_auth_client, mock_redis_cls
-    ):
+        self, mock_require_auth: MagicMock, mock_auth_client: MagicMock, mock_redis_cls: MagicMock
+    ) -> None:
         """Cas profil : un COMPTABLE peut suivre son propre id (déconnexion forcée
         si un admin le désactive / change son rôle)."""
         mock_require_auth.return_value = MagicMock(role="COMPTABLE", user_id="u-1")
         mock_auth_client.get_user.return_value = _mock_user("u-1")
 
-        async def _listen():
+        async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": '{"event_type": "USER_UPDATED", "user_id": "u-1"}'}
 
         _mock_redis(_listen, mock_redis_cls)
@@ -312,11 +316,13 @@ class SubscriptionUtilisateurUpdatedTests(IsolatedAsyncioTestCase):
     @patch("redis.asyncio.Redis")
     @patch("schema.subscriptions.auth_client")
     @patch("schema.subscriptions.require_auth")
-    async def test_admin_flux_global_recoit_les_autres(self, mock_require_auth, mock_auth_client, mock_redis_cls):
+    async def test_admin_flux_global_recoit_les_autres(
+        self, mock_require_auth: MagicMock, mock_auth_client: MagicMock, mock_redis_cls: MagicMock
+    ) -> None:
         mock_require_auth.return_value = MagicMock(role="ADMIN", user_id="admin-1")
         mock_auth_client.get_user.return_value = _mock_user("u-2")
 
-        async def _listen():
+        async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": '{"event_type": "USER_CREATED", "user_id": "u-2"}'}
 
         _mock_redis(_listen, mock_redis_cls)
@@ -330,7 +336,7 @@ class SubscriptionConfigUpdatedTests(IsolatedAsyncioTestCase):
     """configUpdated : ADMIN, pousse le paramètre re-fetché."""
 
     @patch("schema.subscriptions.require_role")
-    async def test_role_insuffisant_leve_autherror(self, mock_require_role):
+    async def test_role_insuffisant_leve_autherror(self, mock_require_role: MagicMock) -> None:
         mock_require_role.side_effect = AuthError("Accès non autorisé", code="PERMISSION_DENIED")
         info = MagicMock()
         agen = Subscription().config_updated(info=info)
@@ -341,10 +347,12 @@ class SubscriptionConfigUpdatedTests(IsolatedAsyncioTestCase):
     @patch("redis.asyncio.Redis")
     @patch("schema.subscriptions.config_client")
     @patch("schema.subscriptions.require_role")
-    async def test_admin_pousse_le_parametre(self, mock_require_role, mock_config_client, mock_redis_cls):
+    async def test_admin_pousse_le_parametre(
+        self, mock_require_role: MagicMock, mock_config_client: MagicMock, mock_redis_cls: MagicMock
+    ) -> None:
         mock_require_role.return_value = MagicMock()
 
-        async def _listen():
+        async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": '{"cle": "delai_paiement_jours"}'}
 
         _mock_redis(_listen, mock_redis_cls)
@@ -366,7 +374,7 @@ class SubscriptionTarifUpdatedTests(IsolatedAsyncioTestCase):
     """tarifUpdated : ADMIN/COMPTABLE, re-fetch le tarif actif."""
 
     @patch("schema.subscriptions.require_role")
-    async def test_role_insuffisant_leve_autherror(self, mock_require_role):
+    async def test_role_insuffisant_leve_autherror(self, mock_require_role: MagicMock) -> None:
         mock_require_role.side_effect = AuthError("Accès non autorisé", code="PERMISSION_DENIED")
         info = MagicMock()
         agen = Subscription().tarif_updated(info=info)
@@ -377,10 +385,12 @@ class SubscriptionTarifUpdatedTests(IsolatedAsyncioTestCase):
     @patch("redis.asyncio.Redis")
     @patch("schema.subscriptions.facturation_client")
     @patch("schema.subscriptions.require_role")
-    async def test_pousse_le_tarif_actif(self, mock_require_role, mock_facturation_client, mock_redis_cls):
+    async def test_pousse_le_tarif_actif(
+        self, mock_require_role: MagicMock, mock_facturation_client: MagicMock, mock_redis_cls: MagicMock
+    ) -> None:
         mock_require_role.return_value = MagicMock()
 
-        async def _listen():
+        async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": '{"event_type": "TARIF_UPDATED"}'}
 
         _mock_redis(_listen, mock_redis_cls)
@@ -403,7 +413,7 @@ class SubscriptionProgressionUpdatedTests(IsolatedAsyncioTestCase):
     voit que ses campagnes, le flux global est réservé à l'ADMIN."""
 
     @patch("schema.subscriptions.require_role")
-    async def test_flux_global_non_admin_refuse(self, mock_require_role):
+    async def test_flux_global_non_admin_refuse(self, mock_require_role: MagicMock) -> None:
         mock_require_role.return_value = MagicMock(role="AGENT", user_id="a-1")
         agen = Subscription().progression_updated(info=MagicMock())
         with self.assertRaises(AuthError):
@@ -411,7 +421,9 @@ class SubscriptionProgressionUpdatedTests(IsolatedAsyncioTestCase):
 
     @patch("schema.subscriptions._verifier_acces_campagne")
     @patch("schema.subscriptions.require_role")
-    async def test_superviseur_autre_campagne_refuse(self, mock_require_role, mock_verifier):
+    async def test_superviseur_autre_campagne_refuse(
+        self, mock_require_role: MagicMock, mock_verifier: MagicMock
+    ) -> None:
         mock_require_role.return_value = MagicMock(role="SUPERVISEUR", user_id="s-1")
         mock_verifier.side_effect = PermissionError("cette campagne ne vous appartient pas")
         agen = Subscription().progression_updated(info=MagicMock(), campagne_id="c-2")
@@ -423,12 +435,16 @@ class SubscriptionProgressionUpdatedTests(IsolatedAsyncioTestCase):
     @patch("schema.subscriptions._verifier_acces_campagne")
     @patch("schema.subscriptions.require_role")
     async def test_superviseur_sur_sa_campagne_recoit_la_progression(
-        self, mock_require_role, mock_verifier, mock_campagne_client, mock_redis_cls
-    ):
+        self,
+        mock_require_role: MagicMock,
+        mock_verifier: MagicMock,
+        mock_campagne_client: MagicMock,
+        mock_redis_cls: MagicMock,
+    ) -> None:
         mock_require_role.return_value = MagicMock(role="SUPERVISEUR", user_id="s-1")
         mock_verifier.return_value = None  # accès autorisé
 
-        async def _listen():
+        async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": '{"campagne_id": "c-1"}'}
 
         _mock_redis(_listen, mock_redis_cls)
@@ -448,8 +464,8 @@ class SubscriptionProgressionUpdatedTests(IsolatedAsyncioTestCase):
         mock_verifier.assert_called_once()
 
 
-def _diffusion_response(**kwargs) -> MagicMock:
-    defaults = dict(
+def _diffusion_response(**kwargs: Any) -> MagicMock:
+    defaults: dict[str, Any] = dict(
         diffusion_id="diff-1",
         message="Annonce",
         statut="EN_COURS",
@@ -469,7 +485,7 @@ class SubscriptionDiffusionProgressionUpdatedTests(IsolatedAsyncioTestCase):
     survivre aux mises à jour poussées, pas seulement au chargement initial."""
 
     @patch("schema.subscriptions.require_role")
-    async def test_role_insuffisant_refuse(self, mock_require_role):
+    async def test_role_insuffisant_refuse(self, mock_require_role: MagicMock) -> None:
         mock_require_role.side_effect = AuthError("Accès non autorisé", code="PERMISSION_DENIED")
         agen = Subscription().diffusion_progression_updated(info=MagicMock())
         with self.assertRaises(AuthError):
@@ -480,11 +496,15 @@ class SubscriptionDiffusionProgressionUpdatedTests(IsolatedAsyncioTestCase):
     @patch("schema.subscriptions.notification_client")
     @patch("schema.subscriptions.require_role")
     async def test_admin_recoit_la_progression_avec_l_operateur_resolu(
-        self, mock_require_role, mock_notification_client, mock_auth_client, mock_redis_cls
-    ):
+        self,
+        mock_require_role: MagicMock,
+        mock_notification_client: MagicMock,
+        mock_auth_client: MagicMock,
+        mock_redis_cls: MagicMock,
+    ) -> None:
         mock_require_role.return_value = MagicMock(role="ADMIN")
 
-        async def _listen():
+        async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": '{"diffusion_id": "diff-1"}'}
 
         _mock_redis(_listen, mock_redis_cls)
@@ -506,11 +526,15 @@ class SubscriptionDiffusionProgressionUpdatedTests(IsolatedAsyncioTestCase):
     @patch("schema.subscriptions.notification_client")
     @patch("schema.subscriptions.require_role")
     async def test_filtre_par_diffusion_id_ignore_les_autres(
-        self, mock_require_role, mock_notification_client, mock_auth_client, mock_redis_cls
-    ):
+        self,
+        mock_require_role: MagicMock,
+        mock_notification_client: MagicMock,
+        mock_auth_client: MagicMock,
+        mock_redis_cls: MagicMock,
+    ) -> None:
         mock_require_role.return_value = MagicMock(role="ADMIN")
 
-        async def _listen():
+        async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": '{"diffusion_id": "autre-diffusion"}'}
             yield {"type": "message", "data": '{"diffusion_id": "diff-1"}'}
 

@@ -12,6 +12,7 @@ contexte HTTP Django (cookies, sessions).
 """
 
 import os
+from typing import Any
 
 import django
 
@@ -34,7 +35,11 @@ _graphql_ws_app = GraphQL(
 )
 
 
-async def application(scope, receive, send):
+async def application(scope: Any, receive: Any, send: Any) -> None:
+    # `Any` : deux implémentations ASGI (asgiref/Django, starlette/strawberry)
+    # se partagent cet appel avec des types de scope/receive/send structurellement
+    # différents bien que compatibles à l'exécution (spec ASGI, duck-typing) —
+    # aucune annotation précise ne satisferait les deux appelées ci-dessous.
     if scope["type"] == "websocket" and scope.get("path") == "/graphql":
         await _graphql_ws_app(scope, receive, send)
     else:

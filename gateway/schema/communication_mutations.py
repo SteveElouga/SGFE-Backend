@@ -10,7 +10,7 @@ from .grpc_clients import notification_client
 
 @strawberry.type
 class CommunicationMutations:
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def creer_diffusion(self, info: strawberry.types.Info, message: str, abonne_ids: list[str]) -> Diffusion:
         """Lance une diffusion WhatsApp vers les abonnés donnés — ADMIN uniquement.
 

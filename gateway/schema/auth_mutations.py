@@ -1,3 +1,5 @@
+from typing import Any
+
 import strawberry
 from strawberry import ID
 
@@ -13,7 +15,7 @@ from schema.auth_types import AuthPayload, OtpSentPayload, Role, User, _mask_pho
 from schema.grpc_clients import auth_client
 
 
-def _auth_payload_from_tokens(token_response) -> AuthPayload:
+def _auth_payload_from_tokens(token_response: Any) -> AuthPayload:
     user_response = auth_client.get_user(auth_client.validate_token(token_response.access_token).user_id)
     return AuthPayload(
         access_token=token_response.access_token,
@@ -27,18 +29,20 @@ def _set_password_with_token(token: str, password: str) -> bool:
     # même mécanisme côté auth-service (voir SetPasswordWithToken) ; deux
     # noms de mutation distincts ici pour rester clair côté frontend.
     response = auth_client.set_password_with_token(token, password)
-    return response.success
+    return bool(response.success)
 
 
 @strawberry.type
 class AuthMutations:
-    @strawberry.mutation(description="Connexion par nom d'utilisateur ou numéro de téléphone (+237XXXXXXXXX).")
+    @strawberry.mutation(  # type: ignore[untyped-decorator]  # voir mypy.ini
+        description="Connexion par nom d'utilisateur ou numéro de téléphone (+237XXXXXXXXX)."
+    )
     def login(self, info: strawberry.types.Info, identifier: str, password: str) -> AuthPayload:
         token_response = auth_client.login(identifier, password)
         set_refresh_token_cookie(info.context["response"], token_response.refresh_token)
         return _auth_payload_from_tokens(token_response)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def refresh_token(self, info: strawberry.types.Info) -> AuthPayload:
         refresh_token = extract_refresh_token(info.context["request"])
         if not refresh_token:
@@ -48,16 +52,16 @@ class AuthMutations:
         set_refresh_token_cookie(info.context["response"], token_response.refresh_token)
         return _auth_payload_from_tokens(token_response)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def logout(self, info: strawberry.types.Info) -> bool:
         token = extract_token(info.context["request"])
         if not token:
             raise AuthError("Authentification requise")
         response = auth_client.logout(token)
         clear_refresh_token_cookie(info.context["response"])
-        return response.success
+        return bool(response.success)
 
-    @strawberry.mutation(
+    @strawberry.mutation(  # type: ignore[untyped-decorator]  # voir mypy.ini
         description=(
             "Crée un utilisateur. ADMIN : email + téléphone requis, activation par e-mail. "
             "Autres rôles : téléphone requis, activation par OTP WhatsApp (email ignoré)."
@@ -80,7 +84,7 @@ class AuthMutations:
         )
         return user_from_grpc(user_response)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def update_user(
         self,
         info: strawberry.types.Info,
@@ -98,19 +102,21 @@ class AuthMutations:
         )
         return user_from_grpc(user_response)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def deactivate_user(self, info: strawberry.types.Info, id: strawberry.ID) -> User:
         caller = require_role(info, "ADMIN")
         user_response = auth_client.deactivate_user(str(id), caller_id=caller.user_id)
         return user_from_grpc(user_response)
 
-    @strawberry.mutation(description="Réactive un compte précédemment désactivé — ADMIN uniquement.")
+    @strawberry.mutation(  # type: ignore[untyped-decorator]  # voir mypy.ini
+        description="Réactive un compte précédemment désactivé — ADMIN uniquement."
+    )
     def reactivate_user(self, info: strawberry.types.Info, id: strawberry.ID) -> User:
         require_role(info, "ADMIN")
         user_response = auth_client.reactivate_user(str(id))
         return user_from_grpc(user_response)
 
-    @strawberry.mutation(
+    @strawberry.mutation(  # type: ignore[untyped-decorator]  # voir mypy.ini
         description=(
             "Renvoie les identifiants d'accès à un utilisateur — ADMIN uniquement. "
             "Sert à la fois de « Renvoyer le lien d'activation » (compte encore en attente) "
@@ -124,21 +130,23 @@ class AuthMutations:
         user_response = auth_client.reset_user_password(str(id))
         return user_from_grpc(user_response)
 
-    @strawberry.mutation(description="Reset de mot de passe par e-mail — ADMIN uniquement.")
+    @strawberry.mutation(  # type: ignore[untyped-decorator]  # voir mypy.ini
+        description="Reset de mot de passe par e-mail — ADMIN uniquement."
+    )
     def request_password_reset(self, email: str) -> bool:
         # Toujours true, qu'un compte existe ou non (ne révèle pas l'existence d'un compte).
         response = auth_client.request_password_reset(email)
-        return response.success
+        return bool(response.success)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def activate_account(self, token: str, password: str) -> bool:
         return _set_password_with_token(token, password)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def reset_password(self, token: str, password: str) -> bool:
         return _set_password_with_token(token, password)
 
-    @strawberry.mutation(
+    @strawberry.mutation(  # type: ignore[untyped-decorator]  # voir mypy.ini
         description=(
             "Envoie un code OTP à 6 chiffres par WhatsApp. "
             "Utilisé pour l'activation initiale et le reset de mot de passe par téléphone. "
@@ -149,11 +157,13 @@ class AuthMutations:
         auth_client.request_phone_otp(phone_number)
         return OtpSentPayload(masked_phone=_mask_phone(phone_number))
 
-    @strawberry.mutation(description="Vérifie le code OTP WhatsApp et définit le nouveau mot de passe.")
+    @strawberry.mutation(  # type: ignore[untyped-decorator]  # voir mypy.ini
+        description="Vérifie le code OTP WhatsApp et définit le nouveau mot de passe."
+    )
     def verify_otp_and_set_password(self, phone_number: str, otp_code: str, password: str) -> bool:
         response = auth_client.verify_otp_and_set_password(
             phone_number=phone_number,
             otp_code=otp_code,
             new_password=password,
         )
-        return response.success
+        return bool(response.success)

@@ -8,7 +8,7 @@ from schema.communication_mutations import CommunicationMutations
 from schema.communication_queries import CommunicationQueries
 
 
-def _diffusion_response(**kwargs) -> MagicMock:
+def _diffusion_response(**kwargs: object) -> MagicMock:
     defaults = dict(
         diffusion_id="diff-001",
         message="Coupure d'eau demain 8h-12h",
@@ -26,7 +26,7 @@ def _diffusion_response(**kwargs) -> MagicMock:
 class TestCommunicationMutations(SimpleTestCase):
     @patch("schema.communication_mutations.notification_client")
     @patch("schema.communication_mutations.require_role")
-    def test_creer_diffusion(self, mock_role, mock_client) -> None:
+    def test_creer_diffusion(self, mock_role: MagicMock, mock_client: MagicMock) -> None:
         mock_role.return_value = MagicMock(role="ADMIN", user_id="user-001", username="demo_admin")
         mock_client.creer_diffusion.return_value = _diffusion_response()
 
@@ -48,7 +48,9 @@ class TestCommunicationQueries(SimpleTestCase):
     @patch("schema.communication_queries.auth_client")
     @patch("schema.communication_queries.notification_client")
     @patch("schema.communication_queries.require_role")
-    def test_diffusion_resout_l_operateur(self, mock_role, mock_client, mock_auth) -> None:
+    def test_diffusion_resout_l_operateur(
+        self, mock_role: MagicMock, mock_client: MagicMock, mock_auth: MagicMock
+    ) -> None:
         mock_role.return_value = MagicMock(role="ADMIN")
         mock_client.get_diffusion.return_value = _diffusion_response()
         mock_auth.get_user.return_value = MagicMock(username="demo_admin")
@@ -61,7 +63,9 @@ class TestCommunicationQueries(SimpleTestCase):
     @patch("schema.communication_queries.auth_client")
     @patch("schema.communication_queries.notification_client")
     @patch("schema.communication_queries.require_role")
-    def test_diffusion_operateur_introuvable_replie_sur_l_identifiant(self, mock_role, mock_client, mock_auth) -> None:
+    def test_diffusion_operateur_introuvable_replie_sur_l_identifiant(
+        self, mock_role: MagicMock, mock_client: MagicMock, mock_auth: MagicMock
+    ) -> None:
         mock_role.return_value = MagicMock(role="ADMIN")
         mock_client.get_diffusion.return_value = _diffusion_response(created_by="user-00112233")
         mock_auth.get_user.side_effect = Exception("indisponible")
@@ -73,7 +77,9 @@ class TestCommunicationQueries(SimpleTestCase):
     @patch("schema.communication_queries.auth_client")
     @patch("schema.communication_queries.notification_client")
     @patch("schema.communication_queries.require_role")
-    def test_diffusions_liste_toutes_les_diffusions(self, mock_role, mock_client, mock_auth) -> None:
+    def test_diffusions_liste_toutes_les_diffusions(
+        self, mock_role: MagicMock, mock_client: MagicMock, mock_auth: MagicMock
+    ) -> None:
         mock_role.return_value = MagicMock(role="ADMIN")
         mock_client.list_diffusions.return_value = MagicMock(
             diffusions=[_diffusion_response(diffusion_id="diff-001"), _diffusion_response(diffusion_id="diff-002")]

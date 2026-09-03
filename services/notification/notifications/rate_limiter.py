@@ -33,6 +33,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from typing import Any
 
 from django.conf import settings
 
@@ -96,11 +97,15 @@ def _throttle_via_redis(min_interval: float) -> None:
                     _MAX_WAIT_SECONDS,
                 )
                 return
-            ttl_ms = client.pttl(_REDIS_KEY)
+            # `: Any` — les stubs redis-py typent pttl/close en Awaitable[Any] | Any
+            # (client sync ET async partagent la même signature de stub) ; sans
+            # rapport avec un vrai bug, `redis.Redis.from_url` renvoie bien un
+            # client synchrone ici.
+            ttl_ms: Any = client.pttl(_REDIS_KEY)
             wait_seconds = (ttl_ms / 1000.0) if ttl_ms and ttl_ms > 0 else 0.05
             time.sleep(min(wait_seconds, min_interval))
     finally:
-        client.close()
+        client.close()  # type: ignore[no-untyped-call]
 
 
 def _throttle_local(min_interval: float) -> None:

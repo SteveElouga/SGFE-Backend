@@ -1,14 +1,16 @@
+from typing import Any
 from unittest.mock import Mock
 
 import grpc
 from django.test import TestCase
 
 from abonnes.export import ExportService, exporter_donnees_abonne, exporter_donnees_abonne_json
+from abonnes.models import Abonne
 from abonnes.services import AbonneService, CompteurService
 
 
-def _create_abonne(**overrides):
-    defaults = dict(
+def _create_abonne(**overrides: Any) -> Abonne:
+    defaults: dict[str, Any] = dict(
         nom="Doe",
         prenom="John",
         telephone_whatsapp="+24100000000",
@@ -23,7 +25,7 @@ def _create_abonne(**overrides):
     return AbonneService().create_abonne(**defaults)
 
 
-def _service_ok(**retours) -> ExportService:
+def _service_ok(**retours: Any) -> ExportService:
     """ExportService dont les 4 clients externes répondent normalement."""
     return ExportService(
         campagne_client=Mock(list_releves_abonne=Mock(return_value=retours.get("releves", []))),
@@ -34,7 +36,7 @@ def _service_ok(**retours) -> ExportService:
 
 
 class ExportServiceIdentiteTests(TestCase):
-    def test_export_contient_identite_dechiffree(self):
+    def test_export_contient_identite_dechiffree(self) -> None:
         abonne = _create_abonne()
         service = _service_ok()
         export = service.exporter(str(abonne.id))
@@ -46,14 +48,14 @@ class ExportServiceIdentiteTests(TestCase):
         self.assertEqual(export["identite"]["adresse"], "Quartier X")
         self.assertEqual(export["identite"]["statut"], "ACTIF")
 
-    def test_export_abonne_inconnu_leve_une_exception(self):
+    def test_export_abonne_inconnu_leve_une_exception(self) -> None:
         from django.core.exceptions import ObjectDoesNotExist
 
         service = _service_ok()
         with self.assertRaises(ObjectDoesNotExist):
             service.exporter("00000000-0000-0000-0000-000000000000")
 
-    def test_export_contient_le_compteur_actif(self):
+    def test_export_contient_le_compteur_actif(self) -> None:
         abonne = _create_abonne()
         service = _service_ok()
         export = service.exporter(str(abonne.id))
@@ -61,7 +63,7 @@ class ExportServiceIdentiteTests(TestCase):
         self.assertEqual(export["compteurs"]["actif"]["numero_compteur"], 1)
         self.assertEqual(export["compteurs"]["historique_remplacements"], [])
 
-    def test_export_contient_l_historique_de_remplacement(self):
+    def test_export_contient_l_historique_de_remplacement(self) -> None:
         abonne = _create_abonne()
         CompteurService().remplacer_compteur(
             abonne_id=str(abonne.id),
@@ -81,7 +83,7 @@ class ExportServiceIdentiteTests(TestCase):
 
 
 class ExportServiceSectionsExternesTests(TestCase):
-    def test_toutes_les_sections_disponibles_quand_tout_repond(self):
+    def test_toutes_les_sections_disponibles_quand_tout_repond(self) -> None:
         abonne = _create_abonne()
         service = _service_ok(
             releves=[{"releve_id": "r1"}],
@@ -95,13 +97,13 @@ class ExportServiceSectionsExternesTests(TestCase):
                 self.assertTrue(export[section]["disponible"])
                 self.assertEqual(len(export[section]["donnees"]), 1)
 
-    def test_diffusions_whatsapp_toujours_documentee_comme_non_exposee(self):
+    def test_diffusions_whatsapp_toujours_documentee_comme_non_exposee(self) -> None:
         abonne = _create_abonne()
         export = _service_ok().exporter(str(abonne.id))
         self.assertFalse(export["diffusions_whatsapp"]["disponible"])
         self.assertIn("raison", export["diffusions_whatsapp"])
 
-    def test_section_releves_degrade_gracieusement_si_campagne_indisponible(self):
+    def test_section_releves_degrade_gracieusement_si_campagne_indisponible(self) -> None:
         abonne = _create_abonne()
         service = ExportService(
             campagne_client=Mock(list_releves_abonne=Mock(side_effect=grpc.RpcError("indisponible"))),
@@ -118,7 +120,7 @@ class ExportServiceSectionsExternesTests(TestCase):
         self.assertTrue(export["envois_whatsapp"]["disponible"])
         self.assertEqual(export["identite"]["nom"], "Doe")
 
-    def test_plusieurs_sections_indisponibles_simultanement(self):
+    def test_plusieurs_sections_indisponibles_simultanement(self) -> None:
         abonne = _create_abonne()
         service = ExportService(
             campagne_client=Mock(list_releves_abonne=Mock(side_effect=grpc.RpcError("indisponible"))),
@@ -133,7 +135,7 @@ class ExportServiceSectionsExternesTests(TestCase):
 
 
 class ExporterDonneesAbonneFonctionsTests(TestCase):
-    def test_exporter_donnees_abonne_fonction_deleque_a_export_service(self):
+    def test_exporter_donnees_abonne_fonction_deleque_a_export_service(self) -> None:
         abonne = _create_abonne()
         export = exporter_donnees_abonne(
             str(abonne.id),
@@ -144,7 +146,7 @@ class ExporterDonneesAbonneFonctionsTests(TestCase):
         )
         self.assertEqual(export["abonne_id"], str(abonne.id))
 
-    def test_exporter_donnees_abonne_json_produit_du_json_valide_et_lisible(self):
+    def test_exporter_donnees_abonne_json_produit_du_json_valide_et_lisible(self) -> None:
         import json
 
         abonne = _create_abonne()

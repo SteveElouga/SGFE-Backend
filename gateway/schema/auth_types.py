@@ -1,3 +1,4 @@
+from typing import Any
 from enum import Enum
 
 import strawberry
@@ -45,7 +46,7 @@ def _mask_phone(phone: str) -> str:
     return f"+237 {phone[4]}{'•' * 2} {'•' * 3} {'•'}{phone[-2:]}"
 
 
-def user_from_grpc(user_response) -> User:
+def user_from_grpc(user_response: Any) -> User:
     """Construit un type GraphQL `User` depuis un `UserResponse`/`UserPayload` gRPC."""
     return User(
         id=strawberry.ID(user_response.user_id),

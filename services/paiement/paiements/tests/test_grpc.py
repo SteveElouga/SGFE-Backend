@@ -114,7 +114,9 @@ class TestInitialiserSoldeAvecAvoirRPC(TestCase):
 
     @patch("paiements.grpc_server.publish_reporting_event")
     @patch("paiements.grpc_server.FacturationServiceClient")
-    def test_avoir_suffisant_solde_la_facture_et_sync_facturation(self, mock_fact_cls, mock_pub) -> None:
+    def test_avoir_suffisant_solde_la_facture_et_sync_facturation(
+        self, mock_fact_cls: MagicMock, mock_pub: MagicMock
+    ) -> None:
         AvoirAbonne.objects.create(abonne_id="abonne-avoir", montant=Decimal("500.00"))
         servicer = PaiementServicer()
 
@@ -143,7 +145,9 @@ class TestInitialiserSoldeAvecAvoirRPC(TestCase):
 
     @patch("paiements.grpc_server.publish_reporting_event")
     @patch("paiements.grpc_server.FacturationServiceClient")
-    def test_avoir_partiel_sync_facturation_sans_impaye_resolu(self, mock_fact_cls, mock_pub) -> None:
+    def test_avoir_partiel_sync_facturation_sans_impaye_resolu(
+        self, mock_fact_cls: MagicMock, mock_pub: MagicMock
+    ) -> None:
         """Un avoir qui ne couvre qu'une partie laisse la facture PARTIELLE :
         toujours à synchroniser, mais sans le déclencheur de rétablissement
         (aucune dette éteinte)."""
@@ -169,7 +173,7 @@ class TestInitialiserSoldeAvecAvoirRPC(TestCase):
         self.assertEqual(types_publies, ["PAIEMENT"])
 
     @patch("paiements.grpc_server.FacturationServiceClient")
-    def test_sans_avoir_aucune_propagation(self, mock_fact_cls) -> None:
+    def test_sans_avoir_aucune_propagation(self, mock_fact_cls: MagicMock) -> None:
         """Le cas courant (pas d'avoir) ne doit rien changer : pas d'appel
         Facturation superflu sur une facture qui vient de naître IMPAYÉE."""
         servicer = PaiementServicer()
@@ -191,7 +195,7 @@ class TestInitialiserSoldeAvecAvoirRPC(TestCase):
     @patch("paiements.grpc_server.publish_reporting_event")
     @patch("paiements.grpc_server.FacturationServiceClient")
     def test_avoir_qui_eteint_la_dette_totale_retablit_l_abonne_suspendu(
-        self, mock_fact_cls, mock_pub, mock_abonne_cls, mock_notif_cls
+        self, mock_fact_cls: MagicMock, mock_pub: MagicMock, mock_abonne_cls: MagicMock, mock_notif_cls: MagicMock
     ) -> None:
         """Un abonné suspendu dont l'avoir couvre entièrement cette nouvelle
         facture — et donc sa dette totale — doit être rétabli. C'était le seul
@@ -226,7 +230,7 @@ class TestEnregistrerPaiementRPC(TestCase):
         _creer_solde("facture-001", "abonne-001", 300.00)
 
     @patch("paiements.grpc_server.FacturationServiceClient")
-    def test_enregistrer_paiement_succes(self, mock_fact_cls) -> None:
+    def test_enregistrer_paiement_succes(self, mock_fact_cls: MagicMock) -> None:
         """EnregistrerPaiement retourne un PaiementResponse valide."""
         mock_fact_cls.return_value.update_statut_facture = MagicMock()
         with patch("paiements.grpc_server.FacturationServiceClient"):
@@ -248,7 +252,9 @@ class TestEnregistrerPaiementRPC(TestCase):
 
     @patch("paiements.grpc_server.NotificationServiceClient")
     @patch("paiements.grpc_server.FacturationServiceClient")
-    def test_enregistrer_paiement_declenche_envoi_recu(self, mock_fact_cls, mock_notif_cls) -> None:
+    def test_enregistrer_paiement_declenche_envoi_recu(
+        self, mock_fact_cls: MagicMock, mock_notif_cls: MagicMock
+    ) -> None:
         """Après enregistrement, le reçu part automatiquement à l'abonné (WhatsApp)."""
         _creer_solde("facture-recu", "abonne-001", 300.00)
         servicer = PaiementServicer()
@@ -284,7 +290,7 @@ class TestEnregistrerPaiementRPC(TestCase):
 
     @patch("paiements.grpc_server.publish_reporting_event")
     @patch("paiements.grpc_server.FacturationServiceClient")
-    def test_enregistrer_paiement_publie_stats_reporting(self, mock_fact_cls, mock_pub) -> None:
+    def test_enregistrer_paiement_publie_stats_reporting(self, mock_fact_cls: MagicMock, mock_pub: MagicMock) -> None:
         _creer_solde("facture-rep", "abonne-001", 300.00, campagne_id="camp-9")
         servicer = PaiementServicer()
         request = pb.EnregistrerPaiementRequest(
@@ -307,7 +313,7 @@ class TestEnregistrerPaiementRPC(TestCase):
 
     @patch("paiements.grpc_server.publish_reporting_event")
     @patch("paiements.grpc_server.FacturationServiceClient")
-    def test_enregistrer_paiement_total_emet_impaye_resolu(self, mock_fact_cls, mock_pub) -> None:
+    def test_enregistrer_paiement_total_emet_impaye_resolu(self, mock_fact_cls: MagicMock, mock_pub: MagicMock) -> None:
         _creer_solde("facture-full", "abonne-001", 100.00, campagne_id="camp-9")
         servicer = PaiementServicer()
         request = pb.EnregistrerPaiementRequest(
@@ -423,7 +429,7 @@ class TestAnnulerPaiementRPC(TestCase):
     @patch("paiements.grpc_server.NotificationServiceClient")
     @patch("paiements.grpc_server.FacturationServiceClient")
     def test_annuler_paiement_versement_cascade_resynchronise_toutes_les_factures(
-        self, mock_fact_cls, mock_notif_cls, mock_pub
+        self, mock_fact_cls: MagicMock, mock_notif_cls: MagicMock, mock_pub: MagicMock
     ) -> None:
         """Un versement qui a soldé deux factures d'un coup : l'annuler doit
         resynchroniser LES DEUX, pas seulement celle sur laquelle on a cliqué —
@@ -484,7 +490,7 @@ class TestAnnulerSoldeRPC(TestCase):
     @patch("paiements.grpc_server.NotificationServiceClient")
     @patch("paiements.grpc_server.FacturationServiceClient")
     def test_annuler_solde_avec_versement_decremente_reporting_et_notifie(
-        self, mock_fact_cls, mock_notif_cls, mock_pub
+        self, mock_fact_cls: MagicMock, mock_notif_cls: MagicMock, mock_pub: MagicMock
     ) -> None:
         """Ce qui avait déjà été versé sur cette facture était compté en
         recette : l'annuler doit décrémenter Reporting (comme
@@ -527,7 +533,7 @@ class TestAnnulerSoldeRPC(TestCase):
     @patch("paiements.grpc_server.NotificationServiceClient")
     @patch("paiements.grpc_server.FacturationServiceClient")
     def test_annuler_solde_sans_versement_ne_decremente_rien_mais_previent_quand_meme(
-        self, mock_fact_cls, mock_notif_cls, mock_pub
+        self, mock_fact_cls: MagicMock, mock_notif_cls: MagicMock, mock_pub: MagicMock
     ) -> None:
         """Rien n'a jamais été versé : rien à décrémenter côté Reporting, mais
         l'abonné doit être prévenu quand même — PDF déjà reçu, il croirait

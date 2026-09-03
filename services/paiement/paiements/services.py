@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import transaction
+from django.utils import timezone
 
 from .grpc_clients import (
     AbonneServiceClient,
@@ -16,6 +17,7 @@ from .grpc_clients import (
 from .models import (
     AvoirAbonne,
     ModePaiement,
+    MouvementAvoir,
     Paiement,
     SoldeFacture,
     StatutSolde,
@@ -182,7 +184,7 @@ class PaiementService:
             )
         return avoir
 
-    def get_avoir_abonne(self, abonne_id: str) -> tuple[Decimal, list]:
+    def get_avoir_abonne(self, abonne_id: str) -> tuple[Decimal, list[MouvementAvoir]]:
         """Retourne (solde d'avoir disponible, journal des mouvements) d'un abonné."""
         avoir = self._avoir_repo.get_if_exists(abonne_id)
         montant = Decimal(str(avoir.montant)) if avoir else Decimal("0")
@@ -302,7 +304,7 @@ class PaiementService:
         date_paiement: date,
         mode_paiement: str,
         enregistre_par: str,
-        versement_id: object,
+        versement_id: "uuid.UUID | str",
     ) -> Decimal:
         """Impute `montant` sur les impayés de l'abonné et rend ce qui reste.
 
@@ -341,7 +343,7 @@ class PaiementService:
             restant -= part
         return restant
 
-    def _porter_en_avoir(self, abonne_id: str, montant: Decimal, versement_id: object) -> None:
+    def _porter_en_avoir(self, abonne_id: str, montant: Decimal, versement_id: "uuid.UUID | str") -> None:
         """Crédite l'avoir du reliquat d'un versement, une fois toutes les dettes éteintes.
 
         L'excédent se rattache à la **dernière** écriture du versement : c'est
@@ -433,7 +435,7 @@ class PaiementService:
 
         return crees, restant
 
-    def imputations_du_versement(self, versement_id: object) -> list[tuple[Paiement, SoldeFacture]]:
+    def imputations_du_versement(self, versement_id: "uuid.UUID | str") -> list[tuple[Paiement, SoldeFacture]]:
         """Les écritures d'un versement, chacune avec le solde de la facture qu'elle a touchée.
 
         Un versement produit une écriture par facture touchée. Les conséquences
@@ -527,6 +529,10 @@ class PaiementService:
 
             paiement = self._paiement_repo.get_by_id(paiement_id)
 
+        # `demande` (annule=False, vérifié plus haut) fait partie de `ecritures`
+        # (même versement_id) donc de `actives` : la boucle ci-dessus lui
+        # affecte forcément `solde_demande` une fois.
+        assert solde_demande is not None
         return paiement, solde_demande
 
     def _reprendre_excedent(self, abonne_id: str, excedent: Decimal) -> None:
@@ -550,6 +556,10 @@ class PaiementService:
                 f"facture suivante (avoir disponible : {disponible}). Annulez d'abord cette "
                 "imputation, ou émettez un avoir de rectification."
             )
+        # `excedent` > 0 (garanti par l'appelant) : si `avoir` était None,
+        # `disponible` vaudrait 0 < excedent et le contrôle ci-dessus aurait
+        # déjà levé ValidationError.
+        assert avoir is not None
         self._avoir_repo.consommer(avoir, excedent)
         self._mouvement_repo.create(abonne_id, excedent, TypeMouvementAvoir.REPRISE_TROP_PERCU)
 
@@ -735,7 +745,7 @@ class PaiementService:
             return
 
         if jours_suspension is None:
-            jours_suspension = int(ConfigServiceClient().get_delais_impayes()["suspension_relances"])
+            jours_suspension = ConfigServiceClient().get_delais_impayes()["suspension_relances"]
 
         try:
             suivi = self._suivi_repo.get_by_facture_id(solde.facture_id)
@@ -770,11 +780,11 @@ class ImpayeService:
         config_client = ConfigServiceClient()
         delais = config_client.get_delais_impayes()
 
-        delai_rappel_1: int = delais.get("rappel_1", 0)
-        delai_rappel_2: int = delais.get("rappel_2", 3)
-        delai_avertissement: int = delais.get("avertissement", 7)
-        delai_suspension: int = delais.get("suspension", 10)
-        suspension_auto: bool = delais.get("suspension_auto", True)
+        delai_rappel_1 = delais["rappel_1"]
+        delai_rappel_2 = delais["rappel_2"]
+        delai_avertissement = delais["avertissement"]
+        delai_suspension = delais["suspension"]
+        suspension_auto = delais["suspension_auto"]
 
         impayes = self._solde_repo.list_impayes()
         logger.info("ImpayeChecker : %d factures impayées à traiter", len(impayes))
@@ -799,8 +809,6 @@ class ImpayeService:
         suspension_auto: bool,
     ) -> None:
         """Escalade une facture impayée selon son étape actuelle."""
-        from django.utils import timezone
-
         today = date.today()
         jours_depasses = (today - solde.date_limite_paiement).days
 
@@ -847,13 +855,12 @@ class ImpayeService:
         modifie = False
 
         if jours_depasses >= delai_suspension and not suivi.suspension_effectuee and suspension_auto:
-            modifie = self._effectuer_suspension(notif_client, solde, suivi, timezone)
+            modifie = self._effectuer_suspension(notif_client, solde, suivi)
         elif jours_depasses >= delai_avertissement:
             modifie = self._tenter_rappel(
                 notif_client,
                 solde,
                 suivi,
-                timezone,
                 jours_depasses,
                 delai_avertissement,
                 3,
@@ -862,9 +869,9 @@ class ImpayeService:
                 jours_avant_suspension=max(0, delai_suspension - jours_depasses),
             )
         elif jours_depasses >= delai_rappel_2:
-            modifie = self._tenter_rappel(notif_client, solde, suivi, timezone, jours_depasses, delai_rappel_2, 2)
+            modifie = self._tenter_rappel(notif_client, solde, suivi, jours_depasses, delai_rappel_2, 2)
         elif jours_depasses >= delai_rappel_1:
-            modifie = self._tenter_rappel(notif_client, solde, suivi, timezone, jours_depasses, delai_rappel_1, 1)
+            modifie = self._tenter_rappel(notif_client, solde, suivi, jours_depasses, delai_rappel_1, 1)
 
         if modifie:
             self._suivi_repo.save_suivi(suivi)
@@ -874,7 +881,6 @@ class ImpayeService:
         notif_client: NotificationServiceClient,
         solde: SoldeFacture,
         suivi: SuiviImpaye,
-        timezone: object,
         jours_depasses: int,
         delai: int,
         etape: int,
@@ -926,7 +932,6 @@ class ImpayeService:
         notif_client: NotificationServiceClient,
         solde: SoldeFacture,
         suivi: SuiviImpaye,
-        timezone: object,
     ) -> bool:
         """Suspend l'abonné, envoie la relance étape 4 et notifie les admins.
 

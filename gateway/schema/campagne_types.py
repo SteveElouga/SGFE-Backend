@@ -1,10 +1,20 @@
 """Types GraphQL du Campagne Service (campagnes + relevés)."""
 
+import sys
+from pathlib import Path
 from typing import Optional
 
 import strawberry
+from django.conf import settings
 
-from proto import campagne_service_pb2 as campagne_pb
+# Import non qualifié par le paquet `proto` (comme schema/grpc_clients.py) :
+# mypy.ini n'exclut de la vérification que le nom de module nu
+# `campagne_service_pb2`, pas sa forme qualifiée `proto.campagne_service_pb2`
+# — cette dernière serait analysée pour de vrai, et échouerait sur les
+# classes de message générées dynamiquement par protobuf.
+sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
+
+import campagne_service_pb2 as campagne_pb  # noqa: E402
 
 
 @strawberry.type

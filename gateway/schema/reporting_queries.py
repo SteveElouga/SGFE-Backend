@@ -17,19 +17,19 @@ from schema.reporting_types import (
 
 @strawberry.type
 class ReportingQueries:
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def dashboard(self, info: strawberry.types.Info) -> Dashboard:
         """Tableau de bord de la campagne en cours (stats pré-calculées) — ADMIN, COMPTABLE."""
         require_role(info, "ADMIN", "COMPTABLE")
         return dashboard_from_grpc(reporting_client.get_dashboard())
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def stats_campagne(self, info: strawberry.types.Info, campagne_id: str) -> StatsCampagne:
         """Statistiques de relevé d'une campagne — ADMIN, COMPTABLE."""
         require_role(info, "ADMIN", "COMPTABLE")
         return stats_campagne_from_grpc(reporting_client.get_stats_campagne(campagne_id))
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def stats_globales(self, info: strawberry.types.Info) -> StatsGlobales:
         """Statistiques globales tous exercices (historique + totaux) — ADMIN, COMPTABLE."""
         require_role(info, "ADMIN", "COMPTABLE")

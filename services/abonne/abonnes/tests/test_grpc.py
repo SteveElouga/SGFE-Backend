@@ -1,25 +1,33 @@
 import json
+from typing import Any
 from unittest.mock import Mock
 
 from django.test import TestCase
 
-from abonnes.grpc_server import AbonneServiceServicer
+from abonnes.grpc_server import AbonneServiceServicer  # noqa: F401 — insère proto/ dans sys.path
 from abonnes.services import AbonneService, ValidationError
-from proto import abonne_service_pb2 as pb
+
+# Import tardif (après abonnes.grpc_server, qui insère proto/ dans sys.path) et
+# non qualifié par le paquet `proto` : mypy.ini n'exclut de la vérification
+# que le nom de module nu `abonne_service_pb2` (comme les autres services),
+# pas sa forme qualifiée `proto.abonne_service_pb2` — cette dernière serait
+# analysée pour de vrai, et échouerait sur les classes de message générées
+# dynamiquement (voir grpc_server.py pour le même import).
+import abonne_service_pb2 as pb  # noqa: E402
 
 
 class FakeContext:
-    def abort(self, code, details):
+    def abort(self, code: Any, details: Any) -> Any:
         raise AssertionError("context.abort() ne devrait pas être appelé directement par le servicer")
 
 
 class AbonneServiceServicerTests(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.servicer = AbonneServiceServicer()
-        self.context = FakeContext()
+        self.context: Any = FakeContext()
 
-    def _create(self, **overrides):
-        defaults = dict(
+    def _create(self, **overrides: Any) -> pb.AbonneResponse:
+        defaults: dict[str, Any] = dict(
             nom="Doe",
             prenom="John",
             telephone_whatsapp="+24100000000",
@@ -33,30 +41,30 @@ class AbonneServiceServicerTests(TestCase):
         defaults.update(overrides)
         return self.servicer.CreateAbonne(pb.CreateAbonneRequest(**defaults), self.context)
 
-    def test_create_abonne_returns_response_with_compteur(self):
+    def test_create_abonne_returns_response_with_compteur(self) -> None:
         response = self._create()
         self.assertEqual(response.numero_abonne, "AB-0001")
         self.assertEqual(response.statut, "ACTIF")
         self.assertEqual(response.compteur.numero_compteur, 1)
 
-    def test_get_abonne(self):
+    def test_get_abonne(self) -> None:
         created = self._create()
         response = self.servicer.GetAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
         self.assertEqual(response.numero_abonne, "AB-0001")
 
-    def test_get_abonne_not_found_raises(self):
+    def test_get_abonne_not_found_raises(self) -> None:
         from django.core.exceptions import ObjectDoesNotExist
 
         with self.assertRaises(ObjectDoesNotExist):
             self.servicer.GetAbonne(pb.AbonneIdRequest(abonne_id="00000000-0000-0000-0000-000000000000"), self.context)
 
-    def test_list_abonnes(self):
+    def test_list_abonnes(self) -> None:
         self._create()
         self._create(numero_compteur=2)
         response = self.servicer.ListAbonnes(pb.ListAbonnesRequest(), self.context)
         self.assertEqual(len(response.abonnes), 2)
 
-    def test_list_abonnes_sans_pagination_total_egale_la_liste_rendue(self):
+    def test_list_abonnes_sans_pagination_total_egale_la_liste_rendue(self) -> None:
         # Non-régression : `limit`/`offset` omis (champs proto3 `optional` non
         # définis) doit préserver le comportement historique — tout est rendu.
         self._create()
@@ -66,7 +74,7 @@ class AbonneServiceServicerTests(TestCase):
         self.assertEqual(len(response.abonnes), 3)
         self.assertEqual(response.total, 3)
 
-    def test_list_abonnes_avec_pagination_tronque_et_decale(self):
+    def test_list_abonnes_avec_pagination_tronque_et_decale(self) -> None:
         for i in range(1, 6):
             self._create(numero_compteur=i)
         response = self.servicer.ListAbonnes(pb.ListAbonnesRequest(limit=2, offset=1), self.context)
@@ -74,13 +82,13 @@ class AbonneServiceServicerTests(TestCase):
         # Le total porte sur l'ensemble filtré, pas sur la seule page rendue.
         self.assertEqual(response.total, 5)
 
-    def test_list_abonnes_pagination_hors_limites_renvoie_liste_vide_pas_une_erreur(self):
+    def test_list_abonnes_pagination_hors_limites_renvoie_liste_vide_pas_une_erreur(self) -> None:
         self._create()
         response = self.servicer.ListAbonnes(pb.ListAbonnesRequest(limit=10, offset=100), self.context)
         self.assertEqual(len(response.abonnes), 0)
         self.assertEqual(response.total, 1)
 
-    def test_list_abonnes_filtre_statut_et_pagination_combines(self):
+    def test_list_abonnes_filtre_statut_et_pagination_combines(self) -> None:
         # La pagination doit porter sur le résultat FILTRÉ par statut, pas sur
         # la table brute.
         self._create(numero_compteur=1)
@@ -91,13 +99,13 @@ class AbonneServiceServicerTests(TestCase):
         self.assertEqual(len(response.abonnes), 1)
         self.assertEqual(response.total, 2)
 
-    def test_list_abonnes_actifs_excludes_suspended(self):
+    def test_list_abonnes_actifs_excludes_suspended(self) -> None:
         created = self._create()
         self.servicer.SuspendreAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
         response = self.servicer.ListAbonnesActifs(pb.EmptyRequest(), self.context)
         self.assertEqual(len(response.abonnes), 0)
 
-    def test_list_zones_agrege_par_quartier_camp(self):
+    def test_list_zones_agrege_par_quartier_camp(self) -> None:
         # 2 abonnés Centre·1, 1 abonné Plateau·3, 1 abonné Centre·2.
         self._create(numero_compteur=1, quartier="Centre", camp=1)
         self._create(numero_compteur=2, quartier="Centre", camp=1)
@@ -109,7 +117,7 @@ class AbonneServiceServicerTests(TestCase):
         self.assertEqual(zones[("Centre", 2)], 1)
         self.assertEqual(zones[("Plateau", 3)], 1)
 
-    def test_list_zones_exclut_abonne_suspendu(self):
+    def test_list_zones_exclut_abonne_suspendu(self) -> None:
         self._create(numero_compteur=1, quartier="Centre", camp=1)
         suspendu = self._create(numero_compteur=2, quartier="Centre", camp=1)
         self.servicer.SuspendreAbonne(pb.AbonneIdRequest(abonne_id=suspendu.abonne_id), self.context)
@@ -117,7 +125,7 @@ class AbonneServiceServicerTests(TestCase):
         zones = {(z.quartier, z.camp): z.nb_abonnes for z in response.zones}
         self.assertEqual(zones[("Centre", 1)], 1)
 
-    def test_update_abonne(self):
+    def test_update_abonne(self) -> None:
         created = self._create()
         response = self.servicer.UpdateAbonne(
             pb.UpdateAbonneRequest(
@@ -127,30 +135,30 @@ class AbonneServiceServicerTests(TestCase):
         )
         self.assertEqual(response.nom, "Smith")
 
-    def test_suspendre_et_reactiver(self):
+    def test_suspendre_et_reactiver(self) -> None:
         created = self._create()
         suspendu = self.servicer.SuspendreAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
         self.assertEqual(suspendu.statut, "SUSPENDU")
         reactive = self.servicer.ReactiverAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
         self.assertEqual(reactive.statut, "ACTIF")
 
-    def test_resilier_abonne(self):
+    def test_resilier_abonne(self) -> None:
         created = self._create()
         resilie = self.servicer.ResilierAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
         self.assertEqual(resilie.statut, "RESILIE")
 
-    def test_resilier_abonne_deja_resilie_raises(self):
+    def test_resilier_abonne_deja_resilie_raises(self) -> None:
         created = self._create()
         self.servicer.ResilierAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
         with self.assertRaises(ValidationError):
             self.servicer.ResilierAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
 
-    def test_anonymiser_abonne_actif_raises(self):
+    def test_anonymiser_abonne_actif_raises(self) -> None:
         created = self._create()
         with self.assertRaises(ValidationError):
             self.servicer.AnonymiserAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
 
-    def test_anonymiser_abonne_resilie(self):
+    def test_anonymiser_abonne_resilie(self) -> None:
         created = self._create()
         self.servicer.ResilierAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
         response = self.servicer.AnonymiserAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
@@ -162,16 +170,16 @@ class AbonneServiceServicerTests(TestCase):
         self.assertEqual(response.abonne_id, created.abonne_id)
         self.assertEqual(response.numero_abonne, created.numero_abonne)
 
-    def test_get_compteur(self):
+    def test_get_compteur(self) -> None:
         created = self._create()
         response = self.servicer.GetCompteur(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
         self.assertEqual(response.numero_compteur, 1)
 
-    def test_create_abonne_transporte_la_position(self):
+    def test_create_abonne_transporte_la_position(self) -> None:
         created = self._create(position="3e maison à gauche")
         self.assertEqual(created.compteur.position, "3e maison à gauche")
 
-    def test_update_compteur(self):
+    def test_update_compteur(self) -> None:
         created = self._create(quartier="Ancien", camp=1)
         response = self.servicer.UpdateCompteur(
             pb.UpdateCompteurRequest(abonne_id=created.abonne_id, quartier="Nouveau", camp=2),
@@ -180,7 +188,7 @@ class AbonneServiceServicerTests(TestCase):
         self.assertEqual(response.quartier, "Nouveau")
         self.assertEqual(response.camp, 2)
 
-    def test_update_compteur_position(self):
+    def test_update_compteur_position(self) -> None:
         created = self._create(position="Ancienne")
         response = self.servicer.UpdateCompteur(
             pb.UpdateCompteurRequest(abonne_id=created.abonne_id, position="Nouvelle position"),
@@ -188,7 +196,7 @@ class AbonneServiceServicerTests(TestCase):
         )
         self.assertEqual(response.position, "Nouvelle position")
 
-    def test_remplacer_compteur(self):
+    def test_remplacer_compteur(self) -> None:
         created = self._create()
         response = self.servicer.RemplacerCompteur(
             pb.RemplacerCompteurRequest(
@@ -204,7 +212,7 @@ class AbonneServiceServicerTests(TestCase):
         )
         self.assertEqual(response.numero_compteur, 2)
 
-    def test_remplacer_compteur_transporte_la_nouvelle_position(self):
+    def test_remplacer_compteur_transporte_la_nouvelle_position(self) -> None:
         created = self._create()
         response = self.servicer.RemplacerCompteur(
             pb.RemplacerCompteurRequest(
@@ -221,7 +229,7 @@ class AbonneServiceServicerTests(TestCase):
         )
         self.assertEqual(response.position, "Près du portail bleu")
 
-    def test_remplacer_compteur_motif_persiste_et_ressort_dans_historique(self):
+    def test_remplacer_compteur_motif_persiste_et_ressort_dans_historique(self) -> None:
         created = self._create()
         self.servicer.RemplacerCompteur(
             pb.RemplacerCompteurRequest(
@@ -240,7 +248,7 @@ class AbonneServiceServicerTests(TestCase):
         self.assertEqual(len(historique.historique), 1)
         self.assertEqual(historique.historique[0].motif, "Compteur défectueux")
 
-    def test_remplacer_compteur_invalid_index_raises(self):
+    def test_remplacer_compteur_invalid_index_raises(self) -> None:
         created = self._create(index_initial=50.0)
         with self.assertRaises(ValidationError):
             self.servicer.RemplacerCompteur(
@@ -256,7 +264,7 @@ class AbonneServiceServicerTests(TestCase):
                 self.context,
             )
 
-    def test_exporter_donnees_abonne_renvoie_un_json_structure(self):
+    def test_exporter_donnees_abonne_renvoie_un_json_structure(self) -> None:
         created = self._create()
         # Les 4 clients gRPC sortants de l'export sont mockés : ce test ne
         # doit pas dépendre de campagne/facturation/paiement/notification
@@ -275,7 +283,7 @@ class AbonneServiceServicerTests(TestCase):
         self.assertTrue(donnees["releves"]["disponible"])
         self.assertFalse(donnees["diffusions_whatsapp"]["disponible"])
 
-    def test_exporter_donnees_abonne_introuvable_raises(self):
+    def test_exporter_donnees_abonne_introuvable_raises(self) -> None:
         from django.core.exceptions import ObjectDoesNotExist
 
         with self.assertRaises(ObjectDoesNotExist):

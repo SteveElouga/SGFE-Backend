@@ -18,10 +18,11 @@ consommation, statut des paiements » et « boutons d'export : PDF et CSV ».
 import logging
 
 import grpc
-from django.http import FileResponse, HttpRequest, JsonResponse
+from django.http import FileResponse, HttpRequest, HttpResponse, JsonResponse
 from django.views.decorators.http import require_GET
 
 from schema.csv_export import csv_response
+from schema.dtos import DonneesAbonneDict, FactureEspaceDict
 from schema.grpc_clients import facturation_client, notification_client, paiement_client
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ def _token_response_invalide() -> JsonResponse:
     return JsonResponse({"erreur": "Token invalide ou expiré."}, status=401)
 
 
-def _donnees_abonne(token: str) -> tuple[dict | None, JsonResponse | None]:
+def _donnees_abonne(token: str) -> tuple[DonneesAbonneDict | None, JsonResponse | None]:
     """Collecte tout ce que l'espace abonné montre, ou l'erreur à renvoyer.
 
     Rend `(donnees, None)` ou `(None, reponse_d_erreur)`.
@@ -87,7 +88,7 @@ def _donnees_abonne(token: str) -> tuple[dict | None, JsonResponse | None]:
         return None, JsonResponse({"erreur": "Impossible de récupérer les factures."}, status=503)
 
     # Enrichissement avec les soldes (Paiement Service)
-    factures_json = []
+    factures_json: list[FactureEspaceDict] = []
     for f in factures_resp.factures:
         solde_restant = 0.0
         montant_paye = 0.0
@@ -158,7 +159,7 @@ def espace_abonne(request: HttpRequest, token: str) -> JsonResponse:
 
 
 @require_GET
-def espace_abonne_csv(request: HttpRequest, token: str):
+def espace_abonne_csv(request: HttpRequest, token: str) -> HttpResponse | JsonResponse:
     """Export CSV du relevé de compte de l'abonné — EF-NOTIF-003, §8.3.
 
     Le SRS promet des « boutons d'export : PDF et CSV » à deux endroits. Seuls le
@@ -171,6 +172,7 @@ def espace_abonne_csv(request: HttpRequest, token: str):
     donnees, erreur = _donnees_abonne(token)
     if erreur is not None:
         return erreur
+    assert donnees is not None
 
     header = [
         "numero_facture",

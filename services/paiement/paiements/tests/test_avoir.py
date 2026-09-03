@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 import paiement_service_pb2 as pb
 
 from paiements.grpc_server import PaiementServicer
-from paiements.models import ModePaiement, MouvementAvoir, TypeMouvementAvoir
+from paiements.models import ModePaiement, MouvementAvoir, SoldeFacture, TypeMouvementAvoir
 from paiements.repositories import SoldeFactureRepository
 from paiements.services import PaiementService
 
@@ -25,7 +25,7 @@ def _mock_context() -> MagicMock:
     return MagicMock(spec=grpc.ServicerContext)
 
 
-def _creer_solde(facture_id: str, abonne_id: str = "abonne-001", montant_total: float = 300.00):
+def _creer_solde(facture_id: str, abonne_id: str = "abonne-001", montant_total: float = 300.00) -> SoldeFacture:
     return SoldeFactureRepository().create(
         facture_id=facture_id,
         abonne_id=abonne_id,
@@ -107,8 +107,10 @@ class TestJournalisationAutomatique(TestCase):
             abonne_id="abonne-001", type_mouvement=TypeMouvementAvoir.IMPUTATION
         )
         self.assertEqual(imputations.count(), 1)
-        self.assertEqual(imputations.first().montant, Decimal("60.00"))
-        self.assertEqual(imputations.first().facture_id, "facture-002")
+        imputation = imputations.first()
+        assert imputation is not None
+        self.assertEqual(imputation.montant, Decimal("60.00"))
+        self.assertEqual(imputation.facture_id, "facture-002")
 
 
 class TestAvoirRPC(TestCase):

@@ -20,8 +20,8 @@ from django.test import SimpleTestCase
 from schema.notification_mutations import _TYPE_TO_ETAPE, NotificationMutations
 
 
-def _envoi(**kwargs) -> MagicMock:
-    defaults = dict(
+def _envoi(**kwargs: object) -> MagicMock:
+    defaults: dict[str, object] = dict(
         envoi_id="envoi-001",
         abonne_id="abonne-001",
         facture_id="facture-001",
@@ -36,8 +36,8 @@ def _envoi(**kwargs) -> MagicMock:
     return MagicMock(**defaults)
 
 
-def _paiement(**kwargs) -> MagicMock:
-    defaults = dict(paiement_id="paie-1", montant=7500.0, annule=False)
+def _paiement(**kwargs: object) -> MagicMock:
+    defaults: dict[str, object] = dict(paiement_id="paie-1", montant=7500.0, annule=False)
     defaults.update(kwargs)
     return MagicMock(**defaults)
 
@@ -48,7 +48,9 @@ class TestRenvoiSelonType(SimpleTestCase):
     """Un renvoi reprend le chemin d'envoi de son propre type."""
 
     @patch("schema.notification_mutations.notification_client")
-    def test_une_facture_se_renvoie_comme_une_facture(self, mock_notif, _auth, _role) -> None:
+    def test_une_facture_se_renvoie_comme_une_facture(
+        self, mock_notif: MagicMock, _auth: MagicMock, _role: MagicMock
+    ) -> None:
         mock_notif.get_envoi.return_value = _envoi(type_envoi="FACTURE")
         mock_notif.renvoyer_facture.return_value = _envoi(envoi_id="envoi-2")
 
@@ -58,7 +60,9 @@ class TestRenvoiSelonType(SimpleTestCase):
 
     @patch("schema.notification_mutations.paiement_client")
     @patch("schema.notification_mutations.notification_client")
-    def test_un_recu_se_renvoie_comme_un_recu(self, mock_notif, mock_paie, _auth, _role) -> None:
+    def test_un_recu_se_renvoie_comme_un_recu(
+        self, mock_notif: MagicMock, mock_paie: MagicMock, _auth: MagicMock, _role: MagicMock
+    ) -> None:
         """Le cœur du défaut : c'est le reçu qui repart, avec ses chiffres."""
         mock_notif.get_envoi.return_value = _envoi(type_envoi="RECU", paiement_id="paie-1")
         mock_paie.list_paiements.return_value = MagicMock(paiements=[_paiement()])
@@ -78,7 +82,9 @@ class TestRenvoiSelonType(SimpleTestCase):
 
     @patch("schema.notification_mutations.config_client")
     @patch("schema.notification_mutations.notification_client")
-    def test_une_relance_se_renvoie_a_son_etape(self, mock_notif, mock_config, _auth, _role) -> None:
+    def test_une_relance_se_renvoie_a_son_etape(
+        self, mock_notif: MagicMock, mock_config: MagicMock, _auth: MagicMock, _role: MagicMock
+    ) -> None:
         mock_notif.get_envoi.return_value = _envoi(type_envoi="RELANCE_2")
         mock_config.get_config.return_value = MagicMock(valeur="10")
         mock_notif.envoyer_relance.return_value = _envoi(envoi_id="envoi-2", type_envoi="RELANCE_2")
@@ -90,7 +96,9 @@ class TestRenvoiSelonType(SimpleTestCase):
 
     @patch("schema.notification_mutations.config_client")
     @patch("schema.notification_mutations.notification_client")
-    def test_un_avertissement_renvoie_le_delai_configure(self, mock_notif, mock_config, _auth, _role) -> None:
+    def test_un_avertissement_renvoie_le_delai_configure(
+        self, mock_notif: MagicMock, mock_config: MagicMock, _auth: MagicMock, _role: MagicMock
+    ) -> None:
         """Le délai de suspension est configurable, et le message l'annonce.
 
         Le cron des impayés le transmet ; un renvoi manuel doit le lire lui-même,
@@ -116,7 +124,9 @@ class TestRenvoiRecuRefus(SimpleTestCase):
 
     @patch("schema.notification_mutations.paiement_client")
     @patch("schema.notification_mutations.notification_client")
-    def test_un_versement_annule_ne_repart_pas(self, mock_notif, mock_paie, _auth, _role) -> None:
+    def test_un_versement_annule_ne_repart_pas(
+        self, mock_notif: MagicMock, mock_paie: MagicMock, _auth: MagicMock, _role: MagicMock
+    ) -> None:
         """Renvoyer ce reçu affirmerait un encaissement qui n'existe plus.
 
         Et l'abonné a déjà reçu, à l'annulation, le message qui le lui disait :
@@ -135,7 +145,9 @@ class TestRenvoiRecuRefus(SimpleTestCase):
 
     @patch("schema.notification_mutations.paiement_client")
     @patch("schema.notification_mutations.notification_client")
-    def test_un_recu_sans_versement_connu_le_dit(self, mock_notif, mock_paie, _auth, _role) -> None:
+    def test_un_recu_sans_versement_connu_le_dit(
+        self, mock_notif: MagicMock, mock_paie: MagicMock, _auth: MagicMock, _role: MagicMock
+    ) -> None:
         """Les reçus émis avant que l'envoi ne garde son versement.
 
         Ils existent en base : le champ est arrivé après eux. Le renvoi le dit
@@ -152,7 +164,9 @@ class TestRenvoiRecuRefus(SimpleTestCase):
 
     @patch("schema.notification_mutations.paiement_client")
     @patch("schema.notification_mutations.notification_client")
-    def test_un_solde_indisponible_arrete_le_renvoi(self, mock_notif, mock_paie, _auth, _role) -> None:
+    def test_un_solde_indisponible_arrete_le_renvoi(
+        self, mock_notif: MagicMock, mock_paie: MagicMock, _auth: MagicMock, _role: MagicMock
+    ) -> None:
         """Plutôt qu'un reçu annonçant « reste à payer : 0 ».
 
         C'est la dégradation silencieuse qui a déjà fait imprimer un faux total

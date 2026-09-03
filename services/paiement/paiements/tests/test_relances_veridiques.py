@@ -48,7 +48,9 @@ def _solde(facture_id: str, jours_retard: int) -> SoldeFacture:
 @patch("paiements.services.AbonneServiceClient")
 @patch("paiements.services.ConfigServiceClient")
 class TestUnSeulMessageParPassage(TestCase):
-    def _preparer(self, mock_config, mock_notif, mock_abonne, envoi_reussi: bool = True):
+    def _preparer(
+        self, mock_config: MagicMock, mock_notif: MagicMock, mock_abonne: MagicMock, envoi_reussi: bool = True
+    ) -> tuple[MagicMock, MagicMock]:
         mock_config.return_value.get_delais_impayes.return_value = dict(_DELAIS)
         notif = MagicMock()
         notif.envoyer_relance.return_value = envoi_reussi
@@ -56,7 +58,9 @@ class TestUnSeulMessageParPassage(TestCase):
         mock_abonne.return_value = MagicMock()
         return notif, mock_abonne.return_value
 
-    def test_facture_tres_en_retard_ne_recoit_qu_un_message(self, mock_config, mock_abonne, mock_notif) -> None:
+    def test_facture_tres_en_retard_ne_recoit_qu_un_message(
+        self, mock_config: MagicMock, mock_abonne: MagicMock, mock_notif: MagicMock
+    ) -> None:
         """31 jours de retard : l'avis de suspension, et lui seul.
 
         Le premier passage envoyait quatre messages : « échéance aujourd'hui »,
@@ -76,7 +80,9 @@ class TestUnSeulMessageParPassage(TestCase):
         self.assertEqual(notif.envoyer_relance.call_args.kwargs["etape"], 4)
         abonne.suspendre_abonne.assert_called_once_with(ABONNE)
 
-    def test_les_etapes_sautees_ne_sont_pas_marquees_envoyees(self, mock_config, mock_abonne, mock_notif) -> None:
+    def test_les_etapes_sautees_ne_sont_pas_marquees_envoyees(
+        self, mock_config: MagicMock, mock_abonne: MagicMock, mock_notif: MagicMock
+    ) -> None:
         """Elles ne l'ont pas été. La piste d'audit doit le dire.
 
         Les marquer « envoyées » pour faire propre effacerait la seule trace de
@@ -96,7 +102,7 @@ class TestUnSeulMessageParPassage(TestCase):
         self.assertEqual(suivi.etape_actuelle, 4)
 
     def test_une_facture_qui_vieillit_normalement_suit_bien_les_etapes(
-        self, mock_config, mock_abonne, mock_notif
+        self, mock_config: MagicMock, mock_abonne: MagicMock, mock_notif: MagicMock
     ) -> None:
         """Le comportement du cas normal est inchangé — c'est l'essentiel.
 
@@ -122,7 +128,9 @@ class TestUnSeulMessageParPassage(TestCase):
             self.assertEqual(notif.envoyer_relance.call_count, 1, f"à J+{jours}")
             self.assertEqual(notif.envoyer_relance.call_args.kwargs["etape"], etape_attendue, f"à J+{jours}")
 
-    def test_le_delai_avant_suspension_transmis_est_le_vrai(self, mock_config, mock_abonne, mock_notif) -> None:
+    def test_le_delai_avant_suspension_transmis_est_le_vrai(
+        self, mock_config: MagicMock, mock_abonne: MagicMock, mock_notif: MagicMock
+    ) -> None:
         """Le gabarit écrivait « suspendue dans 3 jours » en dur.
 
         À J+8 avec une suspension à J+10, il reste **2** jours. Le cron a la
@@ -138,7 +146,9 @@ class TestUnSeulMessageParPassage(TestCase):
         self.assertEqual(kwargs["etape"], 3)
         self.assertEqual(kwargs["jours_avant_suspension"], 2)
 
-    def test_le_delai_suit_la_configuration(self, mock_config, mock_abonne, mock_notif) -> None:
+    def test_le_delai_suit_la_configuration(
+        self, mock_config: MagicMock, mock_abonne: MagicMock, mock_notif: MagicMock
+    ) -> None:
         """Suspension réglée à 20 jours : à J+8, il reste 12 jours, pas 3."""
         notif, _ = self._preparer(mock_config, mock_notif, mock_abonne)
         mock_config.return_value.get_delais_impayes.return_value = {**_DELAIS, "suspension": 20}
@@ -155,7 +165,9 @@ class TestUnSeulMessageParPassage(TestCase):
 class TestRelanceNonPartie(TestCase):
     """Une relance qui n'est pas partie n'est pas une relance."""
 
-    def _preparer(self, mock_config, mock_notif, mock_abonne, envoi_reussi: bool):
+    def _preparer(
+        self, mock_config: MagicMock, mock_notif: MagicMock, mock_abonne: MagicMock, envoi_reussi: bool
+    ) -> tuple[MagicMock, MagicMock]:
         mock_config.return_value.get_delais_impayes.return_value = dict(_DELAIS)
         notif = MagicMock()
         notif.envoyer_relance.return_value = envoi_reussi
@@ -163,7 +175,9 @@ class TestRelanceNonPartie(TestCase):
         mock_abonne.return_value = MagicMock()
         return notif, mock_abonne.return_value
 
-    def test_l_etape_reste_a_retenter_si_le_message_n_est_pas_parti(self, mock_config, mock_abonne, mock_notif) -> None:
+    def test_l_etape_reste_a_retenter_si_le_message_n_est_pas_parti(
+        self, mock_config: MagicMock, mock_abonne: MagicMock, mock_notif: MagicMock
+    ) -> None:
         """Le drapeau était posé inconditionnellement.
 
         `envoyer_relance` n'échoue jamais : erreurs gRPC et échecs WhatsApp sont
@@ -192,7 +206,7 @@ class TestRelanceNonPartie(TestCase):
         self.assertTrue(suivi.rappel_1_envoye)
 
     def test_la_suspension_a_lieu_meme_si_le_message_echoue_mais_les_admins_le_savent(
-        self, mock_config, mock_abonne, mock_notif
+        self, mock_config: MagicMock, mock_abonne: MagicMock, mock_notif: MagicMock
     ) -> None:
         """La coupure est la décision ; le message n'en est que l'annonce.
 

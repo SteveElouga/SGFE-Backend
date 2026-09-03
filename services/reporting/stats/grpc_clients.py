@@ -16,6 +16,7 @@ from pathlib import Path
 
 from django.conf import settings
 
+from stats.dtos import FactureDict, PaiementDict
 from stats.grpc_auth import canal_authentifie
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ class FacturationServiceClient:
         self._stub = pb_grpc.FacturationServiceStub(self._channel)
         self._pb = pb
 
-    def list_factures_par_campagne(self, campagne_id: str) -> list[dict]:
+    def list_factures_par_campagne(self, campagne_id: str) -> list[FactureDict]:
         """Retourne toutes les factures (tous statuts, y compris ANNULEE) d'une campagne.
 
         Lève l'exception gRPC si Facturation Service est inaccessible — voir la
@@ -72,7 +73,7 @@ class PaiementServiceClient:
         self._stub = pb_grpc.PaiementServiceStub(self._channel)
         self._pb = pb
 
-    def list_paiements_par_campagne(self, campagne_id: str) -> list[dict]:
+    def list_paiements_par_campagne(self, campagne_id: str) -> list[PaiementDict]:
         """Retourne tous les paiements (y compris annulés) des factures d'une campagne.
 
         Lève l'exception gRPC si Paiement Service est inaccessible — voir la

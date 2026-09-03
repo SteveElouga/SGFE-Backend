@@ -1,3 +1,4 @@
+from typing import Any
 from enum import Enum
 
 import strawberry
@@ -96,7 +97,7 @@ class HistoriqueCompteur:
     motif: str
 
 
-def compteur_from_grpc(compteur_response) -> Compteur:
+def compteur_from_grpc(compteur_response: Any) -> Compteur:
     return Compteur(
         id=strawberry.ID(compteur_response.compteur_id),
         numero_compteur=compteur_response.numero_compteur,
@@ -109,7 +110,7 @@ def compteur_from_grpc(compteur_response) -> Compteur:
     )
 
 
-def historique_from_grpc(h) -> HistoriqueCompteur:
+def historique_from_grpc(h: Any) -> HistoriqueCompteur:
     return HistoriqueCompteur(
         id=strawberry.ID(h.historique_id),
         ancien_compteur=compteur_from_grpc(h.ancien_compteur),
@@ -121,7 +122,7 @@ def historique_from_grpc(h) -> HistoriqueCompteur:
     )
 
 
-def abonne_from_grpc(abonne_response) -> Abonne:
+def abonne_from_grpc(abonne_response: Any) -> Abonne:
     has_compteur = abonne_response.HasField("compteur")
     return Abonne(
         id=strawberry.ID(abonne_response.abonne_id),

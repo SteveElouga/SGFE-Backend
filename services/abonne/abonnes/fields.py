@@ -34,6 +34,7 @@ déterministe du numéro de téléphone) — pas un `WHERE nom LIKE %...%` direc
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
@@ -69,15 +70,25 @@ class _EncryptedFieldMixin:
     déchiffre à la lecture (`from_db_value`, appelé juste après). Transparent
     pour le reste du code applicatif : `abonne.nom` reste une `str` en clair
     dans tout le code Python (services, sérialiseurs, gRPC) — seule la
-    colonne en base contient le token Fernet."""
+    colonne en base contient le token Fernet.
 
-    def get_prep_value(self, value):
-        value = super().get_prep_value(value)
+    Mixin pur (pas de base `models.Field` ici) : `name` est déclaré ci-dessous
+    pour mypy, et les appels `super()` vers `get_prep_value`/`get_lookup` sont
+    `# type: ignore[misc]` — mypy ne peut pas résoudre statiquement le membre
+    apporté par l'autre base (`models.CharField`/`models.TextField`) dans
+    l'ordre de résolution des classes des sous-classes concrètes ci-dessous ;
+    à l'exécution, `super()` s'y résout normalement (MRO réel des instances).
+    """
+
+    name: str
+
+    def get_prep_value(self, value: Any) -> Any:
+        value = super().get_prep_value(value)  # type: ignore[misc]
         if value is None or value == "":
             return value
         return _fernet().encrypt(value.encode("utf-8")).decode("utf-8")
 
-    def from_db_value(self, value, expression, connection):
+    def from_db_value(self, value: Any, expression: Any, connection: Any) -> Any:
         if value is None or value == "":
             return value
         try:
@@ -89,7 +100,7 @@ class _EncryptedFieldMixin:
             # corrompu comme si c'était le nom de l'abonné.
             raise
 
-    def get_lookup(self, lookup_name):
+    def get_lookup(self, lookup_name: str) -> Any:
         # Fernet est un chiffrement AUTHENTIFIÉ NON DÉTERMINISTE (IV + horodatage
         # aléatoires à chaque appel) : chiffrer deux fois la même valeur produit
         # un texte chiffré différent. Un `WHERE nom = %s` ou `LIKE %%%s%%` contre
@@ -107,10 +118,14 @@ class _EncryptedFieldMixin:
                 "ajouter un champ séparé non chiffré (ex. hash déterministe) si une "
                 "recherche/un filtre est réellement nécessaire — voir abonnes/fields.py."
             )
-        return super().get_lookup(lookup_name)
+        return super().get_lookup(lookup_name)  # type: ignore[misc]
 
 
-class EncryptedCharField(_EncryptedFieldMixin, models.CharField):
+class EncryptedCharField(_EncryptedFieldMixin, models.CharField):  # type: ignore[type-arg]
+    # ^ `models.CharField` n'est générique que dans les stubs django-stubs, pas à
+    # l'exécution (non souscriptable dans le vrai Django) : impossible d'écrire
+    # `CharField[str, str]` sans planter l'import réel — voir le même choix pour
+    # `EncryptedTextField` ci-dessous.
     """CharField chiffré au repos.
 
     `max_length` continue de porter sur la valeur EN CLAIR — c'est la
@@ -121,10 +136,10 @@ class EncryptedCharField(_EncryptedFieldMixin, models.CharField):
     ciphertext pour 100 caractères de texte en clair).
     """
 
-    def db_type(self, connection):
+    def db_type(self, connection: Any) -> str:
         return "text"
 
 
-class EncryptedTextField(_EncryptedFieldMixin, models.TextField):
+class EncryptedTextField(_EncryptedFieldMixin, models.TextField):  # type: ignore[type-arg]
     """TextField chiffré au repos (déjà `TEXT` en base, aucun changement de
     type de colonne nécessaire — seul le contenu devient un token Fernet)."""

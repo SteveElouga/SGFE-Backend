@@ -3,6 +3,7 @@
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 import grpc
 from django.conf import settings
@@ -30,14 +31,17 @@ class FacturationServiceClient:
         if proto_path not in sys.path:
             sys.path.insert(0, proto_path)
 
-        import facturation_service_pb2 as pb  # type: ignore[import]
-        import facturation_service_pb2_grpc as pb_grpc  # type: ignore[import]
+        import facturation_service_pb2 as pb
+        import facturation_service_pb2_grpc as pb_grpc
 
         self._stub = pb_grpc.FacturationServiceStub(self._channel)
         self._pb = pb
 
-    def get_facture(self, facture_id: str):
+    def get_facture(self, facture_id: str) -> Any:
         """Récupère les détails d'une facture depuis Facturation Service.
+
+        Type de retour `Any` assumé : message protobuf `FactureResponse` (stub
+        généré exclu de la vérification mypy, voir `facturation_service_pb2`).
 
         Returns:
             FactureResponse protobuf.
@@ -119,13 +123,13 @@ class PaiementServiceClient:
         if proto_path not in sys.path:
             sys.path.insert(0, proto_path)
 
-        import paiement_service_pb2 as pb  # type: ignore[import]
-        import paiement_service_pb2_grpc as pb_grpc  # type: ignore[import]
+        import paiement_service_pb2 as pb
+        import paiement_service_pb2_grpc as pb_grpc
 
         self._stub = pb_grpc.PaiementServiceStub(self._channel)
         self._pb = pb
 
-    def get_dette_abonne(self, abonne_id: str, hors_facture_id: str = ""):
+    def get_dette_abonne(self, abonne_id: str, hors_facture_id: str = "") -> tuple[float, int, str]:
         """Dette de l'abonné, hors la facture qu'on lui envoie.
 
         Retourne `(total_du, nb_factures, plus_ancienne_echeance)`. Un échec
@@ -183,14 +187,17 @@ class AbonneServiceClient:
         if proto_path not in sys.path:
             sys.path.insert(0, proto_path)
 
-        import abonne_service_pb2 as pb  # type: ignore[import]
-        import abonne_service_pb2_grpc as pb_grpc  # type: ignore[import]
+        import abonne_service_pb2 as pb
+        import abonne_service_pb2_grpc as pb_grpc
 
         self._stub = pb_grpc.AbonneServiceStub(self._channel)
         self._pb = pb
 
-    def get_abonne(self, abonne_id: str):
+    def get_abonne(self, abonne_id: str) -> Any:
         """Récupère les informations d'un abonné depuis Abonné Service.
+
+        Type de retour `Any` assumé : message protobuf `AbonneResponse` (stub
+        généré exclu de la vérification mypy, voir `abonne_service_pb2`).
 
         Returns:
             AbonneResponse protobuf.
@@ -212,14 +219,17 @@ class ConfigServiceClient:
         if proto_path not in sys.path:
             sys.path.insert(0, proto_path)
 
-        import config_service_pb2 as pb  # type: ignore[import]
-        import config_service_pb2_grpc as pb_grpc  # type: ignore[import]
+        import config_service_pb2 as pb
+        import config_service_pb2_grpc as pb_grpc
 
         self._stub = pb_grpc.ConfigServiceStub(self._channel)
         self._pb = pb
 
-    def get_infos_societe(self):
+    def get_infos_societe(self) -> Any:
         """Récupère les informations de la société (nom, téléphone…).
+
+        Type de retour `Any` assumé : message protobuf `InfosSocieteResponse`
+        (stub généré exclu de la vérification mypy, voir `config_service_pb2`).
 
         Returns:
             InfosSocieteResponse protobuf.
@@ -245,7 +255,7 @@ class ConfigServiceClient:
                 settings.DEFAULT_TOKEN_VALIDITE_JOURS,
                 exc,
             )
-            return settings.DEFAULT_TOKEN_VALIDITE_JOURS
+            return int(settings.DEFAULT_TOKEN_VALIDITE_JOURS)
 
     def get_email_admin_notifications(self) -> str:
         """Récupère l'email de notification admin (clé : email_admin_notifications).
@@ -254,7 +264,7 @@ class ConfigServiceClient:
         """
         try:
             response = self._stub.GetConfig(self._pb.ConfigKeyRequest(cle="email_admin_notifications"))
-            return response.valeur.strip()
+            return str(response.valeur.strip())
         except (grpc.RpcError, ValueError):
             return ""
 

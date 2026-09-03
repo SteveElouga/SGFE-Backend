@@ -83,7 +83,13 @@ class TestAvalEncaissementComptoir(TestCase):
         return PaiementServicer()
 
     def test_statut_pousse_vers_facturation_pour_chaque_facture_touchee(
-        self, mock_fact, mock_notif, mock_abonne, mock_notif_svc, mock_rep, mock_pub
+        self,
+        mock_fact: MagicMock,
+        mock_notif: MagicMock,
+        mock_abonne: MagicMock,
+        mock_notif_svc: MagicMock,
+        mock_rep: MagicMock,
+        mock_pub: MagicMock,
     ) -> None:
         """Sans cela, la facture reste affichée IMPAYÉE après avoir été réglée.
 
@@ -103,7 +109,13 @@ class TestAvalEncaissementComptoir(TestCase):
         self.assertEqual(pousses, {"juin": StatutSolde.PAYEE, "juillet": StatutSolde.PAYEE})
 
     def test_suivi_impaye_resolu_pour_chaque_facture_soldee(
-        self, mock_fact, mock_notif, mock_abonne, mock_notif_svc, mock_rep, mock_pub
+        self,
+        mock_fact: MagicMock,
+        mock_notif: MagicMock,
+        mock_abonne: MagicMock,
+        mock_notif_svc: MagicMock,
+        mock_rep: MagicMock,
+        mock_pub: MagicMock,
     ) -> None:
         """Sans cela, le cron de relance garde une dette éteinte dans son viseur."""
         _solde("juin", 5000, jours=60)
@@ -119,7 +131,13 @@ class TestAvalEncaissementComptoir(TestCase):
         self.assertEqual(s_juillet.resolu_le, date.today())
 
     def test_un_seul_recu_pour_le_versement_avec_le_montant_recu(
-        self, mock_fact, mock_notif, mock_abonne, mock_notif_svc, mock_rep, mock_pub
+        self,
+        mock_fact: MagicMock,
+        mock_notif: MagicMock,
+        mock_abonne: MagicMock,
+        mock_notif_svc: MagicMock,
+        mock_rep: MagicMock,
+        mock_pub: MagicMock,
     ) -> None:
         """Aucun reçu ne partait, alors que tout le mécanisme existe.
 
@@ -140,7 +158,13 @@ class TestAvalEncaissementComptoir(TestCase):
         self.assertAlmostEqual(kwargs["solde_restant"], 0.0)
 
     def test_le_recu_annonce_la_dette_totale_restante(
-        self, mock_fact, mock_notif, mock_abonne, mock_notif_svc, mock_rep, mock_pub
+        self,
+        mock_fact: MagicMock,
+        mock_notif: MagicMock,
+        mock_abonne: MagicMock,
+        mock_notif_svc: MagicMock,
+        mock_rep: MagicMock,
+        mock_pub: MagicMock,
     ) -> None:
         """Et non le reste d'une facture parmi plusieurs.
 
@@ -157,7 +181,13 @@ class TestAvalEncaissementComptoir(TestCase):
         self.assertAlmostEqual(kwargs["solde_restant"], 6000.0)
 
     def test_abonne_reactive_quand_il_ne_doit_plus_rien(
-        self, mock_fact, mock_notif, mock_abonne, mock_notif_svc, mock_rep, mock_pub
+        self,
+        mock_fact: MagicMock,
+        mock_notif: MagicMock,
+        mock_abonne: MagicMock,
+        mock_notif_svc: MagicMock,
+        mock_rep: MagicMock,
+        mock_pub: MagicMock,
     ) -> None:
         """LE défaut le plus grave : un abonné suspendu qui paie restait coupé.
 
@@ -174,7 +204,13 @@ class TestAvalEncaissementComptoir(TestCase):
         mock_abonne.return_value.reactiver_abonne.assert_called_once_with(ABONNE)
 
     def test_pas_de_reactivation_tant_qu_il_reste_une_dette(
-        self, mock_fact, mock_notif, mock_abonne, mock_notif_svc, mock_rep, mock_pub
+        self,
+        mock_fact: MagicMock,
+        mock_notif: MagicMock,
+        mock_abonne: MagicMock,
+        mock_notif_svc: MagicMock,
+        mock_rep: MagicMock,
+        mock_pub: MagicMock,
     ) -> None:
         """RS-005 : « paiement INTÉGRAL après suspension → ACTIF ».
 
@@ -196,7 +232,13 @@ class TestAvalEncaissementComptoir(TestCase):
         mock_notif_svc.return_value.envoyer_relance.assert_not_called()
 
     def test_stats_reporting_par_facture_avec_sa_campagne_et_sa_part(
-        self, mock_fact, mock_notif, mock_abonne, mock_notif_svc, mock_rep, mock_pub
+        self,
+        mock_fact: MagicMock,
+        mock_notif: MagicMock,
+        mock_abonne: MagicMock,
+        mock_notif_svc: MagicMock,
+        mock_rep: MagicMock,
+        mock_pub: MagicMock,
     ) -> None:
         """Le montant encaissé du tableau de bord ignorait ces recettes.
 
@@ -219,7 +261,13 @@ class TestAvalEncaissementComptoir(TestCase):
         self.assertAlmostEqual(sum(m for _, m in paiements), 8000.0)
 
     def test_evenement_publie_pour_chaque_ecriture(
-        self, mock_fact, mock_notif, mock_abonne, mock_notif_svc, mock_rep, mock_pub
+        self,
+        mock_fact: MagicMock,
+        mock_notif: MagicMock,
+        mock_abonne: MagicMock,
+        mock_notif_svc: MagicMock,
+        mock_rep: MagicMock,
+        mock_pub: MagicMock,
     ) -> None:
         """Sans cela, aucun écran ouvert ne se rafraîchit sur un encaissement."""
         _solde("juin", 5000, jours=60)
@@ -231,7 +279,13 @@ class TestAvalEncaissementComptoir(TestCase):
         self.assertEqual(mock_pub.call_count, 2)
 
     def test_relances_suspendues_apres_un_acompte(
-        self, mock_fact, mock_notif, mock_abonne, mock_notif_svc, mock_rep, mock_pub
+        self,
+        mock_fact: MagicMock,
+        mock_notif: MagicMock,
+        mock_abonne: MagicMock,
+        mock_notif_svc: MagicMock,
+        mock_rep: MagicMock,
+        mock_pub: MagicMock,
     ) -> None:
         """EF-IMP-004. Sans cela, l'abonné qui verse un acompte au comptoir
         continue d'être relancé, et se fait suspendre à J+10 malgré son geste.
@@ -248,7 +302,13 @@ class TestAvalEncaissementComptoir(TestCase):
         self.assertEqual(suivi.relances_suspendues_jusqu, date.today() + timedelta(days=5))
 
     def test_versement_sans_dette_ne_propage_rien(
-        self, mock_fact, mock_notif, mock_abonne, mock_notif_svc, mock_rep, mock_pub
+        self,
+        mock_fact: MagicMock,
+        mock_notif: MagicMock,
+        mock_abonne: MagicMock,
+        mock_notif_svc: MagicMock,
+        mock_rep: MagicMock,
+        mock_pub: MagicMock,
     ) -> None:
         """Un abonné qui ne doit rien et verse quand même : tout part en avoir.
 
@@ -291,7 +351,13 @@ class TestAvalCascade(TestCase):
         )
 
     def test_la_vieille_facture_eteinte_par_cascade_remonte_son_statut(
-        self, mock_fact, mock_notif, mock_abonne, mock_notif_svc, mock_rep, mock_pub
+        self,
+        mock_fact: MagicMock,
+        mock_notif: MagicMock,
+        mock_abonne: MagicMock,
+        mock_notif_svc: MagicMock,
+        mock_rep: MagicMock,
+        mock_pub: MagicMock,
     ) -> None:
         """Elle restait IMPAYÉE côté Facturation — donc dans le back-office et
         dans le PDF régénéré — alors que la base Paiement la savait soldée.
@@ -310,7 +376,13 @@ class TestAvalCascade(TestCase):
         self.assertEqual(pousses, {"aout": StatutSolde.PAYEE, "ancienne": StatutSolde.PAYEE})
 
     def test_le_suivi_de_la_vieille_facture_est_resolu(
-        self, mock_fact, mock_notif, mock_abonne, mock_notif_svc, mock_rep, mock_pub
+        self,
+        mock_fact: MagicMock,
+        mock_notif: MagicMock,
+        mock_abonne: MagicMock,
+        mock_notif_svc: MagicMock,
+        mock_rep: MagicMock,
+        mock_pub: MagicMock,
     ) -> None:
         """Son `resolu_le` restait vide : trace comptable perdue, et le cron
         gardait dans son viseur une dette que l'argent avait éteinte.
@@ -326,7 +398,13 @@ class TestAvalCascade(TestCase):
         self.assertEqual(suivi.resolu_le, date.today())
 
     def test_un_seul_recu_meme_avec_cascade(
-        self, mock_fact, mock_notif, mock_abonne, mock_notif_svc, mock_rep, mock_pub
+        self,
+        mock_fact: MagicMock,
+        mock_notif: MagicMock,
+        mock_abonne: MagicMock,
+        mock_notif_svc: MagicMock,
+        mock_rep: MagicMock,
+        mock_pub: MagicMock,
     ) -> None:
         """Un geste, un justificatif — pas un par ligne touchée."""
         _solde("ancienne", 3000, jours=90)
@@ -355,7 +433,13 @@ class TestMessageDeRetablissement(TestCase):
     """
 
     def test_message_envoye_quand_une_suspension_est_levee(
-        self, mock_fact, mock_notif, mock_abonne, mock_notif_svc, mock_rep, mock_pub
+        self,
+        mock_fact: MagicMock,
+        mock_notif: MagicMock,
+        mock_abonne: MagicMock,
+        mock_notif_svc: MagicMock,
+        mock_rep: MagicMock,
+        mock_pub: MagicMock,
     ) -> None:
         _solde("juin", 5000, jours=60)
         mock_abonne.return_value.reactiver_abonne.return_value = True
@@ -367,7 +451,13 @@ class TestMessageDeRetablissement(TestCase):
         self.assertEqual(mock_notif_svc.return_value.envoyer_relance.call_args.kwargs["etape"], 0)
 
     def test_aucun_message_si_l_abonne_n_etait_pas_suspendu(
-        self, mock_fact, mock_notif, mock_abonne, mock_notif_svc, mock_rep, mock_pub
+        self,
+        mock_fact: MagicMock,
+        mock_notif: MagicMock,
+        mock_abonne: MagicMock,
+        mock_notif_svc: MagicMock,
+        mock_rep: MagicMock,
+        mock_pub: MagicMock,
     ) -> None:
         """Le cas le plus fréquent. Le reçu suffit : il confirme l'argent reçu.
 

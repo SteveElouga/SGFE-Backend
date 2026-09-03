@@ -27,7 +27,7 @@ from comptes.services import (
 
 
 class RevocationParChangementTests(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.auth = AuthService()
         self.user = User.objects.create_user(
             username="cible",
@@ -37,11 +37,11 @@ class RevocationParChangementTests(TestCase):
             phone_number="+237690000042",
         )
 
-    def _session_ouverte(self):
+    def _session_ouverte(self) -> tuple[str, str, int]:
         """Un couple de jetons, comme en aurait un intrus déjà connecté."""
         return self.auth.login("cible", "secret123")
 
-    def _changer_par_lien(self, mot_de_passe="S3cr3t!", decalage_s=2):
+    def _changer_par_lien(self, mot_de_passe: str = "S3cr3t!", decalage_s: int = 2) -> None:
         """Change le mot de passe, en le datant `decalage_s` secondes plus tard.
 
         `iat` est une seconde epoch : dans un test qui s'exécute en quelques
@@ -57,7 +57,7 @@ class RevocationParChangementTests(TestCase):
 
     # ── Le cœur du sujet ─────────────────────────────────────────────────────
 
-    def test_le_jeton_d_acces_anterieur_est_refuse(self):
+    def test_le_jeton_d_acces_anterieur_est_refuse(self) -> None:
         access, _refresh, _ = self._session_ouverte()
         self.auth.validate_token(access)  # valide avant le changement
 
@@ -66,7 +66,7 @@ class RevocationParChangementTests(TestCase):
         with self.assertRaises(AuthenticationError):
             self.auth.validate_token(access)
 
-    def test_le_jeton_de_rafraichissement_anterieur_est_refuse(self):
+    def test_le_jeton_de_rafraichissement_anterieur_est_refuse(self) -> None:
         """C'est celui qui compte : il vit sept jours."""
         _access, refresh, _ = self._session_ouverte()
         self._changer_par_lien()
@@ -74,7 +74,7 @@ class RevocationParChangementTests(TestCase):
         with self.assertRaises(AuthenticationError):
             self.auth.refresh_token(refresh)
 
-    def test_une_session_ouverte_apres_le_changement_fonctionne(self):
+    def test_une_session_ouverte_apres_le_changement_fonctionne(self) -> None:
         # Le changement est daté d'il y a deux secondes : la connexion qui suit
         # est donc postérieure, comme dans la vraie vie.
         self._changer_par_lien(decalage_s=-2)
@@ -82,7 +82,7 @@ class RevocationParChangementTests(TestCase):
         self.assertEqual(self.auth.validate_token(access).username, "cible")
         self.assertTrue(self.auth.refresh_token(refresh))
 
-    def test_le_changement_par_otp_ferme_aussi_les_sessions(self):
+    def test_le_changement_par_otp_ferme_aussi_les_sessions(self) -> None:
         """Les deux chemins de réinitialisation doivent se comporter pareil.
 
         Le code est fixé plutôt que deviné : le service l'envoie par WhatsApp et
@@ -107,21 +107,22 @@ class RevocationParChangementTests(TestCase):
 
     # ── Ce qui ne doit pas casser ────────────────────────────────────────────
 
-    def test_un_compte_qui_n_a_jamais_change_de_mot_de_passe_reste_connecte(self):
+    def test_un_compte_qui_n_a_jamais_change_de_mot_de_passe_reste_connecte(self) -> None:
         """Sinon le déploiement du champ déconnecterait tout le parc d'un coup."""
         self.assertIsNone(self.user.password_changed_at)
         access, refresh, _ = self._session_ouverte()
         self.assertEqual(self.auth.validate_token(access).username, "cible")
         self.assertTrue(self.auth.refresh_token(refresh))
 
-    def test_le_changement_estampille_l_utilisateur(self):
+    def test_le_changement_estampille_l_utilisateur(self) -> None:
         avant = timezone.now()
         self._changer_par_lien()
         self.user.refresh_from_db()
         self.assertIsNotNone(self.user.password_changed_at)
+        assert self.user.password_changed_at is not None
         self.assertGreaterEqual(self.user.password_changed_at, avant)
 
-    def test_un_autre_utilisateur_n_est_pas_affecte(self):
+    def test_un_autre_utilisateur_n_est_pas_affecte(self) -> None:
         """La révocation vise une personne, pas le parc."""
         autre = User.objects.create_user(
             username="voisin",
@@ -137,7 +138,7 @@ class RevocationParChangementTests(TestCase):
         self.assertEqual(self.auth.validate_token(access_voisin).username, "voisin")
         self.assertTrue(autre)
 
-    def test_la_rotation_du_rafraichissement_survit_au_garde(self):
+    def test_la_rotation_du_rafraichissement_survit_au_garde(self) -> None:
         """Le garde ne doit pas casser le renouvellement normal des jetons."""
         _a, refresh, _ = self._session_ouverte()
         nouveau_access, nouveau_refresh, _ = self.auth.refresh_token(refresh)

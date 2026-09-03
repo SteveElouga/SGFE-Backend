@@ -125,7 +125,7 @@ class TestEnregistrerPaiement(TestCase):
         """Rejeu d'un paiement avec la même référence : pas de double-versement."""
         from paiements.models import Paiement
 
-        args = dict(
+        p1, _ = self.svc.enregistrer_paiement(
             facture_id="facture-001",
             abonne_id="abonne-001",
             montant=100.00,
@@ -134,8 +134,15 @@ class TestEnregistrerPaiement(TestCase):
             reference_transaction="TX-123",
             enregistre_par="user-001",
         )
-        p1, _ = self.svc.enregistrer_paiement(**args)
-        p2, solde = self.svc.enregistrer_paiement(**args)  # rejeu (réseau / double-clic)
+        p2, solde = self.svc.enregistrer_paiement(  # rejeu (réseau / double-clic)
+            facture_id="facture-001",
+            abonne_id="abonne-001",
+            montant=100.00,
+            date_paiement=date(2026, 6, 20),
+            mode_paiement=ModePaiement.MOBILE_MONEY,
+            reference_transaction="TX-123",
+            enregistre_par="user-001",
+        )
 
         self.assertEqual(p1.id, p2.id)  # même paiement renvoyé, pas un nouveau
         self.assertEqual(Paiement.objects.count(), 1)  # aucun doublon en base
@@ -591,7 +598,9 @@ class TestImpayeService(TestCase):
     @patch("paiements.services.NotificationServiceClient")
     @patch("paiements.services.AbonneServiceClient")
     @patch("paiements.services.ConfigServiceClient")
-    def test_verifier_et_escalader_envoie_rappel_1(self, mock_config_cls, mock_abonne_cls, mock_notif_cls) -> None:
+    def test_verifier_et_escalader_envoie_rappel_1(
+        self, mock_config_cls: MagicMock, mock_abonne_cls: MagicMock, mock_notif_cls: MagicMock
+    ) -> None:
         """Envoie le 1er rappel pour une facture dépassée depuis J+0."""
         mock_config_cls.return_value.get_delais_impayes.return_value = {
             "rappel_1": 0,
@@ -618,7 +627,7 @@ class TestImpayeService(TestCase):
     @patch("paiements.services.AbonneServiceClient")
     @patch("paiements.services.ConfigServiceClient")
     def test_verifier_et_escalader_etape_4_suspend_abonne(
-        self, mock_config_cls, mock_abonne_cls, mock_notif_cls
+        self, mock_config_cls: MagicMock, mock_abonne_cls: MagicMock, mock_notif_cls: MagicMock
     ) -> None:
         """Suspend l'abonné à l'étape 4 (J+10)."""
         mock_config_cls.return_value.get_delais_impayes.return_value = {
@@ -647,7 +656,7 @@ class TestImpayeService(TestCase):
     @patch("paiements.services.AbonneServiceClient")
     @patch("paiements.services.ConfigServiceClient")
     def test_verifier_et_escalader_skip_si_relances_suspendues(
-        self, mock_config_cls, mock_abonne_cls, mock_notif_cls
+        self, mock_config_cls: MagicMock, mock_abonne_cls: MagicMock, mock_notif_cls: MagicMock
     ) -> None:
         """Skip les relances si relances_suspendues_jusqu > today."""
         mock_config_cls.return_value.get_delais_impayes.return_value = {

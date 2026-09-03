@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from typing import Any
 
 from django.conf import settings
 from schema.grpc_auth import canal_authentifie
@@ -105,7 +106,7 @@ class AbonneServiceClient:
         """Abonnés filtrés. `limit`/`offset` optionnels — omis, le champ
         proto3 `optional` correspondant reste non défini côté serveur, qui
         renvoie alors la liste complète (rétrocompatibilité stricte)."""
-        kwargs = {"statut": statut}
+        kwargs: dict[str, object] = {"statut": statut}
         if limit is not None:
             kwargs["limit"] = limit
         if offset is not None:
@@ -116,7 +117,7 @@ class AbonneServiceClient:
         """Nombre total d'abonnés pour ce filtre, sans rapatrier la liste :
         demande la page la plus petite possible (`limit=0`) et ne lit que
         `total` sur la réponse."""
-        return self.list_abonnes(statut, limit=0, offset=0).total
+        return int(self.list_abonnes(statut, limit=0, offset=0).total)
 
     def list_abonnes_actifs(self) -> abonne_pb.ListAbonnesResponse:
         return self._stub.ListAbonnesActifs(abonne_pb.EmptyRequest())
@@ -124,10 +125,10 @@ class AbonneServiceClient:
     def list_zones(self) -> abonne_pb.ListZonesResponse:
         return self._stub.ListZones(abonne_pb.EmptyRequest())
 
-    def create_abonne(self, **kwargs) -> abonne_pb.AbonneResponse:
+    def create_abonne(self, **kwargs: Any) -> abonne_pb.AbonneResponse:
         return self._stub.CreateAbonne(abonne_pb.CreateAbonneRequest(**kwargs))
 
-    def update_abonne(self, abonne_id: str, **kwargs) -> abonne_pb.AbonneResponse:
+    def update_abonne(self, abonne_id: str, **kwargs: Any) -> abonne_pb.AbonneResponse:
         return self._stub.UpdateAbonne(abonne_pb.UpdateAbonneRequest(abonne_id=abonne_id, **kwargs))
 
     def suspendre_abonne(self, abonne_id: str) -> abonne_pb.AbonneResponse:
@@ -149,10 +150,10 @@ class AbonneServiceClient:
         abonnes/export.py côté Abonné Service pour le choix de format/volume)."""
         return self._stub.ExporterDonneesAbonne(abonne_pb.AbonneIdRequest(abonne_id=abonne_id))
 
-    def update_compteur(self, abonne_id: str, **kwargs) -> abonne_pb.CompteurResponse:
+    def update_compteur(self, abonne_id: str, **kwargs: Any) -> abonne_pb.CompteurResponse:
         return self._stub.UpdateCompteur(abonne_pb.UpdateCompteurRequest(abonne_id=abonne_id, **kwargs))
 
-    def remplacer_compteur(self, abonne_id: str, **kwargs) -> abonne_pb.CompteurResponse:
+    def remplacer_compteur(self, abonne_id: str, **kwargs: Any) -> abonne_pb.CompteurResponse:
         return self._stub.RemplacerCompteur(abonne_pb.RemplacerCompteurRequest(abonne_id=abonne_id, **kwargs))
 
     def get_historique_compteur(self, abonne_id: str) -> abonne_pb.ListHistoriqueResponse:
@@ -170,7 +171,7 @@ class ConfigServiceClient:
     def get_infos_societe(self) -> config_pb.InfosSocieteResponse:
         return self._stub.GetInfosSociete(config_pb.EmptyRequest())
 
-    def update_infos_societe(self, **kwargs) -> config_pb.InfosSocieteResponse:
+    def update_infos_societe(self, **kwargs: Any) -> config_pb.InfosSocieteResponse:
         return self._stub.UpdateInfosSociete(config_pb.UpdateInfosRequest(**kwargs))
 
     def get_config(self, cle: str) -> config_pb.ConfigResponse:
@@ -191,7 +192,7 @@ class CampagneServiceClient:
         self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
         self._stub = campagne_pb_grpc.CampagneServiceStub(self._channel)
 
-    def create_campagne(self, **kwargs) -> campagne_pb.CampagneResponse:
+    def create_campagne(self, **kwargs: Any) -> campagne_pb.CampagneResponse:
         return self._stub.CreateCampagne(campagne_pb.CreateCampagneRequest(**kwargs))
 
     def get_campagne(self, campagne_id: str) -> campagne_pb.CampagneResponse:
@@ -208,19 +209,19 @@ class CampagneServiceClient:
             campagne_pb.AjouterAbonnesCampagneRequest(campagne_id=campagne_id, abonne_ids=abonne_ids)
         )
 
-    def affecter_zones(self, **kwargs) -> campagne_pb.ListAgentsCampagneResponse:
+    def affecter_zones(self, **kwargs: Any) -> campagne_pb.ListAgentsCampagneResponse:
         return self._stub.AffecterZones(campagne_pb.AffecterZonesRequest(**kwargs))
 
     def list_agents_campagne(self, campagne_id: str) -> campagne_pb.ListAgentsCampagneResponse:
         return self._stub.ListAgentsCampagne(campagne_pb.CampagneIdRequest(campagne_id=campagne_id))
 
-    def saisir_index(self, **kwargs) -> campagne_pb.ReleveResponse:
+    def saisir_index(self, **kwargs: Any) -> campagne_pb.ReleveResponse:
         return self._stub.SaisirIndex(campagne_pb.SaisirIndexRequest(**kwargs))
 
-    def corriger_releve(self, **kwargs) -> campagne_pb.ReleveResponse:
+    def corriger_releve(self, **kwargs: Any) -> campagne_pb.ReleveResponse:
         return self._stub.CorrigerReleve(campagne_pb.CorrigerReleveRequest(**kwargs))
 
-    def marquer_non_releve(self, **kwargs) -> campagne_pb.ReleveResponse:
+    def marquer_non_releve(self, **kwargs: Any) -> campagne_pb.ReleveResponse:
         return self._stub.MarquerNonReleve(campagne_pb.MarquerNonReleveRequest(**kwargs))
 
     def get_releve(self, releve_id: str) -> campagne_pb.ReleveResponse:
@@ -293,7 +294,7 @@ class FacturationServiceClient:
         `limit`/`offset` optionnels — omis, le champ proto3 `optional`
         correspondant reste non défini côté serveur, qui renvoie alors la
         liste complète filtrée (rétrocompatibilité stricte)."""
-        kwargs = {
+        kwargs: dict[str, object] = {
             "campagne_id": campagne_id,
             "abonne_id": abonne_id,
             "statut": statut,
@@ -317,15 +318,17 @@ class FacturationServiceClient:
         """Nombre total de factures pour ce filtre, sans rapatrier la liste :
         demande la page la plus petite possible (`limit=0`) et ne lit que
         `total` sur la réponse."""
-        return self.list_factures(
-            campagne_id=campagne_id,
-            abonne_id=abonne_id,
-            statut=statut,
-            date_debut=date_debut,
-            date_fin=date_fin,
-            limit=0,
-            offset=0,
-        ).total
+        return int(
+            self.list_factures(
+                campagne_id=campagne_id,
+                abonne_id=abonne_id,
+                statut=statut,
+                date_debut=date_debut,
+                date_fin=date_fin,
+                limit=0,
+                offset=0,
+            ).total
+        )
 
     def get_factures_par_campagne(self, campagne_id: str) -> facturation_pb.ListFacturesResponse:
         return self._stub.GetFacturesParCampagne(facturation_pb.CampagneIdRequest(campagne_id=campagne_id))
@@ -409,7 +412,7 @@ class PaiementServiceClient:
         `limit`/`offset` optionnels — omis, le champ proto3 `optional`
         correspondant reste non défini côté serveur, qui renvoie alors la
         liste complète filtrée (rétrocompatibilité stricte)."""
-        kwargs = {
+        kwargs: dict[str, object] = {
             "facture_id": facture_id,
             "abonne_id": abonne_id,
             "date_debut": date_debut,
@@ -431,14 +434,16 @@ class PaiementServiceClient:
         """Nombre total de paiements pour ce filtre, sans rapatrier la liste :
         demande la page la plus petite possible (`limit=0`) et ne lit que
         `total` sur la réponse."""
-        return self.list_paiements(
-            facture_id=facture_id,
-            abonne_id=abonne_id,
-            date_debut=date_debut,
-            date_fin=date_fin,
-            limit=0,
-            offset=0,
-        ).total
+        return int(
+            self.list_paiements(
+                facture_id=facture_id,
+                abonne_id=abonne_id,
+                date_debut=date_debut,
+                date_fin=date_fin,
+                limit=0,
+                offset=0,
+            ).total
+        )
 
     def list_paiements_par_campagne(self, campagne_id: str) -> paiement_pb.ListPaiementsResponse:
         return self._stub.ListPaiementsParCampagne(paiement_pb.CampagneIdRequest(campagne_id=campagne_id))

@@ -30,7 +30,7 @@ def _fake_paiement() -> SimpleNamespace:
 
 
 class PublishPaiementEventTests(SimpleTestCase):
-    def test_payload_auto_porteur_complet(self):
+    def test_payload_auto_porteur_complet(self) -> None:
         client = MagicMock()
         with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
             publish_paiement_event(_fake_paiement(), statut_facture="PARTIELLE")
@@ -54,7 +54,7 @@ class PublishPaiementEventTests(SimpleTestCase):
         )
         client.close.assert_called_once()
 
-    def test_best_effort_sur_echec_redis(self):
+    def test_best_effort_sur_echec_redis(self) -> None:
         client = MagicMock()
         client.publish.side_effect = RuntimeError("redis down")
         with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):

@@ -4,6 +4,7 @@ et de la boucle de redélivraison bornée + dead-letter (_handle_entries).
 
 import json
 from decimal import Decimal
+from typing import Any
 
 from django.test import TestCase
 
@@ -183,19 +184,19 @@ class _FakeRedis:
     def __init__(self, delivery_counts: dict[str, int]) -> None:
         self._delivery_counts = delivery_counts
         self.acked: list[str] = []
-        self.dead_lettered: list[dict] = []
+        self.dead_lettered: list[dict[str, Any]] = []
         self.xpending_calls = 0
 
-    def xack(self, stream, group, msg_id):
+    def xack(self, stream: str, group: str, msg_id: str) -> None:
         assert stream == STREAM_KEY
         assert group == GROUP
         self.acked.append(msg_id)
 
-    def xadd(self, stream, fields):
+    def xadd(self, stream: str, fields: dict[str, Any]) -> None:
         assert stream == DEAD_LETTER_STREAM
         self.dead_lettered.append(fields)
 
-    def xpending_range(self, stream, group, min_id, max_id, count):
+    def xpending_range(self, stream: str, group: str, min_id: str, max_id: str, count: int) -> list[dict[str, Any]]:
         assert stream == STREAM_KEY
         assert group == GROUP
         self.xpending_calls += 1
@@ -210,7 +211,7 @@ class _FakeRedis:
         ]
 
 
-def _evenement_paiement_campagne_vide(event_id: str) -> dict:
+def _evenement_paiement_campagne_vide(event_id: str) -> dict[str, Any]:
     """Reproduit exactement la donnée invalide observée dans l'incident réel :
     un événement PAIEMENT_STATS avec `campagne_id=""`, qui casse le champ
     UUID de StatsPaiements (`django.core.exceptions.ValidationError:

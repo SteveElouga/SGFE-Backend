@@ -10,6 +10,7 @@ n'était possible, et les régularisations — créées avec `campagne_id` vide 
 étaient exportables par aucun chemin.
 """
 
+from typing import Any
 from unittest.mock import Mock, patch
 
 import grpc
@@ -27,15 +28,17 @@ class _FakeRpcError(grpc.RpcError):
         return self._code
 
 
-def make_user(role="ADMIN"):
+def make_user(role: str = "ADMIN") -> Mock:
     return Mock(role=role, user_id="u-1", username="jane", is_active=True)
 
 
-_AUTH = {"HTTP_AUTHORIZATION": "Bearer jwt-valide"}
+_AUTH: dict[str, Any] = {"HTTP_AUTHORIZATION": "Bearer jwt-valide"}
 _CID = "camp-1"
 
 
-def _facture(numero="FACT-2026-07-0001", nature="CONSOMMATION", motif="", campagne_id=_CID):
+def _facture(
+    numero: str = "FACT-2026-07-0001", nature: str = "CONSOMMATION", motif: str = "", campagne_id: str = _CID
+) -> Mock:
     return Mock(
         numero_facture=numero,
         nature=nature,
@@ -54,7 +57,7 @@ def _facture(numero="FACT-2026-07-0001", nature="CONSOMMATION", motif="", campag
     )
 
 
-def _paiement(pid="pay-1", annule=False):
+def _paiement(pid: str = "pay-1", annule: bool = False) -> Mock:
     return Mock(
         paiement_id=pid,
         facture_id="fac-1",
@@ -74,11 +77,11 @@ def _paiement(pid="pay-1", annule=False):
 class FacturesCsvViewTests(SimpleTestCase):
     _URL = "/rapports/factures.csv"
 
-    def test_sans_token_retourne_401(self):
+    def test_sans_token_retourne_401(self) -> None:
         response = self.client.get(self._URL, {"campagne_id": _CID})
         self.assertEqual(response.status_code, 401)
 
-    def test_role_insuffisant_retourne_403_sans_appel(self):
+    def test_role_insuffisant_retourne_403_sans_appel(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="AGENT")),
             patch.object(facturation_client, "get_factures_par_campagne") as mock_c,
@@ -87,7 +90,7 @@ class FacturesCsvViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 403)
         mock_c.assert_not_called()
 
-    def test_sans_critere_exporte_tout(self):
+    def test_sans_critere_exporte_tout(self) -> None:
         """Une clôture d'exercice demande tout l'historique.
 
         Le paramètre était obligatoire et la vue rendait 400. Ce refus était le
@@ -102,7 +105,7 @@ class FacturesCsvViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(mock_l.call_args.kwargs, {"campagne_id": "", "date_debut": "", "date_fin": ""})
 
-    def test_periode_transmise_au_service(self):
+    def test_periode_transmise_au_service(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user()),
             patch.object(facturation_client, "list_factures", return_value=Mock(factures=[])) as mock_l,
@@ -113,19 +116,19 @@ class FacturesCsvViewTests(SimpleTestCase):
         self.assertEqual(mock_l.call_args.kwargs["date_fin"], "2026-07-31")
         self.assertIn("2026-07-01_2026-07-31", response["Content-Disposition"])
 
-    def test_date_illisible_refusee(self):
+    def test_date_illisible_refusee(self) -> None:
         """Ignorer la borne rendrait tout l'historique sans le dire."""
         with patch.object(auth_client, "validate_token", return_value=make_user()):
             response = self.client.get(self._URL, {"date_debut": "01/07/2026"}, **_AUTH)
         self.assertEqual(response.status_code, 400)
         self.assertIn("AAAA-MM-JJ", response.json()["erreur"])
 
-    def test_bornes_inversees_refusees(self):
+    def test_bornes_inversees_refusees(self) -> None:
         with patch.object(auth_client, "validate_token", return_value=make_user()):
             response = self.client.get(self._URL, {"date_debut": "2026-07-31", "date_fin": "2026-07-01"}, **_AUTH)
         self.assertEqual(response.status_code, 400)
 
-    def test_une_regularisation_apparait_avec_sa_nature_et_son_motif(self):
+    def test_une_regularisation_apparait_avec_sa_nature_et_son_motif(self) -> None:
         """Elle n'apparaissait dans AUCUN export.
 
         Créée avec `campagne_id=""`, le filtre par campagne ne la trouvait jamais.
@@ -144,7 +147,7 @@ class FacturesCsvViewTests(SimpleTestCase):
         self.assertIn("REGULARISATION", body)
         self.assertIn("Arriéré 2025", body)
 
-    def test_admin_recupere_le_csv(self):
+    def test_admin_recupere_le_csv(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
             patch.object(
@@ -162,7 +165,7 @@ class FacturesCsvViewTests(SimpleTestCase):
         self.assertIn("FACT-2026-07-0001", body)
         self.assertEqual(body.strip().count("\n"), 2)  # 1 en-tête + 2 lignes
 
-    def test_erreur_service_retourne_503(self):
+    def test_erreur_service_retourne_503(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="COMPTABLE")),
             patch.object(
@@ -178,11 +181,11 @@ class FacturesCsvViewTests(SimpleTestCase):
 class PaiementsCsvViewTests(SimpleTestCase):
     _URL = "/rapports/paiements.csv"
 
-    def test_sans_token_retourne_401(self):
+    def test_sans_token_retourne_401(self) -> None:
         response = self.client.get(self._URL, {"campagne_id": _CID})
         self.assertEqual(response.status_code, 401)
 
-    def test_periode_passe_par_le_filtre_de_dates_et_non_par_campagne(self):
+    def test_periode_passe_par_le_filtre_de_dates_et_non_par_campagne(self) -> None:
         """`ListPaiementsParCampagne` filtre `SoldeFacture.campagne_id`.
 
         Un paiement de régularisation a un `campagne_id` vide : ce chemin ne
@@ -199,7 +202,7 @@ class PaiementsCsvViewTests(SimpleTestCase):
         mock_c.assert_not_called()
         self.assertEqual(mock_p.call_args.kwargs["date_debut"], "2026-07-01")
 
-    def test_les_paiements_annules_sont_signales(self):
+    def test_les_paiements_annules_sont_signales(self) -> None:
         """Ils étaient DÉJÀ dans l'export, sans rien qui les signale.
 
         Un comptable qui sommait la colonne `montant` comptait donc comme
@@ -220,7 +223,7 @@ class PaiementsCsvViewTests(SimpleTestCase):
         lignes = body.strip().splitlines()
         self.assertEqual(len([ligne for ligne in lignes[1:] if ";OUI;" in ligne]), 1)
 
-    def test_comptable_recupere_le_csv(self):
+    def test_comptable_recupere_le_csv(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="COMPTABLE")),
             patch.object(
@@ -241,16 +244,16 @@ class PaiementsCsvViewTests(SimpleTestCase):
 class SynthesePdfViewTests(SimpleTestCase):
     _URL = "/rapports/synthese/pdf/"
 
-    def test_sans_token_retourne_401(self):
+    def test_sans_token_retourne_401(self) -> None:
         response = self.client.get(self._URL, {"campagne_id": _CID})
         self.assertEqual(response.status_code, 401)
 
-    def test_campagne_id_manquant_retourne_400(self):
+    def test_campagne_id_manquant_retourne_400(self) -> None:
         with patch.object(auth_client, "validate_token", return_value=make_user()):
             response = self.client.get(self._URL, **_AUTH)
         self.assertEqual(response.status_code, 400)
 
-    def test_admin_recupere_le_pdf(self):
+    def test_admin_recupere_le_pdf(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
             patch.object(
@@ -259,12 +262,12 @@ class SynthesePdfViewTests(SimpleTestCase):
                 return_value=Mock(pdf_content=b"%PDF synthese", filename="synthese-camp-1.pdf"),
             ),
         ):
-            response = self.client.get(self._URL, {"campagne_id": _CID}, **_AUTH)
+            response: Any = self.client.get(self._URL, {"campagne_id": _CID}, **_AUTH)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/pdf")
         self.assertEqual(b"".join(response.streaming_content), b"%PDF synthese")
 
-    def test_campagne_sans_stats_retourne_404(self):
+    def test_campagne_sans_stats_retourne_404(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
             patch.object(
@@ -276,7 +279,7 @@ class SynthesePdfViewTests(SimpleTestCase):
             response = self.client.get(self._URL, {"campagne_id": _CID}, **_AUTH)
         self.assertEqual(response.status_code, 404)
 
-    def test_erreur_service_retourne_503(self):
+    def test_erreur_service_retourne_503(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
             patch.object(
@@ -293,24 +296,24 @@ class RecuPaiementPdfViewTests(SimpleTestCase):
     _URL = "/paiements/pay-1/recu/pdf/"
     _FID = {"facture_id": "fac-1"}
 
-    def test_sans_token_retourne_401(self):
+    def test_sans_token_retourne_401(self) -> None:
         response = self.client.get(self._URL, self._FID)
         self.assertEqual(response.status_code, 401)
 
-    def test_role_insuffisant_retourne_403(self):
+    def test_role_insuffisant_retourne_403(self) -> None:
         with patch.object(auth_client, "validate_token", return_value=make_user(role="AGENT")):
             response = self.client.get(self._URL, self._FID, **_AUTH)
         self.assertEqual(response.status_code, 403)
 
-    def test_facture_id_manquant_retourne_400(self):
+    def test_facture_id_manquant_retourne_400(self) -> None:
         with patch.object(auth_client, "validate_token", return_value=make_user()):
             response = self.client.get(self._URL, **_AUTH)
         self.assertEqual(response.status_code, 400)
 
-    def _paiement(self, paiement_id="pay-1", abonne_id="ab-1", montant=10750.0):
+    def _paiement(self, paiement_id: str = "pay-1", abonne_id: str = "ab-1", montant: float = 10750.0) -> Mock:
         return Mock(paiement_id=paiement_id, abonne_id=abonne_id, montant=montant)
 
-    def test_comptable_recupere_le_pdf(self):
+    def test_comptable_recupere_le_pdf(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="COMPTABLE")),
             patch.object(
@@ -329,7 +332,7 @@ class RecuPaiementPdfViewTests(SimpleTestCase):
                 return_value=Mock(pdf_content=b"%PDF recu", filename="REC-2026-06-0002-1.pdf"),
             ) as mock_gen,
         ):
-            response = self.client.get(self._URL, self._FID, **_AUTH)
+            response: Any = self.client.get(self._URL, self._FID, **_AUTH)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/pdf")
         self.assertEqual(b"".join(response.streaming_content), b"%PDF recu")
@@ -339,7 +342,7 @@ class RecuPaiementPdfViewTests(SimpleTestCase):
         mock_dette.assert_called_once_with("ab-1")
         mock_gen.assert_called_once_with("pay-1", "fac-1", montant_versement=10750.0, solde_restant_total=10500.0)
 
-    def test_paiement_introuvable_retourne_404(self):
+    def test_paiement_introuvable_retourne_404(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
             patch.object(paiement_client, "list_paiements", return_value=Mock(paiements=[])),
@@ -347,7 +350,7 @@ class RecuPaiementPdfViewTests(SimpleTestCase):
             response = self.client.get(self._URL, self._FID, **_AUTH)
         self.assertEqual(response.status_code, 404)
 
-    def test_erreur_service_retourne_503(self):
+    def test_erreur_service_retourne_503(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
             patch.object(
@@ -369,7 +372,7 @@ class RecuPaiementPdfViewTests(SimpleTestCase):
             response = self.client.get(self._URL, self._FID, **_AUTH)
         self.assertEqual(response.status_code, 503)
 
-    def test_service_paiement_indisponible_retourne_503(self):
+    def test_service_paiement_indisponible_retourne_503(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
             patch.object(

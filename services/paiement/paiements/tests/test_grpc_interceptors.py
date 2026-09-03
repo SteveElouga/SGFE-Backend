@@ -1,5 +1,8 @@
 """Tests de l'ErrorHandlingInterceptor du Paiement Service (mapping exception -> code gRPC)."""
 
+from __future__ import annotations
+
+from typing import Any
 from unittest.mock import MagicMock
 
 import grpc
@@ -37,21 +40,23 @@ class AbortForTests(SimpleTestCase):
 class InterceptorBehaviorTests(SimpleTestCase):
     """Vérifie le comportement de bout en bout du wrapper unary_unary."""
 
-    def _wrap(self, exc: Exception):
+    def _wrap(self, exc: Exception) -> tuple[grpc.RpcMethodHandler[Any, Any], MagicMock]:
         interceptor = ErrorHandlingInterceptor()
 
-        def behavior(request, context):
+        def behavior(request: Any, context: grpc.ServicerContext) -> Any:
             raise exc
 
-        handler = grpc.unary_unary_rpc_method_handler(behavior)
+        handler: grpc.RpcMethodHandler[Any, Any] = grpc.unary_unary_rpc_method_handler(behavior)
         continuation = MagicMock(return_value=handler)
         wrapped = interceptor.intercept_service(continuation, MagicMock(method="/Paiement/X"))
+        assert wrapped is not None  # `continuation` renvoie toujours un handler ici
         ctx = MagicMock(spec=grpc.ServicerContext)
         ctx.abort.side_effect = RuntimeError("aborted")  # le vrai context.abort lève
         return wrapped, ctx
 
     def test_mappe_les_exceptions_connues(self) -> None:
         wrapped, ctx = self._wrap(ValidationError("bad"))
+        assert wrapped.unary_unary is not None
         with self.assertRaises(Exception):
             wrapped.unary_unary(MagicMock(), ctx)
         ctx.abort.assert_called_once()
@@ -59,6 +64,7 @@ class InterceptorBehaviorTests(SimpleTestCase):
 
     def test_propage_les_exceptions_inattendues(self) -> None:
         wrapped, ctx = self._wrap(RuntimeError("boom"))
+        assert wrapped.unary_unary is not None
         with self.assertRaises(RuntimeError):
             wrapped.unary_unary(MagicMock(), ctx)
         ctx.abort.assert_not_called()

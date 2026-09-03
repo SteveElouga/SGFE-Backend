@@ -1,5 +1,7 @@
 """Queries GraphQL du Campagne Service."""
 
+from typing import Any
+
 import strawberry
 import strawberry.types
 
@@ -20,7 +22,7 @@ from .context import require_auth, require_role
 from .grpc_clients import abonne_client, auth_client, campagne_client
 
 
-def _verifier_acces_campagne(user: object, campagne_id: str) -> None:
+def _verifier_acces_campagne(user: Any, campagne_id: str) -> None:
     """Vérifie l'accès à une campagne selon le rôle :
     - SUPERVISEUR : doit en être le créateur.
     - AGENT : doit y être affecté.
@@ -69,7 +71,7 @@ def _statut_tournee(derniere_activite: str) -> str:
     return "EN_RETARD"
 
 
-def _users_par_id() -> dict:
+def _users_par_id() -> dict[str, Any]:
     """Index {user_id: UserResponse} via UN seul appel ListUsers (best-effort).
 
     Évite le N+1 : un GetUser par agent devient un unique ListUsers, indexé en
@@ -80,7 +82,7 @@ def _users_par_id() -> dict:
         return {}
 
 
-def _abonnes_par_id() -> dict:
+def _abonnes_par_id() -> dict[str, Any]:
     """Index {abonne_id: AbonneResponse} via UN seul appel ListAbonnes (best-effort).
 
     Même idiome anti-N+1 que `_users_par_id` : un `GetAbonne` par relevé
@@ -114,7 +116,7 @@ def _enrichir_releves(releves: list[Releve]) -> list[Releve]:
     return releves
 
 
-def _enrichir_agents(grpc_agents) -> list[AgentAffecte]:
+def _enrichir_agents(grpc_agents: Any) -> list[AgentAffecte]:
     """Complète les agents (issus de ListAgentsCampagne) avec le nombre d'abonnés
     par zone (ListZones), le nom/rôle (Auth) et le statut de tournée dérivé."""
     zones_abonnes = {(z.quartier, z.camp): z.nb_abonnes for z in abonne_client.list_zones().zones}
@@ -152,7 +154,7 @@ def _enrichir_agents(grpc_agents) -> list[AgentAffecte]:
 
 @strawberry.type
 class CampagneQueries:
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def campagne(self, info: strawberry.types.Info, campagne_id: str) -> Campagne:
         """Détails d'une campagne — ADMIN (toutes), SUPERVISEUR (les siennes), AGENT (les siennes)."""
         user = require_auth(info)
@@ -160,7 +162,7 @@ class CampagneQueries:
         _verifier_acces_campagne(user, campagne_id)
         return campagne_from_grpc(campagne_client.get_campagne(campagne_id))
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def campagnes(self, info: strawberry.types.Info) -> list[Campagne]:
         """
         Liste des campagnes.
@@ -175,7 +177,7 @@ class CampagneQueries:
         response = campagne_client.list_campagnes(created_by=created_by, agent_id=agent_id)
         return [campagne_from_grpc(c) for c in response.campagnes]
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def releves(self, info: strawberry.types.Info, campagne_id: str) -> list[Releve]:
         """Liste des relevés d'une campagne — ADMIN, AGENT, SUPERVISEUR (les siennes)."""
         user = require_auth(info)
@@ -184,7 +186,7 @@ class CampagneQueries:
         response = campagne_client.list_releves(campagne_id)
         return _enrichir_releves([releve_from_grpc(r) for r in response.releves])
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def releves_par_agent(self, info: strawberry.types.Info, campagne_id: str, agent_id: str) -> list[Releve]:
         """Tournée d'un agent dans une campagne (écran « tournée agent »).
 
@@ -205,7 +207,7 @@ class CampagneQueries:
         response = campagne_client.list_releves_tournee(campagne_id, agent_id)
         return _enrichir_releves([releve_from_grpc(r) for r in response.releves])
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def agents_campagne(self, info: strawberry.types.Info, campagne_id: str) -> list[AgentAffecte]:
         """Agents affectés à une campagne (cartes « détail campagne ») : zones,
         avancement, statut de tournée et dernière activité.
@@ -218,7 +220,7 @@ class CampagneQueries:
         response = campagne_client.list_agents_campagne(campagne_id)
         return _enrichir_agents(response.agents)
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def repartition_par_zone(self, info: strawberry.types.Info, campagne_id: str) -> list[ZoneRepartition]:
         """Tableau « répartition par zone » : une ligne par zone affectée
         (zone → agent responsable + avancement). Mêmes accès que agents_campagne."""
@@ -242,7 +244,7 @@ class CampagneQueries:
         lignes.sort(key=lambda ligne: (ligne.quartier, ligne.camp))
         return lignes
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def zones_disponibles(self, info: strawberry.types.Info) -> list[ZoneDisponible]:
         """Zones existantes (issues des compteurs) proposées à l'affectation —
         ADMIN, SUPERVISEUR."""
@@ -251,7 +253,7 @@ class CampagneQueries:
         response = abonne_client.list_zones()
         return [ZoneDisponible(quartier=z.quartier, camp=z.camp, nb_abonnes=z.nb_abonnes) for z in response.zones]
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def progression(self, info: strawberry.types.Info, campagne_id: str) -> Progression:
         """Progression d'une campagne — ADMIN, AGENT, SUPERVISEUR (les siennes)."""
         user = require_auth(info)
@@ -266,7 +268,7 @@ class CampagneQueries:
             pourcentage=r.pourcentage,
         )
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def resume_cloture(self, info: strawberry.types.Info, campagne_id: str) -> ResumeCloture:
         """Aperçu de clôture (ventilation des relevés + factures à générer) —
         ADMIN (toutes), SUPERVISEUR (les siennes)."""
@@ -284,7 +286,7 @@ class CampagneQueries:
             nb_factures_a_generer=r.nb_factures_a_generer,
         )
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def dernier_index(self, info: strawberry.types.Info, abonne_id: str) -> DernierIndex:
         """Dernier index relevé pour un abonné — ADMIN, AGENT, SUPERVISEUR."""
         require_auth(info)

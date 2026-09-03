@@ -17,7 +17,7 @@ from .grpc_clients import facturation_client, notification_client
 
 @strawberry.type
 class FacturationMutations:
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def update_tarif(
         self,
         info: strawberry.types.Info,
@@ -29,7 +29,7 @@ class FacturationMutations:
         require_role(info, "ADMIN")
         return tarif_from_grpc(facturation_client.update_tarif(prix_m3=prix_m3, date_effet=date_effet))
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def generer_factures(
         self,
         info: strawberry.types.Info,
@@ -49,7 +49,7 @@ class FacturationMutations:
         )
         return [facture_from_grpc(f) for f in response.factures]
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def envoyer_toutes_factures_whatsapp(
         self,
         info: strawberry.types.Info,
@@ -73,7 +73,7 @@ class FacturationMutations:
                 pass
         return succes
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def creer_regularisation(
         self,
         info: strawberry.types.Info,
@@ -104,7 +104,7 @@ class FacturationMutations:
             )
         )
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def annuler_facture(
         self,
         info: strawberry.types.Info,
@@ -136,7 +136,7 @@ class FacturationMutations:
             )
         )
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def regenerer_facture(
         self,
         info: strawberry.types.Info,
@@ -165,7 +165,7 @@ class FacturationMutations:
             nouvelle=facture_from_grpc(resultat.nouvelle),
         )
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def update_statut_facture(
         self,
         info: strawberry.types.Info,

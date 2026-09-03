@@ -1,13 +1,14 @@
+from typing import Any
 from unittest.mock import Mock, patch
 
 from django.test import SimpleTestCase
 
 from schema.grpc_clients import abonne_client, auth_client
 from schema.schema import schema
-from schema.tests.test_auth import context
+from schema.tests.test_auth import _data, context
 
 
-def make_compteur_response(numero_compteur=1, statut="ACTIF", position=""):
+def make_compteur_response(numero_compteur: int = 1, statut: str = "ACTIF", position: str = "") -> Mock:
     return Mock(
         compteur_id="compteur-1",
         numero_compteur=numero_compteur,
@@ -20,7 +21,13 @@ def make_compteur_response(numero_compteur=1, statut="ACTIF", position=""):
     )
 
 
-def make_abonne_response(abonne_id="abonne-1", numero_abonne="AB-0001", statut="ACTIF", with_compteur=True, nom="Doe"):
+def make_abonne_response(
+    abonne_id: str = "abonne-1",
+    numero_abonne: str = "AB-0001",
+    statut: str = "ACTIF",
+    with_compteur: bool = True,
+    nom: str = "Doe",
+) -> Mock:
     response = Mock(
         abonne_id=abonne_id,
         numero_abonne=numero_abonne,
@@ -36,15 +43,15 @@ def make_abonne_response(abonne_id="abonne-1", numero_abonne="AB-0001", statut="
     return response
 
 
-def make_list_abonnes_response(*abonnes):
+def make_list_abonnes_response(*abonnes: Mock) -> Mock:
     return Mock(abonnes=list(abonnes))
 
 
 class AbonneQueryTests(SimpleTestCase):
-    def _admin_context(self):
+    def _admin_context(self) -> dict[str, Any]:
         return context(token="access-1")
 
-    def test_abonne_returns_abonne_with_compteur(self):
+    def test_abonne_returns_abonne_with_compteur(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(abonne_client, "get_abonne", return_value=make_abonne_response()),
@@ -55,10 +62,10 @@ class AbonneQueryTests(SimpleTestCase):
             )
 
         self.assertIsNone(result.errors)
-        self.assertEqual(result.data["abonne"]["numeroAbonne"], "AB-0001")
-        self.assertEqual(result.data["abonne"]["compteur"]["numeroCompteur"], 1)
+        self.assertEqual(_data(result)["abonne"]["numeroAbonne"], "AB-0001")
+        self.assertEqual(_data(result)["abonne"]["compteur"]["numeroCompteur"], 1)
 
-    def test_abonnes_lists_all(self):
+    def test_abonnes_lists_all(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(
@@ -72,9 +79,9 @@ class AbonneQueryTests(SimpleTestCase):
             result = schema.execute_sync("query { abonnes { numeroAbonne } }", context_value=self._admin_context())
 
         self.assertIsNone(result.errors)
-        self.assertEqual(len(result.data["abonnes"]), 2)
+        self.assertEqual(len(_data(result)["abonnes"]), 2)
 
-    def test_abonnes_filters_by_statut(self):
+    def test_abonnes_filters_by_statut(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(abonne_client, "list_abonnes", return_value=make_list_abonnes_response()) as mock_list,
@@ -84,7 +91,7 @@ class AbonneQueryTests(SimpleTestCase):
             )
             mock_list.assert_called_once_with("SUSPENDU")
 
-    def test_abonnes_sans_limit_offset_renvoie_tout_comme_avant(self):
+    def test_abonnes_sans_limit_offset_renvoie_tout_comme_avant(self) -> None:
         """Non-régression explicite : une requête sans `limit`/`offset`
         continue de tout renvoyer, et le client gRPC est appelé exactement
         comme avant leur introduction (rétrocompatibilité stricte)."""
@@ -101,10 +108,10 @@ class AbonneQueryTests(SimpleTestCase):
             result = schema.execute_sync("query { abonnes { numeroAbonne } }", context_value=self._admin_context())
 
         self.assertIsNone(result.errors)
-        self.assertEqual(len(result.data["abonnes"]), 2)
+        self.assertEqual(len(_data(result)["abonnes"]), 2)
         mock_list.assert_called_once_with("")
 
-    def test_abonnes_avec_pagination_transmet_limit_offset(self):
+    def test_abonnes_avec_pagination_transmet_limit_offset(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(abonne_client, "list_abonnes", return_value=make_list_abonnes_response()) as mock_list,
@@ -116,7 +123,7 @@ class AbonneQueryTests(SimpleTestCase):
 
         self.assertIsNone(result.errors)
 
-    def test_abonnes_count(self):
+    def test_abonnes_count(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(abonne_client, "count_abonnes", return_value=42) as mock_count,
@@ -127,14 +134,14 @@ class AbonneQueryTests(SimpleTestCase):
             mock_count.assert_called_once_with("SUSPENDU")
 
         self.assertIsNone(result.errors)
-        self.assertEqual(result.data["abonnesCount"], 42)
+        self.assertEqual(_data(result)["abonnesCount"], 42)
 
 
 class AbonneMutationTests(SimpleTestCase):
-    def _admin_context(self):
+    def _admin_context(self) -> dict[str, Any]:
         return context(token="access-1")
 
-    def test_create_abonne_requires_admin_role(self):
+    def test_create_abonne_requires_admin_role(self) -> None:
         with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="AGENT")):
             result = schema.execute_sync(
                 'mutation { createAbonne(input: {nom: "Doe", prenom: "John", telephoneWhatsapp: "+241", '
@@ -146,7 +153,7 @@ class AbonneMutationTests(SimpleTestCase):
         self.assertIsNotNone(result.errors)
         self.assertIn("Accès non autorisé", str(result.errors))
 
-    def test_create_abonne_success_as_admin(self):
+    def test_create_abonne_success_as_admin(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(abonne_client, "create_abonne", return_value=make_abonne_response()) as mock_create,
@@ -160,9 +167,9 @@ class AbonneMutationTests(SimpleTestCase):
             mock_create.assert_called_once()
 
         self.assertIsNone(result.errors)
-        self.assertEqual(result.data["createAbonne"]["numeroAbonne"], "AB-0001")
+        self.assertEqual(_data(result)["createAbonne"]["numeroAbonne"], "AB-0001")
 
-    def test_create_abonne_transporte_la_position(self):
+    def test_create_abonne_transporte_la_position(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(abonne_client, "create_abonne", return_value=make_abonne_response()) as mock_create,
@@ -175,7 +182,7 @@ class AbonneMutationTests(SimpleTestCase):
             )
             self.assertEqual(mock_create.call_args.kwargs["position"], "3e maison à gauche")
 
-    def test_create_abonne_position_absente_transporte_chaine_vide(self):
+    def test_create_abonne_position_absente_transporte_chaine_vide(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(abonne_client, "create_abonne", return_value=make_abonne_response()) as mock_create,
@@ -188,7 +195,7 @@ class AbonneMutationTests(SimpleTestCase):
             )
             self.assertEqual(mock_create.call_args.kwargs["position"], "")
 
-    def test_update_abonne_success_as_admin(self):
+    def test_update_abonne_success_as_admin(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(abonne_client, "update_abonne", return_value=make_abonne_response(numero_abonne="AB-0002")),
@@ -199,9 +206,9 @@ class AbonneMutationTests(SimpleTestCase):
             )
 
         self.assertIsNone(result.errors)
-        self.assertEqual(result.data["updateAbonne"]["numeroAbonne"], "AB-0002")
+        self.assertEqual(_data(result)["updateAbonne"]["numeroAbonne"], "AB-0002")
 
-    def test_suspendre_abonne_success_as_admin(self):
+    def test_suspendre_abonne_success_as_admin(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(abonne_client, "suspendre_abonne", return_value=make_abonne_response(statut="SUSPENDU")),
@@ -211,9 +218,9 @@ class AbonneMutationTests(SimpleTestCase):
             )
 
         self.assertIsNone(result.errors)
-        self.assertEqual(result.data["suspendreAbonne"]["statut"], "SUSPENDU")
+        self.assertEqual(_data(result)["suspendreAbonne"]["statut"], "SUSPENDU")
 
-    def test_reactiver_abonne_success_as_admin(self):
+    def test_reactiver_abonne_success_as_admin(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(abonne_client, "reactiver_abonne", return_value=make_abonne_response(statut="ACTIF")),
@@ -223,9 +230,9 @@ class AbonneMutationTests(SimpleTestCase):
             )
 
         self.assertIsNone(result.errors)
-        self.assertEqual(result.data["reactiverAbonne"]["statut"], "ACTIF")
+        self.assertEqual(_data(result)["reactiverAbonne"]["statut"], "ACTIF")
 
-    def test_update_compteur_success_as_admin(self):
+    def test_update_compteur_success_as_admin(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(abonne_client, "update_compteur", return_value=make_compteur_response()) as mock_update,
@@ -239,7 +246,7 @@ class AbonneMutationTests(SimpleTestCase):
 
         self.assertIsNone(result.errors)
 
-    def test_update_compteur_position(self):
+    def test_update_compteur_position(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(
@@ -254,9 +261,9 @@ class AbonneMutationTests(SimpleTestCase):
             mock_update.assert_called_once_with("abonne-1", position="Près du portail")
 
         self.assertIsNone(result.errors)
-        self.assertEqual(result.data["updateCompteur"]["position"], "Près du portail")
+        self.assertEqual(_data(result)["updateCompteur"]["position"], "Près du portail")
 
-    def test_update_compteur_requires_admin_role(self):
+    def test_update_compteur_requires_admin_role(self) -> None:
         with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="AGENT")):
             result = schema.execute_sync(
                 'mutation { updateCompteur(abonneId: "abonne-1", input: { quartier: "X" }) { quartier } }',
@@ -265,7 +272,7 @@ class AbonneMutationTests(SimpleTestCase):
         self.assertIsNotNone(result.errors)
         self.assertIn("Accès non autorisé", str(result.errors))
 
-    def test_resilier_abonne_success_as_admin(self):
+    def test_resilier_abonne_success_as_admin(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(abonne_client, "resilier_abonne", return_value=make_abonne_response(statut="RESILIE")),
@@ -275,9 +282,9 @@ class AbonneMutationTests(SimpleTestCase):
             )
 
         self.assertIsNone(result.errors)
-        self.assertEqual(result.data["resilierAbonne"]["statut"], "RESILIE")
+        self.assertEqual(_data(result)["resilierAbonne"]["statut"], "RESILIE")
 
-    def test_resilier_abonne_requires_admin_role(self):
+    def test_resilier_abonne_requires_admin_role(self) -> None:
         with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="COMPTABLE")):
             result = schema.execute_sync(
                 'mutation { resilierAbonne(id: "abonne-1") { statut } }', context_value=self._admin_context()
@@ -286,7 +293,7 @@ class AbonneMutationTests(SimpleTestCase):
         self.assertIsNotNone(result.errors)
         self.assertIn("Accès non autorisé", str(result.errors))
 
-    def test_anonymiser_abonne_success_as_admin(self):
+    def test_anonymiser_abonne_success_as_admin(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(
@@ -302,10 +309,10 @@ class AbonneMutationTests(SimpleTestCase):
             mock_anonymiser.assert_called_once_with("abonne-1")
 
         self.assertIsNone(result.errors)
-        self.assertEqual(result.data["anonymiserAbonne"]["statut"], "RESILIE")
-        self.assertEqual(result.data["anonymiserAbonne"]["nom"], "Abonné anonymisé")
+        self.assertEqual(_data(result)["anonymiserAbonne"]["statut"], "RESILIE")
+        self.assertEqual(_data(result)["anonymiserAbonne"]["nom"], "Abonné anonymisé")
 
-    def test_anonymiser_abonne_requires_admin_role(self):
+    def test_anonymiser_abonne_requires_admin_role(self) -> None:
         with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="COMPTABLE")):
             result = schema.execute_sync(
                 'mutation { anonymiserAbonne(abonneId: "abonne-1") { statut } }',
@@ -315,7 +322,7 @@ class AbonneMutationTests(SimpleTestCase):
         self.assertIsNotNone(result.errors)
         self.assertIn("Accès non autorisé", str(result.errors))
 
-    def test_exporter_donnees_abonne_success_as_admin(self):
+    def test_exporter_donnees_abonne_success_as_admin(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(
@@ -331,9 +338,9 @@ class AbonneMutationTests(SimpleTestCase):
             mock_export.assert_called_once_with("abonne-1")
 
         self.assertIsNone(result.errors)
-        self.assertEqual(result.data["exporterDonneesAbonne"], '{"abonne_id": "abonne-1"}')
+        self.assertEqual(_data(result)["exporterDonneesAbonne"], '{"abonne_id": "abonne-1"}')
 
-    def test_exporter_donnees_abonne_requires_admin_role(self):
+    def test_exporter_donnees_abonne_requires_admin_role(self) -> None:
         with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="AGENT")):
             result = schema.execute_sync(
                 'mutation { exporterDonneesAbonne(abonneId: "abonne-1") }',
@@ -343,7 +350,7 @@ class AbonneMutationTests(SimpleTestCase):
         self.assertIsNotNone(result.errors)
         self.assertIn("Accès non autorisé", str(result.errors))
 
-    def test_remplacer_compteur_requires_admin_role(self):
+    def test_remplacer_compteur_requires_admin_role(self) -> None:
         with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="COMPTABLE")):
             result = schema.execute_sync(
                 'mutation { remplacerCompteur(abonneId: "abonne-1", input: {indexFermeture: 100, '
@@ -355,7 +362,7 @@ class AbonneMutationTests(SimpleTestCase):
         self.assertIsNotNone(result.errors)
         self.assertIn("Accès non autorisé", str(result.errors))
 
-    def test_remplacer_compteur_success_as_admin(self):
+    def test_remplacer_compteur_success_as_admin(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(
@@ -372,9 +379,9 @@ class AbonneMutationTests(SimpleTestCase):
             self.assertEqual(mock_remplacer.call_args.kwargs["motif"], "Compteur défectueux")
 
         self.assertIsNone(result.errors)
-        self.assertEqual(result.data["remplacerCompteur"]["numeroCompteur"], 2)
+        self.assertEqual(_data(result)["remplacerCompteur"]["numeroCompteur"], 2)
 
-    def test_remplacer_compteur_transporte_la_nouvelle_position(self):
+    def test_remplacer_compteur_transporte_la_nouvelle_position(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(
@@ -392,11 +399,11 @@ class AbonneMutationTests(SimpleTestCase):
             self.assertEqual(mock_remplacer.call_args.kwargs["nouvelle_position"], "Près du portail bleu")
 
         self.assertIsNone(result.errors)
-        self.assertEqual(result.data["remplacerCompteur"]["position"], "Près du portail bleu")
+        self.assertEqual(_data(result)["remplacerCompteur"]["position"], "Près du portail bleu")
 
 
 class AbonnesActifsQueryTests(SimpleTestCase):
-    def test_abonnes_actifs_returns_list(self):
+    def test_abonnes_actifs_returns_list(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(
@@ -414,12 +421,12 @@ class AbonnesActifsQueryTests(SimpleTestCase):
             )
 
         self.assertIsNone(result.errors)
-        self.assertEqual(len(result.data["abonnesActifs"]), 2)
-        self.assertEqual(result.data["abonnesActifs"][0]["statut"], "ACTIF")
+        self.assertEqual(len(_data(result)["abonnesActifs"]), 2)
+        self.assertEqual(_data(result)["abonnesActifs"][0]["statut"], "ACTIF")
 
 
 class HistoriqueCompteurQueryTests(SimpleTestCase):
-    def _make_historique_response(self):
+    def _make_historique_response(self) -> Mock:
         h = Mock()
         h.historique_id = "histo-1"
         h.ancien_compteur = make_compteur_response(numero_compteur=1, statut="REMPLACE")
@@ -430,7 +437,7 @@ class HistoriqueCompteurQueryTests(SimpleTestCase):
         h.motif = "Compteur défectueux"
         return h
 
-    def test_historique_compteur_returns_list(self):
+    def test_historique_compteur_returns_list(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(
@@ -446,15 +453,15 @@ class HistoriqueCompteurQueryTests(SimpleTestCase):
             )
 
         self.assertIsNone(result.errors)
-        self.assertEqual(len(result.data["historiqueCompteur"]), 1)
-        entry = result.data["historiqueCompteur"][0]
+        self.assertEqual(len(_data(result)["historiqueCompteur"]), 1)
+        entry = _data(result)["historiqueCompteur"][0]
         self.assertEqual(entry["indexFermeture"], 120.0)
         self.assertEqual(entry["motif"], "Compteur défectueux")
         self.assertEqual(entry["ancienCompteur"]["numeroCompteur"], 1)
         self.assertEqual(entry["ancienCompteur"]["statut"], "REMPLACE")
         self.assertEqual(entry["nouveauCompteur"]["numeroCompteur"], 2)
 
-    def test_historique_compteur_empty_returns_empty_list(self):
+    def test_historique_compteur_empty_returns_empty_list(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(
@@ -469,4 +476,4 @@ class HistoriqueCompteurQueryTests(SimpleTestCase):
             )
 
         self.assertIsNone(result.errors)
-        self.assertEqual(result.data["historiqueCompteur"], [])
+        self.assertEqual(_data(result)["historiqueCompteur"], [])

@@ -1,6 +1,7 @@
 """Mutations GraphQL du Notification Service."""
 
 import logging
+from typing import Any
 
 import grpc
 import strawberry
@@ -49,7 +50,7 @@ def _delai_suspension() -> int:
         return _DELAI_SUSPENSION_DEFAUT
 
 
-def _envoyer_recu_paiement(paiement_id: str, facture_id: str, abonne_id: str):  # type: ignore[no-untyped-def]
+def _envoyer_recu_paiement(paiement_id: str, facture_id: str, abonne_id: str) -> Any:
     """Envoie le reçu d'un versement identifié directement par son id, avec
     les chiffres du jour.
 
@@ -91,7 +92,7 @@ def _envoyer_recu_paiement(paiement_id: str, facture_id: str, abonne_id: str):  
     )
 
 
-def _renvoyer_recu(envoi):  # type: ignore[no-untyped-def]
+def _renvoyer_recu(envoi: Any) -> Any:
     """Renvoie le reçu d'un versement, avec les chiffres du jour.
 
     Le versement est retrouvé par son identifiant, désormais porté par l'envoi.
@@ -113,21 +114,21 @@ def _renvoyer_recu(envoi):  # type: ignore[no-untyped-def]
 
 @strawberry.type
 class NotificationMutations:
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def envoyer_facture_whatsapp(self, info: strawberry.types.Info, facture_id: str, abonne_id: str) -> Envoi:
         """Envoie la facture par WhatsApp à l'abonné — ADMIN, COMPTABLE."""
         require_auth(info)
         require_role(info, "ADMIN", "COMPTABLE")
         return envoi_from_grpc(notification_client.envoyer_facture(facture_id=facture_id, abonne_id=abonne_id))
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def renvoyer_facture_whatsapp(self, info: strawberry.types.Info, facture_id: str) -> Envoi:
         """Renvoie la facture par WhatsApp (déjà générée) — ADMIN, COMPTABLE."""
         require_auth(info)
         require_role(info, "ADMIN", "COMPTABLE")
         return envoi_from_grpc(notification_client.renvoyer_facture(facture_id=facture_id))
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def envoyer_recu_paiement(
         self, info: strawberry.types.Info, paiement_id: str, facture_id: str, abonne_id: str
     ) -> Envoi:
@@ -144,7 +145,7 @@ class NotificationMutations:
         require_role(info, "ADMIN", "COMPTABLE")
         return envoi_from_grpc(_envoyer_recu_paiement(paiement_id, facture_id, abonne_id))
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def renvoyer_envoi(self, info: strawberry.types.Info, envoi_id: str) -> Envoi:
         """Renvoie **le même message** qu'un envoi identifié par son id — ADMIN, COMPTABLE.
 
@@ -186,15 +187,15 @@ class NotificationMutations:
         # n'est plus le comportement unique.
         return envoi_from_grpc(notification_client.renvoyer_facture(facture_id=envoi.facture_id))
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def revoquer_token_abonne(self, info: strawberry.types.Info, token_id: str) -> bool:
         """Révoque un token d'accès abonné — ADMIN."""
         require_auth(info)
         require_role(info, "ADMIN")
         response = notification_client.revoquer_token(token_id=token_id)
-        return response.success
+        return bool(response.success)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def revoquer_tous_tokens_abonnes(self, info: strawberry.types.Info) -> int:
         """Révoque tous les tokens d'accès abonné actifs — ADMIN.
 
@@ -202,9 +203,9 @@ class NotificationMutations:
         """
         require_auth(info)
         require_role(info, "ADMIN")
-        return notification_client.revoquer_tous_tokens().count
+        return int(notification_client.revoquer_tous_tokens().count)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def tester_envoi_whatsapp(self, info: strawberry.types.Info, phone_number: str) -> TestEnvoiResult:
         """Envoie un message de test WhatsApp au numéro fourni — ADMIN.
 

@@ -1,9 +1,10 @@
 """Conversion des modèles de stats en dicts pour les messages protobuf."""
 
+from stats.dtos import StatsCampagneDict, StatsFacturationDict, StatsPaiementsDict
 from stats.models import StatsCampagne, StatsFacturation, StatsPaiements
 
 
-def stats_campagne_to_dict(s: StatsCampagne) -> dict:
+def stats_campagne_to_dict(s: StatsCampagne) -> StatsCampagneDict:
     return {
         "campagne_id": str(s.campagne_id),
         "nom_campagne": s.nom_campagne,
@@ -15,7 +16,7 @@ def stats_campagne_to_dict(s: StatsCampagne) -> dict:
     }
 
 
-def stats_facturation_to_dict(s: StatsFacturation) -> dict:
+def stats_facturation_to_dict(s: StatsFacturation) -> StatsFacturationDict:
     return {
         "campagne_id": str(s.campagne_id),
         "total_factures": s.total_factures,
@@ -26,7 +27,7 @@ def stats_facturation_to_dict(s: StatsFacturation) -> dict:
     }
 
 
-def stats_paiements_to_dict(s: StatsPaiements) -> dict:
+def stats_paiements_to_dict(s: StatsPaiements) -> StatsPaiementsDict:
     return {
         "campagne_id": str(s.campagne_id),
         "montant_encaisse": float(s.montant_encaisse),

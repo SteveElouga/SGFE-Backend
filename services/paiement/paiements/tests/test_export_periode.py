@@ -57,8 +57,11 @@ class TestFiltrePeriode(TestCase):
         _paiement("fac-camp", date(2026, 7, 10))
         _paiement("fac-reg", date(2026, 7, 22))
 
-    def _jours(self, **kw) -> list[date]:
-        return [p.date_paiement for p in self.repo.list_by_facture_and_abonne("", "", **kw)]
+    def _jours(self, date_debut: date | None = None, date_fin: date | None = None) -> list[date]:
+        return [
+            p.date_paiement
+            for p in self.repo.list_by_facture_and_abonne("", "", date_debut=date_debut, date_fin=date_fin)
+        ]
 
     def test_un_mois(self) -> None:
         self.assertEqual(

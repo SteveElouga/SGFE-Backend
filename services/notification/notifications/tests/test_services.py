@@ -56,7 +56,9 @@ class TestEnvoiServiceEnvoyerFacture(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_facture_succes(self, mock_fact, mock_abonne, mock_config, mock_wa):
+    def test_envoyer_facture_succes(
+        self, mock_fact: MagicMock, mock_abonne: MagicMock, mock_config: MagicMock, mock_wa: MagicMock
+    ) -> None:
         """Un envoi réussi crée un Envoi avec statut ENVOYE."""
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
@@ -82,7 +84,9 @@ class TestEnvoiServiceEnvoyerFacture(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_facture_whatsapp_ko(self, mock_fact, mock_abonne, mock_config, mock_wa):
+    def test_envoyer_facture_whatsapp_ko(
+        self, mock_fact: MagicMock, mock_abonne: MagicMock, mock_config: MagicMock, mock_wa: MagicMock
+    ) -> None:
         """Si WhatsApp échoue, l'envoi est marqué ECHEC sans lever d'exception."""
         from notifications.whatsapp_client import WhatsAppDeliveryError
 
@@ -108,7 +112,14 @@ class TestEnvoiServiceEnvoyerFacture(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_facture_amont_ko_degrade_en_echec(self, mock_fact, mock_abonne, mock_config, mock_wa, mock_notify):
+    def test_envoyer_facture_amont_ko_degrade_en_echec(
+        self,
+        mock_fact: MagicMock,
+        mock_abonne: MagicMock,
+        mock_config: MagicMock,
+        mock_wa: MagicMock,
+        mock_notify: MagicMock,
+    ) -> None:
         """Si un service amont (Facturation/Abonné) est injoignable (RpcError),
         l'envoi est marqué ECHEC sans lever d'exception gRPC brute."""
         import grpc
@@ -136,7 +147,9 @@ class TestEnvoiServiceEnvoyerFacture(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_facture_cree_token_acces(self, mock_fact, mock_abonne, mock_config, mock_wa):
+    def test_envoyer_facture_cree_token_acces(
+        self, mock_fact: MagicMock, mock_abonne: MagicMock, mock_config: MagicMock, mock_wa: MagicMock
+    ) -> None:
         """Un envoi de facture doit créer un TokenAcces en base."""
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
@@ -153,6 +166,7 @@ class TestEnvoiServiceEnvoyerFacture(TestCase):
         tokens = TokenAcces.objects.filter(facture_id=facture_id, abonne_id=abonne_id)
         self.assertEqual(tokens.count(), 1)
         token = tokens.first()
+        assert token is not None
         self.assertTrue(token.is_active)
         self.assertEqual(token.date_expiration, date.today() + timedelta(days=20))
 
@@ -164,7 +178,9 @@ class TestEnvoiServiceEnvoyerRelance(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_relance_etape_1(self, mock_fact, mock_abonne, mock_config, mock_wa):
+    def test_envoyer_relance_etape_1(
+        self, mock_fact: MagicMock, mock_abonne: MagicMock, mock_config: MagicMock, mock_wa: MagicMock
+    ) -> None:
         """La relance étape 1 doit envoyer un message RELANCE_1."""
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
@@ -187,7 +203,9 @@ class TestEnvoiServiceEnvoyerRelance(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_relance_etape_2(self, mock_fact, mock_abonne, mock_config, mock_wa):
+    def test_envoyer_relance_etape_2(
+        self, mock_fact: MagicMock, mock_abonne: MagicMock, mock_config: MagicMock, mock_wa: MagicMock
+    ) -> None:
         """La relance étape 2 doit envoyer un message RELANCE_2."""
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
@@ -219,7 +237,9 @@ class TestEnvoiServiceEnvoyerRelance(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_relance_etape_3(self, mock_fact, mock_abonne, mock_config, mock_wa):
+    def test_envoyer_relance_etape_3(
+        self, mock_fact: MagicMock, mock_abonne: MagicMock, mock_config: MagicMock, mock_wa: MagicMock
+    ) -> None:
         """La relance étape 3 doit envoyer un message AVERTISSEMENT."""
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
@@ -241,7 +261,9 @@ class TestEnvoiServiceEnvoyerRelance(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_relance_etape_4(self, mock_fact, mock_abonne, mock_config, mock_wa):
+    def test_envoyer_relance_etape_4(
+        self, mock_fact: MagicMock, mock_abonne: MagicMock, mock_config: MagicMock, mock_wa: MagicMock
+    ) -> None:
         """La relance étape 4 doit envoyer un message SUSPENSION."""
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
@@ -260,7 +282,7 @@ class TestEnvoiServiceEnvoyerRelance(TestCase):
         args, _ = mock_wa.send.call_args
         self.assertIn("suspendue", args[1])
 
-    def test_envoyer_relance_etape_invalide(self):
+    def test_envoyer_relance_etape_invalide(self) -> None:
         """Une étape hors de [0, 6] doit lever une ValidationError.
 
         L'étape 6 était le premier entier invalide ; elle porte désormais
@@ -274,7 +296,9 @@ class TestEnvoiServiceEnvoyerRelance(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_relance_etape_0_retablissement(self, mock_fact, mock_abonne, mock_config, mock_wa):
+    def test_envoyer_relance_etape_0_retablissement(
+        self, mock_fact: MagicMock, mock_abonne: MagicMock, mock_config: MagicMock, mock_wa: MagicMock
+    ) -> None:
         """Régression ANO-013 : l'étape 0 (confirmation de paiement /
         rétablissement, EF-IMP-005) doit envoyer un message RETABLISSEMENT
         au lieu de lever une ValidationError — Paiement Service appelle
@@ -305,7 +329,9 @@ class TestEnvoiServiceRenvoyer(TestCase):
     @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_renvoyer_facture_revoque_ancien_token(self, mock_fact, mock_abonne, mock_config, mock_wa):
+    def test_renvoyer_facture_revoque_ancien_token(
+        self, mock_fact: MagicMock, mock_abonne: MagicMock, mock_config: MagicMock, mock_wa: MagicMock
+    ) -> None:
         """renvoyer_facture doit révoquer les tokens actifs existants."""
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
@@ -348,7 +374,7 @@ class TestTokenService(TestCase):
             is_active=is_active,
         )
 
-    def test_valider_token_valide(self):
+    def test_valider_token_valide(self) -> None:
         """valider_token retourne le token si actif et non expiré."""
         token = self._create_token()
         service = TokenService()
@@ -358,7 +384,7 @@ class TestTokenService(TestCase):
         self.assertEqual(result.id, token.id)
         self.assertIsNotNone(result.date_derniere_visite)
 
-    def test_get_or_create_token_reutilise_token_valide(self):
+    def test_get_or_create_token_reutilise_token_valide(self) -> None:
         """Réutilise le token actif non expiré de l'abonné (pas de doublon)."""
         token = self._create_token()
         service = TokenService()
@@ -369,7 +395,7 @@ class TestTokenService(TestCase):
         self.assertEqual(TokenAcces.objects.filter(abonne_id=token.abonne_id).count(), 1)
 
     @patch("notifications.services.config_client")
-    def test_get_or_create_token_cree_si_aucun(self, mock_config):
+    def test_get_or_create_token_cree_si_aucun(self, mock_config: MagicMock) -> None:
         """Crée un token (expiration = config) si l'abonné n'en a pas de valide."""
         mock_config.get_token_validite_jours.return_value = 20
         service = TokenService()
@@ -382,7 +408,7 @@ class TestTokenService(TestCase):
         self.assertTrue(result.is_active)
 
     @patch("notifications.services.config_client")
-    def test_get_or_create_token_ignore_token_expire(self, mock_config):
+    def test_get_or_create_token_ignore_token_expire(self, mock_config: MagicMock) -> None:
         """Un token expiré n'est pas réutilisé — un nouveau est créé."""
         mock_config.get_token_validite_jours.return_value = 20
         expire = self._create_token(jours_expiration=-1)
@@ -391,7 +417,7 @@ class TestTokenService(TestCase):
 
         self.assertNotEqual(result.id, expire.id)
 
-    def test_valider_token_expire(self):
+    def test_valider_token_expire(self) -> None:
         """valider_token lève ValueError si le token est expiré."""
         token = self._create_token(jours_expiration=-1)  # Expiré hier
         service = TokenService()
@@ -400,7 +426,7 @@ class TestTokenService(TestCase):
             service.valider_token(str(token.token))
         self.assertIn("expiré", str(ctx.exception))
 
-    def test_valider_token_revoque(self):
+    def test_valider_token_revoque(self) -> None:
         """valider_token lève ValueError si le token est révoqué (is_active=False)."""
         token = self._create_token(is_active=False)
         service = TokenService()
@@ -409,14 +435,14 @@ class TestTokenService(TestCase):
             service.valider_token(str(token.token))
         self.assertIn("révoqué", str(ctx.exception))
 
-    def test_valider_token_introuvable(self):
+    def test_valider_token_introuvable(self) -> None:
         """valider_token lève ObjectDoesNotExist si le token n'existe pas."""
         service = TokenService()
 
         with self.assertRaises(ObjectDoesNotExist):
             service.valider_token(str(uuid.uuid4()))
 
-    def test_revoquer_token(self):
+    def test_revoquer_token(self) -> None:
         """revoquer_token met is_active à False."""
         token = self._create_token()
         service = TokenService()
@@ -426,14 +452,14 @@ class TestTokenService(TestCase):
         token.refresh_from_db()
         self.assertFalse(token.is_active)
 
-    def test_revoquer_token_introuvable(self):
+    def test_revoquer_token_introuvable(self) -> None:
         """revoquer_token lève ObjectDoesNotExist si le token est introuvable."""
         service = TokenService()
 
         with self.assertRaises(ObjectDoesNotExist):
             service.revoquer_token(str(uuid.uuid4()))
 
-    def test_valider_token_met_a_jour_derniere_visite(self):
+    def test_valider_token_met_a_jour_derniere_visite(self) -> None:
         """valider_token doit mettre à jour date_derniere_visite."""
         token = self._create_token()
         self.assertIsNone(token.date_derniere_visite)
@@ -449,7 +475,7 @@ class TestEnvoiServiceGetWhatsAppQr(TestCase):
     """Tests de EnvoiService.get_whatsapp_qr (statut/QR de liaison WhatsApp)."""
 
     @patch("notifications.services.whatsapp_client")
-    def test_get_qr_relaye_le_client(self, mock_wa):
+    def test_get_qr_relaye_le_client(self, mock_wa: MagicMock) -> None:
         mock_wa.get_qr.return_value = (False, "data:image/png;base64,AAA", "", "qr", 0)
         ready, qr, number, phase, _depuis = EnvoiService().get_whatsapp_qr()
         self.assertFalse(ready)
@@ -458,14 +484,14 @@ class TestEnvoiServiceGetWhatsAppQr(TestCase):
         self.assertEqual(phase, "qr")
 
     @patch("notifications.services.whatsapp_client")
-    def test_get_qr_connecte_expose_le_numero(self, mock_wa):
+    def test_get_qr_connecte_expose_le_numero(self, mock_wa: MagicMock) -> None:
         mock_wa.get_qr.return_value = (True, "", "237675799743", "connecte", 0)
         ready, _qr, number, _phase, _depuis = EnvoiService().get_whatsapp_qr()
         self.assertTrue(ready)
         self.assertEqual(number, "237675799743")
 
     @patch("notifications.services.whatsapp_client")
-    def test_get_qr_service_indisponible_est_une_rupture_pas_un_demarrage(self, mock_wa):
+    def test_get_qr_service_indisponible_est_une_rupture_pas_un_demarrage(self, mock_wa: MagicMock) -> None:
         """Un service injoignable n'est pas un service qui démarre.
 
         La dégradation gracieuse retournait un booléen à faux, que l'écran
@@ -479,12 +505,12 @@ class TestEnvoiServiceGetWhatsAppQr(TestCase):
         self.assertEqual(EnvoiService().get_whatsapp_qr(), (False, "", "", "rupture", 0))
 
     @patch("notifications.services.whatsapp_client")
-    def test_tester_envoi_relaye_au_client(self, mock_wa):
+    def test_tester_envoi_relaye_au_client(self, mock_wa: MagicMock) -> None:
         EnvoiService().tester_envoi("+237699000001")
         mock_wa.send.assert_called_once()
         self.assertEqual(mock_wa.send.call_args.args[0], "+237699000001")
 
-    def test_tester_envoi_numero_vide_leve_value_error(self):
+    def test_tester_envoi_numero_vide_leve_value_error(self) -> None:
         with self.assertRaises(ValueError):
             EnvoiService().tester_envoi("")
 
@@ -492,7 +518,7 @@ class TestEnvoiServiceGetWhatsAppQr(TestCase):
 class TestTokenServiceRevoquerTousTokens(TestCase):
     """Tests de TokenService.revoquer_tous_tokens (révocation de masse)."""
 
-    def test_revoque_seulement_les_actifs_et_compte(self):
+    def test_revoque_seulement_les_actifs_et_compte(self) -> None:
         for _ in range(2):
             TokenAcces.objects.create(
                 abonne_id=str(uuid.uuid4()),

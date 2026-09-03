@@ -6,6 +6,7 @@ from decimal import Decimal
 import grpc
 from django.test import TestCase
 
+from stats.dtos import FactureDict, PaiementDict
 from stats.models import StatsCampagne, StatsFacturation, StatsPaiements
 from stats.services import ReconciliateurStats
 
@@ -13,11 +14,15 @@ from stats.services import ReconciliateurStats
 class _FakeFacturationClient:
     """Double de test : retourne des factures fixées par campagne_id, ou lève."""
 
-    def __init__(self, factures_par_campagne: dict | None = None, echoue_pour: set | None = None) -> None:
+    def __init__(
+        self,
+        factures_par_campagne: dict[str, list[FactureDict]] | None = None,
+        echoue_pour: set[str] | None = None,
+    ) -> None:
         self._factures = factures_par_campagne or {}
         self._echoue_pour = echoue_pour or set()
 
-    def list_factures_par_campagne(self, campagne_id: str) -> list[dict]:
+    def list_factures_par_campagne(self, campagne_id: str) -> list[FactureDict]:
         if campagne_id in self._echoue_pour:
             raise grpc.RpcError("Facturation Service indisponible")
         return self._factures.get(campagne_id, [])
@@ -26,11 +31,15 @@ class _FakeFacturationClient:
 class _FakePaiementClient:
     """Double de test : retourne des paiements fixés par campagne_id, ou lève."""
 
-    def __init__(self, paiements_par_campagne: dict | None = None, echoue_pour: set | None = None) -> None:
+    def __init__(
+        self,
+        paiements_par_campagne: dict[str, list[PaiementDict]] | None = None,
+        echoue_pour: set[str] | None = None,
+    ) -> None:
         self._paiements = paiements_par_campagne or {}
         self._echoue_pour = echoue_pour or set()
 
-    def list_paiements_par_campagne(self, campagne_id: str) -> list[dict]:
+    def list_paiements_par_campagne(self, campagne_id: str) -> list[PaiementDict]:
         if campagne_id in self._echoue_pour:
             raise grpc.RpcError("Paiement Service indisponible")
         return self._paiements.get(campagne_id, [])
@@ -41,7 +50,7 @@ class ReconcilierCampagneTests(TestCase):
         self.cid = str(uuid.uuid4())
         StatsCampagne.objects.create(campagne_id=self.cid, nom_campagne="Juin 2026", total_abonnes=3, nb_releves=3)
 
-    def _factures_fixture(self) -> list[dict]:
+    def _factures_fixture(self) -> list[FactureDict]:
         return [
             {"facture_id": "f1", "statut": "PAYEE", "montant": 5000.0},
             {"facture_id": "f2", "statut": "PARTIELLE", "montant": 3000.0},
@@ -51,7 +60,7 @@ class ReconcilierCampagneTests(TestCase):
             {"facture_id": "f4", "statut": "ANNULEE", "montant": 9999.0},
         ]
 
-    def _paiements_fixture(self) -> list[dict]:
+    def _paiements_fixture(self) -> list[PaiementDict]:
         return [
             {"montant": 5000.0, "annule": False},
             {"montant": 1500.0, "annule": False},
@@ -161,7 +170,9 @@ class ReconcilierToutesCampagnesTests(TestCase):
         StatsCampagne.objects.create(campagne_id=self.cid_echec, nom_campagne="KO", total_abonnes=1, nb_releves=1)
 
     def test_une_campagne_en_echec_ne_bloque_pas_les_autres(self) -> None:
-        factures = {self.cid_ok: [{"facture_id": "f1", "statut": "PAYEE", "montant": 1000.0}]}
+        factures: dict[str, list[FactureDict]] = {
+            self.cid_ok: [{"facture_id": "f1", "statut": "PAYEE", "montant": 1000.0}]
+        }
         facturation_client = _FakeFacturationClient(factures, echoue_pour={self.cid_echec})
         paiement_client = _FakePaiementClient({self.cid_ok: []})
         recon = ReconciliateurStats(facturation_client=facturation_client, paiement_client=paiement_client)

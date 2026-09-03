@@ -1,5 +1,6 @@
 import secrets
 import uuid
+from typing import cast
 
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.hashers import check_password, make_password
@@ -15,7 +16,7 @@ class Role(models.TextChoices):
     SUPERVISEUR = "SUPERVISEUR", "Superviseur"
 
 
-class UserManager(BaseUserManager):
+class UserManager(BaseUserManager["User"]):
     """Manager personnalisé : authentification par username, pas d'email obligatoire en USERNAME_FIELD."""
 
     def create_user(
@@ -24,14 +25,14 @@ class UserManager(BaseUserManager):
         email: str | None = None,
         role: str | None = None,
         password: str | None = None,
-        **extra_fields,
+        **extra_fields: bool | str,
     ) -> "User":
         if not username:
             raise ValueError("Le username est obligatoire")
         if not role:
             raise ValueError("Le rôle est obligatoire")
         normalized_email = self.normalize_email(email) if email else None
-        user = self.model(username=username, email=normalized_email, role=role, **extra_fields)
+        user: User = self.model(username=username, email=normalized_email, role=role, **extra_fields)
         if password:
             user.set_password(password)
         else:
@@ -41,11 +42,12 @@ class UserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, username: str, email: str, password: str, **extra_fields) -> "User":
+    def create_superuser(self, username: str, email: str, password: str, **extra_fields: bool | str) -> "User":
         extra_fields.setdefault("role", Role.ADMIN)
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
-        return self.create_user(username, email, role=extra_fields.pop("role"), password=password, **extra_fields)
+        role = cast(str, extra_fields.pop("role"))
+        return self.create_user(username, email, role=role, password=password, **extra_fields)
 
 
 class User(AbstractBaseUser, PermissionsMixin):

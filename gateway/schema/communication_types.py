@@ -1,5 +1,6 @@
 """Types Strawberry pour les diffusions (Notification Service)."""
 
+from typing import Any
 import strawberry
 
 
@@ -15,7 +16,7 @@ class Diffusion:
     created_at: str
 
 
-def diffusion_from_grpc(r, cree_par: str = "") -> Diffusion:
+def diffusion_from_grpc(r: Any, cree_par: str = "") -> Diffusion:
     return Diffusion(
         diffusion_id=r.diffusion_id,
         message=r.message,

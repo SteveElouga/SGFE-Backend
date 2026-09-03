@@ -3,4 +3,6 @@
 Ce service n'expose pas d'API HTTP — tout passe par gRPC.
 """
 
-urlpatterns: list = []
+from django.urls import URLPattern, URLResolver
+
+urlpatterns: list[URLPattern | URLResolver] = []
