@@ -34,7 +34,7 @@ import notification_service_pb2 as pb  # type: ignore[import]  # noqa: E402
 import notification_service_pb2_grpc as pb_grpc  # type: ignore[import]  # noqa: E402
 
 from notifications.grpc_interceptors import ErrorHandlingInterceptor  # noqa: E402
-from notifications.grpc_auth import AuthServerInterceptor  # noqa: E402
+from notifications.grpc_auth import AuthServerInterceptor, ouvrir_port_grpc  # noqa: E402
 from notifications.serializers import diffusion_to_proto, envoi_to_proto, token_to_valider_response  # noqa: E402
 from notifications.services import DiffusionService, EnvoiService, TokenService, notifier_admins  # noqa: E402
 from notifications.whatsapp_client import WhatsAppDeliveryError  # noqa: E402
@@ -213,7 +213,7 @@ def serve() -> None:
         interceptors=[AuthServerInterceptor(settings.INTERNAL_GRPC_KEY), ErrorHandlingInterceptor()],
     )
     pb_grpc.add_NotificationServiceServicer_to_server(NotificationServiceServicer(), server)
-    server.add_insecure_port(f"[::]:{settings.NOTIFICATION_GRPC_PORT}")
+    ouvrir_port_grpc(server, settings.NOTIFICATION_GRPC_PORT)
     server.start()
     logger.info(
         "Notification gRPC server démarré sur le port %d",

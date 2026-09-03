@@ -1,4 +1,4 @@
-"""Authentification de la couche gRPC interne.
+"""Authentification et chiffrement de la couche gRPC interne.
 
 Jusqu'ici, quiconque atteignait les ports 50051-50058 appelait n'importe quel
 service sans identifiant — création d'abonné, annulation de facture, tout. Les
@@ -6,7 +6,7 @@ huit `grpc_interceptors.py` ne faisaient que du mapping d'erreurs ; aucune
 métadonnée n'était envoyée, aucun jeton vérifié. Le modèle de sécurité était
 un seul mur, et rien derrière.
 
-Ce module pose le second mur, en décalquant le motif que le service WhatsApp
+Ce module pose un second mur, en décalquant le motif que le service WhatsApp
 utilise déjà (ANO-005) plutôt que d'en inventer un second :
 
   — un secret partagé, lu dans l'environnement ;
@@ -15,18 +15,33 @@ utilise déjà (ANO-005) plutôt que d'en inventer un second :
   — côté appelant, un intercepteur posé sur le canal plutôt qu'un paramètre
     `metadata=` répété sur 125 appels.
 
-Ce n'est pas de la mTLS. C'est un secret partagé, adapté à une machine unique
-où les ports ne sortent pas du réseau Docker — et qui ferme le trou béant
-qu'était l'absence totale de contrôle. Le jour où les services se répartiront
-sur plusieurs hôtes, la mTLS deviendra le bon outil ; ce module aura alors
-posé la discipline d'appel, qui est le vrai coût de la migration.
+Ce second mur authentifie l'APPELANT applicatif (« qui parle »). Il ne dit
+rien sur le TRANSPORT : le canal restait en clair, adapté à une machine unique
+où les ports ne sortent pas du réseau Docker.
+
+Ce module pose maintenant un troisième mur, orthogonal aux deux premiers :
+mTLS (`add_secure_port`/`secure_channel`, tout en bas de ce fichier) chiffre
+le trafic et authentifie mutuellement les deux extrémités au niveau TLS — un
+tiers qui écoute le réseau Docker, ou un conteneur compromis sans le bon
+certificat, ne peut ni lire le trafic ni initier de connexion, même s'il
+devinait `INTERNAL_GRPC_KEY`. Les deux couches sont indépendantes et
+cumulatives : retirer l'une ne désactive pas l'autre.
+
+**Repli en clair explicite.** `GRPC_TLS_CA`/`GRPC_TLS_CERT`/`GRPC_TLS_KEY`
+absentes de l'environnement → le serveur retombe sur `add_insecure_port` et
+le client sur `insecure_channel`, sans erreur. C'est le cas des suites de
+tests, qui instancient un serveur ou un canal en mémoire sans docker-compose
+ni certificats montés : elles n'ont pas à générer de PKI pour rester vertes.
+Voir `scripts/generate-grpc-certs.sh` pour la génération de la CA/certificat.
 """
 
 from __future__ import annotations
 
 import hmac
 import logging
+import os
 from collections import namedtuple
+from pathlib import Path
 
 import grpc
 
@@ -62,7 +77,7 @@ def exiger_cle(cle: str | None, composant: str) -> str:
     return cle
 
 
-# ── Côté serveur ─────────────────────────────────────────────────────────────
+# ── Côté serveur — authentification applicative ─────────────────────────────
 
 
 class AuthServerInterceptor(grpc.ServerInterceptor):
@@ -102,7 +117,7 @@ class AuthServerInterceptor(grpc.ServerInterceptor):
         return continuation(handler_call_details)
 
 
-# ── Côté client ──────────────────────────────────────────────────────────────
+# ── Côté client — authentification applicative ──────────────────────────────
 
 
 class _DetailsAppel(
@@ -142,14 +157,101 @@ class AuthClientInterceptor(grpc.UnaryUnaryClientInterceptor):
         )
 
 
+# ── Chiffrement mutuel du transport (mTLS) ──────────────────────────────────
+#
+# Un seul certificat (généré par scripts/generate-grpc-certs.sh, SAN couvrant
+# les neuf noms d'hôtes internes du docker-compose) sert à la fois d'identité
+# SERVEUR (`identifiants_serveur_tls`/`ouvrir_port_grpc`) et d'identité
+# CLIENTE (`identifiants_client_tls`/`canal_authentifie`) : les neuf
+# composants sont des pairs égaux d'un même maillage interne, et aucun n'a
+# besoin d'être distingué des huit autres à ce niveau — c'est déjà le rôle de
+# `INTERNAL_GRPC_KEY` ci-dessus, qui authentifie l'appelant applicatif. Voir
+# l'en-tête de `generate-grpc-certs.sh` si ce compromis doit un jour changer
+# (cloisonnement plus fin, révocation par service).
+
+
+def _lire_credentiel_tls(variable: str) -> bytes | None:
+    """Lit le fichier pointé par `variable`, ou None si absent/illisible.
+
+    Les trois variables (`GRPC_TLS_CA`, `GRPC_TLS_CERT`, `GRPC_TLS_KEY`) sont
+    posées ensemble par docker-compose. En leur absence — tests unitaires,
+    serveur ou canal instancié en mémoire — mTLS se désactive proprement (voir
+    docstring du module) ; l'authentification applicative ci-dessus reste
+    elle intacte.
+    """
+    valeur = os.environ.get(variable)
+    if not valeur:
+        return None
+    try:
+        return Path(valeur).read_bytes()
+    except OSError as exc:
+        logger.warning("%s défini (%s) mais illisible (%s) — repli sur gRPC en clair.", variable, valeur, exc)
+        return None
+
+
+def _materiel_tls() -> tuple[bytes, bytes, bytes] | None:
+    """CA + certificat + clé, ou None si l'une des trois variables manque."""
+    ca = _lire_credentiel_tls("GRPC_TLS_CA")
+    cert = _lire_credentiel_tls("GRPC_TLS_CERT")
+    cle = _lire_credentiel_tls("GRPC_TLS_KEY")
+    if ca is None or cert is None or cle is None:
+        return None
+    return ca, cert, cle
+
+
+def identifiants_serveur_tls() -> grpc.ServerCredentials | None:
+    """Credentials mTLS serveur, ou None pour rester en clair (voir module).
+
+    `require_client_auth=True` : le serveur exige lui aussi un certificat
+    client valide, signé par la même CA — c'est ce qui rend l'authentification
+    TLS mutuelle plutôt qu'à sens unique.
+    """
+    materiel = _materiel_tls()
+    if materiel is None:
+        return None
+    ca, cert, cle = materiel
+    return grpc.ssl_server_credentials(
+        [(cle, cert)],
+        root_certificates=ca,
+        require_client_auth=True,
+    )
+
+
+def ouvrir_port_grpc(server: grpc.Server, port: int) -> None:
+    """Ouvre `port` en mTLS si `GRPC_TLS_*` est configuré, sinon en clair.
+
+    Point d'entrée unique appelé par `grpc_server.py::serve()` — évite de
+    recopier la logique de repli en plus de la fabrique de credentials.
+    """
+    credentials = identifiants_serveur_tls()
+    if credentials is not None:
+        server.add_secure_port(f"[::]:{port}", credentials)
+    else:
+        server.add_insecure_port(f"[::]:{port}")
+
+
+def identifiants_client_tls() -> grpc.ChannelCredentials | None:
+    """Credentials mTLS client, ou None pour rester en clair (voir module)."""
+    materiel = _materiel_tls()
+    if materiel is None:
+        return None
+    ca, cert, cle = materiel
+    return grpc.ssl_channel_credentials(
+        root_certificates=ca,
+        private_key=cle,
+        certificate_chain=cert,
+    )
+
+
 def canal_authentifie(adresse: str, cle: str) -> grpc.Channel:
     """Ouvre un canal vers `adresse` qui authentifie tous ses appels.
 
-    Remplace `grpc.insecure_channel(adresse)` sur les cinq fichiers de clients.
-    Le canal reste en clair — le chiffrement du transport est un autre sujet,
-    et il n'a pas de sens sur une boucle locale Docker.
+    Remplace `grpc.insecure_channel(adresse)` sur les cinq fichiers de
+    clients. Le transport est chiffré et authentifié mutuellement dès que
+    `GRPC_TLS_*` est configuré (voir `identifiants_client_tls`) ; dans tous
+    les cas, l'authentification applicative (`AuthClientInterceptor`)
+    s'applique par-dessus — les deux couches sont indépendantes.
     """
-    return grpc.intercept_channel(
-        grpc.insecure_channel(adresse),
-        AuthClientInterceptor(cle),
-    )
+    credentials = identifiants_client_tls()
+    canal = grpc.secure_channel(adresse, credentials) if credentials is not None else grpc.insecure_channel(adresse)
+    return grpc.intercept_channel(canal, AuthClientInterceptor(cle))

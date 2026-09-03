@@ -19,7 +19,7 @@ import campagne_service_pb2_grpc as pb_grpc
 from campagnes.event_publisher import publish_progression_event, publish_reporting_event
 from campagnes.grpc_clients import AbonneServiceClient, FacturationServiceClient
 from campagnes.grpc_interceptors import ErrorHandlingInterceptor
-from campagnes.grpc_auth import AuthServerInterceptor
+from campagnes.grpc_auth import AuthServerInterceptor, ouvrir_port_grpc
 from campagnes.models import StatutCampagne, StatutReleve
 from campagnes.repositories import (
     CampagneAgentRepository,
@@ -424,7 +424,7 @@ def serve() -> None:
     )
     pb_grpc.add_CampagneServiceServicer_to_server(CampagneServicer(), server)
     port = getattr(settings, "CAMPAGNE_GRPC_PORT", 50053)
-    server.add_insecure_port(f"[::]:{port}")
+    ouvrir_port_grpc(server, port)
     server.start()
     logger.info("Campagne gRPC server démarré sur le port %d", port)
     server.wait_for_termination()

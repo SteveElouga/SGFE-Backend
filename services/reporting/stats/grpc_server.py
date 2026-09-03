@@ -11,7 +11,7 @@ import reporting_service_pb2 as pb
 import reporting_service_pb2_grpc as pb_grpc
 
 from stats.grpc_interceptors import ErrorHandlingInterceptor
-from stats.grpc_auth import AuthServerInterceptor
+from stats.grpc_auth import AuthServerInterceptor, ouvrir_port_grpc
 from stats.services import AgregateurDashboard
 from stats.serializers import (
     stats_campagne_to_dict,
@@ -105,7 +105,7 @@ def serve() -> None:
         interceptors=[AuthServerInterceptor(settings.INTERNAL_GRPC_KEY), ErrorHandlingInterceptor()],
     )
     pb_grpc.add_ReportingServiceServicer_to_server(ReportingServiceServicer(), server)
-    server.add_insecure_port(f"[::]:{settings.REPORTING_GRPC_PORT}")
+    ouvrir_port_grpc(server, settings.REPORTING_GRPC_PORT)
     server.start()
     # Alimente le read model : consomme le flux Redis d'événements dans un
     # thread daemon (best-effort — n'empêche pas le démarrage si Redis est down).
