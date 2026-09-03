@@ -46,7 +46,7 @@ services:
     environment:
       POSTGRES_DB: auth_db
       POSTGRES_USER: auth_user
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U auth_user -d auth_db"]
       interval: 5s
@@ -94,7 +94,7 @@ services:
       whatsapp-service:
         condition: service_started
     environment:
-      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
       DJANGO_DEBUG: "True"
       AUTH_DB_HOST: auth-postgres
@@ -137,7 +137,7 @@ services:
     environment:
       POSTGRES_DB: abonne_db
       POSTGRES_USER: abonne_user
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U abonne_user -d abonne_db"]
       interval: 5s
@@ -157,7 +157,7 @@ services:
     environment:
       POSTGRES_DB: campagne_db
       POSTGRES_USER: campagne_user
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U campagne_user -d campagne_db"]
       interval: 5s
@@ -177,7 +177,7 @@ services:
     environment:
       POSTGRES_DB: facturation_db
       POSTGRES_USER: facturation_user
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U facturation_user -d facturation_db"]
       interval: 5s
@@ -206,7 +206,7 @@ services:
       abonne-service:
         condition: service_started
     environment:
-      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
       DJANGO_DEBUG: "True"
       FACTURATION_DB_HOST: facturation-postgres
@@ -249,7 +249,7 @@ services:
     environment:
       POSTGRES_DB: paiement_db
       POSTGRES_USER: paiement_user
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U paiement_user -d paiement_db"]
       interval: 5s
@@ -280,7 +280,7 @@ services:
       config-service:
         condition: service_started
     environment:
-      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
       DJANGO_DEBUG: "True"
       PAIEMENT_DB_HOST: paiement-postgres
@@ -319,7 +319,7 @@ services:
     environment:
       POSTGRES_DB: notification_db
       POSTGRES_USER: notification_user
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U notification_user -d notification_db"]
       interval: 5s
@@ -350,7 +350,7 @@ services:
       whatsapp-service:
         condition: service_started
     environment:
-      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
       DJANGO_DEBUG: "True"
       NOTIFICATION_DB_HOST: notification-postgres
@@ -392,7 +392,7 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
       DJANGO_DEBUG: "True"
       ABONNE_DB_HOST: abonne-postgres
@@ -423,7 +423,7 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
       DJANGO_DEBUG: "True"
       CAMPAGNE_DB_HOST: campagne-postgres
@@ -460,7 +460,7 @@ services:
     environment:
       POSTGRES_DB: config_db
       POSTGRES_USER: config_user
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U config_user -d config_db"]
       interval: 5s
@@ -483,7 +483,7 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
       DJANGO_DEBUG: "True"
       CONFIG_DB_HOST: config-postgres
@@ -511,7 +511,7 @@ services:
     environment:
       POSTGRES_DB: reporting_db
       POSTGRES_USER: reporting_user
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U reporting_user -d reporting_db"]
       interval: 5s
@@ -538,7 +538,7 @@ services:
       paiement-service:
         condition: service_started
     environment:
-      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
       DJANGO_DEBUG: "True"
       REPORTING_DB_HOST: reporting-postgres
@@ -579,7 +579,7 @@ services:
       - reporting-service
       - redis
     environment:
-      DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
       DJANGO_DEBUG: "True"
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
