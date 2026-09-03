@@ -101,7 +101,7 @@ services:
       AUTH_DB_PORT: "5432"
       AUTH_DB_NAME: auth_db
       AUTH_DB_USER: auth_user
-      AUTH_DB_PASSWORD: devpassword
+      AUTH_DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
       AUTH_GRPC_PORT: "50051"
       REDIS_URL: "redis://redis:6379/0"
       JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
@@ -213,7 +213,7 @@ services:
       FACTURATION_DB_PORT: "5432"
       FACTURATION_DB_NAME: facturation_db
       FACTURATION_DB_USER: facturation_user
-      FACTURATION_DB_PASSWORD: devpassword
+      FACTURATION_DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
       FACTURATION_GRPC_PORT: "50054"
       CAMPAGNE_GRPC_HOST: campagne-service
       CAMPAGNE_GRPC_PORT: "50053"
@@ -287,7 +287,7 @@ services:
       PAIEMENT_DB_PORT: "5432"
       PAIEMENT_DB_NAME: paiement_db
       PAIEMENT_DB_USER: paiement_user
-      PAIEMENT_DB_PASSWORD: devpassword
+      PAIEMENT_DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
       PAIEMENT_GRPC_PORT: "50055"
       REDIS_URL: "redis://redis:6379/0"
       FACTURATION_GRPC_HOST: facturation-service
@@ -357,7 +357,7 @@ services:
       NOTIFICATION_DB_PORT: "5432"
       NOTIFICATION_DB_NAME: notification_db
       NOTIFICATION_DB_USER: notification_user
-      NOTIFICATION_DB_PASSWORD: devpassword
+      NOTIFICATION_DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
       NOTIFICATION_GRPC_PORT: "50056"
       FACTURATION_GRPC_HOST: facturation-service
       FACTURATION_GRPC_PORT: "50054"
@@ -399,7 +399,7 @@ services:
       ABONNE_DB_PORT: "5432"
       ABONNE_DB_NAME: abonne_db
       ABONNE_DB_USER: abonne_user
-      ABONNE_DB_PASSWORD: devpassword
+      ABONNE_DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
       ABONNE_GRPC_PORT: "50052"
       REDIS_URL: "redis://redis:6379/0"
       GRPC_TLS_CA: /app/certs/ca.crt
@@ -430,7 +430,7 @@ services:
       CAMPAGNE_DB_PORT: "5432"
       CAMPAGNE_DB_NAME: campagne_db
       CAMPAGNE_DB_USER: campagne_user
-      CAMPAGNE_DB_PASSWORD: devpassword
+      CAMPAGNE_DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
       CAMPAGNE_GRPC_PORT: "50053"
       REDIS_URL: "redis://redis:6379/0"
       NOTIFICATION_GRPC_HOST: notification-service
@@ -490,7 +490,7 @@ services:
       CONFIG_DB_PORT: "5432"
       CONFIG_DB_NAME: config_db
       CONFIG_DB_USER: config_user
-      CONFIG_DB_PASSWORD: devpassword
+      CONFIG_DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
       CONFIG_GRPC_PORT: "50058"
       REDIS_URL: "redis://redis:6379/0"
       GRPC_TLS_CA: /app/certs/ca.crt
@@ -545,7 +545,7 @@ services:
       REPORTING_DB_PORT: "5432"
       REPORTING_DB_NAME: reporting_db
       REPORTING_DB_USER: reporting_user
-      REPORTING_DB_PASSWORD: devpassword
+      REPORTING_DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
       REPORTING_GRPC_PORT: "50057"
       # Consommés par le job de réconciliation nocturne (stats/schedulers.py).
       FACTURATION_GRPC_HOST: facturation-service
