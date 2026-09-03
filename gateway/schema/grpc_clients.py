@@ -283,9 +283,20 @@ class FacturationServiceClient:
     def generer_synthese_campagne_pdf(self, campagne_id: str) -> facturation_pb.PDFResponse:
         return self._stub.GenererSyntheseCampagnePDF(facturation_pb.CampagneIdRequest(campagne_id=campagne_id))
 
-    def generer_recu_paiement_pdf(self, paiement_id: str, facture_id: str) -> facturation_pb.PDFResponse:
+    def generer_recu_paiement_pdf(
+        self,
+        paiement_id: str,
+        facture_id: str,
+        montant_versement: float = 0.0,
+        solde_restant_total: float = 0.0,
+    ) -> facturation_pb.PDFResponse:
         return self._stub.GenererRecuPaiementPDF(
-            facturation_pb.GenererRecuRequest(paiement_id=paiement_id, facture_id=facture_id)
+            facturation_pb.GenererRecuRequest(
+                paiement_id=paiement_id,
+                facture_id=facture_id,
+                montant_versement=montant_versement,
+                solde_restant_total=solde_restant_total,
+            )
         )
 
     def annuler_facture(self, facture_id: str, motif: str, annule_par: str) -> facturation_pb.FactureResponse:

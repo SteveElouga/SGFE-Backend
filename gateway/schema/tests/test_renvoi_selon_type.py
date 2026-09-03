@@ -62,7 +62,7 @@ class TestRenvoiSelonType(SimpleTestCase):
         """Le cœur du défaut : c'est le reçu qui repart, avec ses chiffres."""
         mock_notif.get_envoi.return_value = _envoi(type_envoi="RECU", paiement_id="paie-1")
         mock_paie.list_paiements.return_value = MagicMock(paiements=[_paiement()])
-        mock_paie.get_solde.return_value = MagicMock(solde_restant=2500.0)
+        mock_paie.get_dette_abonne.return_value = MagicMock(total_du=2500.0)
         mock_notif.envoyer_recu.return_value = _envoi(envoi_id="envoi-2", type_envoi="RECU")
 
         NotificationMutations().renvoyer_envoi(MagicMock(), envoi_id="envoi-001")
@@ -163,7 +163,7 @@ class TestRenvoiRecuRefus(SimpleTestCase):
 
         mock_notif.get_envoi.return_value = _envoi(type_envoi="RECU", paiement_id="paie-1")
         mock_paie.list_paiements.return_value = MagicMock(paiements=[_paiement()])
-        mock_paie.get_solde.side_effect = grpc.RpcError("injoignable")
+        mock_paie.get_dette_abonne.side_effect = grpc.RpcError("injoignable")
 
         with self.assertRaises(ValueError):
             NotificationMutations().renvoyer_envoi(MagicMock(), envoi_id="envoi-001")

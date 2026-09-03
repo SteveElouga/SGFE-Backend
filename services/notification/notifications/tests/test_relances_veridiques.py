@@ -77,21 +77,26 @@ class TestGabaritsVeridiques(TestCase):
     """Les quatre gabarits, sans aucun délai ni montant écrit en dur."""
 
     def test_relance_2_annonce_le_vrai_retard(self):
-        msg = build_message_relance_2("Jean DUPONT", "Juillet", 2000.0, jours_retard=31)
+        msg = build_message_relance_2("Jean DUPONT", "Juillet", 2000.0, jours_retard=31, lien_espace="https://x")
         self.assertIn("depuis 31 jours", msg)
         self.assertNotIn("depuis 3 jours", msg)
 
     def test_relance_2_accorde_le_singulier(self):
-        self.assertIn("depuis 1 jour.", build_message_relance_2("J D", "Juillet", 2000.0, jours_retard=1))
+        msg = build_message_relance_2("J D", "Juillet", 2000.0, jours_retard=1, lien_espace="https://x")
+        self.assertIn("depuis 1 jour.", msg)
 
     def test_relance_3_annonce_le_delai_transmis(self):
-        msg = build_message_relance_3("Jean DUPONT", 2000.0, jours_retard=8, jours_avant_suspension=2)
+        msg = build_message_relance_3(
+            "Jean DUPONT", 2000.0, jours_retard=8, jours_avant_suspension=2, lien_espace="https://x"
+        )
         self.assertIn("depuis 8 jours", msg)
         self.assertIn("dans les 2 jours", msg)
         self.assertNotIn("dans les 3 jours", msg)
 
     def test_relance_3_sans_delai_connu_n_annonce_pas_de_delai_faux(self):
-        msg = build_message_relance_3("Jean DUPONT", 2000.0, jours_retard=8, jours_avant_suspension=0)
+        msg = build_message_relance_3(
+            "Jean DUPONT", 2000.0, jours_retard=8, jours_avant_suspension=0, lien_espace="https://x"
+        )
         self.assertIn("sera suspendue", msg)
         self.assertNotIn("dans les", msg)
 
@@ -100,8 +105,8 @@ class TestGabaritsVeridiques(TestCase):
         d'antériorité du message de facture, omise plutôt que faussée."""
         for msg in (
             build_message_relance_1("J D", "Juillet", None, "https://x", 3),
-            build_message_relance_2("J D", "Juillet", None, 3),
-            build_message_relance_3("J D", None, 3, 2),
+            build_message_relance_2("J D", "Juillet", None, 3, lien_espace="https://x"),
+            build_message_relance_3("J D", None, 3, 2, lien_espace="https://x"),
         ):
             self.assertNotIn("FCFA", msg)
             self.assertNotIn("None", msg)
@@ -113,19 +118,19 @@ class TestGabaritsVeridiques(TestCase):
         rétablissement exige l'extinction de la dette totale (RS-005) : régler
         cette somme ne rétablissait même pas la ligne.
         """
-        msg = build_message_relance_4("Jean DUPONT", 27500.0, "Juillet", "+237 690")
+        msg = build_message_relance_4("Jean DUPONT", 27500.0, "Juillet", "+237 690", lien_espace="https://x")
         self.assertIn("Pour être rétabli", msg)
         self.assertIn("27500 FCFA", msg)
         self.assertIn("+237 690", msg)
 
     def test_suspension_sans_dette_lisible_renvoie_au_service(self):
-        msg = build_message_relance_4("Jean DUPONT", None, "Juillet", "+237 690")
+        msg = build_message_relance_4("Jean DUPONT", None, "Juillet", "+237 690", lien_espace="https://x")
         self.assertNotIn("FCFA", msg)
         self.assertIn("+237 690", msg)
 
     def test_suspension_sans_telephone_ne_laisse_pas_la_phrase_en_suspens(self):
         """« contactez notre service au  » — Config injoignable tronquait la phrase."""
-        msg = build_message_relance_4("Jean DUPONT", 27500.0, "Juillet", "")
+        msg = build_message_relance_4("Jean DUPONT", 27500.0, "Juillet", "", lien_espace="https://x")
         self.assertNotIn("au .", msg)
         self.assertIn("Contactez notre service", msg)
 
@@ -139,17 +144,19 @@ class TestGabaritsVeridiques(TestCase):
         self.assertIn("dans les meilleurs délais.", msg)
 
     def test_relance_2_ne_coupe_pas_la_phrase_au_milieu(self):
-        msg = build_message_relance_2("Jean DUPONT", "Août", 36000.0, jours_retard=1)
+        msg = build_message_relance_2("Jean DUPONT", "Août", 36000.0, jours_retard=1, lien_espace="https://x")
         self.assertIn("est impayée depuis 1 jour.", msg)
         self.assertIn("fera l'objet d'un avertissement.", msg)
 
     def test_relance_3_ne_coupe_pas_la_phrase_au_milieu(self):
-        msg = build_message_relance_3("Jean DUPONT", 36000.0, jours_retard=8, jours_avant_suspension=2)
+        msg = build_message_relance_3(
+            "Jean DUPONT", 36000.0, jours_retard=8, jours_avant_suspension=2, lien_espace="https://x"
+        )
         self.assertIn("est en situation d'impayé depuis 8 jours", msg)
         self.assertIn("dans les 2 jours, votre ligne d'eau sera suspendue.", msg)
 
     def test_relance_4_ne_coupe_pas_la_phrase_au_milieu(self):
-        msg = build_message_relance_4("Jean DUPONT", 27500.0, "Juillet", "+237 690")
+        msg = build_message_relance_4("Jean DUPONT", 27500.0, "Juillet", "+237 690", lien_espace="https://x")
         self.assertIn("suspendue pour un impayé (Facture Juillet).", msg)
         self.assertIn("réglez la totalité de votre dette : 27500 FCFA.", msg)
 
@@ -187,17 +194,29 @@ class TestGabaritsVeridiques(TestCase):
 
     def test_relance_2_et_3_mentionnent_aussi_les_autres_impayes(self):
         msg2 = build_message_relance_2(
-            "Jean DUPONT", "Juillet", 2000.0, jours_retard=5, autres_impayes_total=8000.0, autres_impayes_nb=1
+            "Jean DUPONT",
+            "Juillet",
+            2000.0,
+            jours_retard=5,
+            autres_impayes_total=8000.0,
+            autres_impayes_nb=1,
+            lien_espace="https://x",
         )
         self.assertIn("1 autre facture impayée", msg2)
 
         msg3 = build_message_relance_3(
-            "Jean DUPONT", 2000.0, jours_retard=9, autres_impayes_total=8000.0, autres_impayes_nb=1
+            "Jean DUPONT",
+            2000.0,
+            jours_retard=9,
+            autres_impayes_total=8000.0,
+            autres_impayes_nb=1,
+            lien_espace="https://x",
         )
         self.assertIn("1 autre facture impayée", msg3)
 
 
 @patch("notifications.services.whatsapp_client")
+@patch("notifications.services.config_client")
 @patch("notifications.services.paiement_client")
 @patch("notifications.services.abonne_client")
 @patch("notifications.services.facturation_client")
@@ -205,7 +224,7 @@ class TestEnvoiLitLaBonneSource(TestCase):
     """Le montant annoncé vient de Paiement Service, pas du montant de la facture."""
 
     def test_relance_2_annonce_le_reste_du_et_non_le_montant_brut(
-        self, mock_fact, mock_abonne, mock_paiement, mock_wa
+        self, mock_fact, mock_abonne, mock_paiement, mock_config, mock_wa
     ) -> None:
         """L'abonné a versé 8 000 sur 10 000 : il doit 2 000, pas 10 000."""
         fid, aid = str(uuid.uuid4()), str(uuid.uuid4())
@@ -213,6 +232,7 @@ class TestEnvoiLitLaBonneSource(TestCase):
         mock_abonne.get_abonne.return_value = _abonne(aid)
         mock_paiement.get_solde_restant.return_value = 2000.0
         mock_paiement.get_dette_abonne.return_value = (0.0, 0, "")
+        mock_config.get_token_validite_jours.return_value = 20
         mock_wa.send.return_value = None
 
         envoi = EnvoiService().envoyer_relance(fid, aid, etape=2)
@@ -224,7 +244,7 @@ class TestEnvoiLitLaBonneSource(TestCase):
         self.assertIn("depuis 4 jours", texte)
 
     def test_solde_illisible_le_message_part_sans_le_montant(
-        self, mock_fact, mock_abonne, mock_paiement, mock_wa
+        self, mock_fact, mock_abonne, mock_paiement, mock_config, mock_wa
     ) -> None:
         """`None` = illisible. Mieux vaut relancer sans chiffre qu'avec un faux."""
         fid, aid = str(uuid.uuid4()), str(uuid.uuid4())
@@ -232,6 +252,7 @@ class TestEnvoiLitLaBonneSource(TestCase):
         mock_abonne.get_abonne.return_value = _abonne(aid)
         mock_paiement.get_solde_restant.return_value = None
         mock_paiement.get_dette_abonne.return_value = (0.0, 0, "")
+        mock_config.get_token_validite_jours.return_value = 20
         mock_wa.send.return_value = None
 
         EnvoiService().envoyer_relance(fid, aid, etape=2)
@@ -240,11 +261,14 @@ class TestEnvoiLitLaBonneSource(TestCase):
         self.assertNotIn("FCFA", texte)
         self.assertIn("est impayée", texte)
 
-    def test_suspension_lit_la_dette_totale_de_l_abonne(self, mock_fact, mock_abonne, mock_paiement, mock_wa) -> None:
+    def test_suspension_lit_la_dette_totale_de_l_abonne(
+        self, mock_fact, mock_abonne, mock_paiement, mock_config, mock_wa
+    ) -> None:
         fid, aid = str(uuid.uuid4()), str(uuid.uuid4())
         mock_fact.get_facture.return_value = _facture(fid, aid, jours_retard=12, montant=10000.0)
         mock_abonne.get_abonne.return_value = _abonne(aid)
         mock_paiement.get_dette_abonne.return_value = (27500.0, 3, "2026-05-20")
+        mock_config.get_token_validite_jours.return_value = 20
         mock_wa.send.return_value = None
 
         envoi = EnvoiService().envoyer_relance(fid, aid, etape=4)
@@ -255,7 +279,7 @@ class TestEnvoiLitLaBonneSource(TestCase):
         self.assertIn("Pour être rétabli", texte)
 
     def test_relance_signale_les_autres_impayes_de_l_abonne(
-        self, mock_fact, mock_abonne, mock_paiement, mock_wa
+        self, mock_fact, mock_abonne, mock_paiement, mock_config, mock_wa
     ) -> None:
         """`get_dette_abonne` est interrogé hors la facture courante — même
         appel que celui qui alimente déjà le solde antérieur du message de
@@ -265,6 +289,7 @@ class TestEnvoiLitLaBonneSource(TestCase):
         mock_abonne.get_abonne.return_value = _abonne(aid)
         mock_paiement.get_solde_restant.return_value = 2000.0
         mock_paiement.get_dette_abonne.return_value = (12000.0, 2, "2026-04-01")
+        mock_config.get_token_validite_jours.return_value = 20
         mock_wa.send.return_value = None
 
         EnvoiService().envoyer_relance(fid, aid, etape=2)
@@ -275,13 +300,14 @@ class TestEnvoiLitLaBonneSource(TestCase):
         self.assertIn("12 000 FCFA au total", texte)
 
     def test_le_delai_avant_suspension_vient_de_l_appelant(
-        self, mock_fact, mock_abonne, mock_paiement, mock_wa
+        self, mock_fact, mock_abonne, mock_paiement, mock_config, mock_wa
     ) -> None:
         fid, aid = str(uuid.uuid4()), str(uuid.uuid4())
         mock_fact.get_facture.return_value = _facture(fid, aid, jours_retard=8)
         mock_abonne.get_abonne.return_value = _abonne(aid)
         mock_paiement.get_solde_restant.return_value = 2000.0
         mock_paiement.get_dette_abonne.return_value = (0.0, 0, "")
+        mock_config.get_token_validite_jours.return_value = 20
         mock_wa.send.return_value = None
 
         EnvoiService().envoyer_relance(fid, aid, etape=3, jours_avant_suspension=2)
