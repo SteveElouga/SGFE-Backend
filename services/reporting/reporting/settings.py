@@ -64,6 +64,14 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # --- gRPC ---
 REPORTING_GRPC_PORT = env.int("REPORTING_GRPC_PORT", default=50057)
 
+# Services externes consommés par le job de réconciliation nocturne
+# (stats/schedulers.py) : Facturation et Paiement sont les sources de vérité
+# depuis lesquelles StatsFacturation/StatsPaiements sont recalculées.
+FACTURATION_GRPC_HOST = env("FACTURATION_GRPC_HOST", default="localhost")
+FACTURATION_GRPC_PORT = env.int("FACTURATION_GRPC_PORT", default=50054)
+PAIEMENT_GRPC_HOST = env("PAIEMENT_GRPC_HOST", default="localhost")
+PAIEMENT_GRPC_PORT = env.int("PAIEMENT_GRPC_PORT", default=50055)
+
 # Authentification de la couche gRPC interne (registre, point 1).
 #
 # Secret partagé entre tous les services. Sans lui, le serveur gRPC refuse de

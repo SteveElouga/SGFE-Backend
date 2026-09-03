@@ -6,6 +6,7 @@ autres services) mettent à jour les tables dénormalisées ; les lectures
 idempotentes autant que possible (upsert par campagne_id).
 """
 
+import logging
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -15,6 +16,8 @@ from stats.repositories import (
     StatsFacturationRepository,
     StatsPaiementsRepository,
 )
+
+logger = logging.getLogger(__name__)
 
 _CENT = Decimal("0.01")
 
@@ -181,3 +184,116 @@ class AgregateurDashboard:
             (stats.montant_encaisse / total_facture * 100).quantize(_CENT) if total_facture > 0 else Decimal("0")
         )
         return self._paiements.save(stats)
+
+
+# Statuts de facture (facturation_service.proto / factures.models.StatutFacture,
+# recopiés en littéraux ici : reporting ne dépend jamais du code d'un autre
+# service, seulement de son contrat gRPC).
+_STATUT_ANNULEE = "ANNULEE"
+_STATUT_PAYEE = "PAYEE"
+_STATUT_PARTIELLE = "PARTIELLE"
+_STATUT_IMPAYEE = "IMPAYEE"
+
+
+class ReconciliateurStats:
+    """Recalcule StatsFacturation/StatsPaiements depuis les services sources de
+    vérité (Facturation, Paiement) — job de réconciliation nocturne.
+
+    StatsCampagne n'a volontairement pas sa place ici : ses mises à jour
+    (`update_stats_campagne`) écrivent des valeurs absolues, pas des deltas —
+    la prochaine saisie de relevé la recalcule intégralement et corrige donc
+    d'elle-même un événement CAMPAGNE_STATS manqué. StatsFacturation et
+    StatsPaiements, en revanche, s'incrémentent par delta (`+=`) : un événement
+    FACTURATION_STATS ou PAIEMENT_STATS jamais publié (le service producteur a
+    planté avant le XADD, par exemple) y laisse une dérive **permanente** —
+    contrairement à un événement publié puis perdu entre l'application et le
+    XACK, déjà couvert par l'idempotence de `ProcessedEvent` et le rattrapage
+    au redémarrage du consumer (`event_consumer.py`). Seule une relecture
+    complète des services sources peut corriger cette dérive-là.
+
+    Le périmètre de réconciliation est l'ensemble des campagnes déjà connues
+    de StatsCampagne : c'est la liste des campagnes que ce Reporting Service a
+    vues passer, indépendamment de tout événement de facturation/paiement.
+    """
+
+    def __init__(self, facturation_client=None, paiement_client=None) -> None:
+        from stats.grpc_clients import FacturationServiceClient, PaiementServiceClient
+
+        self._facturation_client = facturation_client or FacturationServiceClient()
+        self._paiement_client = paiement_client or PaiementServiceClient()
+        self._campagne_repo = StatsCampagneRepository()
+        self._facturation_repo = StatsFacturationRepository()
+        self._paiements_repo = StatsPaiementsRepository()
+
+    def reconcilier_toutes_campagnes(self) -> tuple[int, int]:
+        """Réconcilie chaque campagne connue. Retourne (nb_ok, nb_echecs).
+
+        Un échec sur une campagne (service source injoignable) ne doit jamais
+        empêcher la réconciliation des autres — chacune est traitée
+        indépendamment, ses stats existantes restant inchangées en cas d'échec.
+        """
+        nb_ok = 0
+        nb_echecs = 0
+        for campagne_id in [str(c.campagne_id) for c in self._campagne_repo.list_all()]:
+            try:
+                self.reconcilier_campagne(campagne_id)
+                nb_ok += 1
+            except Exception:
+                logger.exception(
+                    "Réconciliation échouée pour la campagne %s — stats existantes conservées telles quelles.",
+                    campagne_id,
+                )
+                nb_echecs += 1
+        return nb_ok, nb_echecs
+
+    def reconcilier_campagne(self, campagne_id: str) -> None:
+        """Recalcule StatsFacturation/StatsPaiements d'UNE campagne depuis les sources de vérité.
+
+        Lève si Facturation ou Paiement Service est inaccessible (voir
+        `grpc_clients.py`) — l'appelant décide alors de conserver les stats
+        existantes plutôt que de les écraser par des zéros trompeurs.
+
+        `nb_factures_envoyees` n'est délibérément jamais touché : ce compteur
+        provient de l'envoi WhatsApp (Notification Service), un fait qui n'a
+        pas de trace durable côté Facturation Service — rien à réconcilier
+        depuis cette source, il reste tel que les événements l'ont construit.
+        """
+        factures = self._facturation_client.list_factures_par_campagne(campagne_id)
+        paiements = self._paiement_client.list_paiements_par_campagne(campagne_id)
+
+        actives = [f for f in factures if f["statut"] != _STATUT_ANNULEE]
+        montant_total_facture = sum((_dec(f["montant"]) for f in actives), Decimal("0"))
+        nb_impayees = sum(1 for f in actives if f["statut"] == _STATUT_IMPAYEE)
+
+        # Rien à réconcilier et rien de préexistant : ne pas fabriquer une
+        # ligne de stats à zéro pour une campagne qui n'a simplement pas encore
+        # été facturée (ex. toujours EN_COURS) — `facturation=None` au dashboard
+        # a un sens différent de `facturation=stats à zéro`.
+        facturation_existante = self._facturation_repo.get_or_none(campagne_id)
+        if facturation_existante is None and not actives:
+            return
+
+        stats_facturation = facturation_existante or self._facturation_repo.get_or_create(campagne_id)
+        stats_facturation.total_factures = len(actives)
+        stats_facturation.montant_total_facture = montant_total_facture
+        stats_facturation.nb_factures_payees = sum(1 for f in actives if f["statut"] == _STATUT_PAYEE)
+        stats_facturation.nb_factures_partielles = sum(1 for f in actives if f["statut"] == _STATUT_PARTIELLE)
+        stats_facturation.nb_factures_impayees = nb_impayees
+        self._facturation_repo.save(stats_facturation)
+
+        paiements_non_annules = [p for p in paiements if not p["annule"]]
+        paiements_existants = self._paiements_repo.get_or_none(campagne_id)
+        if paiements_existants is None and not paiements_non_annules and not actives:
+            return
+
+        montant_encaisse = sum((_dec(p["montant"]) for p in paiements_non_annules), Decimal("0"))
+        stats_paiements = paiements_existants or self._paiements_repo.get_or_create(campagne_id)
+        stats_paiements.montant_encaisse = montant_encaisse
+        stats_paiements.montant_impaye = max(Decimal("0"), montant_total_facture - montant_encaisse)
+        stats_paiements.nb_impayes = nb_impayees
+        stats_paiements.taux_recouvrement = (
+            (montant_encaisse / montant_total_facture * 100).quantize(_CENT)
+            if montant_total_facture > 0
+            else Decimal("0")
+        )
+        self._paiements_repo.save(stats_paiements)

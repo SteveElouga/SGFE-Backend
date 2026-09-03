@@ -410,6 +410,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      facturation-service:
+        condition: service_started
+      paiement-service:
+        condition: service_started
     environment:
       DJANGO_SECRET_KEY: django-insecure-placeholder-do-not-use-in-production
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
@@ -420,6 +424,11 @@ services:
       REPORTING_DB_USER: reporting_user
       REPORTING_DB_PASSWORD: devpassword
       REPORTING_GRPC_PORT: "50057"
+      # Consommés par le job de réconciliation nocturne (stats/schedulers.py).
+      FACTURATION_GRPC_HOST: facturation-service
+      FACTURATION_GRPC_PORT: "50054"
+      PAIEMENT_GRPC_HOST: paiement-service
+      PAIEMENT_GRPC_PORT: "50055"
       REDIS_URL: "redis://redis:6379/0"
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
