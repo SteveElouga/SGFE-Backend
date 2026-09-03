@@ -7,7 +7,7 @@ from schema.grpc_clients import config_client
 
 @strawberry.type
 class ConfigQueries:
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def infos_societe(self, info: strawberry.types.Info) -> InfosSociete:
         """Informations de la société.
 
@@ -28,14 +28,14 @@ class ConfigQueries:
         response = config_client.get_infos_societe()
         return infos_from_grpc(response)
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def config(self, info: strawberry.types.Info, cle: str) -> ConfigParam:
         """Paramètre de configuration par clé — ADMIN uniquement."""
         require_role(info, "ADMIN")
         response = config_client.get_config(cle)
         return config_from_grpc(response)
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def configs(self, info: strawberry.types.Info) -> list[ConfigParam]:
         """Liste tous les paramètres de configuration — ADMIN uniquement."""
         require_role(info, "ADMIN")

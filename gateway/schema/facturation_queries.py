@@ -1,5 +1,7 @@
 """Queries GraphQL du Facturation Service."""
 
+from typing import Any
+
 import strawberry
 import strawberry.types
 
@@ -8,7 +10,7 @@ from .facturation_types import Facture, Tarif, facture_from_grpc, tarif_from_grp
 from .grpc_clients import abonne_client, campagne_client, facturation_client
 
 
-def _abonnes_index() -> dict:
+def _abonnes_index() -> dict[str, Any]:
     """Index {abonne_id: AbonneResponse} via un seul ListAbonnes (best-effort)."""
     try:
         return {a.abonne_id: a for a in abonne_client.list_abonnes().abonnes}
@@ -16,7 +18,7 @@ def _abonnes_index() -> dict:
         return {}
 
 
-def _campagnes_index() -> dict:
+def _campagnes_index() -> dict[str, Any]:
     """Index {campagne_id: CampagneResponse} via un seul ListCampagnes (best-effort)."""
     try:
         return {c.campagne_id: c for c in campagne_client.list_campagnes(created_by="", agent_id="").campagnes}
@@ -51,7 +53,7 @@ def _enrichir_factures(factures: list[Facture]) -> list[Facture]:
 
 @strawberry.type
 class FacturationQueries:
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def tarif_actuel(self, info: strawberry.types.Info) -> Tarif:
         """Tarif actif (prix du m³) — ADMIN, COMPTABLE, SUPERVISEUR.
 
@@ -62,14 +64,14 @@ class FacturationQueries:
         require_role(info, "ADMIN", "COMPTABLE", "SUPERVISEUR")
         return tarif_from_grpc(facturation_client.get_tarif_actuel())
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def facture(self, info: strawberry.types.Info, facture_id: str) -> Facture:
         """Détails d'une facture — ADMIN, COMPTABLE."""
         require_auth(info)
         require_role(info, "ADMIN", "COMPTABLE")
         return _enrichir_factures([facture_from_grpc(facturation_client.get_facture(facture_id))])[0]
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def factures(
         self,
         info: strawberry.types.Info,
@@ -88,7 +90,7 @@ class FacturationQueries:
         """
         require_auth(info)
         require_role(info, "ADMIN", "COMPTABLE")
-        pagination: dict[str, int] = {}
+        pagination: dict[str, Any] = {}
         if limit is not None:
             pagination["limit"] = limit
         if offset is not None:
@@ -98,7 +100,7 @@ class FacturationQueries:
         )
         return _enrichir_factures([facture_from_grpc(f) for f in response.factures])
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def factures_count(
         self,
         info: strawberry.types.Info,
@@ -116,7 +118,7 @@ class FacturationQueries:
         require_role(info, "ADMIN", "COMPTABLE")
         return facturation_client.count_factures(campagne_id=campagne_id, abonne_id=abonne_id, statut=statut)
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def factures_par_campagne(self, info: strawberry.types.Info, campagne_id: str) -> list[Facture]:
         """Toutes les factures d'une campagne — ADMIN, COMPTABLE."""
         require_auth(info)

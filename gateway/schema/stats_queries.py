@@ -10,6 +10,8 @@ Portée : ADMIN/COMPTABLE voient toutes les campagnes ; un SUPERVISEUR ne voit
 que les siennes (`Campagne.created_by == user.user_id`), filtrées au resolver.
 """
 
+from typing import Any
+
 import strawberry
 import strawberry.types
 
@@ -20,7 +22,7 @@ from schema.reporting_types import StatMois, build_stats_par_mois
 
 @strawberry.type
 class StatsQueries:
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def stats_par_mois(self, info: strawberry.types.Info, nb_mois: int = 12) -> list[StatMois]:
         """Agrégat mensuel réel sur les `nbMois` derniers mois glissants, trié du
         plus récent ([0] = mois courant) au plus ancien (zéros compris). ADMIN et
@@ -37,8 +39,8 @@ class StatsQueries:
         # puis on agrège par mois en mémoire. Coût = N campagnes × 2 appels gRPC ;
         # acceptable à cette échelle, à revisiter (table mensuelle côté Reporting)
         # si le nombre de campagnes explose.
-        factures: list = []
-        paiements: list = []
+        factures: list[Any] = []
+        paiements: list[Any] = []
         for c in campagnes:
             factures.extend(facturation_client.get_factures_par_campagne(c.campagne_id).factures)
             paiements.extend(paiement_client.list_paiements_par_campagne(c.campagne_id).paiements)

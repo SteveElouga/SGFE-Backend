@@ -1,6 +1,7 @@
 """Queries GraphQL du Paiement Service."""
 
 import logging
+from typing import Any
 
 import strawberry
 import strawberry.types
@@ -44,14 +45,14 @@ def _resoudre_operateurs(user_ids: set[str]) -> dict[str, str]:
 
 @strawberry.type
 class PaiementQueries:
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def solde_facture(self, info: strawberry.types.Info, facture_id: str) -> SoldeFacture:
         """Solde d'une facture (montant total, payé, restant) — ADMIN, COMPTABLE."""
         require_auth(info)
         require_role(info, "ADMIN", "COMPTABLE")
         return solde_from_grpc(paiement_client.get_solde(facture_id))
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def paiements(
         self,
         info: strawberry.types.Info,
@@ -69,7 +70,7 @@ class PaiementQueries:
         """
         require_auth(info)
         require_role(info, "ADMIN", "COMPTABLE")
-        pagination: dict[str, int] = {}
+        pagination: dict[str, Any] = {}
         if limit is not None:
             pagination["limit"] = limit
         if offset is not None:
@@ -78,7 +79,7 @@ class PaiementQueries:
         operateurs = _resoudre_operateurs({p.enregistre_par for p in response.paiements})
         return [paiement_from_grpc(p, operateur=operateurs.get(p.enregistre_par, "")) for p in response.paiements]
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def paiements_count(self, info: strawberry.types.Info, facture_id: str = "", abonne_id: str = "") -> int:
         """Nombre total de paiements correspondant aux filtres — ADMIN, COMPTABLE.
 
@@ -90,7 +91,7 @@ class PaiementQueries:
         require_role(info, "ADMIN", "COMPTABLE")
         return paiement_client.count_paiements(facture_id=facture_id, abonne_id=abonne_id)
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def impayes(self, info: strawberry.types.Info) -> list[SoldeFacture]:
         """Liste des factures impayées (date limite dépassée) — ADMIN, COMPTABLE."""
         require_auth(info)
@@ -98,14 +99,14 @@ class PaiementQueries:
         response = paiement_client.list_impayes()
         return [solde_from_grpc(s) for s in response.impayes]
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def suivi_impaye(self, info: strawberry.types.Info, facture_id: str) -> SuiviImpaye:
         """Détail du suivi de relance pour une facture impayée — ADMIN, COMPTABLE."""
         require_auth(info)
         require_role(info, "ADMIN", "COMPTABLE")
         return suivi_from_grpc(paiement_client.get_suivi_impaye(facture_id))
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def dette_abonne(
         self,
         info: strawberry.types.Info,
@@ -127,7 +128,7 @@ class PaiementQueries:
             plus_ancienne_echeance=r.plus_ancienne_echeance or None,
         )
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def avoir_abonne(self, info: strawberry.types.Info, abonne_id: str) -> Avoir:
         """Solde d'avoir (crédit) d'un abonné + journal des mouvements — ADMIN, COMPTABLE."""
         require_auth(info)

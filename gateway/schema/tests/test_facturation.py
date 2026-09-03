@@ -11,7 +11,7 @@ from schema.facturation_mutations import FacturationMutations
 from schema.facturation_queries import FacturationQueries
 
 
-def _facture_response(**kwargs) -> MagicMock:
+def _facture_response(**kwargs: object) -> MagicMock:
     defaults = dict(
         facture_id="facture-001",
         numero_facture="FACT-2026-07-0001",
@@ -33,7 +33,7 @@ def _facture_response(**kwargs) -> MagicMock:
     return MagicMock(**defaults)
 
 
-def _tarif_response(**kwargs) -> MagicMock:
+def _tarif_response(**kwargs: object) -> MagicMock:
     defaults = dict(tarif_id="tarif-001", prix_m3=500.0, date_effet="2026-01-01", is_active=True)
     defaults.update(kwargs)
     return MagicMock(**defaults)
@@ -43,7 +43,7 @@ class TestFacturationQueries(SimpleTestCase):
     @patch("schema.facturation_queries.facturation_client")
     @patch("schema.facturation_queries.require_auth")
     @patch("schema.facturation_queries.require_role")
-    def test_tarif_actuel_admin(self, mock_role, mock_auth, mock_client) -> None:
+    def test_tarif_actuel_admin(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN")
         mock_client.get_tarif_actuel.return_value = _tarif_response()
         info = MagicMock()
@@ -54,7 +54,7 @@ class TestFacturationQueries(SimpleTestCase):
     @patch("schema.facturation_queries.facturation_client")
     @patch("schema.facturation_queries.require_auth")
     @patch("schema.facturation_queries.require_role")
-    def test_facture_par_id(self, mock_role, mock_auth, mock_client) -> None:
+    def test_facture_par_id(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="COMPTABLE")
         mock_client.get_facture.return_value = _facture_response()
         info = MagicMock()
@@ -65,7 +65,7 @@ class TestFacturationQueries(SimpleTestCase):
     @patch("schema.facturation_queries.facturation_client")
     @patch("schema.facturation_queries.require_auth")
     @patch("schema.facturation_queries.require_role")
-    def test_factures_avec_filtres(self, mock_role, mock_auth, mock_client) -> None:
+    def test_factures_avec_filtres(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN")
         mock_client.list_factures.return_value = MagicMock(
             factures=[_facture_response(), _facture_response(facture_id="facture-002")]
@@ -78,7 +78,9 @@ class TestFacturationQueries(SimpleTestCase):
     @patch("schema.facturation_queries.facturation_client")
     @patch("schema.facturation_queries.require_auth")
     @patch("schema.facturation_queries.require_role")
-    def test_factures_sans_limit_offset_appelle_le_client_comme_avant(self, mock_role, mock_auth, mock_client) -> None:
+    def test_factures_sans_limit_offset_appelle_le_client_comme_avant(
+        self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock
+    ) -> None:
         """Non-régression explicite : `limit`/`offset` omis, l'appel au client
         gRPC reste identique à ce qu'il était avant leur introduction."""
         mock_auth.return_value = MagicMock(role="ADMIN")
@@ -91,7 +93,9 @@ class TestFacturationQueries(SimpleTestCase):
     @patch("schema.facturation_queries.facturation_client")
     @patch("schema.facturation_queries.require_auth")
     @patch("schema.facturation_queries.require_role")
-    def test_factures_avec_pagination_transmet_limit_offset(self, mock_role, mock_auth, mock_client) -> None:
+    def test_factures_avec_pagination_transmet_limit_offset(
+        self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock
+    ) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN")
         mock_client.list_factures.return_value = MagicMock(factures=[])
         info = MagicMock()
@@ -103,7 +107,7 @@ class TestFacturationQueries(SimpleTestCase):
     @patch("schema.facturation_queries.facturation_client")
     @patch("schema.facturation_queries.require_auth")
     @patch("schema.facturation_queries.require_role")
-    def test_factures_count(self, mock_role, mock_auth, mock_client) -> None:
+    def test_factures_count(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN")
         mock_client.count_factures.return_value = 7
         info = MagicMock()
@@ -114,7 +118,7 @@ class TestFacturationQueries(SimpleTestCase):
     @patch("schema.facturation_queries.facturation_client")
     @patch("schema.facturation_queries.require_auth")
     @patch("schema.facturation_queries.require_role")
-    def test_factures_par_campagne(self, mock_role, mock_auth, mock_client) -> None:
+    def test_factures_par_campagne(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN")
         mock_client.get_factures_par_campagne.return_value = MagicMock(factures=[_facture_response()])
         info = MagicMock()
@@ -127,7 +131,12 @@ class TestFacturationQueries(SimpleTestCase):
     @patch("schema.facturation_queries.require_auth")
     @patch("schema.facturation_queries.require_role")
     def test_factures_enrichies_nom_abonne_et_campagne(
-        self, mock_role, mock_auth, mock_fact, mock_abonne, mock_campagne
+        self,
+        mock_role: MagicMock,
+        mock_auth: MagicMock,
+        mock_fact: MagicMock,
+        mock_abonne: MagicMock,
+        mock_campagne: MagicMock,
     ) -> None:
         """Le COMPTABLE (sans accès Abonné/Campagne) obtient nom d'abonné +
         nom/période de campagne directement sur la facture (enrichissement gateway)."""
@@ -152,7 +161,12 @@ class TestFacturationQueries(SimpleTestCase):
     @patch("schema.facturation_queries.require_auth")
     @patch("schema.facturation_queries.require_role")
     def test_factures_enrichissement_degrade_si_service_indispo(
-        self, mock_role, mock_auth, mock_fact, mock_abonne, mock_campagne
+        self,
+        mock_role: MagicMock,
+        mock_auth: MagicMock,
+        mock_fact: MagicMock,
+        mock_abonne: MagicMock,
+        mock_campagne: MagicMock,
     ) -> None:
         """Si Abonné/Campagne est indisponible, la facture est renvoyée sans
         libellés (best-effort) — jamais d'échec de la requête."""
@@ -170,7 +184,7 @@ class TestFacturationMutations(SimpleTestCase):
     @patch("schema.facturation_mutations.facturation_client")
     @patch("schema.facturation_mutations.require_auth")
     @patch("schema.facturation_mutations.require_role")
-    def test_update_tarif_admin(self, mock_role, mock_auth, mock_client) -> None:
+    def test_update_tarif_admin(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN")
         mock_client.update_tarif.return_value = _tarif_response(prix_m3=600.0)
         info = MagicMock()
@@ -181,7 +195,7 @@ class TestFacturationMutations(SimpleTestCase):
     @patch("schema.facturation_mutations.facturation_client")
     @patch("schema.facturation_mutations.require_auth")
     @patch("schema.facturation_mutations.require_role")
-    def test_generer_factures(self, mock_role, mock_auth, mock_client) -> None:
+    def test_generer_factures(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="COMPTABLE")
         mock_client.generer_factures.return_value = MagicMock(factures=[_facture_response()])
         info = MagicMock()
@@ -193,7 +207,11 @@ class TestFacturationMutations(SimpleTestCase):
     @patch("schema.facturation_mutations.require_auth")
     @patch("schema.facturation_mutations.require_role")
     def test_envoyer_toutes_factures_whatsapp_compte_les_succes(
-        self, mock_role, mock_auth, mock_fact_client, mock_notif_client
+        self,
+        mock_role: MagicMock,
+        mock_auth: MagicMock,
+        mock_fact_client: MagicMock,
+        mock_notif_client: MagicMock,
     ) -> None:
         import grpc
 
@@ -210,7 +228,7 @@ class TestFacturationMutations(SimpleTestCase):
     @patch("schema.facturation_mutations.facturation_client")
     @patch("schema.facturation_mutations.require_auth")
     @patch("schema.facturation_mutations.require_role")
-    def test_update_statut_facture(self, mock_role, mock_auth, mock_client) -> None:
+    def test_update_statut_facture(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="COMPTABLE")
         mock_client.update_statut_facture.return_value = _facture_response(statut="PAYEE")
         info = MagicMock()

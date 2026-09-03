@@ -11,7 +11,7 @@ from schema.paiement_mutations import PaiementMutations
 from schema.paiement_queries import PaiementQueries
 
 
-def _solde_response(**kwargs) -> MagicMock:
+def _solde_response(**kwargs: object) -> MagicMock:
     defaults = dict(
         facture_id="facture-001", montant_total=25000.0, montant_paye=10000.0, solde_restant=15000.0, statut="PARTIELLE"
     )
@@ -19,7 +19,7 @@ def _solde_response(**kwargs) -> MagicMock:
     return MagicMock(**defaults)
 
 
-def _paiement_response(**kwargs) -> MagicMock:
+def _paiement_response(**kwargs: object) -> MagicMock:
     defaults = dict(
         paiement_id="paiement-001",
         facture_id="facture-001",
@@ -34,7 +34,7 @@ def _paiement_response(**kwargs) -> MagicMock:
     return MagicMock(**defaults)
 
 
-def _suivi_response(**kwargs) -> MagicMock:
+def _suivi_response(**kwargs: object) -> MagicMock:
     defaults = dict(
         suivi_id="suivi-001",
         facture_id="facture-001",
@@ -47,7 +47,7 @@ def _suivi_response(**kwargs) -> MagicMock:
     return MagicMock(**defaults)
 
 
-def _avoir_response(**kwargs) -> MagicMock:
+def _avoir_response(**kwargs: object) -> MagicMock:
     mouvement = MagicMock(
         montant=100.0,
         type_mouvement="RECTIFICATION",
@@ -65,7 +65,7 @@ class TestPaiementQueries(SimpleTestCase):
     @patch("schema.paiement_queries.paiement_client")
     @patch("schema.paiement_queries.require_auth")
     @patch("schema.paiement_queries.require_role")
-    def test_solde_facture(self, mock_role, mock_auth, mock_client) -> None:
+    def test_solde_facture(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="COMPTABLE")
         mock_client.get_solde.return_value = _solde_response()
         info = MagicMock()
@@ -77,7 +77,9 @@ class TestPaiementQueries(SimpleTestCase):
     @patch("schema.paiement_queries.paiement_client")
     @patch("schema.paiement_queries.require_auth")
     @patch("schema.paiement_queries.require_role")
-    def test_paiements_avec_filtre(self, mock_role, mock_auth, mock_client, mock_auth_client) -> None:
+    def test_paiements_avec_filtre(
+        self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock, mock_auth_client: MagicMock
+    ) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN")
         mock_client.list_paiements.return_value = MagicMock(paiements=[_paiement_response()])
         mock_auth_client.get_user.return_value = MagicMock(username="bah.comptable")
@@ -93,7 +95,11 @@ class TestPaiementQueries(SimpleTestCase):
     @patch("schema.paiement_queries.require_auth")
     @patch("schema.paiement_queries.require_role")
     def test_paiements_operateur_non_resolu_replie_sur_identifiant(
-        self, mock_role, mock_auth, mock_client, mock_auth_client
+        self,
+        mock_role: MagicMock,
+        mock_auth: MagicMock,
+        mock_client: MagicMock,
+        mock_auth_client: MagicMock,
     ) -> None:
         """Auth Service indisponible : la liste des paiements reste servie (dégradation gracieuse)."""
         mock_auth.return_value = MagicMock(role="ADMIN")
@@ -108,7 +114,11 @@ class TestPaiementQueries(SimpleTestCase):
     @patch("schema.paiement_queries.require_auth")
     @patch("schema.paiement_queries.require_role")
     def test_paiements_sans_limit_offset_appelle_le_client_comme_avant(
-        self, mock_role, mock_auth, mock_client, mock_auth_client
+        self,
+        mock_role: MagicMock,
+        mock_auth: MagicMock,
+        mock_client: MagicMock,
+        mock_auth_client: MagicMock,
     ) -> None:
         """Non-régression explicite : `limit`/`offset` omis, l'appel au client
         gRPC reste identique à ce qu'il était avant leur introduction."""
@@ -125,7 +135,11 @@ class TestPaiementQueries(SimpleTestCase):
     @patch("schema.paiement_queries.require_auth")
     @patch("schema.paiement_queries.require_role")
     def test_paiements_avec_pagination_transmet_limit_offset(
-        self, mock_role, mock_auth, mock_client, mock_auth_client
+        self,
+        mock_role: MagicMock,
+        mock_auth: MagicMock,
+        mock_client: MagicMock,
+        mock_auth_client: MagicMock,
     ) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN")
         mock_client.list_paiements.return_value = MagicMock(paiements=[])
@@ -136,7 +150,7 @@ class TestPaiementQueries(SimpleTestCase):
     @patch("schema.paiement_queries.paiement_client")
     @patch("schema.paiement_queries.require_auth")
     @patch("schema.paiement_queries.require_role")
-    def test_paiements_count(self, mock_role, mock_auth, mock_client) -> None:
+    def test_paiements_count(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN")
         mock_client.count_paiements.return_value = 15
         info = MagicMock()
@@ -149,7 +163,11 @@ class TestPaiementQueries(SimpleTestCase):
     @patch("schema.paiement_queries.require_auth")
     @patch("schema.paiement_queries.require_role")
     def test_paiements_resout_chaque_operateur_une_seule_fois(
-        self, mock_role, mock_auth, mock_client, mock_auth_client
+        self,
+        mock_role: MagicMock,
+        mock_auth: MagicMock,
+        mock_client: MagicMock,
+        mock_auth_client: MagicMock,
     ) -> None:
         """Plusieurs paiements du même opérateur ne déclenchent qu'un seul appel gRPC."""
         mock_auth.return_value = MagicMock(role="ADMIN")
@@ -168,7 +186,7 @@ class TestPaiementQueries(SimpleTestCase):
     @patch("schema.paiement_queries.paiement_client")
     @patch("schema.paiement_queries.require_auth")
     @patch("schema.paiement_queries.require_role")
-    def test_impayes(self, mock_role, mock_auth, mock_client) -> None:
+    def test_impayes(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN")
         mock_client.list_impayes.return_value = MagicMock(impayes=[_solde_response(statut="IMPAYEE")])
         info = MagicMock()
@@ -179,7 +197,7 @@ class TestPaiementQueries(SimpleTestCase):
     @patch("schema.paiement_queries.paiement_client")
     @patch("schema.paiement_queries.require_auth")
     @patch("schema.paiement_queries.require_role")
-    def test_suivi_impaye(self, mock_role, mock_auth, mock_client) -> None:
+    def test_suivi_impaye(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN")
         mock_client.get_suivi_impaye.return_value = _suivi_response(etape_actuelle=2)
         info = MagicMock()
@@ -189,7 +207,7 @@ class TestPaiementQueries(SimpleTestCase):
     @patch("schema.paiement_queries.paiement_client")
     @patch("schema.paiement_queries.require_auth")
     @patch("schema.paiement_queries.require_role")
-    def test_avoir_abonne(self, mock_role, mock_auth, mock_client) -> None:
+    def test_avoir_abonne(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="COMPTABLE")
         mock_client.get_avoir_abonne.return_value = _avoir_response(montant=100.0)
         info = MagicMock()
@@ -202,7 +220,7 @@ class TestPaiementQueries(SimpleTestCase):
 class TestPaiementMutations(SimpleTestCase):
     @patch("schema.paiement_mutations.paiement_client")
     @patch("schema.paiement_mutations.require_role")
-    def test_enregistrer_paiement(self, mock_role, mock_client) -> None:
+    def test_enregistrer_paiement(self, mock_role: MagicMock, mock_client: MagicMock) -> None:
         mock_role.return_value = MagicMock(role="COMPTABLE", user_id="user-001", username="bah.comptable")
         mock_client.enregistrer_paiement.return_value = _paiement_response()
         info = MagicMock()
@@ -231,7 +249,7 @@ class TestPaiementMutations(SimpleTestCase):
 
     @patch("schema.paiement_mutations.paiement_client")
     @patch("schema.paiement_mutations.require_role")
-    def test_crediter_avoir(self, mock_role, mock_client) -> None:
+    def test_crediter_avoir(self, mock_role: MagicMock, mock_client: MagicMock) -> None:
         mock_role.return_value = MagicMock(role="ADMIN", user_id="user-001", username="admin")
         mock_client.crediter_avoir.return_value = _avoir_response(montant=250.0)
         info = MagicMock()
@@ -248,7 +266,7 @@ class TestPaiementMutations(SimpleTestCase):
 
     @patch("schema.paiement_mutations.paiement_client")
     @patch("schema.paiement_mutations.require_role")
-    def test_enregistrer_paiement_reference_optionnelle(self, mock_role, mock_client) -> None:
+    def test_enregistrer_paiement_reference_optionnelle(self, mock_role: MagicMock, mock_client: MagicMock) -> None:
         """Le paiement ESPECES n'exige pas de reference_transaction (défaut '')."""
         mock_role.return_value = MagicMock(role="ADMIN", user_id="user-002")
         mock_client.enregistrer_paiement.return_value = _paiement_response(

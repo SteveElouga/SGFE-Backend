@@ -7,7 +7,7 @@ from django.test import SimpleTestCase
 from schema.reporting_queries import ReportingQueries
 
 
-def _stats_campagne(campagne_id="c1"):
+def _stats_campagne(campagne_id: str = "c1") -> MagicMock:
     return MagicMock(
         campagne_id=campagne_id,
         nom_campagne="Juin 2026",
@@ -19,7 +19,7 @@ def _stats_campagne(campagne_id="c1"):
     )
 
 
-def _stats_facturation(campagne_id="c1"):
+def _stats_facturation(campagne_id: str = "c1") -> MagicMock:
     return MagicMock(
         campagne_id=campagne_id,
         total_factures=42,
@@ -30,7 +30,7 @@ def _stats_facturation(campagne_id="c1"):
     )
 
 
-def _stats_paiements(campagne_id="c1"):
+def _stats_paiements(campagne_id: str = "c1") -> MagicMock:
     return MagicMock(
         campagne_id=campagne_id,
         montant_encaisse=52500.0,
@@ -43,7 +43,7 @@ def _stats_paiements(campagne_id="c1"):
 class DashboardQueryTests(SimpleTestCase):
     @patch("schema.reporting_queries.reporting_client")
     @patch("schema.reporting_queries.require_role")
-    def test_dashboard_avec_donnees(self, mock_role, mock_client):
+    def test_dashboard_avec_donnees(self, mock_role: MagicMock, mock_client: MagicMock) -> None:
         mock_client.get_dashboard.return_value = MagicMock(
             campagne_en_cours=_stats_campagne(),
             facturation_en_cours=_stats_facturation(),
@@ -56,7 +56,7 @@ class DashboardQueryTests(SimpleTestCase):
 
     @patch("schema.reporting_queries.reporting_client")
     @patch("schema.reporting_queries.require_role")
-    def test_dashboard_vide_sous_blocs_nuls(self, mock_role, mock_client):
+    def test_dashboard_vide_sous_blocs_nuls(self, mock_role: MagicMock, mock_client: MagicMock) -> None:
         vide_c = MagicMock(campagne_id="")
         vide_f = MagicMock(campagne_id="")
         vide_p = MagicMock(campagne_id="")
@@ -70,7 +70,7 @@ class DashboardQueryTests(SimpleTestCase):
 
     @patch("schema.reporting_queries.reporting_client")
     @patch("schema.reporting_queries.require_role")
-    def test_dashboard_gate_admin_comptable(self, mock_role, mock_client):
+    def test_dashboard_gate_admin_comptable(self, mock_role: MagicMock, mock_client: MagicMock) -> None:
         mock_client.get_dashboard.return_value = MagicMock(
             campagne_en_cours=MagicMock(campagne_id=""),
             facturation_en_cours=MagicMock(campagne_id=""),
@@ -82,7 +82,7 @@ class DashboardQueryTests(SimpleTestCase):
 
     @patch("schema.reporting_queries.reporting_client")
     @patch("schema.reporting_queries.require_role")
-    def test_stats_campagne(self, mock_role, mock_client):
+    def test_stats_campagne(self, mock_role: MagicMock, mock_client: MagicMock) -> None:
         mock_client.get_stats_campagne.return_value = _stats_campagne()
         result = ReportingQueries().stats_campagne(MagicMock(), campagne_id="c1")
         self.assertEqual(result.total_abonnes, 50)
@@ -90,7 +90,7 @@ class DashboardQueryTests(SimpleTestCase):
 
     @patch("schema.reporting_queries.reporting_client")
     @patch("schema.reporting_queries.require_role")
-    def test_stats_globales(self, mock_role, mock_client):
+    def test_stats_globales(self, mock_role: MagicMock, mock_client: MagicMock) -> None:
         mock_client.get_stats_globales.return_value = MagicMock(
             historique_campagnes=[_stats_campagne("c1"), _stats_campagne("c2")],
             consommation_totale_globale=3000.0,

@@ -29,14 +29,14 @@ from schema.paiement_types import Paiement, paiement_from_event
 logger = logging.getLogger(__name__)
 
 
-async def _paiement_dans_campagne(data: dict, campagne_id: str) -> bool:
+async def _paiement_dans_campagne(data: dict[str, object], campagne_id: str) -> bool:
     """True si le paiement appartient à la campagne, via sa facture liée."""
     try:
-        facture = await asyncio.to_thread(facturation_client.get_facture, data.get("facture_id", ""))
+        facture = await asyncio.to_thread(facturation_client.get_facture, str(data.get("facture_id", "")))
     except Exception as exc:
         logger.warning("paiement_cree: filtrage campagne échoué : %s", exc)
         return False
-    return facture.campagne_id == campagne_id
+    return bool(facture.campagne_id == campagne_id)
 
 
 async def _resoudre_operateur(enregistre_par: str) -> str:
@@ -44,7 +44,7 @@ async def _resoudre_operateur(enregistre_par: str) -> str:
     if not enregistre_par:
         return ""
     try:
-        return (await asyncio.to_thread(auth_client.get_user, enregistre_par)).username
+        return str((await asyncio.to_thread(auth_client.get_user, enregistre_par)).username)
     except Exception as exc:
         logger.warning("paiement_cree: résolution opérateur échouée : %s", exc)
         return ""
@@ -87,7 +87,7 @@ async def _autoriser_acces_progression(info: Info, filter_id: str | None) -> Non
 
 @strawberry.type
 class Subscription:
-    @strawberry.subscription
+    @strawberry.subscription()  # type: ignore[untyped-decorator]  # voir mypy.ini
     async def abonne_updated(
         self,
         info: Info,
@@ -144,7 +144,7 @@ class Subscription:
             await pubsub.unsubscribe("abonne:events")
             await redis.aclose()
 
-    @strawberry.subscription
+    @strawberry.subscription()  # type: ignore[untyped-decorator]  # voir mypy.ini
     async def whatsapp_status(self, info: Info) -> AsyncGenerator[WhatsAppQr, None]:
         """Pousse en temps réel le statut de connexion WhatsApp + le QR — ADMIN.
 
@@ -203,7 +203,7 @@ class Subscription:
             await pubsub.unsubscribe("whatsapp:events")
             await redis.aclose()
 
-    @strawberry.subscription
+    @strawberry.subscription()  # type: ignore[untyped-decorator]  # voir mypy.ini
     async def facture_updated(
         self,
         info: Info,
@@ -254,7 +254,7 @@ class Subscription:
             await pubsub.unsubscribe("facture:events")
             await redis.aclose()
 
-    @strawberry.subscription
+    @strawberry.subscription()  # type: ignore[untyped-decorator]  # voir mypy.ini
     async def paiement_cree(
         self,
         info: Info,
@@ -300,7 +300,7 @@ class Subscription:
             await pubsub.unsubscribe("paiement:events")
             await redis.aclose()
 
-    @strawberry.subscription
+    @strawberry.subscription()  # type: ignore[untyped-decorator]  # voir mypy.ini
     async def utilisateur_updated(
         self,
         info: Info,
@@ -349,7 +349,7 @@ class Subscription:
             await pubsub.unsubscribe("user:events")
             await redis.aclose()
 
-    @strawberry.subscription
+    @strawberry.subscription()  # type: ignore[untyped-decorator]  # voir mypy.ini
     async def config_updated(
         self,
         info: Info,
@@ -393,7 +393,7 @@ class Subscription:
             await pubsub.unsubscribe("config:events")
             await redis.aclose()
 
-    @strawberry.subscription
+    @strawberry.subscription()  # type: ignore[untyped-decorator]  # voir mypy.ini
     async def tarif_updated(self, info: Info) -> AsyncGenerator[Tarif, None]:
         """Pousse le tarif actif dès sa modification — ADMIN/COMPTABLE.
 
@@ -422,7 +422,7 @@ class Subscription:
             await pubsub.unsubscribe("tarif:events")
             await redis.aclose()
 
-    @strawberry.subscription
+    @strawberry.subscription()  # type: ignore[untyped-decorator]  # voir mypy.ini
     async def progression_updated(
         self,
         info: Info,
@@ -474,7 +474,7 @@ class Subscription:
             await pubsub.unsubscribe("progression:events")
             await redis.aclose()
 
-    @strawberry.subscription
+    @strawberry.subscription()  # type: ignore[untyped-decorator]  # voir mypy.ini
     async def diffusion_progression_updated(
         self,
         info: Info,

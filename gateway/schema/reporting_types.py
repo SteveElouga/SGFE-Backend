@@ -1,6 +1,7 @@
 """Types Strawberry pour le Reporting Service (tableau de bord, docs/ARCHITECTURE.md)."""
 
 from datetime import date
+from typing import Any
 
 import strawberry
 
@@ -50,7 +51,7 @@ class StatsGlobales:
     montant_total_encaisse_global: float
 
 
-def stats_campagne_from_grpc(r) -> StatsCampagne:
+def stats_campagne_from_grpc(r: Any) -> StatsCampagne:
     return StatsCampagne(
         campagne_id=strawberry.ID(r.campagne_id),
         nom_campagne=r.nom_campagne,
@@ -62,7 +63,7 @@ def stats_campagne_from_grpc(r) -> StatsCampagne:
     )
 
 
-def stats_facturation_from_grpc(r) -> StatsFacturation:
+def stats_facturation_from_grpc(r: Any) -> StatsFacturation:
     return StatsFacturation(
         total_factures=r.total_factures,
         montant_total_facture=r.montant_total_facture,
@@ -72,7 +73,7 @@ def stats_facturation_from_grpc(r) -> StatsFacturation:
     )
 
 
-def stats_paiements_from_grpc(r) -> StatsPaiements:
+def stats_paiements_from_grpc(r: Any) -> StatsPaiements:
     return StatsPaiements(
         montant_encaisse=r.montant_encaisse,
         montant_impaye=r.montant_impaye,
@@ -81,7 +82,7 @@ def stats_paiements_from_grpc(r) -> StatsPaiements:
     )
 
 
-def dashboard_from_grpc(r) -> Dashboard:
+def dashboard_from_grpc(r: Any) -> Dashboard:
     # Un campagne_id vide signale l'absence de données (aucune campagne agrégée).
     return Dashboard(
         campagne_en_cours=(stats_campagne_from_grpc(r.campagne_en_cours) if r.campagne_en_cours.campagne_id else None),
@@ -94,7 +95,7 @@ def dashboard_from_grpc(r) -> Dashboard:
     )
 
 
-def stats_globales_from_grpc(r) -> StatsGlobales:
+def stats_globales_from_grpc(r: Any) -> StatsGlobales:
     return StatsGlobales(
         historique_campagnes=[stats_campagne_from_grpc(c) for c in r.historique_campagnes],
         consommation_totale_globale=r.consommation_totale_globale,
@@ -138,7 +139,7 @@ def _fenetre_mois(nb_mois: int, today: date) -> list[tuple[int, int]]:
     return mois
 
 
-def build_stats_par_mois(factures, paiements, nb_mois: int, today: date | None = None) -> list["StatMois"]:
+def build_stats_par_mois(factures: Any, paiements: Any, nb_mois: int, today: date | None = None) -> list["StatMois"]:
     """Bucketise factures/paiements par mois et renvoie `nb_mois` lignes triées du
     plus récent ([0] = mois courant) au plus ancien, zéros compris.
 

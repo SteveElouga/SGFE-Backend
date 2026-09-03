@@ -1,5 +1,6 @@
 """Types Strawberry pour le Notification Service."""
 
+from typing import Any
 import strawberry
 
 
@@ -22,7 +23,7 @@ class Envoi:
     paiement_id: str
 
 
-def envoi_from_grpc(r) -> Envoi:
+def envoi_from_grpc(r: Any) -> Envoi:
     return Envoi(
         envoi_id=r.envoi_id,
         abonne_id=getattr(r, "abonne_id", ""),
@@ -61,7 +62,7 @@ class WhatsAppQr:
     depuis_ms: int = 0
 
 
-def whatsapp_qr_from_grpc(r) -> WhatsAppQr:
+def whatsapp_qr_from_grpc(r: Any) -> WhatsAppQr:
     return WhatsAppQr(
         ready=r.ready,
         qr=r.qr,

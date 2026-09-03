@@ -16,7 +16,7 @@ from .paiement_types import (
 
 @strawberry.type
 class PaiementMutations:
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def enregistrer_paiement(
         self,
         info: strawberry.types.Info,
@@ -45,7 +45,7 @@ class PaiementMutations:
             operateur=user.username,
         )
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def annuler_paiement(
         self,
         info: strawberry.types.Info,
@@ -63,7 +63,7 @@ class PaiementMutations:
             operateur=user.username,
         )
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def crediter_avoir(
         self,
         info: strawberry.types.Info,
@@ -83,7 +83,7 @@ class PaiementMutations:
             )
         )
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def enregistrer_paiement_abonne(
         self,
         info: strawberry.types.Info,

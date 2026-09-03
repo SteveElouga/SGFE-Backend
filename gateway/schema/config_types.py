@@ -1,3 +1,4 @@
+from typing import Any
 import strawberry
 
 
@@ -17,7 +18,7 @@ class ConfigParam:
     description: str
 
 
-def infos_from_grpc(response) -> InfosSociete:
+def infos_from_grpc(response: Any) -> InfosSociete:
     """Construit un type GraphQL InfosSociete depuis un InfosSocieteResponse gRPC."""
     return InfosSociete(
         nom=response.nom,
@@ -28,7 +29,7 @@ def infos_from_grpc(response) -> InfosSociete:
     )
 
 
-def config_from_grpc(response) -> ConfigParam:
+def config_from_grpc(response: Any) -> ConfigParam:
     """Construit un type GraphQL ConfigParam depuis un ConfigResponse gRPC."""
     return ConfigParam(
         cle=response.cle,

@@ -16,7 +16,7 @@ from schema.grpc_clients import abonne_client
 
 @strawberry.type
 class AbonneMutations:
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def create_abonne(self, info: strawberry.types.Info, input: CreateAbonneInput) -> Abonne:
         require_role(info, "ADMIN")
         response = abonne_client.create_abonne(
@@ -33,7 +33,7 @@ class AbonneMutations:
         )
         return abonne_from_grpc(response)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def update_abonne(self, info: strawberry.types.Info, id: strawberry.ID, input: UpdateAbonneInput) -> Abonne:
         require_role(info, "ADMIN")
         response = abonne_client.update_abonne(
@@ -45,41 +45,41 @@ class AbonneMutations:
         )
         return abonne_from_grpc(response)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def suspendre_abonne(self, info: strawberry.types.Info, id: strawberry.ID) -> Abonne:
         require_role(info, "ADMIN")
         return abonne_from_grpc(abonne_client.suspendre_abonne(str(id)))
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def reactiver_abonne(self, info: strawberry.types.Info, id: strawberry.ID) -> Abonne:
         require_role(info, "ADMIN")
         return abonne_from_grpc(abonne_client.reactiver_abonne(str(id)))
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def resilier_abonne(self, info: strawberry.types.Info, id: strawberry.ID) -> Abonne:
         require_role(info, "ADMIN")
         return abonne_from_grpc(abonne_client.resilier_abonne(str(id)))
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def anonymiser_abonne(self, info: strawberry.types.Info, abonne_id: strawberry.ID) -> Abonne:
         """RGPD — droit à l'effacement. Abonné Service refuse si l'abonné
         n'est pas déjà RESILIE (erreur GraphQL relayée telle quelle)."""
         require_role(info, "ADMIN")
         return abonne_from_grpc(abonne_client.anonymiser_abonne(str(abonne_id)))
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def exporter_donnees_abonne(self, info: strawberry.types.Info, abonne_id: strawberry.ID) -> str:
         """RGPD — droit à la portabilité. Renvoie l'export JSON structuré tel
         quel (voir abonnes/export.py côté Abonné Service)."""
         require_role(info, "ADMIN")
         return abonne_client.exporter_donnees_abonne(str(abonne_id)).json_export
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def update_compteur(
         self, info: strawberry.types.Info, abonne_id: strawberry.ID, input: UpdateCompteurInput
     ) -> Compteur:
         require_role(info, "ADMIN")
-        kwargs = {}
+        kwargs: dict[str, object] = {}
         if input.quartier is not None:
             kwargs["quartier"] = input.quartier
         if input.camp is not None:
@@ -93,7 +93,7 @@ class AbonneMutations:
         response = abonne_client.update_compteur(str(abonne_id), **kwargs)
         return compteur_from_grpc(response)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def remplacer_compteur(
         self, info: strawberry.types.Info, abonne_id: strawberry.ID, input: RemplacerCompteurInput
     ) -> Compteur:

@@ -33,7 +33,7 @@ def _resoudre_operateurs(user_ids: set[str]) -> dict[str, str]:
 
 @strawberry.type
 class CommunicationQueries:
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def diffusion(self, info: strawberry.types.Info, diffusion_id: str) -> Diffusion:
         """Une diffusion et sa progression courante — ADMIN uniquement."""
         require_role(info, "ADMIN")
@@ -41,7 +41,7 @@ class CommunicationQueries:
         operateurs = _resoudre_operateurs({response.created_by})
         return diffusion_from_grpc(response, cree_par=operateurs.get(response.created_by, ""))
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def diffusions(self, info: strawberry.types.Info) -> list[Diffusion]:
         """Historique des diffusions, la plus récente d'abord — ADMIN uniquement."""
         require_role(info, "ADMIN")

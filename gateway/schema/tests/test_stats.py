@@ -1,14 +1,24 @@
 """Tests de statsParMois : agrégateur mensuel pur + resolver (fan-out + portée)."""
 
+import sys
 from datetime import date
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from django.conf import settings
 from django.test import SimpleTestCase
 
-from proto import facturation_service_pb2 as facturation_pb
-from proto import paiement_service_pb2 as paiement_pb
-from schema.reporting_types import build_stats_par_mois
-from schema.stats_queries import StatsQueries
+# Import non qualifié par le paquet `proto` (comme schema/grpc_clients.py) :
+# mypy.ini n'exclut de la vérification que les noms de modules nus, pas leur
+# forme qualifiée `proto.xxx_pb2` — cette dernière serait analysée pour de
+# vrai, et échouerait sur les classes de message générées dynamiquement.
+sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
+
+import facturation_service_pb2 as facturation_pb  # noqa: E402
+import paiement_service_pb2 as paiement_pb  # noqa: E402
+
+from schema.reporting_types import build_stats_par_mois  # noqa: E402
+from schema.stats_queries import StatsQueries  # noqa: E402
 
 
 def _paiement(montant: float, date_paiement: str, annule: bool = False) -> paiement_pb.PaiementResponse:
@@ -65,7 +75,9 @@ class TestStatsParMoisResolver(SimpleTestCase):
     @patch("schema.stats_queries.facturation_client")
     @patch("schema.stats_queries.campagne_client")
     @patch("schema.stats_queries.require_role")
-    def test_superviseur_scope_ses_campagnes(self, mock_role, mock_camp, mock_fac, mock_pai) -> None:
+    def test_superviseur_scope_ses_campagnes(
+        self, mock_role: MagicMock, mock_camp: MagicMock, mock_fac: MagicMock, mock_pai: MagicMock
+    ) -> None:
         mock_role.return_value = MagicMock(role="SUPERVISEUR", user_id="sup-1")
         mock_camp.list_campagnes.return_value = MagicMock(campagnes=[MagicMock(campagne_id="c1")])
         mock_fac.get_factures_par_campagne.return_value = MagicMock(factures=[])
@@ -77,7 +89,9 @@ class TestStatsParMoisResolver(SimpleTestCase):
     @patch("schema.stats_queries.facturation_client")
     @patch("schema.stats_queries.campagne_client")
     @patch("schema.stats_queries.require_role")
-    def test_admin_voit_tout(self, mock_role, mock_camp, mock_fac, mock_pai) -> None:
+    def test_admin_voit_tout(
+        self, mock_role: MagicMock, mock_camp: MagicMock, mock_fac: MagicMock, mock_pai: MagicMock
+    ) -> None:
         mock_role.return_value = MagicMock(role="ADMIN", user_id="admin-1")
         mock_camp.list_campagnes.return_value = MagicMock(campagnes=[])
         res = StatsQueries().stats_par_mois(MagicMock(), nb_mois=3)
@@ -88,7 +102,9 @@ class TestStatsParMoisResolver(SimpleTestCase):
     @patch("schema.stats_queries.facturation_client")
     @patch("schema.stats_queries.campagne_client")
     @patch("schema.stats_queries.require_role")
-    def test_fan_out_agrege_le_mois_courant(self, mock_role, mock_camp, mock_fac, mock_pai) -> None:
+    def test_fan_out_agrege_le_mois_courant(
+        self, mock_role: MagicMock, mock_camp: MagicMock, mock_fac: MagicMock, mock_pai: MagicMock
+    ) -> None:
         mock_role.return_value = MagicMock(role="COMPTABLE", user_id="cpt-1")
         mock_camp.list_campagnes.return_value = MagicMock(campagnes=[MagicMock(campagne_id="c1")])
         mock_fac.get_factures_par_campagne.return_value = MagicMock(factures=[])

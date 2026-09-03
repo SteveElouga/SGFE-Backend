@@ -6,6 +6,7 @@ from strawberry.extensions import (
     MaxAliasesLimiter,
     MaxTokensLimiter,
     QueryDepthLimiter,
+    SchemaExtension,
 )
 
 from schema.extensions import GrpcErrorExtension
@@ -17,7 +18,7 @@ from schema.subscriptions import Subscription
 # volume de tokens). Valeurs généreuses pour ne pas gêner les requêtes légitimes
 # du frontend ; elles bloquent les requêtes pathologiques (récursion profonde,
 # aliasing massif) qui saturent la gateway. Ajustables selon les besoins réels.
-_extensions = [
+_extensions: list[type[SchemaExtension] | SchemaExtension] = [
     GrpcErrorExtension,
     QueryDepthLimiter(max_depth=12),
     MaxAliasesLimiter(max_alias_count=50),

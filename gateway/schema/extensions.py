@@ -1,8 +1,11 @@
 import inspect
+from collections.abc import Callable
+from typing import Any, cast
 
 import grpc
-from graphql import GraphQLError
+from graphql import GraphQLError, GraphQLResolveInfo
 from strawberry.extensions import SchemaExtension
+from strawberry.utils.await_maybe import AwaitableOrValue
 
 from schema.context import AuthError
 
@@ -35,8 +38,8 @@ def _build_graphql_error(exc: grpc.RpcError) -> GraphQLError:
     """
     code = exc.code() if hasattr(exc, "code") else None
     details = exc.details() if hasattr(exc, "details") else None
-    message = details or _MESSAGE_BY_STATUS.get(code, "Erreur du service distant")
-    error_code = _CODE_BY_STATUS.get(code, "INTERNAL_ERROR")
+    message = (details or (_MESSAGE_BY_STATUS.get(code) if code is not None else None)) or "Erreur du service distant"
+    error_code = (_CODE_BY_STATUS.get(code) if code is not None else None) or "INTERNAL_ERROR"
     return GraphQLError(message, extensions={"code": error_code})
 
 
@@ -48,7 +51,14 @@ class GrpcErrorExtension(SchemaExtension):
     et futurs, au lieu d'un try/except répété dans chacun.
     """
 
-    def resolve(self, _next, root, info, *args, **kwargs):
+    def resolve(
+        self,
+        _next: Callable[..., Any],
+        root: Any,
+        info: GraphQLResolveInfo,
+        *args: str,
+        **kwargs: Any,
+    ) -> AwaitableOrValue[object]:
         try:
             result = _next(root, info, *args, **kwargs)
         except grpc.RpcError as exc:
@@ -60,10 +70,10 @@ class GrpcErrorExtension(SchemaExtension):
 
         if inspect.isawaitable(result):
             return self._await_and_translate(result)
-        return result
+        return cast(object, result)
 
     @staticmethod
-    async def _await_and_translate(awaitable):
+    async def _await_and_translate(awaitable: Any) -> Any:
         try:
             return await awaitable
         except grpc.RpcError as exc:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import strawberry
 
 
@@ -59,7 +61,7 @@ class Tarif:
     is_active: bool
 
 
-def facture_from_grpc(r: object) -> Facture:
+def facture_from_grpc(r: Any) -> Facture:
     """Convertit un FactureResponse protobuf en type Strawberry."""
     return Facture(
         facture_id=r.facture_id,
@@ -87,7 +89,7 @@ def facture_from_grpc(r: object) -> Facture:
     )
 
 
-def tarif_from_grpc(r: object) -> Tarif:
+def tarif_from_grpc(r: Any) -> Tarif:
     """Convertit un TarifResponse protobuf en type Strawberry."""
     return Tarif(
         tarif_id=r.tarif_id,

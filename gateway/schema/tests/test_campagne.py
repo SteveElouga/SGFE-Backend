@@ -1,15 +1,24 @@
 """Tests des resolvers GraphQL du Campagne Service (gateway)."""
 
+import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from django.conf import settings
 from django.test import SimpleTestCase
 
-from proto import campagne_service_pb2 as campagne_pb
-from schema.campagne_mutations import CampagneMutations
-from schema.campagne_queries import CampagneQueries
+# Import non qualifié par le paquet `proto` (comme schema/grpc_clients.py) :
+# mypy.ini n'exclut de la vérification que le nom de module nu
+# `campagne_service_pb2`, pas sa forme qualifiée — voir test_stats.py.
+sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
+
+import campagne_service_pb2 as campagne_pb  # noqa: E402
+
+from schema.campagne_mutations import CampagneMutations  # noqa: E402
+from schema.campagne_queries import CampagneQueries  # noqa: E402
 
 
-def _campagne_response(**kwargs) -> campagne_pb.CampagneResponse:
+def _campagne_response(**kwargs: object) -> campagne_pb.CampagneResponse:
     defaults = dict(
         campagne_id="camp-001",
         nom="Campagne Juillet",
@@ -27,7 +36,7 @@ def _campagne_response(**kwargs) -> campagne_pb.CampagneResponse:
     return campagne_pb.CampagneResponse(**{**defaults, **kwargs})
 
 
-def _releve_response(**kwargs) -> campagne_pb.ReleveResponse:
+def _releve_response(**kwargs: object) -> campagne_pb.ReleveResponse:
     defaults = dict(
         releve_id="releve-001",
         abonne_id="abonne-001",
@@ -45,7 +54,7 @@ class TestCampagneQueries(SimpleTestCase):
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")
     @patch("schema.campagne_queries.require_role")
-    def test_campagne_succes(self, mock_role, mock_auth, mock_client) -> None:
+    def test_campagne_succes(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN", user_id="user-001")
         mock_client.get_campagne.return_value = _campagne_response()
         info = MagicMock()
@@ -56,7 +65,9 @@ class TestCampagneQueries(SimpleTestCase):
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")
     @patch("schema.campagne_queries.require_role")
-    def test_campagne_expose_created_by(self, mock_role, mock_auth, mock_client) -> None:
+    def test_campagne_expose_created_by(
+        self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock
+    ) -> None:
         """Le type GraphQL Campagne remonte createdBy (via campagne_from_grpc) —
         support du filtrage « mes campagnes » frontend selon le rôle SUPERVISEUR."""
         mock_auth.return_value = MagicMock(role="ADMIN", user_id="user-001")
@@ -67,7 +78,9 @@ class TestCampagneQueries(SimpleTestCase):
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")
     @patch("schema.campagne_queries.require_role")
-    def test_campagnes_admin_sans_filtre(self, mock_role, mock_auth, mock_client) -> None:
+    def test_campagnes_admin_sans_filtre(
+        self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock
+    ) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN", user_id="user-001")
         mock_client.list_campagnes.return_value = MagicMock(
             campagnes=[_campagne_response(campagne_id="c1"), _campagne_response(campagne_id="c2")]
@@ -80,7 +93,9 @@ class TestCampagneQueries(SimpleTestCase):
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")
     @patch("schema.campagne_queries.require_role")
-    def test_campagnes_superviseur_avec_filtre(self, mock_role, mock_auth, mock_client) -> None:
+    def test_campagnes_superviseur_avec_filtre(
+        self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock
+    ) -> None:
         mock_auth.return_value = MagicMock(role="SUPERVISEUR", user_id="sup-001")
         mock_client.list_campagnes.return_value = MagicMock(campagnes=[_campagne_response()])
         info = MagicMock()
@@ -90,7 +105,9 @@ class TestCampagneQueries(SimpleTestCase):
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")
     @patch("schema.campagne_queries.require_role")
-    def test_campagnes_agent_filtre_par_affectation(self, mock_role, mock_auth, mock_client) -> None:
+    def test_campagnes_agent_filtre_par_affectation(
+        self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock
+    ) -> None:
         mock_auth.return_value = MagicMock(role="AGENT", user_id="agent-001")
         mock_client.list_campagnes.return_value = MagicMock(campagnes=[_campagne_response()])
         info = MagicMock()
@@ -100,7 +117,7 @@ class TestCampagneQueries(SimpleTestCase):
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")
     @patch("schema.campagne_queries.require_role")
-    def test_progression(self, mock_role, mock_auth, mock_client) -> None:
+    def test_progression(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN", user_id="user-001")
         mock_client.get_progression.return_value = MagicMock(
             campagne_id="camp-001",
@@ -117,7 +134,7 @@ class TestCampagneQueries(SimpleTestCase):
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")
     @patch("schema.campagne_queries.require_role")
-    def test_resume_cloture(self, mock_role, mock_auth, mock_client) -> None:
+    def test_resume_cloture(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN", user_id="user-001")
         mock_client.get_resume_cloture.return_value = MagicMock(
             campagne_id="camp-001",
@@ -138,7 +155,7 @@ class TestCampagneQueries(SimpleTestCase):
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")
     @patch("schema.campagne_queries.require_role")
-    def test_dernier_index(self, mock_role, mock_auth, mock_client) -> None:
+    def test_dernier_index(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="AGENT", user_id="agent-001")
         mock_client.get_dernier_index.return_value = MagicMock(
             abonne_id="abonne-001",
@@ -154,7 +171,9 @@ class TestCampagneQueries(SimpleTestCase):
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")
     @patch("schema.campagne_queries.require_role")
-    def test_releves_par_agent_utilise_la_tournee(self, mock_role, mock_auth, mock_client, mock_abonne) -> None:
+    def test_releves_par_agent_utilise_la_tournee(
+        self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock, mock_abonne: MagicMock
+    ) -> None:
         """Le resolver délègue le périmètre (zones/global) à ListRelevesTournee
         côté campagne-service et renvoie ses relevés tels quels (plus de filtrage
         client par agent_id, qui excluait les A_RELEVER)."""
@@ -175,7 +194,9 @@ class TestCampagneQueries(SimpleTestCase):
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")
     @patch("schema.campagne_queries.require_role")
-    def test_releves_par_agent_enrichit_identite_abonne(self, mock_role, mock_auth, mock_client, mock_abonne) -> None:
+    def test_releves_par_agent_enrichit_identite_abonne(
+        self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock, mock_abonne: MagicMock
+    ) -> None:
         """La tournée est enrichie avec le nom/adresse/compteur de l'abonné (via
         Abonné Service, un seul ListAbonnes) : l'écran affiche des noms, pas des
         UUID. Un abonné inconnu laisse les champs vides sans faire échouer."""
@@ -211,7 +232,9 @@ class TestCampagneQueries(SimpleTestCase):
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")
     @patch("schema.campagne_queries.require_role")
-    def test_releves_par_agent_agent_autre_refuse(self, mock_role, mock_auth, mock_client) -> None:
+    def test_releves_par_agent_agent_autre_refuse(
+        self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock
+    ) -> None:
         mock_auth.return_value = MagicMock(role="AGENT", user_id="agent-001")
         mock_client.list_campagnes.return_value = MagicMock(campagnes=[MagicMock(campagne_id="camp-001")])
         info = MagicMock()
@@ -223,7 +246,7 @@ class TestCampagneMutations(SimpleTestCase):
     @patch("schema.campagne_mutations.campagne_client")
     @patch("schema.campagne_mutations.require_auth")
     @patch("schema.campagne_mutations.require_role")
-    def test_creer_campagne_admin(self, mock_role, mock_auth, mock_client) -> None:
+    def test_creer_campagne_admin(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         from schema.campagne_types import CreateCampagneInput
 
         mock_auth.return_value = MagicMock(role="ADMIN", user_id="user-001")
@@ -247,7 +270,7 @@ class TestCampagneMutations(SimpleTestCase):
     @patch("schema.campagne_mutations.campagne_client")
     @patch("schema.campagne_mutations.require_auth")
     @patch("schema.campagne_mutations.require_role")
-    def test_cloturer_campagne(self, mock_role, mock_auth, mock_client) -> None:
+    def test_cloturer_campagne(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN", user_id="user-001")
         mock_client.cloturer_campagne.return_value = _campagne_response(statut="CLOTUREE")
         info = MagicMock()
@@ -257,7 +280,7 @@ class TestCampagneMutations(SimpleTestCase):
     @patch("schema.campagne_mutations.campagne_client")
     @patch("schema.campagne_mutations.require_auth")
     @patch("schema.campagne_mutations.require_role")
-    def test_demarrer_campagne(self, mock_role, mock_auth, mock_client) -> None:
+    def test_demarrer_campagne(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN", user_id="user-001")
         mock_client.demarrer_campagne.return_value = _campagne_response(statut="EN_COURS")
         info = MagicMock()
@@ -267,7 +290,7 @@ class TestCampagneMutations(SimpleTestCase):
     @patch("schema.campagne_mutations.campagne_client")
     @patch("schema.campagne_mutations.require_auth")
     @patch("schema.campagne_mutations.require_role")
-    def test_affecter_agent_admin(self, mock_role, mock_auth, mock_client) -> None:
+    def test_affecter_agent_admin(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN", user_id="admin-001")
         mock_client.assigner_agent.return_value = _campagne_response()
         info = MagicMock()
@@ -278,7 +301,7 @@ class TestCampagneMutations(SimpleTestCase):
     @patch("schema.campagne_mutations.campagne_client")
     @patch("schema.campagne_mutations.require_auth")
     @patch("schema.campagne_mutations.require_role")
-    def test_ajouter_abonnes_campagne(self, mock_role, mock_auth, mock_client) -> None:
+    def test_ajouter_abonnes_campagne(self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN", user_id="admin-001")
         mock_client.ajouter_abonnes_campagne.return_value = MagicMock(nb_ajoutes=2, nb_ignores=1)
         info = MagicMock()
@@ -293,7 +316,9 @@ class TestCampagneMutations(SimpleTestCase):
     @patch("schema.campagne_mutations.campagne_client")
     @patch("schema.campagne_mutations.require_auth")
     @patch("schema.campagne_mutations.require_role")
-    def test_saisir_index_agent(self, mock_role, mock_auth, mock_mut_client, mock_query_client) -> None:
+    def test_saisir_index_agent(
+        self, mock_role: MagicMock, mock_auth: MagicMock, mock_mut_client: MagicMock, mock_query_client: MagicMock
+    ) -> None:
         from schema.campagne_types import SaisirIndexInput
 
         mock_auth.return_value = MagicMock(role="AGENT", user_id="agent-001", username="bob")
@@ -318,7 +343,9 @@ class TestCampagneMutations(SimpleTestCase):
     @patch("schema.campagne_mutations.campagne_client")
     @patch("schema.campagne_mutations.require_auth")
     @patch("schema.campagne_mutations.require_role")
-    def test_marquer_non_releve(self, mock_role, mock_auth, mock_mut_client, mock_query_client) -> None:
+    def test_marquer_non_releve(
+        self, mock_role: MagicMock, mock_auth: MagicMock, mock_mut_client: MagicMock, mock_query_client: MagicMock
+    ) -> None:
         from schema.campagne_types import MarquerNonReleveInput
 
         mock_auth.return_value = MagicMock(role="AGENT", user_id="agent-001")
@@ -333,7 +360,9 @@ class TestCampagneMutations(SimpleTestCase):
     @patch("schema.campagne_mutations.campagne_client")
     @patch("schema.campagne_mutations.require_auth")
     @patch("schema.campagne_mutations.require_role")
-    def test_corriger_releve_admin(self, mock_role, mock_auth, mock_mut_client, mock_query_client) -> None:
+    def test_corriger_releve_admin(
+        self, mock_role: MagicMock, mock_auth: MagicMock, mock_mut_client: MagicMock, mock_query_client: MagicMock
+    ) -> None:
         from schema.campagne_types import CorrigerReleveInput
 
         mock_auth.return_value = MagicMock(role="ADMIN", user_id="admin-001", username="alice")
@@ -383,6 +412,7 @@ class TestReleveMapping(SimpleTestCase):
         releve = releve_from_grpc(r)
         self.assertEqual(releve.agent_id, "agent-001")
         self.assertIsNotNone(releve.saisi_par)
+        assert releve.saisi_par is not None
         self.assertEqual(releve.saisi_par.username, "bob")
         self.assertEqual(releve.saisi_par.role, "AGENT")
         self.assertEqual(releve.saisi_le, "2026-07-15T10:00:00+00:00")
@@ -416,7 +446,14 @@ class TestDetailCampagneZones(SimpleTestCase):
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")
     @patch("schema.campagne_queries.require_role")
-    def test_agents_campagne_enrichi(self, mock_role, mock_auth, mock_camp, mock_ab, mock_authc) -> None:
+    def test_agents_campagne_enrichi(
+        self,
+        mock_role: MagicMock,
+        mock_auth: MagicMock,
+        mock_camp: MagicMock,
+        mock_ab: MagicMock,
+        mock_authc: MagicMock,
+    ) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN", user_id="admin-1")
         zone = MagicMock(quartier="Plateau", camp=3, nb_releves=8)
         agent = MagicMock(agent_id="agent-1", zones=[zone], nb_releves=8, derniere_activite="")
@@ -439,7 +476,14 @@ class TestDetailCampagneZones(SimpleTestCase):
     @patch("schema.campagne_queries.campagne_client")
     @patch("schema.campagne_queries.require_auth")
     @patch("schema.campagne_queries.require_role")
-    def test_repartition_par_zone(self, mock_role, mock_auth, mock_camp, mock_ab, mock_authc) -> None:
+    def test_repartition_par_zone(
+        self,
+        mock_role: MagicMock,
+        mock_auth: MagicMock,
+        mock_camp: MagicMock,
+        mock_ab: MagicMock,
+        mock_authc: MagicMock,
+    ) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN", user_id="admin-1")
         z1 = MagicMock(quartier="Plateau", camp=3, nb_releves=10)
         z2 = MagicMock(quartier="Centre", camp=1, nb_releves=6)
@@ -463,7 +507,7 @@ class TestDetailCampagneZones(SimpleTestCase):
     @patch("schema.campagne_queries.abonne_client")
     @patch("schema.campagne_queries.require_auth")
     @patch("schema.campagne_queries.require_role")
-    def test_zones_disponibles(self, mock_role, mock_auth, mock_ab) -> None:
+    def test_zones_disponibles(self, mock_role: MagicMock, mock_auth: MagicMock, mock_ab: MagicMock) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN", user_id="admin-1")
         mock_ab.list_zones.return_value = MagicMock(zones=[MagicMock(quartier="Centre", camp=1, nb_abonnes=5)])
         result = CampagneQueries().zones_disponibles(MagicMock())
@@ -475,7 +519,12 @@ class TestDetailCampagneZones(SimpleTestCase):
     @patch("schema.campagne_mutations.require_auth")
     @patch("schema.campagne_mutations.require_role")
     def test_affecter_zones_mutation(
-        self, mock_role, mock_auth, mock_mut_client, mock_query_client, mock_enrich
+        self,
+        mock_role: MagicMock,
+        mock_auth: MagicMock,
+        mock_mut_client: MagicMock,
+        mock_query_client: MagicMock,
+        mock_enrich: MagicMock,
     ) -> None:
         from schema.campagne_types import ZoneInput
 

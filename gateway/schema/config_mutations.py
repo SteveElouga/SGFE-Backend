@@ -15,7 +15,7 @@ class UpdateInfosSocieteInput:
 
 @strawberry.type
 class ConfigMutations:
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def update_infos_societe(self, info: strawberry.types.Info, input: UpdateInfosSocieteInput) -> InfosSociete:
         """Met à jour les informations de la société — ADMIN uniquement."""
         require_role(info, "ADMIN")
@@ -27,7 +27,7 @@ class ConfigMutations:
         )
         return infos_from_grpc(response)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def update_config(self, info: strawberry.types.Info, cle: str, valeur: str) -> ConfigParam:
         """Met à jour un paramètre de configuration — ADMIN uniquement."""
         require_role(info, "ADMIN")

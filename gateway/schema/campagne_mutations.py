@@ -1,9 +1,17 @@
 """Mutations GraphQL du Campagne Service."""
 
+import sys
+from pathlib import Path
+
 import strawberry
 import strawberry.types
+from django.conf import settings
 
-from proto import campagne_service_pb2 as campagne_pb
+# Import non qualifié par le paquet `proto` (comme schema/grpc_clients.py) —
+# voir le commentaire équivalent dans campagne_types.py.
+sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
+
+import campagne_service_pb2 as campagne_pb  # noqa: E402
 
 from .campagne_types import (
     AgentAffecte,
@@ -25,7 +33,7 @@ from .grpc_clients import campagne_client
 
 @strawberry.type
 class CampagneMutations:
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def creer_campagne(self, info: strawberry.types.Info, input: CreateCampagneInput) -> Campagne:
         """Crée une nouvelle campagne — ADMIN ou SUPERVISEUR."""
         user = require_auth(info)
@@ -43,7 +51,7 @@ class CampagneMutations:
         )
         return campagne_from_grpc(response)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def affecter_agent(self, info: strawberry.types.Info, campagne_id: str, agent_id: str) -> Campagne:
         """Affecte un AGENT à une campagne — ADMIN (toutes), SUPERVISEUR (les siennes)."""
         user = require_auth(info)
@@ -52,7 +60,7 @@ class CampagneMutations:
         response = campagne_client.assigner_agent(campagne_id=campagne_id, agent_id=agent_id)
         return campagne_from_grpc(response)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def ajouter_abonnes_campagne(
         self,
         info: strawberry.types.Info,
@@ -72,7 +80,7 @@ class CampagneMutations:
         r = campagne_client.ajouter_abonnes_campagne(campagne_id, abonne_ids)
         return AjouterAbonnesResult(nb_ajoutes=r.nb_ajoutes, nb_ignores=r.nb_ignores)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def demarrer_campagne(self, info: strawberry.types.Info, campagne_id: str) -> Campagne:
         """Démarre une campagne PLANIFIEE (→ EN_COURS) — ADMIN (toutes), SUPERVISEUR (les siennes).
 
@@ -85,7 +93,7 @@ class CampagneMutations:
         response = campagne_client.demarrer_campagne(campagne_id)
         return campagne_from_grpc(response)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def cloturer_campagne(self, info: strawberry.types.Info, campagne_id: str) -> Campagne:
         """Clôture une campagne EN_COURS — ADMIN (toutes), SUPERVISEUR (les siennes)."""
         user = require_auth(info)
@@ -94,7 +102,7 @@ class CampagneMutations:
         response = campagne_client.cloturer_campagne(campagne_id)
         return campagne_from_grpc(response)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def saisir_index(self, info: strawberry.types.Info, input: SaisirIndexInput) -> Releve:
         """Saisit le nouvel index d'un abonné — ADMIN, AGENT, SUPERVISEUR (les siennes)."""
         user = require_auth(info)
@@ -111,7 +119,7 @@ class CampagneMutations:
         )
         return releve_from_grpc(response)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def corriger_releve(self, info: strawberry.types.Info, input: CorrigerReleveInput) -> Releve:
         """Corrige un index déjà relevé — ADMIN (tous), SUPERVISEUR (les siens).
 
@@ -132,7 +140,7 @@ class CampagneMutations:
         )
         return releve_from_grpc(response)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def affecter_zones(
         self,
         info: strawberry.types.Info,
@@ -155,7 +163,7 @@ class CampagneMutations:
         )
         return _enrichir_agents(response.agents)
 
-    @strawberry.mutation
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def marquer_non_releve(self, info: strawberry.types.Info, input: MarquerNonReleveInput) -> Releve:
         """Marque un relevé comme NON_RELEVE ou ESTIME — ADMIN, AGENT, SUPERVISEUR (les siennes)."""
         user = require_auth(info)

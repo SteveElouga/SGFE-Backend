@@ -10,14 +10,14 @@ from .notification_types import Envoi, WhatsAppQr, envoi_from_grpc, whatsapp_qr_
 
 @strawberry.type
 class NotificationQueries:
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def envoi(self, info: strawberry.types.Info, envoi_id: str) -> Envoi:
         """Détails d'un envoi WhatsApp — ADMIN, COMPTABLE."""
         require_auth(info)
         require_role(info, "ADMIN", "COMPTABLE")
         return envoi_from_grpc(notification_client.get_envoi(envoi_id))
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def envois(
         self,
         info: strawberry.types.Info,
@@ -30,7 +30,7 @@ class NotificationQueries:
         response = notification_client.list_envois(facture_id=facture_id, abonne_id=abonne_id)
         return [envoi_from_grpc(e) for e in response.envois]
 
-    @strawberry.field
+    @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def whatsapp_qr(self, info: strawberry.types.Info) -> WhatsAppQr:
         """Statut de connexion WhatsApp + QR code de liaison — ADMIN uniquement.
 
