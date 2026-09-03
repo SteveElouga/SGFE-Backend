@@ -1,7 +1,9 @@
 """Sérialisation entre les modèles Django et les messages protobuf."""
 
 import sys
+from datetime import date, datetime
 from pathlib import Path
+from typing import Union
 
 from django.conf import settings
 
@@ -9,10 +11,11 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 
 import campagne_service_pb2 as pb
 
+from campagnes.dtos import AgentAffecteDict
 from campagnes.models import Campagne, Releve, ReleveAudit
 
 
-def _to_iso(value) -> str:
+def _to_iso(value: Union[date, datetime, str, None]) -> str:
     """Convertit date/datetime/str en format ISO, ou '' si None/vide.
 
     Après Campagne.objects.create(), Django peut retourner la valeur d'origine
@@ -85,7 +88,7 @@ def releve_to_proto(releve: Releve) -> pb.ReleveResponse:
     )
 
 
-def agent_affecte_to_proto(agent: dict) -> pb.AgentAffecte:
+def agent_affecte_to_proto(agent: AgentAffecteDict) -> pb.AgentAffecte:
     """Convertit un dict d'agent affecté (voir CampagneService.list_agents_campagne)
     en message protobuf AgentAffecte."""
     return pb.AgentAffecte(

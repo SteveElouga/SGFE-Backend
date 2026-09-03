@@ -9,7 +9,7 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.test import TestCase
 
 from campagnes.grpc_clients import AbonneServiceClient
-from campagnes.models import Campagne, StatutCampagne, StatutReleve
+from campagnes.models import Campagne, Releve, StatutCampagne, StatutReleve
 from campagnes.repositories import CampagneAgentRepository, CampagneRepository
 from campagnes.services import CampagneService, ReleveService
 
@@ -499,7 +499,7 @@ class TestAffectationZone(TestCase):
         CampagneRepository().update_statut(campagne, StatutCampagne.EN_COURS)
         self.campagne = campagne
 
-    def _ajouter(self, abonne_id: str, quartier: str, camp: int, ancien_index: Decimal = Decimal("0")):
+    def _ajouter(self, abonne_id: str, quartier: str, camp: int, ancien_index: Decimal = Decimal("0")) -> Releve:
         with patch.object(
             AbonneServiceClient,
             "get_abonne",

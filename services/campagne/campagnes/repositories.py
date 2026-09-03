@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from typing import Optional
 
@@ -78,7 +79,7 @@ class CampagneRepository:
         """Campagnes clôturées dont la notification à Facturation Service a échoué."""
         return list(Campagne.objects.filter(facturation_en_attente=True))
 
-    def list_planifiees_pour_date(self, date_planifiee) -> list[Campagne]:
+    def list_planifiees_pour_date(self, date_planifiee: date) -> list[Campagne]:
         """Retourne TOUTES les campagnes PLANIFIEE pour cette date (voir ANO-019 —
         `.first()` ne démarrait auparavant qu'une seule campagne par jour cible,
         même si plusieurs partageaient la même date_planifiee)."""
@@ -213,7 +214,7 @@ class ReleveRepository:
         )
         return {(r["quartier"], r["camp"]): r["total"] for r in rows}
 
-    def stats_by_agent(self, campagne_id: str) -> dict[str, dict]:
+    def stats_by_agent(self, campagne_id: str) -> dict[str, dict[str, object]]:
         """Par agent : nombre de relevés RELEVE saisis et date du dernier relevé."""
         from django.db.models import Count, Max
 

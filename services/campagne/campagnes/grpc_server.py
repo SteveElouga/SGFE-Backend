@@ -33,7 +33,11 @@ from campagnes.services import CampagneService, ReleveService
 logger = logging.getLogger(__name__)
 
 
-class CampagneServicer(pb_grpc.CampagneServiceServicer):
+class CampagneServicer(pb_grpc.CampagneServiceServicer):  # type: ignore[misc]
+    # ^ CampagneServiceServicer vient du stub généré campagne_service_pb2_grpc,
+    # exclu de la vérification mypy (voir mypy.ini) — mypy le voit donc comme
+    # `Any`, ce qui rend toute sous-classe de lui structurellement "misc" ; rien
+    # à corriger côté code métier ici.
     """Implémentation de tous les RPCs du CampagneService.
 
     Le mapping exception -> code gRPC (ObjectDoesNotExist->NOT_FOUND,

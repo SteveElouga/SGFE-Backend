@@ -1,15 +1,17 @@
 """Logique métier du Campagne Service."""
 
 import logging
+from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional, cast
 
 import grpc
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
+from .dtos import AgentAffecteDict, StatsReportingDict, ZoneAgentDict
 from .grpc_clients import AbonneServiceClient, FacturationServiceClient
-from .models import ActionAudit, Campagne, Releve, StatutCampagne, StatutReleve
+from .models import ActionAudit, AffectationZone, Campagne, Releve, StatutCampagne, StatutReleve
 from .repositories import (
     AffectationZoneRepository,
     CampagneAgentRepository,
@@ -34,8 +36,12 @@ class CampagneService:
         self._abonne_client = AbonneServiceClient()
         self._facturation_client = FacturationServiceClient()
 
-    def _verifier_abonne_actif(self, abonne_id: str):
+    def _verifier_abonne_actif(self, abonne_id: str) -> Any:
         """Vérifie que l'abonné est ACTIF et le retourne (avec son compteur).
+
+        Type de retour `Any` assumé : c'est un message protobuf `AbonneResponse`
+        (voir `abonne_service_pb2`, stub généré exclu de la vérification mypy —
+        même raison que les autres `*_pb2.py`).
 
         Règle métier obligatoire (CLAUDE.md racine) : un abonné suspendu ou
         résilié ne peut pas être relevé. On échoue de façon volontairement
@@ -59,7 +65,7 @@ class CampagneService:
         return abonne
 
     @staticmethod
-    def _zone_de(abonne) -> tuple[str, Optional[int]]:
+    def _zone_de(abonne: Any) -> tuple[str, Optional[int]]:
         """Extrait la zone (quartier, camp) du compteur d'un abonné, à copier
         dans le relevé. Tolère l'absence de compteur (retourne '', None)."""
         compteur = getattr(abonne, "compteur", None)
@@ -145,7 +151,7 @@ class CampagneService:
             "nb_factures_a_generer": nb_releves + nb_estimes,
         }
 
-    def get_stats_reporting(self, campagne_id: str) -> dict:
+    def get_stats_reporting(self, campagne_id: str) -> StatsReportingDict:
         """Stats poussées au Reporting Service à la clôture (nom, total, relevés, consommation)."""
         campagne = self._repo.get_by_id(campagne_id)
         counts = self._releve_repo.count_by_campagne(campagne_id)
@@ -214,7 +220,7 @@ class CampagneService:
         campagne_id: str,
         agent_id: str,
         zones: list[tuple[str, int]],
-    ) -> list[dict]:
+    ) -> list[AgentAffecteDict]:
         """Affecte un agent à un ensemble de zones (remplace ses zones actuelles).
 
         Affecter des zones implique que l'agent travaille la campagne : on
@@ -229,7 +235,7 @@ class CampagneService:
             self._zone_repo.set_zones_for_agent(campagne, agent_id, zones)
         return self.list_agents_campagne(campagne_id)
 
-    def list_agents_campagne(self, campagne_id: str) -> list[dict]:
+    def list_agents_campagne(self, campagne_id: str) -> list[AgentAffecteDict]:
         """Agents affectés à une campagne (global et/ou par zone), avec stats.
 
         Pour chaque agent : ses zones (avec le nb de relevés RELEVE de la zone),
@@ -245,29 +251,30 @@ class CampagneService:
         zone_counts = self._releve_repo.count_releves_by_zone(campagne_id)
         agent_stats = self._releve_repo.stats_by_agent(campagne_id)
 
-        zones_by_agent: dict[str, list] = defaultdict(list)
+        zones_by_agent: dict[str, list[AffectationZone]] = defaultdict(list)
         for z in zones:
             zones_by_agent[z.agent_id].append(z)
 
         # Union ordonnée : agents affectés globalement puis agents ayant des zones.
         agent_ids = list(dict.fromkeys(global_ids + list(zones_by_agent.keys())))
 
-        agents: list[dict] = []
+        agents: list[AgentAffecteDict] = []
         for agent_id in agent_ids:
             stats = agent_stats.get(agent_id, {})
+            zones_dict: list[ZoneAgentDict] = [
+                {
+                    "quartier": z.quartier,
+                    "camp": z.camp,
+                    "nb_releves": zone_counts.get((z.quartier, z.camp), 0),
+                }
+                for z in zones_by_agent.get(agent_id, [])
+            ]
             agents.append(
                 {
                     "agent_id": agent_id,
-                    "zones": [
-                        {
-                            "quartier": z.quartier,
-                            "camp": z.camp,
-                            "nb_releves": zone_counts.get((z.quartier, z.camp), 0),
-                        }
-                        for z in zones_by_agent.get(agent_id, [])
-                    ],
-                    "nb_releves": stats.get("nb_releves", 0),
-                    "derniere_activite": stats.get("derniere_activite"),
+                    "zones": zones_dict,
+                    "nb_releves": cast(int, stats.get("nb_releves", 0)),
+                    "derniere_activite": cast(Optional[datetime], stats.get("derniere_activite")),
                 }
             )
         return agents
@@ -401,7 +408,7 @@ class ReleveService:
         """
         if not agent_id:
             return False
-        zones = {(z.quartier, z.camp) for z in self._zone_repo.list_for_agent(releve.campagne_id, agent_id)}
+        zones = {(z.quartier, z.camp) for z in self._zone_repo.list_for_agent(str(releve.campagne_id), agent_id)}
         if not zones:
             return False
         return (releve.quartier, releve.camp) not in zones

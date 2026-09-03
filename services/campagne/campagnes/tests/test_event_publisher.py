@@ -15,7 +15,7 @@ def _fake_redis_module(client: MagicMock) -> SimpleNamespace:
 
 
 class PublishProgressionEventTests(SimpleTestCase):
-    def test_publie_le_bon_payload_sur_le_bon_canal(self):
+    def test_publie_le_bon_payload_sur_le_bon_canal(self) -> None:
         client = MagicMock()
         with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
             publish_progression_event("camp-1", agent_id="agent-1")
@@ -28,7 +28,7 @@ class PublishProgressionEventTests(SimpleTestCase):
         )
         client.close.assert_called_once()
 
-    def test_best_effort_sur_echec_redis(self):
+    def test_best_effort_sur_echec_redis(self) -> None:
         client = MagicMock()
         client.publish.side_effect = RuntimeError("redis down")
         with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
