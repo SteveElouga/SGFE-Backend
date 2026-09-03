@@ -8,6 +8,9 @@ dégradation gracieuse par service externe indisponible.
 Sans `--output`, le JSON (structuré, indenté) est écrit sur stdout.
 """
 
+from argparse import ArgumentParser
+from typing import Any
+
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.management.base import BaseCommand, CommandError
 
@@ -17,14 +20,14 @@ from abonnes.export import exporter_donnees_abonne_json
 class Command(BaseCommand):
     help = "Exporte en JSON structuré toutes les données connues d'un abonné (droit à la portabilité RGPD)."
 
-    def add_arguments(self, parser) -> None:
+    def add_arguments(self, parser: ArgumentParser) -> None:
         parser.add_argument("abonne_id", help="UUID de l'abonné à exporter")
         parser.add_argument(
             "--output",
             help="Chemin du fichier de sortie (défaut : affichage sur stdout)",
         )
 
-    def handle(self, *args, **options) -> None:
+    def handle(self, *args: Any, **options: Any) -> None:
         abonne_id = options["abonne_id"]
         try:
             payload = exporter_donnees_abonne_json(abonne_id)

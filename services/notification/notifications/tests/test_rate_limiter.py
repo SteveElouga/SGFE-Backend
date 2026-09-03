@@ -20,7 +20,7 @@ def _fake_redis_module(client: MagicMock) -> SimpleNamespace:
 
 
 class ThrottleDisabledContextsTests(SimpleTestCase):
-    def test_noop_en_environnement_de_test(self):
+    def test_noop_en_environnement_de_test(self) -> None:
         """settings.TESTING est déjà True dans ce process (`manage.py test`) :
         le throttle doit être un no-op, sans jamais toucher Redis."""
         client = MagicMock()
@@ -29,7 +29,7 @@ class ThrottleDisabledContextsTests(SimpleTestCase):
         client.set.assert_not_called()
 
     @override_settings(TESTING=False, WHATSAPP_RATE_LIMIT_MIN_INTERVAL_SECONDS=0)
-    def test_noop_si_intervalle_nul(self):
+    def test_noop_si_intervalle_nul(self) -> None:
         client = MagicMock()
         with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
             rate_limiter.throttle_whatsapp_send()
@@ -38,7 +38,7 @@ class ThrottleDisabledContextsTests(SimpleTestCase):
 
 @override_settings(TESTING=False, WHATSAPP_RATE_LIMIT_MIN_INTERVAL_SECONDS=3.0)
 class ThrottleViaRedisTests(SimpleTestCase):
-    def test_verrou_acquis_immediatement_ne_bloque_pas(self):
+    def test_verrou_acquis_immediatement_ne_bloque_pas(self) -> None:
         client = MagicMock()
         client.set.return_value = True
         with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
@@ -49,7 +49,7 @@ class ThrottleViaRedisTests(SimpleTestCase):
         mock_sleep.assert_not_called()
         client.close.assert_called_once()
 
-    def test_verrou_deja_detenu_attend_puis_reessaie(self):
+    def test_verrou_deja_detenu_attend_puis_reessaie(self) -> None:
         client = MagicMock()
         # Échoue une première fois (verrou détenu par un autre envoi), puis réussit.
         client.set.side_effect = [False, True]
@@ -65,7 +65,7 @@ class ThrottleViaRedisTests(SimpleTestCase):
         # rapporté par Redis est plus grand.
         self.assertLessEqual(mock_sleep.call_args.args[0], 3.0)
 
-    def test_redis_indisponible_replie_sur_verrou_local(self):
+    def test_redis_indisponible_replie_sur_verrou_local(self) -> None:
         """Si Redis lève une exception, le throttle ne doit ni crasher ni
         laisser passer l'envoi sans délai — il retombe sur un verrou local."""
         fake_redis = SimpleNamespace(Redis=SimpleNamespace(from_url=MagicMock(side_effect=ConnectionError("down"))))
@@ -74,7 +74,7 @@ class ThrottleViaRedisTests(SimpleTestCase):
                 rate_limiter.throttle_whatsapp_send()
         mock_local.assert_called_once_with(3.0)
 
-    def test_attente_maximale_finit_par_abandonner(self):
+    def test_attente_maximale_finit_par_abandonner(self) -> None:
         """Si le verrou reste indéfiniment détenu (pic durable), le throttle
         finit par laisser passer l'envoi plutôt que de bloquer pour toujours."""
         client = MagicMock()
@@ -85,7 +85,7 @@ class ThrottleViaRedisTests(SimpleTestCase):
         # monotonic() avance l'horloge simulée au-delà du délai max.
         clock = {"t": 0.0}
 
-        def fake_monotonic():
+        def fake_monotonic() -> float:
             clock["t"] += 40.0
             return clock["t"]
 
@@ -99,16 +99,16 @@ class ThrottleViaRedisTests(SimpleTestCase):
 
 @override_settings(TESTING=False, WHATSAPP_RATE_LIMIT_MIN_INTERVAL_SECONDS=2.0)
 class ThrottleLocalFallbackTests(SimpleTestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         rate_limiter._local_last_send_monotonic = 0.0
 
-    def test_premier_appel_ne_bloque_pas(self):
+    def test_premier_appel_ne_bloque_pas(self) -> None:
         with patch("notifications.rate_limiter.time.monotonic", return_value=1000.0):
             with patch("notifications.rate_limiter.time.sleep") as mock_sleep:
                 rate_limiter._throttle_local(2.0)
         mock_sleep.assert_not_called()
 
-    def test_appel_rapproche_attend_le_reste_de_l_intervalle(self):
+    def test_appel_rapproche_attend_le_reste_de_l_intervalle(self) -> None:
         rate_limiter._local_last_send_monotonic = 1000.0
         with patch("notifications.rate_limiter.time.monotonic", return_value=1000.5):
             with patch("notifications.rate_limiter.time.sleep") as mock_sleep:
@@ -124,7 +124,7 @@ class WhatsAppClientCallsThrottleTests(SimpleTestCase):
 
     @patch("notifications.whatsapp_client.throttle_whatsapp_send")
     @patch("notifications.whatsapp_client.requests.post")
-    def test_send_appelle_le_throttle_avant_la_requete(self, mock_post, mock_throttle):
+    def test_send_appelle_le_throttle_avant_la_requete(self, mock_post: MagicMock, mock_throttle: MagicMock) -> None:
         from notifications.whatsapp_client import WhatsAppWebClient
 
         mock_post.return_value = MagicMock(status_code=200, json=MagicMock(return_value={"success": True}))
@@ -135,7 +135,9 @@ class WhatsAppClientCallsThrottleTests(SimpleTestCase):
 
     @patch("notifications.whatsapp_client.throttle_whatsapp_send")
     @patch("notifications.whatsapp_client.requests.post")
-    def test_send_with_pdf_appelle_le_throttle_avant_la_requete(self, mock_post, mock_throttle):
+    def test_send_with_pdf_appelle_le_throttle_avant_la_requete(
+        self, mock_post: MagicMock, mock_throttle: MagicMock
+    ) -> None:
         from notifications.whatsapp_client import WhatsAppWebClient
 
         mock_post.return_value = MagicMock(status_code=200, json=MagicMock(return_value={"success": True}))

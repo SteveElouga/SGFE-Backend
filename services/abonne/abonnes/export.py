@@ -35,7 +35,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Callable
 
 from abonnes.grpc_clients import (
     CampagneServiceClient,
@@ -83,7 +83,7 @@ class ExportService:
         self._paiement_client = paiement_client or PaiementServiceClient()
         self._notification_client = notification_client or NotificationServiceClient()
 
-    def _section(self, nom: str, fn) -> dict[str, Any]:
+    def _section(self, nom: str, fn: Callable[[], Any]) -> dict[str, Any]:
         """Exécute `fn`, ou dégrade gracieusement la section en cas d'échec."""
         try:
             return {"disponible": True, "donnees": fn()}

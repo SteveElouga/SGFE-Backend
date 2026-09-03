@@ -11,7 +11,7 @@ import json
 import logging
 import threading
 import time
-from typing import Any
+from typing import Any, Protocol
 
 import redis
 from django.conf import settings
@@ -108,7 +108,23 @@ def _ensure_group(r: redis.Redis) -> None:
             raise
 
 
-def _delivery_count(r: redis.Redis, msg_id: str) -> int:
+class _RedisStreamClient(Protocol):
+    """Forme structurelle attendue d'un client Redis pour ce module (le sous-ensemble
+    de `redis.Redis` réellement utilisé par `_delivery_count`/`_dead_letter`/
+    `_handle_entries`).
+
+    Un Protocol plutôt qu'une dépendance directe à la classe concrète : les doubles
+    de test (`_FakeRedis`) n'en héritent pas mais y correspondent structurellement,
+    et `redis.Redis` (utilisé en production, voir `_connect`) y correspond aussi
+    sans rien y changer.
+    """
+
+    def xack(self, name: str, group: str, msg_id: str) -> Any: ...
+    def xadd(self, name: str, fields: dict[str, Any]) -> Any: ...
+    def xpending_range(self, name: str, group: str, min_id: str, max_id: str, count: int) -> list[dict[str, Any]]: ...
+
+
+def _delivery_count(r: _RedisStreamClient, msg_id: str) -> int:
     """Nombre de fois où `msg_id` a été délivré à ce groupe, selon Redis.
 
     Lu via XPENDING (et non un compteur maison) : cette valeur survit aux
@@ -122,10 +138,10 @@ def _delivery_count(r: redis.Redis, msg_id: str) -> int:
         # (le message est forcément pending), sauf course avec un XCLAIM/XACK
         # concurrent. On suppose alors une première tentative.
         return 1
-    return pending[0]["times_delivered"]
+    return int(pending[0]["times_delivered"])
 
 
-def _dead_letter(r: redis.Redis, msg_id: str, fields: dict[str, Any], exc: BaseException) -> None:
+def _dead_letter(r: _RedisStreamClient, msg_id: str, fields: dict[str, Any], exc: BaseException) -> None:
     """Déplace un événement qui échoue systématiquement vers le flux
     dead-letter, puis l'acquitte : une fois dead-lettré, il ne doit plus
     jamais être redélivré (sinon on recrée la boucle qu'on corrige)."""
@@ -147,7 +163,7 @@ def _dead_letter(r: redis.Redis, msg_id: str, fields: dict[str, Any], exc: BaseE
     )
 
 
-def _handle_entries(r: redis.Redis, agg: AgregateurDashboard, entries: Any) -> None:
+def _handle_entries(r: _RedisStreamClient, agg: AgregateurDashboard, entries: Any) -> None:
     for _stream, msgs in entries:
         for msg_id, fields in msgs:
             try:
@@ -176,13 +192,17 @@ def consume_forever(stop_event: "threading.Event | None" = None) -> None:
     agg = AgregateurDashboard()
 
     # Rattrapage : entrées déjà délivrées mais non acquittées (crash précédent).
-    _handle_entries(r, agg, r.xreadgroup(GROUP, CONSUMER_NAME, {STREAM_KEY: "0"}, count=200))
+    # Les `# type: ignore[arg-type]` ci-dessous : les stubs redis-py typent
+    # xadd/xpending_range avec des unions bytes|str|memoryview très larges,
+    # structurellement incompatibles avec _RedisStreamClient (dict invariant) —
+    # sans rapport avec un vrai bug, `redis.Redis` fournit bien ces méthodes.
+    _handle_entries(r, agg, r.xreadgroup(GROUP, CONSUMER_NAME, {STREAM_KEY: "0"}, count=200))  # type: ignore[arg-type]
 
     while stop_event is None or not stop_event.is_set():
         try:
             entries = r.xreadgroup(GROUP, CONSUMER_NAME, {STREAM_KEY: ">"}, count=50, block=2000)
             if entries:
-                _handle_entries(r, agg, entries)
+                _handle_entries(r, agg, entries)  # type: ignore[arg-type]
         except Exception:
             logger.exception("Erreur de lecture du flux reporting — nouvelle tentative dans 2s")
             time.sleep(2)

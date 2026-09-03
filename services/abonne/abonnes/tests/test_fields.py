@@ -12,7 +12,7 @@ class EncryptedFieldTransparencyTests(TestCase):
     """Le chiffrement doit être invisible pour le code applicatif : on écrit
     et on lit des chaînes en clair, comme avant."""
 
-    def test_round_trip_plain_text_via_orm(self):
+    def test_round_trip_plain_text_via_orm(self) -> None:
         Abonne.objects.create(
             numero_abonne="AB-1001",
             nom="Mbarga",
@@ -26,7 +26,7 @@ class EncryptedFieldTransparencyTests(TestCase):
         self.assertEqual(abonne.telephone_whatsapp, "+237690000010")
         self.assertEqual(abonne.adresse, "Quartier Nkolbisson")
 
-    def test_adresse_vide_reste_chaine_vide(self):
+    def test_adresse_vide_reste_chaine_vide(self) -> None:
         """`adresse` a `default=""` — un token Fernet pour une chaîne vide
         serait absurde (et le champ ne serait plus jamais "vide" au sens
         applicatif) : le champ chiffré doit laisser passer '' tel quel."""
@@ -34,7 +34,7 @@ class EncryptedFieldTransparencyTests(TestCase):
         abonne.refresh_from_db()
         self.assertEqual(abonne.adresse, "")
 
-    def test_valeur_stockee_en_base_est_bien_chiffree(self):
+    def test_valeur_stockee_en_base_est_bien_chiffree(self) -> None:
         """Vérifie directement la colonne en base (hors ORM, donc hors
         déchiffrement automatique) : le texte en clair ne doit PAS y
         apparaître tel quel."""
@@ -53,7 +53,7 @@ class EncryptedFieldTransparencyTests(TestCase):
         self.assertNotEqual(raw_adresse, "Adresse secrète unique 42")
         self.assertNotIn("secrète", raw_adresse)
 
-    def test_deux_chiffrements_de_la_meme_valeur_different(self):
+    def test_deux_chiffrements_de_la_meme_valeur_different(self) -> None:
         """Fernet est non déterministe (IV + horodatage aléatoires) — deux
         lignes avec le même prénom ne doivent pas produire le même texte
         chiffré (sinon on pourrait corréler des abonnés par simple égalité
@@ -71,17 +71,24 @@ class EncryptedFieldLookupTests(TestCase):
     voir la doc de abonnes/fields.py. Ces filtres doivent échouer bruyamment
     (FieldError) plutôt que renvoyer silencieusement 0 résultat."""
 
-    def test_icontains_leve_fielderror(self):
+    def test_icontains_leve_fielderror(self) -> None:
+        # **kwargs plutôt que `nom__icontains=...` littéral : le plugin mypy
+        # django-stubs résout statiquement un lookup littéral en appelant
+        # `field.get_lookup(...)` au moment du typage — qui lève ici (c'est le
+        # comportement testé), plantant mypy avec une INTERNAL ERROR plutôt que
+        # de rapporter proprement une erreur de type. Le déballage dynamique
+        # produit un appel strictement équivalent à l'exécution, hors de portée
+        # de cette analyse statique spécifique.
         with self.assertRaises(FieldError):
-            list(Abonne.objects.filter(nom__icontains="a"))
+            list(Abonne.objects.filter(**{"nom__icontains": "a"}))
 
-    def test_exact_leve_fielderror(self):
+    def test_exact_leve_fielderror(self) -> None:
         """Même '=exact' est impossible : chiffrer deux fois "Doe" ne donne
         jamais le même texte chiffré que celui stocké en base."""
         with self.assertRaises(FieldError):
-            list(Abonne.objects.filter(telephone_whatsapp="+237690000000"))
+            list(Abonne.objects.filter(**{"telephone_whatsapp": "+237690000000"}))
 
-    def test_isnull_reste_autorise(self):
+    def test_isnull_reste_autorise(self) -> None:
         """`isnull` ne compare aucun contenu chiffré : doit rester utilisable."""
         Abonne.objects.create(numero_abonne="AB-1006", nom="Z", prenom="Z", telephone_whatsapp="+237690000015")
         self.assertEqual(Abonne.objects.filter(nom__isnull=True).count(), 0)
@@ -92,17 +99,17 @@ class FernetKeyConfigurationTests(TestCase):
     projet (INTERNAL_GRPC_KEY) — jamais de repli silencieux sur une clé par
     défaut connue de tous."""
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         fields._fernet.cache_clear()
 
     @override_settings(PII_ENCRYPTION_KEY="")
-    def test_cle_absente_leve_improperly_configured(self):
+    def test_cle_absente_leve_improperly_configured(self) -> None:
         fields._fernet.cache_clear()
         with self.assertRaises(ImproperlyConfigured):
             Abonne.objects.create(numero_abonne="AB-1007", nom="A", prenom="B", telephone_whatsapp="+237690000016")
 
     @override_settings(PII_ENCRYPTION_KEY="pas-une-cle-fernet-valide")
-    def test_cle_mal_formee_leve_improperly_configured(self):
+    def test_cle_mal_formee_leve_improperly_configured(self) -> None:
         fields._fernet.cache_clear()
         with self.assertRaises(ImproperlyConfigured):
             Abonne.objects.create(numero_abonne="AB-1008", nom="A", prenom="B", telephone_whatsapp="+237690000017")

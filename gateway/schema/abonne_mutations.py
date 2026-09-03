@@ -72,7 +72,7 @@ class AbonneMutations:
         """RGPD — droit à la portabilité. Renvoie l'export JSON structuré tel
         quel (voir abonnes/export.py côté Abonné Service)."""
         require_role(info, "ADMIN")
-        return abonne_client.exporter_donnees_abonne(str(abonne_id)).json_export
+        return str(abonne_client.exporter_donnees_abonne(str(abonne_id)).json_export)
 
     @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def update_compteur(
