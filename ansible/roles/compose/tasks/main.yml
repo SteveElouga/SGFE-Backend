@@ -38,8 +38,14 @@
     mode: "0644"
 
 - name: Répertoire des clés JWT
+  # `services/auth/keys`, pas `keys` à la racine : c'est le chemin que
+  # docker-compose.yml monte dans le conteneur (`./services/auth/keys:/app/keys:ro`,
+  # résolu depuis {{ deploy_dir }} où vit le compose). Un répertoire `keys/` à la
+  # racine du déploiement ne serait monté nulle part — l'auth-service ne le
+  # verrait jamais et refuserait de démarrer (fail-fast RS256) en croyant les
+  # clés absentes, alors qu'elles existeraient juste au mauvais endroit.
   ansible.builtin.file:
-    path: "{{ deploy_dir }}/keys"
+    path: "{{ deploy_dir }}/services/auth/keys"
     state: directory
     owner: "{{ deploy_user }}"
     group: "{{ deploy_user }}"
@@ -47,18 +53,22 @@
 
 - name: Les clés RS256 existent-elles déjà ?
   ansible.builtin.stat:
-    path: "{{ deploy_dir }}/keys/private.pem"
+    path: "{{ deploy_dir }}/services/auth/keys/jwt_private.pem"
   register: compose_cle_privee
 
 - name: Générer la paire RS256
   # Générée SUR la machine, jamais transportée. L'auth-service refuse de démarrer
   # sans elle (fail-fast RS256) ; la régénérer invaliderait tous les jetons en
   # circulation, d'où le `when` — on ne la remplace pas à chaque amorçage.
+  #
+  # Noms de fichiers alignés sur scripts/gen-jwt-keys.sh et sur les défauts de
+  # services/auth/auth/settings.py (JWT_PRIVATE_KEY_PATH/JWT_PUBLIC_KEY_PATH) :
+  # jwt_private.pem / jwt_public.pem, pas private.pem / public.pem.
   when: not compose_cle_privee.stat.exists
   block:
     - name: Clé privée
       community.crypto.openssl_privatekey:
-        path: "{{ deploy_dir }}/keys/private.pem"
+        path: "{{ deploy_dir }}/services/auth/keys/jwt_private.pem"
         size: 2048
         owner: "{{ deploy_user }}"
         group: "{{ deploy_user }}"
@@ -66,8 +76,8 @@
 
     - name: Clé publique
       community.crypto.openssl_publickey:
-        path: "{{ deploy_dir }}/keys/public.pem"
-        privatekey_path: "{{ deploy_dir }}/keys/private.pem"
+        path: "{{ deploy_dir }}/services/auth/keys/jwt_public.pem"
+        privatekey_path: "{{ deploy_dir }}/services/auth/keys/jwt_private.pem"
         owner: "{{ deploy_user }}"
         group: "{{ deploy_user }}"
         mode: "0644"
