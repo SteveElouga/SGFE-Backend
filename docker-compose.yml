@@ -405,6 +405,10 @@ services:
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key
+      # Chiffrement au repos des PII abonné (nom, prénom, téléphone WhatsApp,
+      # adresse — abonnes/fields.py). Placeholder dev uniquement : une vraie
+      # clé (secrets manager) est requise en production, jamais celle-ci.
+      PII_ENCRYPTION_KEY: ${PII_ENCRYPTION_KEY:-hps7C35W7-d_yhAuUUVePR14wScMSG3ffezJhI0qp58=}
     volumes:
       - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
