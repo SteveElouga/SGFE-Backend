@@ -39,7 +39,11 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-if TESTING:
+# La CI fait tourner ces tests sur PostgreSQL 16 (même moteur qu'en prod) en
+# positionnant FORCE_POSTGRES_TESTS=True (+ les CONFIG_DB_* habituels pointés
+# vers le service postgres du job). Par défaut (dev local), TESTING seul
+# suffit à retomber sur SQLite en mémoire — rapide, zéro dépendance.
+if TESTING and not env.bool("FORCE_POSTGRES_TESTS", default=False):
     DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
 else:
     DATABASES = {
