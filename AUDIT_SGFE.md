@@ -342,7 +342,7 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 - [ ] Réduire l'**access token** à 15‑30 min (`services/auth/auth/settings.py:101`). *(S)*
 - [ ] Forcer le cookie refresh `Secure=True` en prod indépendamment de `DEBUG` (`gateway/gateway/settings.py:84`). *(S)*
 - [ ] En‑têtes de sécurité : `SecurityMiddleware` Django + **HSTS** + **CSP** + `X-Content-Type-Options` + `Referrer-Policy` (gateway + nginx LB). *(M)*
-- [ ] Confirmer l'intention de `infosSociete` non authentifié, sinon `require_auth` (`gateway/schema/config_queries.py:11`). *(S)*
+- [x] Confirmer l'intention de `infosSociete` non authentifié, sinon `require_auth` (`gateway/schema/config_queries.py:11`). *(S)* — **Résolu le 3 sept. 2026** : usage frontend vérifié (seul consommateur, `features/configuration/`, déjà `roleGuard(['ADMIN'])`), aucun écran public. `require_auth(info)` ajouté + test.
 
 **D. Bugs d'alignement bloquants**
 
