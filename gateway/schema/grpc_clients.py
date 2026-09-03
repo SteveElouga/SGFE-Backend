@@ -99,8 +99,24 @@ class AbonneServiceClient:
     def get_abonne(self, abonne_id: str) -> abonne_pb.AbonneResponse:
         return self._stub.GetAbonne(abonne_pb.AbonneIdRequest(abonne_id=abonne_id))
 
-    def list_abonnes(self, statut: str = "") -> abonne_pb.ListAbonnesResponse:
-        return self._stub.ListAbonnes(abonne_pb.ListAbonnesRequest(statut=statut))
+    def list_abonnes(
+        self, statut: str = "", limit: int | None = None, offset: int | None = None
+    ) -> abonne_pb.ListAbonnesResponse:
+        """Abonnés filtrés. `limit`/`offset` optionnels — omis, le champ
+        proto3 `optional` correspondant reste non défini côté serveur, qui
+        renvoie alors la liste complète (rétrocompatibilité stricte)."""
+        kwargs = {"statut": statut}
+        if limit is not None:
+            kwargs["limit"] = limit
+        if offset is not None:
+            kwargs["offset"] = offset
+        return self._stub.ListAbonnes(abonne_pb.ListAbonnesRequest(**kwargs))
+
+    def count_abonnes(self, statut: str = "") -> int:
+        """Nombre total d'abonnés pour ce filtre, sans rapatrier la liste :
+        demande la page la plus petite possible (`limit=0`) et ne lit que
+        `total` sur la réponse."""
+        return self.list_abonnes(statut, limit=0, offset=0).total
 
     def list_abonnes_actifs(self) -> abonne_pb.ListAbonnesResponse:
         return self._stub.ListAbonnesActifs(abonne_pb.EmptyRequest())
@@ -258,18 +274,48 @@ class FacturationServiceClient:
         statut: str = "",
         date_debut: str = "",
         date_fin: str = "",
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> facturation_pb.ListFacturesResponse:
         """Factures filtrées. `date_debut`/`date_fin` : bornes ISO incluses, sur
-        la date de génération — la seule que portent les deux natures de facture."""
-        return self._stub.ListFactures(
-            facturation_pb.ListFacturesRequest(
-                campagne_id=campagne_id,
-                abonne_id=abonne_id,
-                statut=statut,
-                date_debut=date_debut,
-                date_fin=date_fin,
-            )
-        )
+        la date de génération — la seule que portent les deux natures de facture.
+
+        `limit`/`offset` optionnels — omis, le champ proto3 `optional`
+        correspondant reste non défini côté serveur, qui renvoie alors la
+        liste complète filtrée (rétrocompatibilité stricte)."""
+        kwargs = {
+            "campagne_id": campagne_id,
+            "abonne_id": abonne_id,
+            "statut": statut,
+            "date_debut": date_debut,
+            "date_fin": date_fin,
+        }
+        if limit is not None:
+            kwargs["limit"] = limit
+        if offset is not None:
+            kwargs["offset"] = offset
+        return self._stub.ListFactures(facturation_pb.ListFacturesRequest(**kwargs))
+
+    def count_factures(
+        self,
+        campagne_id: str = "",
+        abonne_id: str = "",
+        statut: str = "",
+        date_debut: str = "",
+        date_fin: str = "",
+    ) -> int:
+        """Nombre total de factures pour ce filtre, sans rapatrier la liste :
+        demande la page la plus petite possible (`limit=0`) et ne lit que
+        `total` sur la réponse."""
+        return self.list_factures(
+            campagne_id=campagne_id,
+            abonne_id=abonne_id,
+            statut=statut,
+            date_debut=date_debut,
+            date_fin=date_fin,
+            limit=0,
+            offset=0,
+        ).total
 
     def get_factures_par_campagne(self, campagne_id: str) -> facturation_pb.ListFacturesResponse:
         return self._stub.GetFacturesParCampagne(facturation_pb.CampagneIdRequest(campagne_id=campagne_id))
@@ -344,17 +390,45 @@ class PaiementServiceClient:
         abonne_id: str = "",
         date_debut: str = "",
         date_fin: str = "",
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> paiement_pb.ListPaiementsResponse:
         """Paiements filtrés. `date_debut`/`date_fin` : bornes ISO incluses, sur
-        la date de paiement — la date de caisse, celle qu'un journal demande."""
-        return self._stub.ListPaiements(
-            paiement_pb.ListPaiementsRequest(
-                facture_id=facture_id,
-                abonne_id=abonne_id,
-                date_debut=date_debut,
-                date_fin=date_fin,
-            )
-        )
+        la date de paiement — la date de caisse, celle qu'un journal demande.
+
+        `limit`/`offset` optionnels — omis, le champ proto3 `optional`
+        correspondant reste non défini côté serveur, qui renvoie alors la
+        liste complète filtrée (rétrocompatibilité stricte)."""
+        kwargs = {
+            "facture_id": facture_id,
+            "abonne_id": abonne_id,
+            "date_debut": date_debut,
+            "date_fin": date_fin,
+        }
+        if limit is not None:
+            kwargs["limit"] = limit
+        if offset is not None:
+            kwargs["offset"] = offset
+        return self._stub.ListPaiements(paiement_pb.ListPaiementsRequest(**kwargs))
+
+    def count_paiements(
+        self,
+        facture_id: str = "",
+        abonne_id: str = "",
+        date_debut: str = "",
+        date_fin: str = "",
+    ) -> int:
+        """Nombre total de paiements pour ce filtre, sans rapatrier la liste :
+        demande la page la plus petite possible (`limit=0`) et ne lit que
+        `total` sur la réponse."""
+        return self.list_paiements(
+            facture_id=facture_id,
+            abonne_id=abonne_id,
+            date_debut=date_debut,
+            date_fin=date_fin,
+            limit=0,
+            offset=0,
+        ).total
 
     def list_paiements_par_campagne(self, campagne_id: str) -> paiement_pb.ListPaiementsResponse:
         return self._stub.ListPaiementsParCampagne(paiement_pb.CampagneIdRequest(campagne_id=campagne_id))

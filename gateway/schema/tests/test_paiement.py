@@ -107,6 +107,47 @@ class TestPaiementQueries(SimpleTestCase):
     @patch("schema.paiement_queries.paiement_client")
     @patch("schema.paiement_queries.require_auth")
     @patch("schema.paiement_queries.require_role")
+    def test_paiements_sans_limit_offset_appelle_le_client_comme_avant(
+        self, mock_role, mock_auth, mock_client, mock_auth_client
+    ) -> None:
+        """Non-régression explicite : `limit`/`offset` omis, l'appel au client
+        gRPC reste identique à ce qu'il était avant leur introduction."""
+        mock_auth.return_value = MagicMock(role="ADMIN")
+        mock_client.list_paiements.return_value = MagicMock(paiements=[_paiement_response()])
+        mock_auth_client.get_user.return_value = MagicMock(username="bah.comptable")
+        info = MagicMock()
+        result = PaiementQueries().paiements(info, facture_id="facture-001")
+        self.assertEqual(len(result), 1)
+        mock_client.list_paiements.assert_called_once_with(facture_id="facture-001", abonne_id="")
+
+    @patch("schema.paiement_queries.auth_client")
+    @patch("schema.paiement_queries.paiement_client")
+    @patch("schema.paiement_queries.require_auth")
+    @patch("schema.paiement_queries.require_role")
+    def test_paiements_avec_pagination_transmet_limit_offset(
+        self, mock_role, mock_auth, mock_client, mock_auth_client
+    ) -> None:
+        mock_auth.return_value = MagicMock(role="ADMIN")
+        mock_client.list_paiements.return_value = MagicMock(paiements=[])
+        info = MagicMock()
+        PaiementQueries().paiements(info, facture_id="facture-001", limit=10, offset=5)
+        mock_client.list_paiements.assert_called_once_with(facture_id="facture-001", abonne_id="", limit=10, offset=5)
+
+    @patch("schema.paiement_queries.paiement_client")
+    @patch("schema.paiement_queries.require_auth")
+    @patch("schema.paiement_queries.require_role")
+    def test_paiements_count(self, mock_role, mock_auth, mock_client) -> None:
+        mock_auth.return_value = MagicMock(role="ADMIN")
+        mock_client.count_paiements.return_value = 15
+        info = MagicMock()
+        result = PaiementQueries().paiements_count(info, facture_id="facture-001")
+        self.assertEqual(result, 15)
+        mock_client.count_paiements.assert_called_once_with(facture_id="facture-001", abonne_id="")
+
+    @patch("schema.paiement_queries.auth_client")
+    @patch("schema.paiement_queries.paiement_client")
+    @patch("schema.paiement_queries.require_auth")
+    @patch("schema.paiement_queries.require_role")
     def test_paiements_resout_chaque_operateur_une_seule_fois(
         self, mock_role, mock_auth, mock_client, mock_auth_client
     ) -> None:

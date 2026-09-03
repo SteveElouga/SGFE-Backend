@@ -57,13 +57,38 @@ class PaiementQueries:
         info: strawberry.types.Info,
         facture_id: str = "",
         abonne_id: str = "",
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> list[Paiement]:
-        """Liste des paiements avec filtres optionnels — ADMIN, COMPTABLE."""
+        """Liste des paiements avec filtres optionnels — ADMIN, COMPTABLE.
+
+        `limit`/`offset` optionnels : omis, la liste complète filtrée est
+        renvoyée à l'identique — comportement historique préservé
+        (rétrocompatibilité stricte). Voir `paiementsCount` pour le nombre
+        total sans charger la liste.
+        """
         require_auth(info)
         require_role(info, "ADMIN", "COMPTABLE")
-        response = paiement_client.list_paiements(facture_id=facture_id, abonne_id=abonne_id)
+        pagination: dict[str, int] = {}
+        if limit is not None:
+            pagination["limit"] = limit
+        if offset is not None:
+            pagination["offset"] = offset
+        response = paiement_client.list_paiements(facture_id=facture_id, abonne_id=abonne_id, **pagination)
         operateurs = _resoudre_operateurs({p.enregistre_par for p in response.paiements})
         return [paiement_from_grpc(p, operateur=operateurs.get(p.enregistre_par, "")) for p in response.paiements]
+
+    @strawberry.field
+    def paiements_count(self, info: strawberry.types.Info, facture_id: str = "", abonne_id: str = "") -> int:
+        """Nombre total de paiements correspondant aux filtres — ADMIN, COMPTABLE.
+
+        Choix technique (voir le rapport de la tâche « pagination serveur ») :
+        une query dédiée plutôt qu'un champ `total` sur `paiements`, pour ne
+        pas changer le type de retour existant (`[Paiement!]!`).
+        """
+        require_auth(info)
+        require_role(info, "ADMIN", "COMPTABLE")
+        return paiement_client.count_paiements(facture_id=facture_id, abonne_id=abonne_id)
 
     @strawberry.field
     def impayes(self, info: strawberry.types.Info) -> list[SoldeFacture]:

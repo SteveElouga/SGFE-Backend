@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 from django.test import SimpleTestCase
 
-from schema.grpc_clients import AbonneServiceClient, AuthServiceClient
+from schema.grpc_clients import AbonneServiceClient, AuthServiceClient, FacturationServiceClient, PaiementServiceClient
 
 
 class AuthServiceClientTests(SimpleTestCase):
@@ -66,6 +66,26 @@ class AbonneServiceClientTests(SimpleTestCase):
         self.client.list_abonnes("ACTIF")
         self.assertEqual(self.client._stub.ListAbonnes.call_args[0][0].statut, "ACTIF")
 
+    def test_list_abonnes_sans_pagination_ne_transmet_pas_limit_offset(self):
+        # Rétrocompatibilité stricte : omis, les champs proto3 `optional`
+        # restent non définis (`HasField` renvoie `False` côté serveur).
+        self.client.list_abonnes("ACTIF")
+        request = self.client._stub.ListAbonnes.call_args[0][0]
+        self.assertFalse(request.HasField("limit"))
+        self.assertFalse(request.HasField("offset"))
+
+    def test_list_abonnes_avec_pagination(self):
+        self.client.list_abonnes("ACTIF", limit=5, offset=10)
+        request = self.client._stub.ListAbonnes.call_args[0][0]
+        self.assertEqual((request.statut, request.limit, request.offset), ("ACTIF", 5, 10))
+
+    def test_count_abonnes_demande_une_page_de_taille_zero(self):
+        self.client._stub.ListAbonnes.return_value = Mock(total=42)
+        total = self.client.count_abonnes("ACTIF")
+        self.assertEqual(total, 42)
+        request = self.client._stub.ListAbonnes.call_args[0][0]
+        self.assertEqual((request.limit, request.offset), (0, 0))
+
     def test_list_abonnes_actifs(self):
         self.client.list_abonnes_actifs()
         self.client._stub.ListAbonnesActifs.assert_called_once()
@@ -111,3 +131,53 @@ class AbonneServiceClientTests(SimpleTestCase):
         )
         request = self.client._stub.RemplacerCompteur.call_args[0][0]
         self.assertEqual((request.abonne_id, request.nouveau_numero_compteur), ("abonne-1", 2))
+
+
+class FacturationServiceClientTests(SimpleTestCase):
+    def setUp(self):
+        self.client = FacturationServiceClient()
+        self.client._stub = Mock()
+
+    def test_list_factures_sans_pagination_ne_transmet_pas_limit_offset(self):
+        self.client.list_factures(campagne_id="camp-1")
+        request = self.client._stub.ListFactures.call_args[0][0]
+        self.assertEqual(request.campagne_id, "camp-1")
+        self.assertFalse(request.HasField("limit"))
+        self.assertFalse(request.HasField("offset"))
+
+    def test_list_factures_avec_pagination(self):
+        self.client.list_factures(campagne_id="camp-1", limit=10, offset=20)
+        request = self.client._stub.ListFactures.call_args[0][0]
+        self.assertEqual((request.limit, request.offset), (10, 20))
+
+    def test_count_factures_demande_une_page_de_taille_zero(self):
+        self.client._stub.ListFactures.return_value = Mock(total=7)
+        total = self.client.count_factures(campagne_id="camp-1")
+        self.assertEqual(total, 7)
+        request = self.client._stub.ListFactures.call_args[0][0]
+        self.assertEqual((request.limit, request.offset), (0, 0))
+
+
+class PaiementServiceClientTests(SimpleTestCase):
+    def setUp(self):
+        self.client = PaiementServiceClient()
+        self.client._stub = Mock()
+
+    def test_list_paiements_sans_pagination_ne_transmet_pas_limit_offset(self):
+        self.client.list_paiements(facture_id="facture-1")
+        request = self.client._stub.ListPaiements.call_args[0][0]
+        self.assertEqual(request.facture_id, "facture-1")
+        self.assertFalse(request.HasField("limit"))
+        self.assertFalse(request.HasField("offset"))
+
+    def test_list_paiements_avec_pagination(self):
+        self.client.list_paiements(facture_id="facture-1", limit=3, offset=6)
+        request = self.client._stub.ListPaiements.call_args[0][0]
+        self.assertEqual((request.limit, request.offset), (3, 6))
+
+    def test_count_paiements_demande_une_page_de_taille_zero(self):
+        self.client._stub.ListPaiements.return_value = Mock(total=15)
+        total = self.client.count_paiements(facture_id="facture-1")
+        self.assertEqual(total, 15)
+        request = self.client._stub.ListPaiements.call_args[0][0]
+        self.assertEqual((request.limit, request.offset), (0, 0))
