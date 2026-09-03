@@ -9,7 +9,9 @@ idempotentes autant que possible (upsert par campagne_id).
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Protocol
 
+from stats.dtos import FactureDict, PaiementDict
 from stats.models import StatsCampagne, StatsFacturation, StatsPaiements
 from stats.repositories import (
     StatsCampagneRepository,
@@ -19,10 +21,29 @@ from stats.repositories import (
 
 logger = logging.getLogger(__name__)
 
+
+class _FacturationClient(Protocol):
+    """Forme structurelle attendue de `FacturationServiceClient` (grpc_clients.py).
+
+    Un Protocol plutôt qu'une dépendance directe à la classe concrète : les
+    doubles de test (`_FakeFacturationClient`) n'en héritent pas mais y
+    correspondent structurellement, ce que `ReconciliateurStats.__init__`
+    peut donc accepter sans recourir à `Any`.
+    """
+
+    def list_factures_par_campagne(self, campagne_id: str) -> list[FactureDict]: ...
+
+
+class _PaiementClient(Protocol):
+    """Forme structurelle attendue de `PaiementServiceClient` (grpc_clients.py) — voir _FacturationClient."""
+
+    def list_paiements_par_campagne(self, campagne_id: str) -> list[PaiementDict]: ...
+
+
 _CENT = Decimal("0.01")
 
 
-def _dec(value) -> Decimal:
+def _dec(value: float) -> Decimal:
     """Convertit un double proto en Decimal sans erreur de flottant."""
     return Decimal(str(value))
 
@@ -216,7 +237,11 @@ class ReconciliateurStats:
     vues passer, indépendamment de tout événement de facturation/paiement.
     """
 
-    def __init__(self, facturation_client=None, paiement_client=None) -> None:
+    def __init__(
+        self,
+        facturation_client: _FacturationClient | None = None,
+        paiement_client: _PaiementClient | None = None,
+    ) -> None:
         from stats.grpc_clients import FacturationServiceClient, PaiementServiceClient
 
         self._facturation_client = facturation_client or FacturationServiceClient()

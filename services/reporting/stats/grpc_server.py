@@ -12,7 +12,7 @@ import reporting_service_pb2_grpc as pb_grpc
 
 from stats.grpc_interceptors import ErrorHandlingInterceptor
 from stats.grpc_auth import AuthServerInterceptor, ouvrir_port_grpc
-from stats.services import AgregateurDashboard
+from stats.services import AgregateurDashboard, Dashboard
 from stats.serializers import (
     stats_campagne_to_dict,
     stats_facturation_to_dict,
@@ -20,7 +20,11 @@ from stats.serializers import (
 )
 
 
-class ReportingServiceServicer(pb_grpc.ReportingServiceServicer):
+class ReportingServiceServicer(pb_grpc.ReportingServiceServicer):  # type: ignore[misc]
+    # ^ ReportingServiceServicer vient du stub généré reporting_service_pb2_grpc,
+    # exclu de la vérification mypy (voir mypy.ini) — mypy le voit donc comme
+    # `Any`, ce qui rend toute sous-classe de lui structurellement "misc" ; rien
+    # à corriger côté code métier ici.
     """Implémentation des RPCs du Reporting Service (agrégateur read-only).
 
     ObjectDoesNotExist (GetStatsCampagne sur une campagne inconnue) est converti
@@ -30,7 +34,7 @@ class ReportingServiceServicer(pb_grpc.ReportingServiceServicer):
     def __init__(self) -> None:
         self._agg = AgregateurDashboard()
 
-    def _dashboard_to_proto(self, d) -> pb.DashboardResponse:
+    def _dashboard_to_proto(self, d: Dashboard) -> pb.DashboardResponse:
         """Construit un DashboardResponse à partir d'un Dashboard (sous-blocs None → vides)."""
         return pb.DashboardResponse(
             campagne_en_cours=(
@@ -50,17 +54,19 @@ class ReportingServiceServicer(pb_grpc.ReportingServiceServicer):
             ),
         )
 
-    def GetDashboard(self, request, context):
+    def GetDashboard(self, request: pb.EmptyRequest, context: grpc.ServicerContext) -> pb.DashboardResponse:
         return self._dashboard_to_proto(self._agg.get_dashboard())
 
-    def GetStatsCompletes(self, request, context):
+    def GetStatsCompletes(self, request: pb.CampagneIdRequest, context: grpc.ServicerContext) -> pb.DashboardResponse:
         return self._dashboard_to_proto(self._agg.get_stats_completes(request.campagne_id))
 
-    def GetStatsCampagne(self, request, context):
+    def GetStatsCampagne(
+        self, request: pb.CampagneIdRequest, context: grpc.ServicerContext
+    ) -> pb.StatsCampagneResponse:
         stats = self._agg.get_stats_campagne(request.campagne_id)
         return pb.StatsCampagneResponse(**stats_campagne_to_dict(stats))
 
-    def GetStatsGlobales(self, request, context):
+    def GetStatsGlobales(self, request: pb.EmptyRequest, context: grpc.ServicerContext) -> pb.StatsGlobalesResponse:
         g = self._agg.get_stats_globales()
         return pb.StatsGlobalesResponse(
             historique_campagnes=[
@@ -71,7 +77,9 @@ class ReportingServiceServicer(pb_grpc.ReportingServiceServicer):
             montant_total_encaisse_global=float(g.montant_total_encaisse_global),
         )
 
-    def UpdateStatsCampagne(self, request, context):
+    def UpdateStatsCampagne(
+        self, request: pb.UpdateStatsCampagneRequest, context: grpc.ServicerContext
+    ) -> pb.StatusResponse:
         self._agg.update_stats_campagne(
             campagne_id=request.campagne_id,
             nom_campagne=request.nom_campagne,
@@ -81,7 +89,9 @@ class ReportingServiceServicer(pb_grpc.ReportingServiceServicer):
         )
         return pb.StatusResponse(success=True)
 
-    def UpdateStatsFacturation(self, request, context):
+    def UpdateStatsFacturation(
+        self, request: pb.UpdateStatsFacturationRequest, context: grpc.ServicerContext
+    ) -> pb.StatusResponse:
         self._agg.update_stats_facturation(
             campagne_id=request.campagne_id,
             delta_factures=request.delta_factures,
@@ -90,7 +100,9 @@ class ReportingServiceServicer(pb_grpc.ReportingServiceServicer):
         )
         return pb.StatusResponse(success=True)
 
-    def UpdateStatsPaiements(self, request, context):
+    def UpdateStatsPaiements(
+        self, request: pb.UpdateStatsPaiementsRequest, context: grpc.ServicerContext
+    ) -> pb.StatusResponse:
         self._agg.update_stats_paiements(
             campagne_id=request.campagne_id,
             montant_paiement=request.montant_paiement,

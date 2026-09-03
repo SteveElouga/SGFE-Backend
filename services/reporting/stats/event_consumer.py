@@ -11,7 +11,9 @@ import json
 import logging
 import threading
 import time
+from typing import Any
 
+import redis
 from django.conf import settings
 from django.db import transaction
 
@@ -49,7 +51,7 @@ EVENT_FACTURATION = "FACTURATION_STATS"
 EVENT_PAIEMENT = "PAIEMENT_STATS"
 
 
-def apply_event(agg: AgregateurDashboard, event: dict) -> None:
+def apply_event(agg: AgregateurDashboard, event: dict[str, Any]) -> None:
     """Applique un événement au read model, de façon idempotente.
 
     L'insertion de `ProcessedEvent` et la mise à jour des stats sont dans la même
@@ -93,13 +95,11 @@ def apply_event(agg: AgregateurDashboard, event: dict) -> None:
             logger.warning("Type d'événement inconnu ignoré : %s", event_type)
 
 
-def _connect():
-    import redis
-
+def _connect() -> redis.Redis:
     return redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=2)
 
 
-def _ensure_group(r) -> None:
+def _ensure_group(r: redis.Redis) -> None:
     """Crée le stream + le consumer group s'ils n'existent pas (idempotent)."""
     try:
         r.xgroup_create(STREAM_KEY, GROUP, id="0", mkstream=True)
@@ -108,7 +108,7 @@ def _ensure_group(r) -> None:
             raise
 
 
-def _delivery_count(r, msg_id: str) -> int:
+def _delivery_count(r: redis.Redis, msg_id: str) -> int:
     """Nombre de fois où `msg_id` a été délivré à ce groupe, selon Redis.
 
     Lu via XPENDING (et non un compteur maison) : cette valeur survit aux
@@ -125,7 +125,7 @@ def _delivery_count(r, msg_id: str) -> int:
     return pending[0]["times_delivered"]
 
 
-def _dead_letter(r, msg_id: str, fields: dict, exc: BaseException) -> None:
+def _dead_letter(r: redis.Redis, msg_id: str, fields: dict[str, Any], exc: BaseException) -> None:
     """Déplace un événement qui échoue systématiquement vers le flux
     dead-letter, puis l'acquitte : une fois dead-lettré, il ne doit plus
     jamais être redélivré (sinon on recrée la boucle qu'on corrige)."""
@@ -147,7 +147,7 @@ def _dead_letter(r, msg_id: str, fields: dict, exc: BaseException) -> None:
     )
 
 
-def _handle_entries(r, agg: AgregateurDashboard, entries) -> None:
+def _handle_entries(r: redis.Redis, agg: AgregateurDashboard, entries: Any) -> None:
     for _stream, msgs in entries:
         for msg_id, fields in msgs:
             try:
