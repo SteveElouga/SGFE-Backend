@@ -11,7 +11,7 @@ from factures.grpc_interceptors import _abort_for
 
 
 class AbortForTests(SimpleTestCase):
-    def _code(self, exc: Exception):
+    def _code(self, exc: Exception) -> tuple[grpc.StatusCode | None, MagicMock]:
         ctx = MagicMock(spec=grpc.ServicerContext)
         _abort_for(exc, ctx, MagicMock(method="/Facturation/X"))
         return ctx.abort.call_args[0][0] if ctx.abort.called else None, ctx

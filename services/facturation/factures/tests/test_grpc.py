@@ -3,6 +3,7 @@
 import datetime
 import tempfile
 from decimal import Decimal
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import grpc
@@ -15,14 +16,14 @@ from factures.pdf_generator import InfosSociete
 from factures.services import TarifService
 
 
-def _make_context():
+def _make_context() -> MagicMock:
     # Le mapping exception -> abort est fait par l'interceptor (testé dans
     # test_grpc_interceptors.py) : le servicer propage l'exception métier.
     return MagicMock()
 
 
 class GetTarifActuelTests(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         from factures.grpc_server import FacturationServicer
 
         self.servicer = FacturationServicer.__new__(FacturationServicer)
@@ -31,7 +32,9 @@ class GetTarifActuelTests(TestCase):
         self.servicer._campagne_client = MagicMock()
         self.servicer._config_client = MagicMock()
 
-    def _pb(self):
+    def _pb(self) -> Any:
+        # `Any` : module de stubs gRPC générés (facturation_service_pb2), exclu
+        # de la vérification mypy (voir mypy.ini) — rien à typer de plus précis.
         import sys
         from pathlib import Path
 
@@ -42,27 +45,27 @@ class GetTarifActuelTests(TestCase):
 
         return pb
 
-    def test_get_tarif_actuel_succes(self):
+    def test_get_tarif_actuel_succes(self) -> None:
         TarifService().update_tarif(Decimal("500.00"), datetime.date(2025, 7, 1))
         pb = self._pb()
         response = self.servicer.GetTarifActuel(pb.EmptyRequest(), MagicMock())
         self.assertAlmostEqual(response.prix_m3, 500.0)
         self.assertTrue(response.is_active)
 
-    def test_get_tarif_actuel_absent_propage_not_found(self):
+    def test_get_tarif_actuel_absent_propage_not_found(self) -> None:
         Tarif.objects.all().delete()
         pb = self._pb()
         with self.assertRaises(ObjectDoesNotExist):
             self.servicer.GetTarifActuel(pb.EmptyRequest(), _make_context())
 
-    def test_update_tarif_succes(self):
+    def test_update_tarif_succes(self) -> None:
         pb = self._pb()
         request = pb.UpdateTarifRequest(prix_m3=600.0, date_effet="2025-08-01")
         response = self.servicer.UpdateTarif(request, MagicMock())
         self.assertAlmostEqual(response.prix_m3, 600.0)
         self.assertTrue(response.is_active)
 
-    def test_update_tarif_prix_invalide_propage_validation_error(self):
+    def test_update_tarif_prix_invalide_propage_validation_error(self) -> None:
         pb = self._pb()
         request = pb.UpdateTarifRequest(prix_m3=0.0, date_effet="2025-08-01")
         with self.assertRaises(ValidationError):
@@ -70,7 +73,7 @@ class GetTarifActuelTests(TestCase):
 
 
 class GenererFacturesTests(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         from factures.grpc_server import FacturationServicer
 
         self.servicer = FacturationServicer.__new__(FacturationServicer)
@@ -85,7 +88,9 @@ class GenererFacturesTests(TestCase):
 
         TarifService().update_tarif(Decimal("500.00"), datetime.date(2025, 7, 1))
 
-    def _pb(self):
+    def _pb(self) -> Any:
+        # `Any` : module de stubs gRPC générés (facturation_service_pb2), exclu
+        # de la vérification mypy (voir mypy.ini) — rien à typer de plus précis.
         import sys
         from pathlib import Path
 
@@ -96,8 +101,8 @@ class GenererFacturesTests(TestCase):
 
         return pb
 
-    def test_generer_factures_succes(self):
-        self.servicer._campagne_client.list_releves.return_value = [
+    def test_generer_factures_succes(self) -> None:
+        self.servicer._campagne_client.list_releves.return_value = [  # type: ignore[attr-defined]
             {
                 "abonne_id": "abo-001",
                 "ancien_index": 100.0,
@@ -115,15 +120,15 @@ class GenererFacturesTests(TestCase):
         self.assertEqual(len(response.factures), 1)
         self.assertAlmostEqual(response.factures[0].montant, 7500.0)
 
-    def test_generer_factures_campagne_service_ko_propage_rpc_error(self):
-        self.servicer._campagne_client.list_releves.side_effect = grpc.RpcError()
+    def test_generer_factures_campagne_service_ko_propage_rpc_error(self) -> None:
+        self.servicer._campagne_client.list_releves.side_effect = grpc.RpcError()  # type: ignore[attr-defined]
         pb = self._pb()
         with self.assertRaises(grpc.RpcError):
             self.servicer.GenererFactures(pb.GenererFacturesRequest(campagne_id="camp-002"), _make_context())
 
-    def test_generer_factures_sans_tarif_propage_precondition_error(self):
+    def test_generer_factures_sans_tarif_propage_precondition_error(self) -> None:
         Tarif.objects.all().delete()
-        self.servicer._campagne_client.list_releves.return_value = [
+        self.servicer._campagne_client.list_releves.return_value = [  # type: ignore[attr-defined]
             {
                 "abonne_id": "abo-001",
                 "ancien_index": 100.0,
@@ -143,7 +148,7 @@ class GenererFacturesTests(TestCase):
 
 
 class UpdateStatutFactureTests(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         from factures.grpc_server import FacturationServicer
         from factures.tests.helpers import service_avec_clients_mockes
 
@@ -186,21 +191,21 @@ class UpdateStatutFactureTests(TestCase):
                 )
         self.facture_id = response.factures[0].facture_id
 
-    def test_update_statut_vers_partielle(self):
+    def test_update_statut_vers_partielle(self) -> None:
         response = self.servicer.UpdateStatutFacture(
             self._pb.UpdateStatutRequest(facture_id=self.facture_id, statut=StatutFacture.PARTIELLE),
             MagicMock(),
         )
         self.assertEqual(response.statut, StatutFacture.PARTIELLE)
 
-    def test_update_statut_invalide_propage_validation_error(self):
+    def test_update_statut_invalide_propage_validation_error(self) -> None:
         with self.assertRaises(ValidationError):
             self.servicer.UpdateStatutFacture(
                 self._pb.UpdateStatutRequest(facture_id=self.facture_id, statut="INVALIDE"),
                 _make_context(),
             )
 
-    def test_get_facture_introuvable_propage_not_found(self):
+    def test_get_facture_introuvable_propage_not_found(self) -> None:
         with self.assertRaises(ObjectDoesNotExist):
             self.servicer.GetFacture(
                 self._pb.FactureIdRequest(facture_id="00000000-0000-0000-0000-000000000000"),
@@ -213,7 +218,7 @@ class AnnulerFactureTests(TestCase):
     comme le fait déjà `UpdateStatutFacture` — sinon un écran de facture
     ouvert au moment de l'annulation ne le voit qu'au prochain rechargement."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         from factures.grpc_server import FacturationServicer
         from factures.tests.helpers import service_avec_clients_mockes
 
@@ -257,7 +262,7 @@ class AnnulerFactureTests(TestCase):
         self.campagne_id = response.factures[0].campagne_id
 
     @patch("factures.grpc_server.publish_facture_event")
-    def test_annuler_facture_notifie_la_gateway(self, mock_publish):
+    def test_annuler_facture_notifie_la_gateway(self, mock_publish: MagicMock) -> None:
         response = self.servicer.AnnulerFacture(
             self._pb.AnnulerFactureRequest(facture_id=self.facture_id, motif="erreur d'index", annule_par="admin-1"),
             _make_context(),
@@ -273,7 +278,7 @@ class ListFacturesTests(TestCase):
     filtres existants, et `total` cohérent avec le nombre réel de lignes
     filtrées (pas la page rendue)."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         from factures.grpc_server import FacturationServicer
         from factures.tests.helpers import service_avec_clients_mockes
 
@@ -300,7 +305,9 @@ class ListFacturesTests(TestCase):
                 date_generation=datetime.datetime(2026, 7, 1 + i, 9, 0, tzinfo=datetime.UTC)
             )
 
-    def _pb(self):
+    def _pb(self) -> Any:
+        # `Any` : module de stubs gRPC générés (facturation_service_pb2), exclu
+        # de la vérification mypy (voir mypy.ini) — rien à typer de plus précis.
         import sys
         from pathlib import Path
 
@@ -311,7 +318,7 @@ class ListFacturesTests(TestCase):
 
         return pb
 
-    def test_sans_pagination_renvoie_tout_et_total_coherent(self):
+    def test_sans_pagination_renvoie_tout_et_total_coherent(self) -> None:
         # Non-régression : `limit`/`offset` omis (champs proto3 `optional`
         # non définis) doit préserver le comportement historique.
         pb = self._pb()
@@ -319,7 +326,7 @@ class ListFacturesTests(TestCase):
         self.assertEqual(len(response.factures), 5)
         self.assertEqual(response.total, 5)
 
-    def test_avec_pagination_tronque_et_ordonne_du_plus_recent(self):
+    def test_avec_pagination_tronque_et_ordonne_du_plus_recent(self) -> None:
         pb = self._pb()
         response = self.servicer.ListFactures(
             pb.ListFacturesRequest(campagne_id="camp-x", limit=2, offset=0), _make_context()
@@ -328,7 +335,7 @@ class ListFacturesTests(TestCase):
         # Le total porte sur l'ensemble filtré, pas sur la seule page rendue.
         self.assertEqual(response.total, 5)
 
-    def test_pagination_hors_limites_renvoie_liste_vide_pas_une_erreur(self):
+    def test_pagination_hors_limites_renvoie_liste_vide_pas_une_erreur(self) -> None:
         pb = self._pb()
         response = self.servicer.ListFactures(
             pb.ListFacturesRequest(campagne_id="camp-x", limit=10, offset=100), _make_context()
@@ -336,7 +343,7 @@ class ListFacturesTests(TestCase):
         self.assertEqual(len(response.factures), 0)
         self.assertEqual(response.total, 5)
 
-    def test_pagination_se_combine_au_filtre_statut(self):
+    def test_pagination_se_combine_au_filtre_statut(self) -> None:
         # La pagination doit porter sur le résultat FILTRÉ par statut, pas sur
         # la table brute.
         pb = self._pb()

@@ -5,7 +5,7 @@ import os
 import tempfile
 from decimal import Decimal
 from io import StringIO
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.core.management import call_command
 from django.test import TestCase
@@ -17,10 +17,10 @@ from factures.tests.helpers import service_avec_clients_mockes
 
 
 class TarifServiceTests(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.svc = TarifService()
 
-    def test_update_tarif_cree_tarif_actif(self):
+    def test_update_tarif_cree_tarif_actif(self) -> None:
         tarif = self.svc.update_tarif(
             prix_m3=Decimal("500.00"),
             date_effet=datetime.date(2025, 7, 1),
@@ -28,7 +28,7 @@ class TarifServiceTests(TestCase):
         self.assertTrue(tarif.is_active)
         self.assertEqual(tarif.prix_m3, Decimal("500.00"))
 
-    def test_update_tarif_desactive_ancien(self):
+    def test_update_tarif_desactive_ancien(self) -> None:
         self.svc.update_tarif(Decimal("400.00"), datetime.date(2025, 1, 1))
         self.svc.update_tarif(Decimal("500.00"), datetime.date(2025, 7, 1))
 
@@ -36,20 +36,22 @@ class TarifServiceTests(TestCase):
         actifs = Tarif.objects.filter(is_active=True)
         self.assertEqual(anciens.count(), 1)
         self.assertEqual(actifs.count(), 1)
-        self.assertEqual(actifs.first().prix_m3, Decimal("500.00"))
+        actif = actifs.first()
+        assert actif is not None
+        self.assertEqual(actif.prix_m3, Decimal("500.00"))
 
-    def test_get_tarif_actuel(self):
+    def test_get_tarif_actuel(self) -> None:
         self.svc.update_tarif(Decimal("600.00"), datetime.date(2025, 7, 1))
         tarif = self.svc.get_tarif_actuel()
         self.assertEqual(tarif.prix_m3, Decimal("600.00"))
 
-    def test_update_tarif_prix_nul_leve_erreur(self):
+    def test_update_tarif_prix_nul_leve_erreur(self) -> None:
         from django.core.exceptions import ValidationError
 
         with self.assertRaises(ValidationError):
             self.svc.update_tarif(Decimal("0"), datetime.date(2025, 7, 1))
 
-    def test_update_tarif_prix_negatif_leve_erreur(self):
+    def test_update_tarif_prix_negatif_leve_erreur(self) -> None:
         from django.core.exceptions import ValidationError
 
         with self.assertRaises(ValidationError):
@@ -57,7 +59,7 @@ class TarifServiceTests(TestCase):
 
 
 class FactureServiceTests(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.svc = service_avec_clients_mockes()
         self.tarif_svc = TarifService()
         self.tarif_svc.update_tarif(Decimal("500.00"), datetime.date(2025, 7, 1))
@@ -72,7 +74,7 @@ class FactureServiceTests(TestCase):
             date_releve="2025-07-15",
         )
 
-    def test_generer_factures_cree_factures(self):
+    def test_generer_factures_cree_factures(self) -> None:
         releves = [
             self._make_releve("abo-001"),
             self._make_releve("abo-002", 200.0, 220.0),
@@ -93,7 +95,7 @@ class FactureServiceTests(TestCase):
         self.assertEqual(factures[0].statut, StatutFacture.IMPAYEE)
         self.assertEqual(factures[0].prix_m3, Decimal("500.00"))
 
-    def test_generer_factures_ignore_index_decroissant(self):
+    def test_generer_factures_ignore_index_decroissant(self) -> None:
         """Régression ANO-008 : Facturation doit revalider nouveau_index >=
         ancien_index et ne jamais générer de facture à montant négatif,
         même si un relevé corrompu franchit la validation de Campagne."""
@@ -116,7 +118,7 @@ class FactureServiceTests(TestCase):
         self.assertEqual(len(factures), 1)
         self.assertEqual(factures[0].abonne_id, "abo-001")
 
-    def test_generer_factures_retente_sur_collision_numero(self):
+    def test_generer_factures_retente_sur_collision_numero(self) -> None:
         """Régression ANO-007 / #11 : une collision de numéro séquentiel (course
         concurrente sur la 1re facture d'un mois, où le verrou FOR UPDATE ne
         protège rien) est réessayée avec un numéro recalculé, au lieu de remonter
@@ -157,7 +159,7 @@ class FactureServiceTests(TestCase):
         self.assertEqual(len(factures), 1)
         self.assertEqual(factures[0].numero_facture, "FACT-2025-07-0002")
 
-    def test_generer_factures_montant_recalcule_depuis_index(self):
+    def test_generer_factures_montant_recalcule_depuis_index(self) -> None:
         """Défense en profondeur : le montant dérive des index (nouveau - ancien),
         jamais du champ `consommation` reçu (qui pourrait être incohérent)."""
         releve = ReleveData(
@@ -183,7 +185,7 @@ class FactureServiceTests(TestCase):
         self.assertEqual(factures[0].consommation, Decimal("50.000"))
         self.assertEqual(factures[0].montant, Decimal("25000.00"))
 
-    def test_generer_factures_calcul_montant(self):
+    def test_generer_factures_calcul_montant(self) -> None:
         releve = self._make_releve("abo-001", 100.0, 110.0)
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -200,7 +202,7 @@ class FactureServiceTests(TestCase):
         # 10 m³ × 500 FCFA = 5 000 FCFA
         self.assertEqual(factures[0].montant, Decimal("5000.00"))
 
-    def test_generer_factures_date_limite_respectee(self):
+    def test_generer_factures_date_limite_respectee(self) -> None:
         releve = self._make_releve()
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -216,7 +218,7 @@ class FactureServiceTests(TestCase):
         # date_releve = 2025-07-15, délai = 5 jours → limite = 2025-07-20
         self.assertEqual(factures[0].date_limite_paiement, datetime.date(2025, 7, 20))
 
-    def test_generer_factures_date_releve_datetime(self):
+    def test_generer_factures_date_releve_datetime(self) -> None:
         """Régression ANO-032 : Campagne horodate date_releve (DateTimeField), donc
         date_releve peut arriver en datetime ISO (« ...T17:10:12+00:00 ») via le vrai
         flux SaisirIndex, pas seulement en date. La génération doit en extraire la
@@ -242,7 +244,7 @@ class FactureServiceTests(TestCase):
         self.assertEqual(factures[0].date_releve, datetime.date(2025, 7, 15))
         self.assertEqual(factures[0].date_limite_paiement, datetime.date(2025, 7, 20))
 
-    def test_generer_factures_sans_tarif_leve_erreur(self):
+    def test_generer_factures_sans_tarif_leve_erreur(self) -> None:
         from django.core.exceptions import ValidationError
 
         Tarif.objects.all().delete()
@@ -254,7 +256,7 @@ class FactureServiceTests(TestCase):
                 societe=self.societe,
             )
 
-    def test_generer_factures_numero_sequentiel(self):
+    def test_generer_factures_numero_sequentiel(self) -> None:
         releves = [
             self._make_releve("abo-001"),
             self._make_releve("abo-002", 200.0, 210.0),
@@ -274,7 +276,7 @@ class FactureServiceTests(TestCase):
         self.assertIn("FACT-2025-07-0001", numeros)
         self.assertIn("FACT-2025-07-0002", numeros)
 
-    def test_update_statut_facture(self):
+    def test_update_statut_facture(self) -> None:
         releve = self._make_releve()
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -291,7 +293,7 @@ class FactureServiceTests(TestCase):
         self.assertEqual(updated.statut, StatutFacture.PARTIELLE)
 
     @patch("factures.services.publish_reporting_event")
-    def test_generer_factures_publie_stats_reporting_generee(self, mock_pub):
+    def test_generer_factures_publie_stats_reporting_generee(self, mock_pub: MagicMock) -> None:
         releves = [self._make_releve("abo-001"), self._make_releve("abo-002", 200.0, 220.0)]
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch("factures.services.settings") as mock_settings:
@@ -310,7 +312,7 @@ class FactureServiceTests(TestCase):
         self.assertEqual(kwargs["delta_montant"], 17500.0)
 
     @patch("factures.services.publish_reporting_event")
-    def test_update_statut_payee_publie_stats_reporting(self, mock_pub):
+    def test_update_statut_payee_publie_stats_reporting(self, mock_pub: MagicMock) -> None:
         releve = self._make_releve()
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch("factures.services.settings") as mock_settings:
@@ -329,7 +331,7 @@ class FactureServiceTests(TestCase):
         self.assertEqual(kwargs["delta_factures"], 1)
 
     @patch("factures.services.publish_reporting_event")
-    def test_update_statut_partielle_ne_publie_pas_payee(self, mock_pub):
+    def test_update_statut_partielle_ne_publie_pas_payee(self, mock_pub: MagicMock) -> None:
         releve = self._make_releve()
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch("factures.services.settings") as mock_settings:
@@ -343,7 +345,7 @@ class FactureServiceTests(TestCase):
 
         mock_pub.assert_not_called()
 
-    def test_update_statut_invalide_leve_erreur(self):
+    def test_update_statut_invalide_leve_erreur(self) -> None:
         from django.core.exceptions import ValidationError
 
         releve = self._make_releve()
@@ -361,7 +363,7 @@ class FactureServiceTests(TestCase):
         with self.assertRaises(ValidationError):
             self.svc.update_statut(str(factures[0].id), "INCONNU")
 
-    def test_list_factures_filtre_par_campagne(self):
+    def test_list_factures_filtre_par_campagne(self) -> None:
         releve = self._make_releve()
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -388,7 +390,7 @@ class FactureServiceTests(TestCase):
 class GetPdfBytesTests(TestCase):
     """Cache PDF version-aware : régénération si gabarit obsolète, repli si échec."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.svc = service_avec_clients_mockes()
         self.facture = Facture.objects.create(
             numero_facture="FACT-2026-07-0001",
@@ -407,10 +409,15 @@ class GetPdfBytesTests(TestCase):
         fd, path = tempfile.mkstemp(suffix=".pdf")
         with os.fdopen(fd, "wb") as f:
             f.write(contenu)
-        self.addCleanup(lambda: os.path.exists(path) and os.remove(path))
+
+        def _cleanup() -> None:
+            if os.path.exists(path):
+                os.remove(path)
+
+        self.addCleanup(_cleanup)
         return path
 
-    def test_sert_le_cache_si_version_a_jour(self):
+    def test_sert_le_cache_si_version_a_jour(self) -> None:
         self.facture.pdf_path = self._fichier_pdf(b"%PDF-cache")
         self.facture.pdf_template_version = PDF_TEMPLATE_VERSION
         self.facture.save()
@@ -422,7 +429,7 @@ class GetPdfBytesTests(TestCase):
         self.assertEqual(contenu, b"%PDF-cache")
         self.assertEqual(nom, "FACT-2026-07-0001.pdf")
 
-    def test_regenere_si_version_obsolete(self):
+    def test_regenere_si_version_obsolete(self) -> None:
         self.facture.pdf_path = self._fichier_pdf(b"%PDF-vieux")
         self.facture.pdf_template_version = 0  # antérieur au gabarit courant
         self.facture.save()
@@ -434,7 +441,7 @@ class GetPdfBytesTests(TestCase):
         mock_regen.assert_called_once()
         self.assertEqual(contenu, b"%PDF-neuf")
 
-    def test_repli_sur_pdf_obsolete_si_regeneration_echoue(self):
+    def test_repli_sur_pdf_obsolete_si_regeneration_echoue(self) -> None:
         self.facture.pdf_path = self._fichier_pdf(b"%PDF-vieux")
         self.facture.pdf_template_version = 0
         self.facture.save()
@@ -445,7 +452,7 @@ class GetPdfBytesTests(TestCase):
         # Repli : on ressert l'ancien PDF plutôt que de ne rien renvoyer.
         self.assertEqual(contenu, b"%PDF-vieux")
 
-    def test_erreur_si_aucun_pdf_et_regeneration_echoue(self):
+    def test_erreur_si_aucun_pdf_et_regeneration_echoue(self) -> None:
         self.facture.pdf_path = ""
         self.facture.pdf_template_version = 0
         self.facture.save()
@@ -454,7 +461,7 @@ class GetPdfBytesTests(TestCase):
             with self.assertRaises(FileNotFoundError):
                 self.svc.get_pdf_bytes(str(self.facture.id))
 
-    def test_regenerer_pdf_estampille_la_version_courante(self):
+    def test_regenerer_pdf_estampille_la_version_courante(self) -> None:
         chemin = self._fichier_pdf(b"%PDF-genere")
         with (
             patch.object(self.svc, "_generer_et_sauver_pdf", return_value=chemin),
@@ -486,7 +493,7 @@ class RegenererPdfsCommandTests(TestCase):
             pdf_template_version=0,
         )
 
-    def test_dry_run_liste_sans_regenerer(self):
+    def test_dry_run_liste_sans_regenerer(self) -> None:
         self._facture_obsolete()
         out = StringIO()
         with patch.object(FactureService, "regenerer_pdf") as mock_regen:
@@ -495,7 +502,7 @@ class RegenererPdfsCommandTests(TestCase):
         mock_regen.assert_not_called()
         self.assertIn("dry-run", out.getvalue().lower())
 
-    def test_regenere_les_obsoletes_et_rapporte(self):
+    def test_regenere_les_obsoletes_et_rapporte(self) -> None:
         self._facture_obsolete()
         out = StringIO()
         with (

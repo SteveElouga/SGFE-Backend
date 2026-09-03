@@ -21,7 +21,7 @@ def _fake_redis_module(client: MagicMock) -> SimpleNamespace:
 
 
 class PublishFactureEventTests(SimpleTestCase):
-    def test_publie_le_bon_payload_sur_le_bon_canal(self):
+    def test_publie_le_bon_payload_sur_le_bon_canal(self) -> None:
         client = MagicMock()
         with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
             publish_facture_event("fac-1", "camp-1", "FACTURE_CREATED")
@@ -34,7 +34,7 @@ class PublishFactureEventTests(SimpleTestCase):
         )
         client.close.assert_called_once()
 
-    def test_best_effort_sur_echec_redis(self):
+    def test_best_effort_sur_echec_redis(self) -> None:
         """Un échec Redis ne doit jamais se propager (dégradation gracieuse)."""
         client = MagicMock()
         client.publish.side_effect = RuntimeError("redis down")
@@ -43,7 +43,7 @@ class PublishFactureEventTests(SimpleTestCase):
 
 
 class PublishTarifEventTests(SimpleTestCase):
-    def test_publie_sur_le_canal_tarif(self):
+    def test_publie_sur_le_canal_tarif(self) -> None:
         client = MagicMock()
         with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
             publish_tarif_event()
@@ -53,7 +53,7 @@ class PublishTarifEventTests(SimpleTestCase):
         self.assertEqual(json.loads(payload), {"event_type": "TARIF_UPDATED"})
         client.close.assert_called_once()
 
-    def test_best_effort_sur_echec_redis(self):
+    def test_best_effort_sur_echec_redis(self) -> None:
         client = MagicMock()
         client.publish.side_effect = RuntimeError("redis down")
         with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):

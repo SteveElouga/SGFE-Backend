@@ -3,6 +3,7 @@
 import datetime
 from decimal import Decimal
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -13,8 +14,8 @@ from factures.pdf_generator import InfosSociete
 from factures.services import BilanImpayesService
 
 
-def _ligne(**kw) -> LigneImpaye:
-    defaults = dict(
+def _ligne(**kw: Any) -> LigneImpaye:
+    defaults: dict[str, Any] = dict(
         nom_complet="Traoré Seydou",
         numero_abonne="AB-0008",
         numero_facture="FACT-2026-06-0008",
@@ -30,7 +31,7 @@ def _ligne(**kw) -> LigneImpaye:
 
 
 class BuildBilanContextTests(TestCase):
-    def test_synthese_et_totaux(self):
+    def test_synthese_et_totaux(self) -> None:
         lignes = [
             _ligne(etape=4, solde=15000, jours_retard=12),
             _ligne(etape=3, solde=10750, paye=10750, montant=21500, en_pause=True, jours_retard=7),
@@ -46,15 +47,15 @@ class BuildBilanContextTests(TestCase):
         self.assertEqual(ctx["numero_bilan"], "BILAN-IMP-2026-07-04")
         self.assertEqual(ctx["date_arrete"], "04/07/2026")
 
-    def test_badge_pause_pour_acompte(self):
+    def test_badge_pause_pour_acompte(self) -> None:
         ctx = build_bilan_context([_ligne(en_pause=True, etape=3)], InfosSociete(), datetime.date(2026, 7, 4))
         self.assertEqual(ctx["lignes"][0]["badge"], "Pause · acompte reçu")
 
-    def test_badge_etape_sans_pause(self):
+    def test_badge_etape_sans_pause(self) -> None:
         ctx = build_bilan_context([_ligne(en_pause=False, etape=2)], InfosSociete(), datetime.date(2026, 7, 4))
         self.assertEqual(ctx["lignes"][0]["badge"], "Étape 2 · Rappel ferme")
 
-    def test_repartition_par_etape(self):
+    def test_repartition_par_etape(self) -> None:
         lignes = [_ligne(etape=1, solde=5000), _ligne(etape=1, solde=5000), _ligne(etape=4, solde=10000)]
         ctx = build_bilan_context(lignes, InfosSociete(), datetime.date(2026, 7, 4))
         rep = {r["label"]: r for r in ctx["repartition"]}
@@ -62,7 +63,7 @@ class BuildBilanContextTests(TestCase):
         self.assertEqual(rep["Étape 1 · Rappel doux"]["pct"], 50.0)
         self.assertEqual(rep["Étape 4 · Suspendue"]["pct"], 50.0)
 
-    def test_bilan_vide(self):
+    def test_bilan_vide(self) -> None:
         ctx = build_bilan_context([], InfosSociete(), datetime.date(2026, 7, 4))
         self.assertEqual(ctx["nb_impayes"], 0)
         self.assertEqual(ctx["total_solde"], "0")
@@ -70,7 +71,7 @@ class BuildBilanContextTests(TestCase):
 
 
 class BilanImpayesServiceTests(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.facture = Facture.objects.create(
             numero_facture="FACT-2026-06-0008",
             abonne_id="abonne-8",
@@ -85,7 +86,7 @@ class BilanImpayesServiceTests(TestCase):
             date_limite_paiement=datetime.date(2026, 6, 20),
         )
 
-    def _service(self):
+    def _service(self) -> BilanImpayesService:
         paiement = SimpleNamespace(
             list_impayes=lambda: [
                 {
@@ -108,7 +109,7 @@ class BilanImpayesServiceTests(TestCase):
         config = SimpleNamespace(get_infos_societe=lambda: InfosSociete(nom="Hydro CI"))
         return BilanImpayesService(paiement_client=paiement, abonne_client=abonne, config_client=config)
 
-    def test_build_ligne_enrichit_et_calcule_le_retard(self):
+    def test_build_ligne_enrichit_et_calcule_le_retard(self) -> None:
         svc = self._service()
         ligne = svc._build_ligne(
             {
@@ -126,7 +127,7 @@ class BilanImpayesServiceTests(TestCase):
         self.assertEqual(ligne.jours_retard, 12)  # 04/07 - 22/06
         self.assertFalse(ligne.en_pause)
 
-    def test_en_pause_si_acompte(self):
+    def test_en_pause_si_acompte(self) -> None:
         svc = self._service()
         ligne = svc._build_ligne(
             {
@@ -139,7 +140,7 @@ class BilanImpayesServiceTests(TestCase):
         )
         self.assertTrue(ligne.en_pause)
 
-    def test_generer_bilan_impayes_pdf_retourne_bytes(self):
+    def test_generer_bilan_impayes_pdf_retourne_bytes(self) -> None:
         svc = self._service()
         with patch("factures.bilan_generator.generer_bilan_pdf_bytes", return_value=b"%PDF-1.4 bilan") as mock_gen:
             pdf_bytes, filename = svc.generer_bilan_impayes_pdf()

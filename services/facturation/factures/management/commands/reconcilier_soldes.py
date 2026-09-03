@@ -17,6 +17,8 @@ plutôt que de faire croire à une réconciliation réussie.
     python manage.py reconcilier_soldes
 """
 
+from typing import Any
+
 from django.core.management.base import BaseCommand, CommandError
 
 from factures.grpc_clients import PaiementServiceClient
@@ -26,7 +28,7 @@ from factures.repositories import FactureRepository
 class Command(BaseCommand):
     help = "Recrée les soldes manquants des factures orphelines (via Paiement Service, idempotent)."
 
-    def handle(self, *args, **options) -> None:
+    def handle(self, *args: Any, **options: Any) -> None:
         client = PaiementServiceClient()
         factures = FactureRepository().list_by_filters()  # toutes les factures
         # initialiser_solde renvoie True si OK, False en dégradation gracieuse (paiement KO).

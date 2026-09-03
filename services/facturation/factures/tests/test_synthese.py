@@ -2,6 +2,7 @@
 
 import datetime
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 from django.core.exceptions import ObjectDoesNotExist
@@ -12,7 +13,7 @@ from factures.services import SyntheseCampagneService
 from factures.synthese_generator import build_synthese_context
 
 
-def _stats_completes() -> dict:
+def _stats_completes() -> dict[str, Any]:
     return {
         "campagne": {
             "campagne_id": "camp-1",
@@ -40,7 +41,7 @@ def _stats_completes() -> dict:
 
 
 class BuildSyntheseContextTests(SimpleTestCase):
-    def test_contexte_formate_les_3_blocs(self):
+    def test_contexte_formate_les_3_blocs(self) -> None:
         ctx = build_synthese_context(
             _stats_completes(), InfosSociete(nom="Hydro CI"), "camp-1", datetime.date(2026, 7, 5)
         )
@@ -52,25 +53,25 @@ class BuildSyntheseContextTests(SimpleTestCase):
         self.assertEqual(ctx["facturation"]["montant_total_facture"], "250 000 FCFA")
         self.assertEqual(ctx["paiements"]["taux_recouvrement"], "72,0 %")
 
-    def test_blocs_absents_affiches_a_zero(self):
+    def test_blocs_absents_affiches_a_zero(self) -> None:
         # Reporting ne renvoie que le bloc campagne (facturation/paiements = None).
         stats = {"campagne": _stats_completes()["campagne"], "facturation": None, "paiements": None}
         ctx = build_synthese_context(stats, InfosSociete(), "camp-1", datetime.date(2026, 7, 5))
         self.assertEqual(ctx["facturation"]["total_factures"], "0")
         self.assertEqual(ctx["paiements"]["montant_encaisse"], "0 FCFA")
 
-    def test_repli_sur_id_si_nom_campagne_absent(self):
+    def test_repli_sur_id_si_nom_campagne_absent(self) -> None:
         stats = {"campagne": {"campagne_id": "camp-1"}, "facturation": None, "paiements": None}
         ctx = build_synthese_context(stats, InfosSociete(), "camp-1", datetime.date(2026, 7, 5))
         self.assertEqual(ctx["nom_campagne"], "camp-1")
 
 
 class SyntheseCampagneServiceTests(SimpleTestCase):
-    def _service(self, reporting):
+    def _service(self, reporting: SimpleNamespace) -> SyntheseCampagneService:
         config = SimpleNamespace(get_infos_societe=lambda: InfosSociete(nom="Hydro CI"))
         return SyntheseCampagneService(reporting_client=reporting, config_client=config)
 
-    def test_generer_synthese_retourne_bytes(self):
+    def test_generer_synthese_retourne_bytes(self) -> None:
         reporting = SimpleNamespace(get_stats_completes=lambda cid: _stats_completes())
         svc = self._service(reporting)
         with patch(
@@ -82,13 +83,13 @@ class SyntheseCampagneServiceTests(SimpleTestCase):
         contexte = mock_gen.call_args.args[0]
         self.assertEqual(contexte["nom_campagne"], "Juin 2026")
 
-    def test_reporting_injoignable_leve_object_does_not_exist(self):
+    def test_reporting_injoignable_leve_object_does_not_exist(self) -> None:
         reporting = SimpleNamespace(get_stats_completes=lambda cid: None)
         svc = self._service(reporting)
         with self.assertRaises(ObjectDoesNotExist):
             svc.generer_synthese_campagne_pdf("camp-1")
 
-    def test_campagne_sans_stats_leve_object_does_not_exist(self):
+    def test_campagne_sans_stats_leve_object_does_not_exist(self) -> None:
         reporting = SimpleNamespace(
             get_stats_completes=lambda cid: {"campagne": None, "facturation": None, "paiements": None}
         )

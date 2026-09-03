@@ -3,6 +3,7 @@
 import datetime
 from decimal import Decimal
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import grpc
@@ -21,8 +22,8 @@ from factures.recu_generator import (
 from factures.services import RecuPaiementService
 
 
-def _recu(**kw) -> DonneesRecu:
-    defaults = dict(
+def _recu(**kw: Any) -> DonneesRecu:
+    defaults: dict[str, Any] = dict(
         numero_recu="REC-2026-06-0034",
         date_paiement="2026-06-26",
         montant=Decimal("10750"),
@@ -51,7 +52,7 @@ def _recu(**kw) -> DonneesRecu:
 class MontantEnLettresTests(TestCase):
     """La conversion française est piégeuse (70/80/90, cent(s), mille) → verrou."""
 
-    def test_cas_courants_et_limites(self):
+    def test_cas_courants_et_limites(self) -> None:
         cases = {
             0: "zéro",
             1: "un",
@@ -79,25 +80,25 @@ class MontantEnLettresTests(TestCase):
         for n, attendu in cases.items():
             self.assertEqual(_montant_en_lettres(n), attendu, f"pour {n}")
 
-    def test_accepte_decimal_et_ignore_centimes(self):
+    def test_accepte_decimal_et_ignore_centimes(self) -> None:
         self.assertEqual(_montant_en_lettres(Decimal("10750.90")), "dix mille sept cent cinquante")
 
 
 class ModeLabelTests(TestCase):
-    def test_modes_connus(self):
+    def test_modes_connus(self) -> None:
         self.assertEqual(_mode_label("MOBILE_MONEY"), "Mobile Money")
         self.assertEqual(_mode_label("ESPECES"), "Espèces")
         self.assertEqual(_mode_label("VIREMENT"), "Virement bancaire")
 
-    def test_mode_inconnu_est_embelli(self):
+    def test_mode_inconnu_est_embelli(self) -> None:
         self.assertEqual(_mode_label("PAYPAL_XYZ"), "Paypal Xyz")
 
-    def test_mode_vide(self):
+    def test_mode_vide(self) -> None:
         self.assertEqual(_mode_label(""), "—")
 
 
 class BuildRecuContextTests(TestCase):
-    def test_mapping_versement_et_situation(self):
+    def test_mapping_versement_et_situation(self) -> None:
         ctx = build_recu_context(_recu(), InfosSociete(nom="Hydro CI", telephone="+237 690"))
 
         self.assertEqual(ctx["recu"]["numero"], "REC-2026-06-0034")
@@ -112,7 +113,7 @@ class BuildRecuContextTests(TestCase):
         self.assertTrue(ctx["situation"]["solde_positif"])
         self.assertEqual(ctx["situation"]["nb_versements_label"], "1 versement")
 
-    def test_identite_abonne_et_reference_facture(self):
+    def test_identite_abonne_et_reference_facture(self) -> None:
         ctx = build_recu_context(_recu(), InfosSociete())
         self.assertEqual(ctx["abonne"]["nom_complet"], "Mme Koné Mariam")
         self.assertEqual(ctx["abonne"]["numero"], "AB-0002")
@@ -120,7 +121,7 @@ class BuildRecuContextTests(TestCase):
         self.assertEqual(ctx["enregistrement"]["par"], "bah.comptable")
         self.assertEqual(ctx["enregistrement"]["facture_ref"], "FACT-2026-06-0002 (Juin 2026)")
 
-    def test_statut_partielle_style_bleu_et_solde_du(self):
+    def test_statut_partielle_style_bleu_et_solde_du(self) -> None:
         ctx = build_recu_context(_recu(statut="PARTIELLE"), InfosSociete())
         self.assertEqual(ctx["situation"]["statut_label"], "Facture partielle")
         self.assertEqual(ctx["situation"]["statut_texte"], "#1d4ed8")
@@ -128,7 +129,7 @@ class BuildRecuContextTests(TestCase):
         # Note « partielle » : mentionne la suspension des relances.
         self.assertIn("suspend les relances", ctx["note"])
 
-    def test_statut_payee_style_vert_et_note_soldee(self):
+    def test_statut_payee_style_vert_et_note_soldee(self) -> None:
         ctx = build_recu_context(
             _recu(statut="PAYEE", total_verse=Decimal("21500"), solde_restant=Decimal("0")),
             InfosSociete(),
@@ -139,12 +140,12 @@ class BuildRecuContextTests(TestCase):
         self.assertIn("soldée", ctx["note"])
         self.assertIn("FACT-2026-06-0002", ctx["note"])
 
-    def test_pluriel_versements_et_confirmation_whatsapp(self):
+    def test_pluriel_versements_et_confirmation_whatsapp(self) -> None:
         ctx = build_recu_context(_recu(nb_versements=3, whatsapp_confirme="+237 690001122"), InfosSociete())
         self.assertEqual(ctx["situation"]["nb_versements_label"], "3 versements")
         self.assertIn("confirmation WhatsApp a été envoyée au +237 690001122", ctx["note"])
 
-    def test_repli_identite_absente(self):
+    def test_repli_identite_absente(self) -> None:
         """Abonné Service inaccessible : ni nom ni numéro → repli sur l'ID technique."""
         ctx = build_recu_context(
             _recu(abonne_civilite="", abonne_nom="", abonne_prenom="", numero_abonne="", quartier="", camp=""),
@@ -154,12 +155,12 @@ class BuildRecuContextTests(TestCase):
         self.assertEqual(ctx["abonne"]["numero"], "#abcdef12")
         self.assertEqual(ctx["abonne"]["lieu"], "")
 
-    def test_sans_reference_transaction(self):
+    def test_sans_reference_transaction(self) -> None:
         ctx = build_recu_context(_recu(reference_transaction=""), InfosSociete())
         self.assertFalse(ctx["versement"]["a_reference"])
         self.assertEqual(ctx["versement"]["reference"], "—")
 
-    def test_periode_repli_si_absente(self):
+    def test_periode_repli_si_absente(self) -> None:
         """Sans période fournie, elle est dérivée de la date du paiement."""
         ctx = build_recu_context(_recu(facture_periode=""), InfosSociete())
         self.assertEqual(ctx["enregistrement"]["facture_ref"], "FACT-2026-06-0002 (Juin 2026)")
@@ -168,7 +169,7 @@ class BuildRecuContextTests(TestCase):
 class RecuPaiementServiceTests(TestCase):
     """Orchestration : versement + solde (Paiement), facture (locale), identité."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.facture = Facture.objects.create(
             numero_facture="FACT-2026-06-0002",
             abonne_id="abonne-2",
@@ -183,7 +184,9 @@ class RecuPaiementServiceTests(TestCase):
             date_limite_paiement=datetime.date(2026, 7, 1),
         )
 
-    def _service(self, paiements=None, solde=None):
+    def _service(
+        self, paiements: list[dict[str, Any]] | None = None, solde: dict[str, Any] | None = None
+    ) -> RecuPaiementService:
         versements = (
             paiements
             if paiements is not None
@@ -225,7 +228,7 @@ class RecuPaiementServiceTests(TestCase):
         config = SimpleNamespace(get_infos_societe=lambda: InfosSociete(nom="Hydro CI"))
         return RecuPaiementService(paiement_client=paiement, abonne_client=abonne, config_client=config)
 
-    def test_genere_recu_bytes_numero_et_contexte(self):
+    def test_genere_recu_bytes_numero_et_contexte(self) -> None:
         svc = self._service()
         with patch("factures.recu_generator.generer_recu_pdf_bytes", return_value=b"%PDF recu") as mock_gen:
             pdf, filename = svc.generer_recu_pdf("p1", str(self.facture.id))
@@ -238,7 +241,7 @@ class RecuPaiementServiceTests(TestCase):
         self.assertEqual(ctx["situation"]["statut_label"], "Facture partielle")
         self.assertIn("11h20", ctx["enregistrement"]["date_heure"])
 
-    def test_refuse_d_emettre_un_recu_si_le_solde_est_illisible(self):
+    def test_refuse_d_emettre_un_recu_si_le_solde_est_illisible(self) -> None:
         """Un reçu ne peut pas attester ce qu'on n'a pas pu lire.
 
         `get_solde` dégrade en `None` quand Paiement Service est injoignable. Le
@@ -262,7 +265,7 @@ class RecuPaiementServiceTests(TestCase):
         with self.assertRaises(ObjectDoesNotExist):
             svc.generer_recu_pdf("p1", str(self.facture.id))
 
-    def test_rang_du_recu_stable_parmi_plusieurs_versements(self):
+    def test_rang_du_recu_stable_parmi_plusieurs_versements(self) -> None:
         paiements = [
             {
                 "paiement_id": "p1",
@@ -304,7 +307,7 @@ class RecuPaiementServiceTests(TestCase):
         self.assertEqual(ctx["situation"]["nb_versements_label"], "2 versements")
         self.assertFalse(ctx["situation"]["solde_positif"])
 
-    def test_paiement_introuvable_leve_not_found(self):
+    def test_paiement_introuvable_leve_not_found(self) -> None:
         svc = self._service()
         with self.assertRaises(ObjectDoesNotExist):
             svc.generer_recu_pdf("inconnu", str(self.facture.id))
@@ -319,7 +322,7 @@ class PaiementClientRecuTests(TestCase):
         client._stub = MagicMock()
         return client
 
-    def test_get_solde_mappe_les_champs(self):
+    def test_get_solde_mappe_les_champs(self) -> None:
         client = self._client()
         client._stub.GetSolde.return_value = SimpleNamespace(
             facture_id="f1",
@@ -329,15 +332,16 @@ class PaiementClientRecuTests(TestCase):
             statut="PARTIELLE",
         )
         solde = client.get_solde("f1")
+        assert solde is not None
         self.assertEqual(solde["montant_paye"], 10750.0)
         self.assertEqual(solde["statut"], "PARTIELLE")
 
-    def test_get_solde_degrade_a_none_si_erreur(self):
+    def test_get_solde_degrade_a_none_si_erreur(self) -> None:
         client = self._client()
         client._stub.GetSolde.side_effect = Exception("indisponible")
         self.assertIsNone(client.get_solde("f1"))
 
-    def test_list_paiements_mappe_annule_et_reference(self):
+    def test_list_paiements_mappe_annule_et_reference(self) -> None:
         client = self._client()
         versement = SimpleNamespace(
             paiement_id="p1",
@@ -357,7 +361,7 @@ class PaiementClientRecuTests(TestCase):
         self.assertEqual(out[0]["mode_paiement"], "MOBILE_MONEY")
         self.assertFalse(out[0]["annule"])
 
-    def test_list_paiements_degrade_a_vide_si_erreur(self):
+    def test_list_paiements_degrade_a_vide_si_erreur(self) -> None:
         client = self._client()
         client._stub.ListPaiements.side_effect = Exception("indisponible")
         self.assertEqual(client.list_paiements("f1"), [])
@@ -375,7 +379,7 @@ class RecuAuNiveauDuVersementTests(TestCase):
     ils traversent maintenant jusqu'ici.
     """
 
-    def test_le_versement_recu_est_affiche_quand_il_depasse_l_imputation(self):
+    def test_le_versement_recu_est_affiche_quand_il_depasse_l_imputation(self) -> None:
         ctx = build_recu_context(
             _recu(montant=Decimal("10000"), montant_versement=Decimal("30000")),
             InfosSociete(),
@@ -386,7 +390,7 @@ class RecuAuNiveauDuVersementTests(TestCase):
         self.assertIn("30 000 FCFA", ctx["note"])
         self.assertIn("d'autres factures", ctx["note"])
 
-    def test_il_reste_masque_quand_le_versement_ne_couvre_qu_une_facture(self):
+    def test_il_reste_masque_quand_le_versement_ne_couvre_qu_une_facture(self) -> None:
         """Une ligne qui répète la précédente fait douter des autres."""
         ctx = build_recu_context(
             _recu(montant=Decimal("10750"), montant_versement=Decimal("10750")),
@@ -394,7 +398,7 @@ class RecuAuNiveauDuVersementTests(TestCase):
         )
         self.assertFalse(ctx["versement"]["porte_sur_plusieurs"])
 
-    def test_la_dette_totale_apparait_quand_elle_est_transmise(self):
+    def test_la_dette_totale_apparait_quand_elle_est_transmise(self) -> None:
         """La seule question que l'abonné se pose : combien me reste-t-il ?
 
         Le reçu ne connaissait que sa facture, et laissait donc croire qu'une
@@ -415,7 +419,7 @@ class RecuAuNiveauDuVersementTests(TestCase):
         self.assertIn("Reste dû sur votre compte", ctx["note"])
         self.assertIn("6 000 FCFA", ctx["note"])
 
-    def test_compte_a_jour_le_dit(self):
+    def test_compte_a_jour_le_dit(self) -> None:
         ctx = build_recu_context(
             _recu(
                 solde_restant=Decimal("0"),
@@ -429,7 +433,7 @@ class RecuAuNiveauDuVersementTests(TestCase):
         self.assertEqual(ctx["situation"]["dette_totale"], "0 FCFA")
         self.assertFalse(ctx["situation"]["dette_totale_positive"])
 
-    def test_regeneration_manuelle_retombe_sur_l_imputation_seule(self):
+    def test_regeneration_manuelle_retombe_sur_l_imputation_seule(self) -> None:
         """Sans les deux valeurs — régénération depuis le back-office — le reçu
         garde exactement le comportement d'avant, sans ligne vide ni zéro trompeur.
         """
@@ -439,7 +443,7 @@ class RecuAuNiveauDuVersementTests(TestCase):
         self.assertNotIn("Reste dû sur votre compte", ctx["note"])
         self.assertNotIn("à jour", ctx["note"])
 
-    def test_le_service_propage_les_deux_valeurs_jusqu_au_rendu(self):
+    def test_le_service_propage_les_deux_valeurs_jusqu_au_rendu(self) -> None:
         """De l'appel gRPC au contexte de rendu, sans perte en route."""
         facture = Facture.objects.create(
             numero_facture="FACT-2026-06-0009",

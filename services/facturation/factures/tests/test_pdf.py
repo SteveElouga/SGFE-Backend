@@ -8,10 +8,14 @@ logique des clients gRPC.
 """
 
 from decimal import Decimal
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
 from django.template.loader import render_to_string
 from django.test import SimpleTestCase
+
+if TYPE_CHECKING:
+    from factures.grpc_clients import AbonneServiceClient, CampagneServiceClient
 
 from factures.pdf_generator import (
     DonneesFacture,
@@ -27,8 +31,8 @@ from factures.pdf_generator import (
 )
 
 
-def _donnees(**kwargs) -> DonneesFacture:
-    defaults = dict(
+def _donnees(**kwargs: Any) -> DonneesFacture:
+    defaults: dict[str, Any] = dict(
         numero_facture="FACT-2026-06-0002",
         abonne_id="abcdef12-3456-7890-aaaa-bbbbbbbbbbbb",
         campagne_id="camp-001",
@@ -47,45 +51,45 @@ def _donnees(**kwargs) -> DonneesFacture:
 
 
 class HelpersTests(SimpleTestCase):
-    def test_fcfa_entier(self):
+    def test_fcfa_entier(self) -> None:
         self.assertEqual(_fcfa(Decimal("21500.00")), "21 500 FCFA")
 
-    def test_fcfa_avec_decimales(self):
+    def test_fcfa_avec_decimales(self) -> None:
         self.assertEqual(_fcfa(Decimal("1234.50")), "1 234,50 FCFA")
 
-    def test_num_entier_groupe(self):
+    def test_num_entier_groupe(self) -> None:
         self.assertEqual(_num(Decimal("1863.000")), "1 863")
 
-    def test_date_fr(self):
+    def test_date_fr(self) -> None:
         self.assertEqual(_date_fr("2026-06-20"), "20/06/2026")
 
-    def test_date_fr_invalide_repli(self):
+    def test_date_fr_invalide_repli(self) -> None:
         self.assertEqual(_date_fr("pas-une-date"), "pas-une-date")
 
-    def test_periode_fr(self):
+    def test_periode_fr(self) -> None:
         self.assertEqual(_periode_fr("2026-06-15"), "Juin 2026")
 
-    def test_modalite_delai_cinq_jours(self):
+    def test_modalite_delai_cinq_jours(self) -> None:
         self.assertEqual(_modalite_delai("2026-06-15", "2026-06-20"), "sous 5 jours")
 
-    def test_modalite_delai_reflete_le_delai_configure(self):
+    def test_modalite_delai_reflete_le_delai_configure(self) -> None:
         # Délai porté à 10 jours (config) → la phrase suit, jamais figée à 5.
         self.assertEqual(_modalite_delai("2026-06-15", "2026-06-25"), "sous 10 jours")
 
-    def test_modalite_delai_singulier(self):
+    def test_modalite_delai_singulier(self) -> None:
         self.assertEqual(_modalite_delai("2026-06-15", "2026-06-16"), "sous 1 jour")
 
-    def test_modalite_delai_dates_illisibles_repli(self):
+    def test_modalite_delai_dates_illisibles_repli(self) -> None:
         self.assertEqual(_modalite_delai("pas-une-date", "2026-06-20"), "dans les meilleurs délais")
 
-    def test_modalite_delai_ecart_nul_repli(self):
+    def test_modalite_delai_ecart_nul_repli(self) -> None:
         self.assertEqual(_modalite_delai("2026-06-20", "2026-06-20"), "dans les meilleurs délais")
 
-    def test_nom_abonne_complet(self):
+    def test_nom_abonne_complet(self) -> None:
         donnees = _donnees(abonne_nom="Koné", abonne_prenom="Mariam")
         self.assertEqual(_nom_abonne(donnees), ("Koné", "Mariam"))
 
-    def test_nom_abonne_repli_sur_identifiant(self):
+    def test_nom_abonne_repli_sur_identifiant(self) -> None:
         donnees = _donnees()  # aucun champ d'identité
         nom, prenom = _nom_abonne(donnees)
         self.assertEqual(nom, "Abonné abcdef12")
@@ -93,11 +97,11 @@ class HelpersTests(SimpleTestCase):
 
 
 class BuildHistoriqueTests(SimpleTestCase):
-    def test_vide_retourne_liste_vide(self):
+    def test_vide_retourne_liste_vide(self) -> None:
         self.assertEqual(build_historique([]), [])
 
-    def test_hauteur_proportionnelle_au_maximum(self):
-        entries = [
+    def test_hauteur_proportionnelle_au_maximum(self) -> None:
+        entries: list[tuple[str, Decimal | float, bool]] = [
             ("2026-04-15", Decimal("20"), False),
             ("2026-05-15", Decimal("40"), False),
             ("2026-06-15", Decimal("10"), True),
@@ -108,31 +112,37 @@ class BuildHistoriqueTests(SimpleTestCase):
         self.assertEqual([p.is_actuel for p in points], [False, False, True])
         self.assertEqual([p.conso for p in points], ["20", "40", "10"])
 
-    def test_hauteur_bornee_au_minimum(self):
-        entries = [("2026-06-15", Decimal("0"), True), ("2026-05-15", Decimal("100"), False)]
+    def test_hauteur_bornee_au_minimum(self) -> None:
+        entries: list[tuple[str, Decimal | float, bool]] = [
+            ("2026-06-15", Decimal("0"), True),
+            ("2026-05-15", Decimal("100"), False),
+        ]
         points = build_historique(entries)
         # Le point à 0 doit rester visible (borne basse) plutôt que disparaître.
         self.assertEqual(points[0].hauteur_px, 4)
 
-    def test_toutes_conso_nulles_ne_divise_pas_par_zero(self):
-        entries = [("2026-06-15", Decimal("0"), True), ("2026-05-15", Decimal("0"), False)]
+    def test_toutes_conso_nulles_ne_divise_pas_par_zero(self) -> None:
+        entries: list[tuple[str, Decimal | float, bool]] = [
+            ("2026-06-15", Decimal("0"), True),
+            ("2026-05-15", Decimal("0"), False),
+        ]
         points = build_historique(entries)
         self.assertTrue(all(p.hauteur_px == 4 for p in points))
 
-    def test_date_invalide_label_vide(self):
+    def test_date_invalide_label_vide(self) -> None:
         points = build_historique([("pas-une-date", Decimal("10"), True)])
         self.assertEqual(points[0].label, "")
 
 
 class BuildContextTests(SimpleTestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.societe = InfosSociete(
             nom="Hydro Services CI",
             adresse="Quartier Centre, Camp 1 — Yamoussoukro",
             telephone="+225 07 00 11 22 33",
         )
 
-    def test_contexte_identite_complete(self):
+    def test_contexte_identite_complete(self) -> None:
         donnees = _donnees(
             numero_abonne="AB-0002",
             abonne_nom="Koné",
@@ -165,7 +175,7 @@ class BuildContextTests(SimpleTestCase):
         self.assertEqual(ctx["releve"]["campagne_nom"], "Campagne Juin 2026")
         self.assertEqual(ctx["espace"]["url"], "")
 
-    def test_contexte_sans_identite_repli(self):
+    def test_contexte_sans_identite_repli(self) -> None:
         donnees = _donnees()  # aucun champ d'identité, ni campagne_nom
         ctx = _build_context(donnees, self.societe)
 
@@ -174,14 +184,14 @@ class BuildContextTests(SimpleTestCase):
         # Repli sur la période du relevé si le nom de campagne est indisponible.
         self.assertEqual(ctx["releve"]["campagne_nom"], "Juin 2026")
 
-    def test_contexte_espace_url_et_date_formatee(self):
+    def test_contexte_espace_url_et_date_formatee(self) -> None:
         """L'URL espace est transmise telle quelle ; la date ISO est formatée JJ/MM/AAAA."""
         donnees = _donnees(espace_url="aquabill.ci/espace/abc", espace_date_expiration="2026-07-05")
         ctx = _build_context(donnees, self.societe)
         self.assertEqual(ctx["espace"]["url"], "aquabill.ci/espace/abc")
         self.assertEqual(ctx["espace"]["date_expiration"], "05/07/2026")
 
-    def test_contexte_espace_vide_par_defaut(self):
+    def test_contexte_espace_vide_par_defaut(self) -> None:
         """Sans URL espace, le bloc reste vide (masqué dans le gabarit)."""
         ctx = _build_context(_donnees(), self.societe)
         self.assertEqual(ctx["espace"]["url"], "")
@@ -191,10 +201,10 @@ class BuildContextTests(SimpleTestCase):
 class RenderTemplateTests(SimpleTestCase):
     """Rendu du gabarit Django (sans WeasyPrint) — valide la syntaxe et l'échappement."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.societe = InfosSociete(nom="Hydro Services CI", telephone="+225 07 00 11 22 33")
 
-    def test_rendu_contient_les_donnees_attendues(self):
+    def test_rendu_contient_les_donnees_attendues(self) -> None:
         donnees = _donnees(abonne_nom="Koné", abonne_prenom="Mariam", numero_abonne="AB-0002")
         historique = build_historique([("2026-05-15", Decimal("30"), False), ("2026-06-15", Decimal("43"), True)])
         html = render_to_string("facture_pdf.html", _build_context(donnees, self.societe, historique))
@@ -207,7 +217,7 @@ class RenderTemplateTests(SimpleTestCase):
         self.assertIn("21 500 FCFA", html)
         self.assertIn("Juin", html)  # étiquette du mois courant dans l'histogramme
 
-    def test_commentaire_entete_non_visible_dans_le_rendu(self):
+    def test_commentaire_entete_non_visible_dans_le_rendu(self) -> None:
         """Régression : {# #} de Django ne supporte pas les commentaires multi-lignes
 
         (contrairement à {% comment %}) — un {# #} multi-ligne n'est pas
@@ -218,7 +228,7 @@ class RenderTemplateTests(SimpleTestCase):
         self.assertNotIn("TEMPLATE FACTURE PDF", html)
         self.assertNotIn("CONTRAT DE CONTEXTE", html)
 
-    def test_barres_histogramme_largeur_fixe(self):
+    def test_barres_histogramme_largeur_fixe(self) -> None:
         """Régression : `width: 100%` sur un enfant flex non-stretch (align-items:
 
         center) est mal résolu par WeasyPrint (barres qui débordent de leur
@@ -230,14 +240,14 @@ class RenderTemplateTests(SimpleTestCase):
         self.assertIn("width: 30px", bar_rule)
         self.assertNotIn("width: 100%", bar_rule)
 
-    def test_barres_histogramme_marge_haut_calculee(self):
+    def test_barres_histogramme_marge_haut_calculee(self) -> None:
         """Chaque barre porte son propre `margin-top` (hauteur constante de colonne)."""
         historique = build_historique([("2026-05-15", Decimal("10"), False), ("2026-06-15", Decimal("40"), True)])
         html = render_to_string("facture_pdf.html", _build_context(_donnees(), self.societe, historique))
         for mois in historique:
             self.assertIn(f"margin-top: {mois.marge_haut_px}px", html)
 
-    def test_bloc_bas_pleine_largeur(self):
+    def test_bloc_bas_pleine_largeur(self) -> None:
         """Régression : le bloc bas répété (modalités + pied, running element dans
         @bottom-center) doit porter une largeur explicite (≈ zone imprimable A4),
         sinon la boîte de marge centrale le confine au tiers central.
@@ -248,25 +258,25 @@ class RenderTemplateTests(SimpleTestCase):
         self.assertIn("179.5mm", bottom_rule)
         self.assertNotIn("width: 100%", bottom_rule)
 
-    def test_bloc_espace_masque_si_aucun_token(self):
+    def test_bloc_espace_masque_si_aucun_token(self) -> None:
         donnees = _donnees()  # espace_url vide par défaut
         html = render_to_string("facture_pdf.html", _build_context(donnees, self.societe))
         self.assertNotIn("Consultez votre historique en ligne", html)
 
-    def test_bloc_espace_affiche_si_token_fourni(self):
+    def test_bloc_espace_affiche_si_token_fourni(self) -> None:
         donnees = _donnees(espace_url="https://exemple.test/espace/abc123", espace_date_expiration="05/07/2026")
         html = render_to_string("facture_pdf.html", _build_context(donnees, self.societe))
         self.assertIn("https://exemple.test/espace/abc123", html)
         self.assertIn("05/07/2026", html)
 
-    def test_modalite_delai_dynamique_dans_le_rendu(self):
+    def test_modalite_delai_dynamique_dans_le_rendu(self) -> None:
         """Le délai de règlement suit les dates de la facture — pas de « 5 jours » codé en dur."""
         donnees = _donnees(date_releve="2026-06-15", date_limite_paiement="2026-06-25")  # 10 jours
         html = render_to_string("facture_pdf.html", _build_context(donnees, self.societe))
         self.assertIn("Règlement sous 10 jours", html)
         self.assertNotIn("sous 5 jours", html)
 
-    def test_echappement_html_par_django(self):
+    def test_echappement_html_par_django(self) -> None:
         """Django auto-échappe les variables — pas d'injection possible dans le gabarit."""
         donnees = _donnees(abonne_nom="<script>alert(1)</script>", abonne_prenom="")
         html = render_to_string("facture_pdf.html", _build_context(donnees, self.societe))
@@ -275,7 +285,7 @@ class RenderTemplateTests(SimpleTestCase):
 
 
 class AbonneServiceClientTests(SimpleTestCase):
-    def _client(self):
+    def _client(self) -> "AbonneServiceClient":
         from factures.grpc_clients import AbonneServiceClient
 
         client = AbonneServiceClient()
@@ -283,7 +293,7 @@ class AbonneServiceClientTests(SimpleTestCase):
         client._pb = MagicMock()
         return client
 
-    def test_get_abonne_mappe_les_champs(self):
+    def test_get_abonne_mappe_les_champs(self) -> None:
         client = self._client()
         compteur = MagicMock(numero_compteur=387, quartier="Centre", camp=1)
         client._stub.GetAbonne.return_value = MagicMock(
@@ -295,20 +305,21 @@ class AbonneServiceClientTests(SimpleTestCase):
             compteur=compteur,
         )
         identite = client.get_abonne("abo-001")
+        assert identite is not None
         self.assertEqual(identite.numero_abonne, "AB-0002")
         self.assertEqual(identite.nom, "Koné")
         self.assertEqual(identite.numero_compteur, "0387")  # zéro-padding sur 4 chiffres
         self.assertEqual(identite.quartier, "Centre")
         self.assertEqual(identite.camp, "1")
 
-    def test_get_abonne_erreur_retourne_none(self):
+    def test_get_abonne_erreur_retourne_none(self) -> None:
         client = self._client()
         client._stub.GetAbonne.side_effect = RuntimeError("service KO")
         self.assertIsNone(client.get_abonne("abo-001"))
 
 
 class CampagneServiceClientTests(SimpleTestCase):
-    def _client(self):
+    def _client(self) -> "CampagneServiceClient":
         from factures.grpc_clients import CampagneServiceClient
 
         client = CampagneServiceClient()
@@ -316,12 +327,12 @@ class CampagneServiceClientTests(SimpleTestCase):
         client._pb = MagicMock()
         return client
 
-    def test_get_campagne_nom_retourne_le_nom(self):
+    def test_get_campagne_nom_retourne_le_nom(self) -> None:
         client = self._client()
         client._stub.GetCampagne.return_value = MagicMock(nom="Campagne Juin 2026")
         self.assertEqual(client.get_campagne_nom("camp-001"), "Campagne Juin 2026")
 
-    def test_get_campagne_nom_erreur_retourne_chaine_vide(self):
+    def test_get_campagne_nom_erreur_retourne_chaine_vide(self) -> None:
         import grpc
 
         client = self._client()
@@ -332,7 +343,7 @@ class CampagneServiceClientTests(SimpleTestCase):
 class GenererPdfReelTests(SimpleTestCase):
     """Rendu PDF réel — exécuté uniquement là où WeasyPrint est disponible."""
 
-    def test_generer_pdf_produit_un_pdf(self):
+    def test_generer_pdf_produit_un_pdf(self) -> None:
         try:
             import weasyprint  # noqa: F401
         except Exception:
@@ -369,29 +380,29 @@ class AvoirSurLaFactureTest(SimpleTestCase):
     def _societe(self) -> InfosSociete:
         return InfosSociete(nom="Régie test", adresse="BP 1", telephone="000")
 
-    def test_sans_avoir_la_ligne_ne_s_imprime_pas(self):
+    def test_sans_avoir_la_ligne_ne_s_imprime_pas(self) -> None:
         ctx = _build_context(_donnees(), self._societe())
         self.assertFalse(ctx["avoir"]["existe"])
         html = render_to_string("facture_pdf.html", ctx)
         self.assertNotIn("Avoir appliqué", html)
 
-    def test_avec_un_avoir_la_ligne_apparait(self):
+    def test_avec_un_avoir_la_ligne_apparait(self) -> None:
         ctx = _build_context(_donnees(avoir_impute=Decimal("5000.00")), self._societe())
         self.assertTrue(ctx["avoir"]["existe"])
         html = render_to_string("facture_pdf.html", ctx)
         self.assertIn("Avoir appliqué", html)
 
-    def test_l_avoir_se_retranche_du_total(self):
+    def test_l_avoir_se_retranche_du_total(self) -> None:
         ctx = _build_context(_donnees(avoir_impute=Decimal("5000.00")), self._societe())
         # 21 500 de consommation − 5 000 d'avoir
         self.assertEqual(ctx["facture"]["total"], _fcfa(Decimal("16500.00")))
 
-    def test_le_total_ne_devient_jamais_negatif(self):
+    def test_le_total_ne_devient_jamais_negatif(self) -> None:
         """Un avoir supérieur à la facture la solde, il ne la rend pas due par la régie."""
         ctx = _build_context(_donnees(avoir_impute=Decimal("30000.00")), self._societe())
         self.assertEqual(ctx["facture"]["total"], _fcfa(Decimal("0")))
 
-    def test_avoir_et_solde_anterieur_cohabitent(self):
+    def test_avoir_et_solde_anterieur_cohabitent(self) -> None:
         """Les deux existent : l'un ajoute, l'autre retranche, et le total les compose."""
         ctx = _build_context(
             _donnees(
@@ -408,7 +419,7 @@ class AvoirSurLaFactureTest(SimpleTestCase):
         self.assertIn("Avoir appliqué", html)
         self.assertIn("Solde antérieur", html)
 
-    def test_le_signe_moins_est_visible(self):
+    def test_le_signe_moins_est_visible(self) -> None:
         """Un montant sans signe, dans une colonne de montants dus, se lit comme un dû."""
         ctx = _build_context(_donnees(avoir_impute=Decimal("5000.00")), self._societe())
         html = render_to_string("facture_pdf.html", ctx)

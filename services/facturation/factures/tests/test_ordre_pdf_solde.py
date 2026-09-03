@@ -18,6 +18,7 @@ non, et personne ne les avait comparés — c'est cet écart que ce fichier verr
 
 import datetime
 from decimal import Decimal
+from typing import Any
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -42,7 +43,9 @@ class TestOrdrePdfEtSolde(TestCase):
 
     def _generer(self, journal: list[str]) -> None:
         """Génère une facture en enregistrant l'ordre des deux gestes."""
-        self.svc._paiement_client.initialiser_solde.side_effect = lambda **_: journal.append("solde")
+        self.svc._paiement_client.initialiser_solde.side_effect = (  # type: ignore[attr-defined]
+            lambda **_: journal.append("solde")
+        )
 
         with patch.object(
             self.svc,
@@ -69,8 +72,12 @@ class TestOrdrePdfEtSolde(TestCase):
         donc le même état, et dans cet ordre-là seulement.
         """
         journal: list[str] = []
-        self.svc._paiement_client.initialiser_solde.side_effect = lambda **_: journal.append("solde")
-        self.svc._notification_client.envoyer_facture.side_effect = lambda **_: journal.append("message")
+        self.svc._paiement_client.initialiser_solde.side_effect = (  # type: ignore[attr-defined]
+            lambda **_: journal.append("solde")
+        )
+        self.svc._notification_client.envoyer_facture.side_effect = (  # type: ignore[attr-defined]
+            lambda **_: journal.append("message")
+        )
 
         with patch.object(
             self.svc,
@@ -92,7 +99,7 @@ class TestOrdrePdfEtSolde(TestCase):
         numérotation, pas WeasyPrint. Un rendu qui échoue ne doit pas empêcher la
         facture d'exister : `get_pdf_bytes` régénère à la demande.
         """
-        self.svc._paiement_client.initialiser_solde.return_value = None
+        self.svc._paiement_client.initialiser_solde.return_value = None  # type: ignore[attr-defined]
         with patch.object(self.svc, "_regenerer_et_persister", side_effect=RuntimeError("WeasyPrint KO")):
             with self.assertRaises(RuntimeError):
                 self.svc.generer_factures(
@@ -105,7 +112,7 @@ class TestOrdrePdfEtSolde(TestCase):
 
         # La facture ET son solde ont été créés avant l'échec du rendu.
         self.assertEqual(Facture.objects.count(), 1)
-        self.svc._paiement_client.initialiser_solde.assert_called_once()
+        self.svc._paiement_client.initialiser_solde.assert_called_once()  # type: ignore[attr-defined]
 
     def test_l_avoir_impute_est_lisible_au_moment_du_rendu(self) -> None:
         """Le cœur du défaut : la valeur que le PDF va réellement imprimer.
@@ -121,11 +128,11 @@ class TestOrdrePdfEtSolde(TestCase):
         """
         solde_cree = False
 
-        def _initialiser(**_):
+        def _initialiser(**_: Any) -> None:
             nonlocal solde_cree
             solde_cree = True
 
-        def _get_solde(_facture_id):
+        def _get_solde(_facture_id: str) -> dict[str, Any] | None:
             if not solde_cree:
                 return None  # le client dégrade : le solde n'existe pas encore
             return {
@@ -136,11 +143,11 @@ class TestOrdrePdfEtSolde(TestCase):
                 "avoir_impute": 3000.0,
             }
 
-        self.svc._paiement_client.initialiser_solde.side_effect = _initialiser
-        self.svc._paiement_client.get_solde.side_effect = _get_solde
+        self.svc._paiement_client.initialiser_solde.side_effect = _initialiser  # type: ignore[attr-defined]
+        self.svc._paiement_client.get_solde.side_effect = _get_solde  # type: ignore[attr-defined]
         vus: list[Decimal] = []
 
-        def _capturer(facture, **_):
+        def _capturer(facture: Facture, **_: Any) -> None:
             vus.append(self.svc._lire_avoir_impute(str(facture.id)))
 
         with patch.object(self.svc, "_regenerer_et_persister", side_effect=_capturer):

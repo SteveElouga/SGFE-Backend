@@ -34,7 +34,11 @@ logger = logging.getLogger(__name__)
 _GRPC_MAX_WORKERS = 10
 
 
-class FacturationServicer(pb_grpc.FacturationServiceServicer):
+class FacturationServicer(pb_grpc.FacturationServiceServicer):  # type: ignore[misc]
+    # ^ FacturationServiceServicer vient du stub généré
+    # facturation_service_pb2_grpc, exclu de la vérification mypy (voir
+    # mypy.ini) — mypy le voit donc comme `Any`, ce qui rend toute sous-classe
+    # de lui structurellement "misc" ; rien à corriger côté code métier ici.
     """Implémentation de tous les RPCs du FacturationService.
 
     Le mapping exception -> code gRPC (ObjectDoesNotExist->NOT_FOUND,

@@ -5,7 +5,7 @@ import logging
 import os
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol
 
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
@@ -26,7 +26,9 @@ from .pdf_generator import (
 from .repositories import FactureRepository, TarifRepository
 
 if TYPE_CHECKING:  # imports réservés au typage — non exécutés (évite la circularité)
+    from .bilan_generator import LigneImpaye
     from .grpc_clients import (
+        AbonneIdentite,
         AbonneServiceClient,
         CampagneServiceClient,
         NotificationServiceClient,
@@ -639,7 +641,7 @@ class FactureService:
         )
         return annulee, nouvelle
 
-    def _relire_releve(self, campagne_id: str, abonne_id: str) -> dict | None:
+    def _relire_releve(self, campagne_id: str, abonne_id: str) -> dict[str, Any] | None:
         """Relit le relevé courant d'un abonné dans sa campagne.
 
         Relu et non recopié : une régénération sert justement à prendre en
@@ -792,6 +794,47 @@ class FactureService:
         raise FileNotFoundError(f"Impossible de générer le PDF pour la facture {facture_id}.")
 
 
+class _AbonneClientLecture(Protocol):
+    """Sous-ensemble d'AbonneServiceClient consommé par les générateurs de
+    document (Bilan, Reçu) — un Protocol structurel plutôt que la classe gRPC
+    concrète, pour qu'un double de test (SimpleNamespace) puisse satisfaire le
+    type sans dépendre du client réel (canal gRPC, stubs proto)."""
+
+    def get_abonne(self, abonne_id: str) -> "AbonneIdentite | None": ...
+
+
+class _ConfigClientLecture(Protocol):
+    """Sous-ensemble de ConfigServiceClient consommé par les générateurs de
+    document (Bilan, Reçu, Synthèse) — voir _AbonneClientLecture."""
+
+    def get_infos_societe(self) -> InfosSociete: ...
+
+
+class _PaiementClientBilan(Protocol):
+    """Sous-ensemble de PaiementServiceClient consommé par BilanImpayesService
+    — voir _AbonneClientLecture."""
+
+    def get_suivi_impaye(self, facture_id: str) -> dict[str, Any] | None: ...
+
+    def list_impayes(self) -> list[dict[str, Any]]: ...
+
+
+class _PaiementClientRecu(Protocol):
+    """Sous-ensemble de PaiementServiceClient consommé par RecuPaiementService
+    — voir _AbonneClientLecture."""
+
+    def list_paiements(self, facture_id: str, abonne_id: str = "") -> list[dict[str, Any]]: ...
+
+    def get_solde(self, facture_id: str) -> dict[str, Any] | None: ...
+
+
+class _ReportingClientLecture(Protocol):
+    """Sous-ensemble de ReportingServiceClient consommé par
+    SyntheseCampagneService — voir _AbonneClientLecture."""
+
+    def get_stats_completes(self, campagne_id: str) -> dict[str, Any] | None: ...
+
+
 class BilanImpayesService:
     """Génère le PDF « Bilan des impayés » (agrégat back-office ADMIN/COMPTABLE).
 
@@ -804,9 +847,9 @@ class BilanImpayesService:
 
     def __init__(
         self,
-        paiement_client: "PaiementServiceClient | None" = None,
-        abonne_client: "AbonneServiceClient | None" = None,
-        config_client=None,
+        paiement_client: "_PaiementClientBilan | None" = None,
+        abonne_client: "_AbonneClientLecture | None" = None,
+        config_client: "_ConfigClientLecture | None" = None,
     ) -> None:
         self._repo = FactureRepository()
         from .grpc_clients import AbonneServiceClient, ConfigServiceClient, PaiementServiceClient
@@ -815,7 +858,7 @@ class BilanImpayesService:
         self._abonne_client = abonne_client or AbonneServiceClient()
         self._config_client = config_client or ConfigServiceClient()
 
-    def _build_ligne(self, solde: dict, date_arrete: datetime.date):
+    def _build_ligne(self, solde: dict[str, Any], date_arrete: datetime.date) -> "LigneImpaye":
         from .bilan_generator import LigneImpaye
 
         facture_id = solde["facture_id"]
@@ -887,7 +930,11 @@ class SyntheseCampagneService:
     gRPC.
     """
 
-    def __init__(self, reporting_client=None, config_client=None) -> None:
+    def __init__(
+        self,
+        reporting_client: "_ReportingClientLecture | None" = None,
+        config_client: "_ConfigClientLecture | None" = None,
+    ) -> None:
         from .grpc_clients import ConfigServiceClient, ReportingServiceClient
 
         self._reporting_client = reporting_client or ReportingServiceClient()
@@ -921,7 +968,12 @@ class RecuPaiementService:
     société) : les champs manquants sont laissés vides.
     """
 
-    def __init__(self, paiement_client=None, abonne_client=None, config_client=None) -> None:
+    def __init__(
+        self,
+        paiement_client: "_PaiementClientRecu | None" = None,
+        abonne_client: "_AbonneClientLecture | None" = None,
+        config_client: "_ConfigClientLecture | None" = None,
+    ) -> None:
         self._repo = FactureRepository()
         from .grpc_clients import AbonneServiceClient, ConfigServiceClient, PaiementServiceClient
 
@@ -930,7 +982,7 @@ class RecuPaiementService:
         self._config_client = config_client or ConfigServiceClient()
 
     @staticmethod
-    def _numero_recu(facture, versement: dict, paiements: list[dict]) -> str:
+    def _numero_recu(facture: Facture, versement: dict[str, Any], paiements: list[dict[str, Any]]) -> str:
         """Numéro de reçu stable : REC-<suffixe facture>-<rang chronologique>.
 
         Le rang est calculé sur l'ensemble des versements de la facture triés par

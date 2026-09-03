@@ -7,9 +7,11 @@ WeasyPrint, de façon paresseuse, pour que l'absence des bibliothèques natives
 (pango/cairo) en environnement de test ne casse pas l'import du module.
 """
 
+import datetime
 import io
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from django.template.loader import render_to_string
 
@@ -62,9 +64,9 @@ def _badge_relance(ligne: LigneImpaye) -> str:
 def build_bilan_context(
     lignes: list[LigneImpaye],
     societe: InfosSociete,
-    date_arrete,
+    date_arrete: datetime.date,
     perimetre: str = "Ensemble des impayés",
-) -> dict:
+) -> dict[str, Any]:
     """Construit le contexte de rendu du bilan (synthèse + répartition + lignes).
 
     Toutes les valeurs numériques sont pré-formatées en chaînes pour ne pas
@@ -78,7 +80,7 @@ def build_bilan_context(
 
     # Répartition du solde restant par étape de relance. `x` = décalage cumulé
     # (0..100) pour le tracé SVG de la barre côté gabarit.
-    repartition: list[dict] = []
+    repartition: list[dict[str, Any]] = []
     offset = 0.0
     for etape in (1, 2, 3, 4):
         groupe = [ligne for ligne in lignes if ligne.etape == etape]
@@ -131,7 +133,7 @@ def build_bilan_context(
     }
 
 
-def generer_bilan_pdf_bytes(context: dict) -> bytes:
+def generer_bilan_pdf_bytes(context: dict[str, Any]) -> bytes:
     """Rend le gabarit `bilan_impayes.html` en PDF (WeasyPrint, import paresseux)."""
     import weasyprint  # import paresseux — voir docstring du module
 
