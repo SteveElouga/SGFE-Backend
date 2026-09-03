@@ -10,6 +10,13 @@ service AbonneService {
   rpc SuspendreAbonne (AbonneIdRequest) returns (AbonneResponse);
   rpc ReactiverAbonne (AbonneIdRequest) returns (AbonneResponse);
   rpc ResilierAbonne (AbonneIdRequest) returns (AbonneResponse);
+  // RGPD — droit à l'effacement. N'anonymise QUE l'identité nominative côté
+  // Abonné Service (nom, prénom, téléphone WhatsApp, adresse) ; refuse si
+  // l'abonné n'est pas déjà RESILIE. Ne touche à aucune autre donnée
+  // (compteur, historique, factures/paiements — hors périmètre de ce
+  // service). Idempotent : ré-appeler sur un abonné déjà anonymisé
+  // réapplique les mêmes valeurs sans erreur.
+  rpc AnonymiserAbonne (AbonneIdRequest) returns (AbonneResponse);
   rpc GetCompteur (AbonneIdRequest) returns (CompteurResponse);
   rpc UpdateCompteur (UpdateCompteurRequest) returns (CompteurResponse);
   rpc RemplacerCompteur (RemplacerCompteurRequest) returns (CompteurResponse);

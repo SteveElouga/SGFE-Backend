@@ -25,6 +25,17 @@ class NumerotationService:
 class AbonneService:
     """CRUD abonnés + suspension/réactivation/résiliation (EF-ABO-001 à EF-ABO-004)."""
 
+    # RGPD — droit à l'effacement (anonymiser_abonne). Valeurs EXPLICITES,
+    # jamais vidées : quiconque consulte le dossier plus tard doit comprendre
+    # que c'est un effacement RGPD délibéré, pas une donnée manquante par
+    # erreur. Le téléphone reste au format E.164 attendu par
+    # `validate_telephone_whatsapp` (que cette méthode ne rappelle pas, mais
+    # dont la forme reste cohérente si un jour un contrôle la relit).
+    NOM_ANONYMISE = "Abonné anonymisé"
+    PRENOM_ANONYMISE = "(RGPD)"
+    TELEPHONE_ANONYMISE = "+00000000000"
+    ADRESSE_ANONYMISEE = "Adresse supprimée (RGPD)"
+
     def __init__(self) -> None:
         self.abonnes = AbonneRepository()
         self.compteurs = CompteurRepository()
@@ -125,6 +136,36 @@ class AbonneService:
             except Compteur.DoesNotExist:
                 pass
         return abonne
+
+    def anonymiser_abonne(self, abonne_id: str) -> Abonne:
+        """RGPD — droit à l'effacement, à la résiliation.
+
+        N'anonymise QUE l'identité nominative (nom, prénom, téléphone
+        WhatsApp, adresse) : `abonne_id`, `numero_abonne` et le statut
+        RESILIE sont préservés, ainsi que tout ce que ce service ne possède
+        pas (compteur, historique — laissés intacts ; factures/paiements
+        vivent dans d'autres services, hors périmètre de cette méthode et
+        jamais touchés, pour préserver les obligations comptables de
+        conservation).
+
+        Refuse sur un abonné qui n'est pas déjà RESILIE : anonymiser un
+        abonné encore ACTIF ou SUSPENDU effacerait l'identité d'une personne
+        qui reste cliente du service, ce qu'aucune demande RGPD ne justifie
+        avant la fin de la relation contractuelle.
+
+        Idempotent : ré-appeler sur un abonné déjà anonymisé réapplique les
+        mêmes valeurs (le statut reste RESILIE) sans erreur.
+        """
+        abonne = self.abonnes.get_by_id(abonne_id)
+        if abonne.statut != StatutAbonne.RESILIE:
+            raise ValidationError(
+                f"Seul un abonné RESILIE peut être anonymisé (RGPD) — statut actuel : {abonne.statut}"
+            )
+        abonne.nom = self.NOM_ANONYMISE
+        abonne.prenom = self.PRENOM_ANONYMISE
+        abonne.telephone_whatsapp = self.TELEPHONE_ANONYMISE
+        abonne.adresse = self.ADRESSE_ANONYMISEE
+        return self.abonnes.save(abonne)
 
 
 class CompteurService:

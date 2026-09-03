@@ -20,11 +20,11 @@ def make_compteur_response(numero_compteur=1, statut="ACTIF", position=""):
     )
 
 
-def make_abonne_response(abonne_id="abonne-1", numero_abonne="AB-0001", statut="ACTIF", with_compteur=True):
+def make_abonne_response(abonne_id="abonne-1", numero_abonne="AB-0001", statut="ACTIF", with_compteur=True, nom="Doe"):
     response = Mock(
         abonne_id=abonne_id,
         numero_abonne=numero_abonne,
-        nom="Doe",
+        nom=nom,
         prenom="John",
         telephone_whatsapp="+24100000000",
         adresse="Quartier X",
@@ -281,6 +281,35 @@ class AbonneMutationTests(SimpleTestCase):
         with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="COMPTABLE")):
             result = schema.execute_sync(
                 'mutation { resilierAbonne(id: "abonne-1") { statut } }', context_value=self._admin_context()
+            )
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("Accès non autorisé", str(result.errors))
+
+    def test_anonymiser_abonne_success_as_admin(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(
+                abonne_client,
+                "anonymiser_abonne",
+                return_value=make_abonne_response(statut="RESILIE", nom="Abonné anonymisé"),
+            ) as mock_anonymiser,
+        ):
+            result = schema.execute_sync(
+                'mutation { anonymiserAbonne(abonneId: "abonne-1") { statut nom } }',
+                context_value=self._admin_context(),
+            )
+            mock_anonymiser.assert_called_once_with("abonne-1")
+
+        self.assertIsNone(result.errors)
+        self.assertEqual(result.data["anonymiserAbonne"]["statut"], "RESILIE")
+        self.assertEqual(result.data["anonymiserAbonne"]["nom"], "Abonné anonymisé")
+
+    def test_anonymiser_abonne_requires_admin_role(self):
+        with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="COMPTABLE")):
+            result = schema.execute_sync(
+                'mutation { anonymiserAbonne(abonneId: "abonne-1") { statut } }',
+                context_value=self._admin_context(),
             )
 
         self.assertIsNotNone(result.errors)

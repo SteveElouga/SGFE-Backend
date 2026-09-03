@@ -98,6 +98,11 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
         publish_abonne_event(str(abonne.id))
         return self._response(abonne)
 
+    def AnonymiserAbonne(self, request, context):
+        abonne = self.abonne_service.anonymiser_abonne(request.abonne_id)
+        publish_abonne_event(str(abonne.id))
+        return self._response(abonne)
+
     def GetCompteur(self, request, context):
         compteur = self.compteur_service.get_compteur_actif(request.abonne_id)
         return pb.CompteurResponse(**compteur_to_response(compteur))

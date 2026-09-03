@@ -139,6 +139,11 @@ class AbonneServiceClient:
     def resilier_abonne(self, abonne_id: str) -> abonne_pb.AbonneResponse:
         return self._stub.ResilierAbonne(abonne_pb.AbonneIdRequest(abonne_id=abonne_id))
 
+    def anonymiser_abonne(self, abonne_id: str) -> abonne_pb.AbonneResponse:
+        """RGPD — droit à l'effacement. Abonné Service refuse (INVALID_ARGUMENT)
+        si l'abonné n'est pas déjà RESILIE."""
+        return self._stub.AnonymiserAbonne(abonne_pb.AbonneIdRequest(abonne_id=abonne_id))
+
     def update_compteur(self, abonne_id: str, **kwargs) -> abonne_pb.CompteurResponse:
         return self._stub.UpdateCompteur(abonne_pb.UpdateCompteurRequest(abonne_id=abonne_id, **kwargs))
 

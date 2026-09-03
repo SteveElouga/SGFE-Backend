@@ -111,6 +111,45 @@ class AbonneServiceTests(TestCase):
         with self.assertRaises(ValidationError):
             self.service.suspendre_abonne(str(abonne.id))
 
+    def test_anonymiser_abonne_actif_raises(self):
+        abonne = _create_abonne(self.service)
+        with self.assertRaises(ValidationError):
+            self.service.anonymiser_abonne(str(abonne.id))
+
+    def test_anonymiser_abonne_suspendu_raises(self):
+        abonne = _create_abonne(self.service)
+        self.service.suspendre_abonne(str(abonne.id))
+        with self.assertRaises(ValidationError):
+            self.service.anonymiser_abonne(str(abonne.id))
+
+    def test_anonymiser_abonne_resilie_remplace_les_champs_nominatifs(self):
+        abonne = _create_abonne(self.service)
+        self.service.resilier_abonne(str(abonne.id))
+        anonymise = self.service.anonymiser_abonne(str(abonne.id))
+        self.assertEqual(anonymise.nom, AbonneService.NOM_ANONYMISE)
+        self.assertEqual(anonymise.prenom, AbonneService.PRENOM_ANONYMISE)
+        self.assertEqual(anonymise.telephone_whatsapp, AbonneService.TELEPHONE_ANONYMISE)
+        self.assertEqual(anonymise.adresse, AbonneService.ADRESSE_ANONYMISEE)
+
+    def test_anonymiser_abonne_preserve_id_et_numero_et_statut(self):
+        abonne = _create_abonne(self.service)
+        self.service.resilier_abonne(str(abonne.id))
+        anonymise = self.service.anonymiser_abonne(str(abonne.id))
+        self.assertEqual(anonymise.id, abonne.id)
+        self.assertEqual(anonymise.numero_abonne, abonne.numero_abonne)
+        self.assertEqual(anonymise.statut, StatutAbonne.RESILIE)
+
+    def test_anonymiser_abonne_est_idempotent(self):
+        abonne = _create_abonne(self.service)
+        self.service.resilier_abonne(str(abonne.id))
+        premier = self.service.anonymiser_abonne(str(abonne.id))
+        second = self.service.anonymiser_abonne(str(abonne.id))
+        self.assertEqual(second.nom, premier.nom)
+        self.assertEqual(second.prenom, premier.prenom)
+        self.assertEqual(second.telephone_whatsapp, premier.telephone_whatsapp)
+        self.assertEqual(second.adresse, premier.adresse)
+        self.assertEqual(second.statut, StatutAbonne.RESILIE)
+
     def test_create_abonne_with_invalid_telephone_raises(self):
         with self.assertRaises(ValidationError):
             _create_abonne(self.service, telephone_whatsapp="pas-un-numero")

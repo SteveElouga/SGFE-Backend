@@ -1,7 +1,7 @@
 from django.test import TestCase
 
 from abonnes.grpc_server import AbonneServiceServicer
-from abonnes.services import ValidationError
+from abonnes.services import AbonneService, ValidationError
 from proto import abonne_service_pb2 as pb
 
 
@@ -141,6 +141,23 @@ class AbonneServiceServicerTests(TestCase):
         self.servicer.ResilierAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
         with self.assertRaises(ValidationError):
             self.servicer.ResilierAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
+
+    def test_anonymiser_abonne_actif_raises(self):
+        created = self._create()
+        with self.assertRaises(ValidationError):
+            self.servicer.AnonymiserAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
+
+    def test_anonymiser_abonne_resilie(self):
+        created = self._create()
+        self.servicer.ResilierAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
+        response = self.servicer.AnonymiserAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
+        self.assertEqual(response.nom, AbonneService.NOM_ANONYMISE)
+        self.assertEqual(response.prenom, AbonneService.PRENOM_ANONYMISE)
+        self.assertEqual(response.telephone_whatsapp, AbonneService.TELEPHONE_ANONYMISE)
+        self.assertEqual(response.adresse, AbonneService.ADRESSE_ANONYMISEE)
+        self.assertEqual(response.statut, "RESILIE")
+        self.assertEqual(response.abonne_id, created.abonne_id)
+        self.assertEqual(response.numero_abonne, created.numero_abonne)
 
     def test_get_compteur(self):
         created = self._create()

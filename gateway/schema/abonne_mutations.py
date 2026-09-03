@@ -61,6 +61,13 @@ class AbonneMutations:
         return abonne_from_grpc(abonne_client.resilier_abonne(str(id)))
 
     @strawberry.mutation
+    def anonymiser_abonne(self, info: strawberry.types.Info, abonne_id: strawberry.ID) -> Abonne:
+        """RGPD — droit à l'effacement. Abonné Service refuse si l'abonné
+        n'est pas déjà RESILIE (erreur GraphQL relayée telle quelle)."""
+        require_role(info, "ADMIN")
+        return abonne_from_grpc(abonne_client.anonymiser_abonne(str(abonne_id)))
+
+    @strawberry.mutation
     def update_compteur(
         self, info: strawberry.types.Info, abonne_id: strawberry.ID, input: UpdateCompteurInput
     ) -> Compteur:
