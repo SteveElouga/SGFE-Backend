@@ -41,6 +41,63 @@ services:
           memory: 256M
           cpus: "0.5"
 
+  # Preuve de concept de réplication Redis (maître + réplique) — voir
+  # postgres/replication/README.md §Redis pour la discussion Sentinel/HA.
+  # `replicaof` est un simple paramètre de démarrage de redis-server : la
+  # réplique se connecte au maître et reçoit un flux continu de commandes
+  # (réplication asynchrone, pattern identique à PostgreSQL streaming, en
+  # plus simple côté configuration).
+  redis-replica:
+    image: redis:7-alpine
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["redis-server", "--replicaof", "redis", "6379", "--appendonly", "yes"]
+    volumes:
+      - redis_replica_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # --- Redis Sentinel : surveillance + élection, PAS de failover applicatif ---
+  # 3 instances (quorum 2/3, voir redis/sentinel.conf) : détectent la panne du
+  # maître et élisent la réplique comme nouveau maître. Ce que ça NE couvre
+  # PAS : aucun service Django de ce dépôt n'utilise un client Redis
+  # "Sentinel-aware" (ils appellent tous `redis.Redis.from_url(REDIS_URL)`
+  # directement sur l'hôte "redis") — un vrai failover ferait donc élire un
+  # nouveau maître sans que l'application ne le suive automatiquement. Voir
+  # redis/README.md pour le détail et le chemin vers une vraie HA.
+  redis-sentinel-1: &redis-sentinel
+    image: redis:7-alpine
+    depends_on:
+      redis:
+        condition: service_healthy
+      redis-replica:
+        condition: service_healthy
+    volumes:
+      - ./redis/sentinel.conf:/etc/redis/sentinel.conf.seed:ro
+      - redis_sentinel_1_data:/etc/redis
+    entrypoint: ["sh", "-c", "cp -n /etc/redis/sentinel.conf.seed /etc/redis/sentinel.conf && exec redis-sentinel /etc/redis/sentinel.conf"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis-sentinel-2:
+    <<: *redis-sentinel
+    volumes:
+      - ./redis/sentinel.conf:/etc/redis/sentinel.conf.seed:ro
+      - redis_sentinel_2_data:/etc/redis
+
+  redis-sentinel-3:
+    <<: *redis-sentinel
+    volumes:
+      - ./redis/sentinel.conf:/etc/redis/sentinel.conf.seed:ro
+      - redis_sentinel_3_data:/etc/redis
+
   auth-postgres:
     image: postgres:16-alpine
     environment:
@@ -132,12 +189,22 @@ services:
           memory: 512M
           cpus: "1"
 
+  # --- Preuve de concept de réplication PostgreSQL (primaire + réplique) ---
+  # Base choisie comme représentative des 8 (voir postgres/replication/README.md
+  # pour étendre ce patron aux 7 autres — même principe, `pg_basebackup` +
+  # `standby.signal`, décliné avec le nom/les identifiants de chaque base).
   abonne-postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: abonne_db
       POSTGRES_USER: abonne_user
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      REPLICATION_USER: ${PG_REPLICATION_USER:-replicator}
+      REPLICATION_PASSWORD: ${PG_REPLICATION_PASSWORD:-replicator-devpassword}
+    # wal_level=replica (+ max_wal_senders/max_replication_slots) est ce qui
+    # rend le streaming possible ; identique sur la réplique par simplicité
+    # (elle en a besoin si elle est un jour promue primaire).
+    command: ["postgres", "-c", "wal_level=replica", "-c", "max_wal_senders=10", "-c", "max_replication_slots=10", "-c", "hot_standby=on"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U abonne_user -d abonne_db"]
       interval: 5s
@@ -145,12 +212,42 @@ services:
       retries: 10
     volumes:
       - abonne_postgres_data:/var/lib/postgresql/data
+      # Init one-shot (premier démarrage seulement) : crée le rôle de
+      # réplication et autorise les connexions de réplication — voir le
+      # fichier pour le détail.
+      - ./postgres/replication/init-primary.sh:/docker-entrypoint-initdb.d/init-primary.sh:ro
     restart: unless-stopped
     deploy:
       resources:
         limits:
           memory: 512M
           cpus: "1"
+
+  abonne-postgres-replica:
+    image: postgres:16-alpine
+    depends_on:
+      abonne-postgres:
+        condition: service_healthy
+    environment:
+      PRIMARY_HOST: abonne-postgres
+      PRIMARY_PORT: "5432"
+      REPLICATION_USER: ${PG_REPLICATION_USER:-replicator}
+      REPLICATION_PASSWORD: ${PG_REPLICATION_PASSWORD:-replicator-devpassword}
+    # Remplace le point d'entrée officiel par le nôtre : clone le primaire via
+    # `pg_basebackup -R` au premier démarrage (PGDATA vide) au lieu de lancer
+    # `initdb` — voir postgres/replication/replica-entrypoint.sh.
+    entrypoint: ["/bin/sh", "/replica-entrypoint.sh"]
+    healthcheck:
+      # `abonne_user`/`abonne_db` existent bien : `pg_basebackup` clone TOUT
+      # le primaire (rôles, bases, données), y compris ces identifiants.
+      test: ["CMD-SHELL", "pg_isready -U abonne_user -d abonne_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    volumes:
+      - abonne_postgres_replica_data:/var/lib/postgresql/data
+      - ./postgres/replication/replica-entrypoint.sh:/replica-entrypoint.sh:ro
 
   campagne-postgres:
     image: postgres:16-alpine
@@ -374,6 +471,10 @@ services:
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key
+      # Délai minimum (s) entre deux envois WhatsApp consécutifs, tous
+      # déclencheurs confondus — protège le compte WhatsApp Web partagé
+      # d'un risque de bannissement en cas de pic (voir rate_limiter.py).
+      WHATSAPP_RATE_LIMIT_MIN_INTERVAL_SECONDS: ${WHATSAPP_RATE_LIMIT_MIN_INTERVAL_SECONDS:-3.0}
     volumes:
       - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
@@ -405,6 +506,10 @@ services:
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key
+      # Chiffrement au repos des PII abonné (nom, prénom, téléphone WhatsApp,
+      # adresse — abonnes/fields.py). Placeholder dev uniquement : une vraie
+      # clé (secrets manager) est requise en production, jamais celle-ci.
+      PII_ENCRYPTION_KEY: ${PII_ENCRYPTION_KEY:-hps7C35W7-d_yhAuUUVePR14wScMSG3ffezJhI0qp58=}
     volumes:
       - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
@@ -635,6 +740,13 @@ services:
       - gateway
     ports:
       - "8080:80"
+      - "8443:443"
+    volumes:
+      # Certificat TLS auto-signé de dev — à générer une fois avec
+      # ./scripts/generate-nginx-cert.sh (gitignoré, jamais committé). Sans
+      # lui, nginx refuse de démarrer (fail-fast, même pattern que les clés
+      # JWT RS256 de auth-service ci-dessus).
+      - ./nginx/certs:/etc/nginx/certs:ro
     restart: unless-stopped
     deploy:
       resources:
@@ -704,6 +816,11 @@ networks:
 volumes:
   auth_postgres_data:
   abonne_postgres_data:
+  abonne_postgres_replica_data:
+  redis_replica_data:
+  redis_sentinel_1_data:
+  redis_sentinel_2_data:
+  redis_sentinel_3_data:
   campagne_postgres_data:
   facturation_postgres_data:
   facturation_pdfs:

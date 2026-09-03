@@ -52,6 +52,10 @@ k8s/secrets/*.yaml
 # — secrets locaux, JAMAIS committés, même traitement que les clés JWT et .env.
 /certs/
 
+# Certificat TLS nginx (auto-signé en dev, généré via
+# scripts/generate-nginx-cert.sh) — JAMAIS committé
+nginx/certs/
+
 # Sauvegardes PostgreSQL locales (dumps) — jamais committées
 /backups/
 

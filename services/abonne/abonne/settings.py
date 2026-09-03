@@ -76,5 +76,11 @@ ABONNE_GRPC_PORT = env.int("ABONNE_GRPC_PORT", default=50052)
 # ne protège rien.
 INTERNAL_GRPC_KEY = env("INTERNAL_GRPC_KEY", default="")
 
+# Chiffrement au repos des PII abonné (nom, prénom, téléphone WhatsApp,
+# adresse — voir abonnes/fields.py). Même pattern que INTERNAL_GRPC_KEY :
+# pas de valeur par défaut silencieuse ici, la vérification fail-fast a lieu
+# au premier chiffrement/déchiffrement (abonnes/fields.py::_fernet).
+PII_ENCRYPTION_KEY = env("PII_ENCRYPTION_KEY", default="")
+
 
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")

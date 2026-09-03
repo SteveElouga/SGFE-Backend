@@ -2,6 +2,8 @@ import uuid
 
 from django.db import models
 
+from abonnes.fields import EncryptedCharField, EncryptedTextField
+
 
 class StatutAbonne(models.TextChoices):
     ACTIF = "ACTIF", "Actif"
@@ -20,10 +22,13 @@ class Abonne(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     numero_abonne = models.CharField(max_length=10, unique=True, editable=False)
-    nom = models.CharField(max_length=100)
-    prenom = models.CharField(max_length=100)
-    telephone_whatsapp = models.CharField(max_length=20)
-    adresse = models.TextField(blank=True, default="")
+    # PII chiffrée au repos (voir abonnes/fields.py) — transparent pour le
+    # reste du code : ces attributs restent des `str` en clair en Python,
+    # seule la colonne en base contient un token Fernet.
+    nom = EncryptedCharField(max_length=100)
+    prenom = EncryptedCharField(max_length=100)
+    telephone_whatsapp = EncryptedCharField(max_length=20)
+    adresse = EncryptedTextField(blank=True, default="")
     statut = models.CharField(max_length=20, choices=StatutAbonne.choices, default=StatutAbonne.ACTIF)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

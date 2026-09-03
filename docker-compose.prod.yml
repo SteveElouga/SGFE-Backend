@@ -68,6 +68,15 @@ services:
   nginx:
     image: ghcr.io/${GHCR_REPO:?GHCR_REPO manquant}/nginx:${IMAGE_TAG:?IMAGE_TAG manquant}
     <<: *prod
+    ports:
+      - "443:443"
+    volumes:
+      # Certificats Let's Encrypt sur la machine hôte, renouvelés par
+      # certbot (voir scripts/renew-letsencrypt-cert.sh) — certbot y nomme
+      # déjà ses fichiers fullchain.pem/privkey.pem : même chemin logique
+      # qu'en dev (nginx/certs), default.conf ne distingue pas les deux.
+      - ${LETSENCRYPT_CERT_DIR:?LETSENCRYPT_CERT_DIR manquant — nginx ne trouverait aucun certificat TLS}:/etc/nginx/certs:ro
+      - ${CERTBOT_WEBROOT_DIR:-/var/www/sgfe-certbot}:/var/www/certbot:ro
   db-backup:
     <<: *prod
 
