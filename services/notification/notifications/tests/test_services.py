@@ -184,15 +184,17 @@ class TestEnvoiServiceEnvoyerRelance(TestCase):
         self.assertIn("/espace/", args[1])
 
     @patch("notifications.services.whatsapp_client")
+    @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_relance_etape_2(self, mock_fact, mock_abonne, mock_wa):
+    def test_envoyer_relance_etape_2(self, mock_fact, mock_abonne, mock_config, mock_wa):
         """La relance étape 2 doit envoyer un message RELANCE_2."""
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
 
         mock_fact.get_facture.return_value = _make_facture_mock(facture_id=facture_id, abonne_id=abonne_id)
         mock_abonne.get_abonne.return_value = _make_abonne_mock(abonne_id=abonne_id)
+        mock_config.get_token_validite_jours.return_value = 20
         mock_wa.send.return_value = None
 
         service = EnvoiService()
@@ -214,15 +216,17 @@ class TestEnvoiServiceEnvoyerRelance(TestCase):
         self.assertNotIn("depuis 3 jours", args[1])
 
     @patch("notifications.services.whatsapp_client")
+    @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_relance_etape_3(self, mock_fact, mock_abonne, mock_wa):
+    def test_envoyer_relance_etape_3(self, mock_fact, mock_abonne, mock_config, mock_wa):
         """La relance étape 3 doit envoyer un message AVERTISSEMENT."""
         facture_id = str(uuid.uuid4())
         abonne_id = str(uuid.uuid4())
 
         mock_fact.get_facture.return_value = _make_facture_mock(facture_id=facture_id, abonne_id=abonne_id)
         mock_abonne.get_abonne.return_value = _make_abonne_mock(abonne_id=abonne_id)
+        mock_config.get_token_validite_jours.return_value = 20
         mock_wa.send.return_value = None
 
         service = EnvoiService()
@@ -245,6 +249,7 @@ class TestEnvoiServiceEnvoyerRelance(TestCase):
         mock_fact.get_facture.return_value = _make_facture_mock(facture_id=facture_id, abonne_id=abonne_id)
         mock_abonne.get_abonne.return_value = _make_abonne_mock(abonne_id=abonne_id)
         mock_config.get_infos_societe.return_value = MagicMock(telephone="+237690000000")
+        mock_config.get_token_validite_jours.return_value = 20
         mock_wa.send.return_value = None
 
         service = EnvoiService()
@@ -266,9 +271,10 @@ class TestEnvoiServiceEnvoyerRelance(TestCase):
             service.envoyer_relance("facture-id", "abonne-id", etape=7)
 
     @patch("notifications.services.whatsapp_client")
+    @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_envoyer_relance_etape_0_retablissement(self, mock_fact, mock_abonne, mock_wa):
+    def test_envoyer_relance_etape_0_retablissement(self, mock_fact, mock_abonne, mock_config, mock_wa):
         """Régression ANO-013 : l'étape 0 (confirmation de paiement /
         rétablissement, EF-IMP-005) doit envoyer un message RETABLISSEMENT
         au lieu de lever une ValidationError — Paiement Service appelle
@@ -280,6 +286,7 @@ class TestEnvoiServiceEnvoyerRelance(TestCase):
 
         mock_fact.get_facture.return_value = _make_facture_mock(facture_id=facture_id, abonne_id=abonne_id)
         mock_abonne.get_abonne.return_value = _make_abonne_mock(abonne_id=abonne_id)
+        mock_config.get_token_validite_jours.return_value = 20
         mock_wa.send.return_value = None
 
         service = EnvoiService()

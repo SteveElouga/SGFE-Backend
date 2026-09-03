@@ -73,7 +73,7 @@ class TestRenvoyerEnvoi(SimpleTestCase):
             type_envoi="RECU", facture_id="facture-9", abonne_id="abonne-9", paiement_id="paiement-001"
         )
         mock_paiement.list_paiements.return_value = MagicMock(paiements=[_paiement_response(montant=3000.0)])
-        mock_paiement.get_solde.return_value = MagicMock(solde_restant=1500.0)
+        mock_paiement.get_dette_abonne.return_value = MagicMock(total_du=1500.0)
         mock_client.envoyer_recu.return_value = _envoi_response(envoi_id="envoi-2", type_envoi="RECU")
 
         result = NotificationMutations().renvoyer_envoi(MagicMock(), envoi_id="envoi-001")
@@ -110,7 +110,7 @@ class TestEnvoyerRecuPaiement(SimpleTestCase):
     def test_envoie_le_recu_avec_le_solde_du_jour(self, mock_role, mock_auth, mock_client, mock_paiement) -> None:
         mock_auth.return_value = MagicMock(role="COMPTABLE")
         mock_paiement.list_paiements.return_value = MagicMock(paiements=[_paiement_response(montant=3000.0)])
-        mock_paiement.get_solde.return_value = MagicMock(solde_restant=1500.0)
+        mock_paiement.get_dette_abonne.return_value = MagicMock(total_du=1500.0)
         mock_client.envoyer_recu.return_value = _envoi_response(envoi_id="envoi-2", type_envoi="RECU")
 
         result = NotificationMutations().envoyer_recu_paiement(
@@ -152,6 +152,34 @@ class TestEnvoyerRecuPaiement(SimpleTestCase):
         self.assertIn("annulé", str(ctx.exception))
 
     @patch("schema.notification_mutations.paiement_client")
+    @patch("schema.notification_mutations.notification_client")
+    @patch("schema.notification_mutations.require_auth")
+    @patch("schema.notification_mutations.require_role")
+    def test_annonce_la_dette_totale_meme_facture_soldee(
+        self, mock_role, mock_auth, mock_client, mock_paiement
+    ) -> None:
+        """Régression : un abonné qui vient de solder CETTE facture, mais doit
+        encore sur une autre, doit voir sa dette totale — pas le solde (nul) de
+        cette seule facture. `GetSolde` ne rendait que ce dernier."""
+        mock_auth.return_value = MagicMock(role="COMPTABLE")
+        mock_paiement.list_paiements.return_value = MagicMock(paiements=[_paiement_response(montant=3000.0)])
+        mock_paiement.get_dette_abonne.return_value = MagicMock(total_du=10500.0)
+        mock_client.envoyer_recu.return_value = _envoi_response(envoi_id="envoi-2", type_envoi="RECU")
+
+        NotificationMutations().envoyer_recu_paiement(
+            MagicMock(), paiement_id="paiement-001", facture_id="facture-9", abonne_id="abonne-9"
+        )
+
+        mock_paiement.get_dette_abonne.assert_called_once_with("abonne-9")
+        mock_client.envoyer_recu.assert_called_once_with(
+            paiement_id="paiement-001",
+            facture_id="facture-9",
+            abonne_id="abonne-9",
+            montant=3000.0,
+            solde_restant=10500.0,
+        )
+
+    @patch("schema.notification_mutations.paiement_client")
     @patch("schema.notification_mutations.require_auth")
     @patch("schema.notification_mutations.require_role")
     def test_solde_injoignable_refuse(self, mock_role, mock_auth, mock_paiement) -> None:
@@ -159,7 +187,7 @@ class TestEnvoyerRecuPaiement(SimpleTestCase):
 
         mock_auth.return_value = MagicMock(role="COMPTABLE")
         mock_paiement.list_paiements.return_value = MagicMock(paiements=[_paiement_response()])
-        mock_paiement.get_solde.side_effect = grpc.RpcError("indisponible")
+        mock_paiement.get_dette_abonne.side_effect = grpc.RpcError("indisponible")
         with self.assertRaises(ValueError) as ctx:
             NotificationMutations().envoyer_recu_paiement(
                 MagicMock(), paiement_id="paiement-001", facture_id="facture-9", abonne_id="abonne-9"

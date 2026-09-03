@@ -302,10 +302,12 @@ class PasswordSetupService:
         self.users = UserRepository()
         self.tokens = PasswordSetupTokenRepository()
 
-    def _create_token_and_send(self, user: User, subject: str, intro_html: str) -> None:
+    def _create_token_and_send(
+        self, user: User, subject: str, intro_html: str, link_path: str = "set-password"
+    ) -> None:
         expires_at = timezone.now() + timedelta(hours=settings.PASSWORD_SETUP_TOKEN_VALIDITY_HOURS)
         setup_token = self.tokens.create(user=user, expires_at=expires_at)
-        link = f"{settings.FRONTEND_URL}/set-password?token={setup_token.token}"
+        link = f"{settings.FRONTEND_URL}/{link_path}?token={setup_token.token}"
         email_client.send(
             to_email=user.email,
             to_name=user.username,
@@ -322,10 +324,14 @@ class PasswordSetupService:
         )
 
     def send_password_reset_email(self, user: User) -> None:
+        # `reset-password`, pas `set-password` (mode `activate`) : ce dernier
+        # exige un nom complet côté formulaire et affiche le texte d'activation
+        # d'un nouveau compte — trompeur pour un ADMIN qui réinitialise le sien.
         self._create_token_and_send(
             user,
             subject="Réinitialisation de votre mot de passe SGFE",
             intro_html=f"<p>Bonjour {user.username},</p><p>Cliquez sur le lien pour définir un nouveau mot de passe :</p>",
+            link_path="reset-password",
         )
 
     def request_password_reset(self, email: str) -> None:

@@ -45,29 +45,37 @@ class TestBuildMessageRecu(TestCase):
     """
 
     def test_versement_partiel_annonce_la_dette_totale(self):
-        msg = build_message_recu("Jean DUPONT", "Juin 2026", 10750.0, 10750.0)
+        msg = build_message_recu("Jean DUPONT", "Juin 2026", 10750.0, 10750.0, lien_espace="https://x/espace/tok")
         self.assertIn("Montant réglé : 10750 FCFA", msg)
         self.assertIn("Reste dû, toutes factures : 10750 FCFA", msg)
         self.assertIn("pièce jointe", msg)
 
     def test_dette_eteinte_ne_parle_pas_d_une_facture(self):
-        msg = build_message_recu("Jean DUPONT", "Juin 2026", 21500.0, 0.0)
+        msg = build_message_recu("Jean DUPONT", "Juin 2026", 21500.0, 0.0, lien_espace="https://x/espace/tok")
         self.assertIn("Vous êtes à jour", msg)
         self.assertNotIn("Reste dû", msg)
         # Ne doit surtout pas dire « votre facture est soldée » : le versement
         # peut en avoir couvert trois, et le PDF joint n'en atteste qu'une.
         self.assertNotIn("facture est soldée", msg)
 
+    def test_inclut_le_lien_espace_abonne(self):
+        """Le reçu n'a longtemps porté aucun lien vers l'espace abonné,
+        contrairement au message de facture et à la relance 1."""
+        msg = build_message_recu("Jean DUPONT", "Juin 2026", 10750.0, 0.0, lien_espace="https://x/espace/tok")
+        self.assertIn("https://x/espace/tok", msg)
+
 
 class TestEnvoiServiceEnvoyerRecu(TestCase):
     @patch("notifications.services.whatsapp_client")
+    @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_succes_envoie_le_recu_en_piece_jointe(self, mock_fact, mock_abonne, mock_wa):
+    def test_succes_envoie_le_recu_en_piece_jointe(self, mock_fact, mock_abonne, mock_config, mock_wa):
         fid, aid, pid = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
         mock_fact.get_facture.return_value = _facture_mock(fid, aid)
         mock_fact.generer_recu_paiement_pdf.return_value = (b"%PDF recu", "REC-2026-06-0002-1.pdf")
         mock_abonne.get_abonne.return_value = _abonne_mock(aid)
+        mock_config.get_token_validite_jours.return_value = 20
 
         envoi = EnvoiService().envoyer_recu(pid, fid, aid, 10750.0, 10750.0)
 
@@ -78,11 +86,15 @@ class TestEnvoiServiceEnvoyerRecu(TestCase):
         args = mock_wa.send_with_pdf.call_args.args
         self.assertEqual(args[2], b"%PDF recu")
         self.assertEqual(args[3], "REC-2026-06-0002-1.pdf")
+        # Le message doit inclure un lien espace abonné (régression : le reçu
+        # n'en portait aucun).
+        self.assertIn("/espace/", args[1])
 
     @patch("notifications.services.whatsapp_client")
+    @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_l_envoi_garde_le_versement_dont_il_est_le_recu(self, mock_fact, mock_abonne, mock_wa):
+    def test_l_envoi_garde_le_versement_dont_il_est_le_recu(self, mock_fact, mock_abonne, mock_config, mock_wa):
         """Sans lui, un reçu ne peut pas être renvoyé.
 
         Le journal des envois notait la facture, jamais le versement. Or une
@@ -98,6 +110,7 @@ class TestEnvoiServiceEnvoyerRecu(TestCase):
         mock_fact.get_facture.return_value = _facture_mock(fid, aid)
         mock_fact.generer_recu_paiement_pdf.return_value = (b"%PDF recu", "REC.pdf")
         mock_abonne.get_abonne.return_value = _abonne_mock(aid)
+        mock_config.get_token_validite_jours.return_value = 20
 
         envoi = EnvoiService().envoyer_recu(pid, fid, aid, 10750.0, 2500.0)
 
@@ -124,13 +137,15 @@ class TestEnvoiServiceEnvoyerRecu(TestCase):
         self.assertEqual(envoi.paiement_id, "")
 
     @patch("notifications.services.whatsapp_client")
+    @patch("notifications.services.config_client")
     @patch("notifications.services.abonne_client")
     @patch("notifications.services.facturation_client")
-    def test_pdf_indisponible_envoie_le_message_seul(self, mock_fact, mock_abonne, mock_wa):
+    def test_pdf_indisponible_envoie_le_message_seul(self, mock_fact, mock_abonne, mock_config, mock_wa):
         fid, aid, pid = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
         mock_fact.get_facture.return_value = _facture_mock(fid, aid)
         mock_fact.generer_recu_paiement_pdf.return_value = (b"", "")  # Facturation KO
         mock_abonne.get_abonne.return_value = _abonne_mock(aid)
+        mock_config.get_token_validite_jours.return_value = 20
 
         envoi = EnvoiService().envoyer_recu(pid, fid, aid, 10750.0, 0.0)
 

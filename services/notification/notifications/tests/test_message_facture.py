@@ -112,7 +112,12 @@ class MessageAnnulationPaiementTest(SimpleTestCase):
     def _msg(self, **surcharges):
         from notifications.message_builder import build_message_annulation_paiement
 
-        base = {"prenom_nom": "Jean DUPONT", "periode": "Août 2026", "solde_restant": 13500}
+        base = {
+            "prenom_nom": "Jean DUPONT",
+            "periode": "Août 2026",
+            "solde_restant": 13500,
+            "lien_espace": "https://x/espace/tok",
+        }
         return build_message_annulation_paiement(**{**base, **surcharges})
 
     def test_annonce_ce_qui_reste_du(self):
@@ -155,7 +160,7 @@ class MessageAnnulationFactureTest(SimpleTestCase):
     def _msg(self, **surcharges):
         from notifications.message_builder import build_message_annulation_facture
 
-        base = {"prenom_nom": "Jean DUPONT", "periode": "Août 2026"}
+        base = {"prenom_nom": "Jean DUPONT", "periode": "Août 2026", "lien_espace": "https://x/espace/tok"}
         return build_message_annulation_facture(**{**base, **surcharges})
 
     def test_ne_parle_pas_de_versement(self):

@@ -98,6 +98,8 @@ def build_message_recu(
     periode: str,
     montant: float,
     solde_restant: float,
+    *,
+    lien_espace: str,
 ) -> str:
     """Construit le message WhatsApp de confirmation de paiement (reçu joint).
 
@@ -106,6 +108,7 @@ def build_message_recu(
         periode: Mois et année de la facture réglée (ex. "Juin 2026").
         montant: Montant du VERSEMENT reçu (ce que l'abonné a tendu), en FCFA.
         solde_restant: Ce qu'il doit encore EN TOUT, toutes factures confondues.
+        lien_espace: URL complète de l'espace abonné (avec token).
 
     Returns:
         Message WhatsApp formaté.
@@ -130,7 +133,8 @@ def build_message_recu(
         f"Montant réglé : {montant_str} FCFA\n"
         f"{situation}\n\n"
         f"Votre reçu officiel est en pièce jointe.\n\n"
-        f"Merci de votre confiance."
+        f"Merci de votre confiance.\n\n"
+        f"Votre espace abonné :\n{lien_espace}"
     )
 
 
@@ -231,6 +235,8 @@ def build_message_relance_2(
     jours_retard: int = 0,
     autres_impayes_total: float = 0,
     autres_impayes_nb: int = 0,
+    *,
+    lien_espace: str,
 ) -> str:
     """Relance étape 2 — rappel ferme (EF-NOTIF-004).
 
@@ -242,6 +248,7 @@ def build_message_relance_2(
         autres_impayes_total: Total dû sur les AUTRES factures impayées de
             l'abonné (hors celle-ci), ou 0 s'il n'y en a pas / si illisible.
         autres_impayes_nb: Nombre de ces autres factures impayées.
+        lien_espace: URL complète de l'espace abonné (avec token).
 
     Returns:
         Message WhatsApp formaté.
@@ -254,7 +261,8 @@ def build_message_relance_2(
         f"Bonjour {prenom_nom},\n\n"
         f"Votre facture de {periode}{somme} est impayée {_depuis_quand(jours_retard)}.\n"
         f"{note_autres}\n"
-        f"Sans paiement, votre ligne d'eau fera l'objet d'un avertissement."
+        f"Sans paiement, votre ligne d'eau fera l'objet d'un avertissement.\n\n"
+        f"Votre espace abonné :\n{lien_espace}"
     )
 
 
@@ -265,6 +273,8 @@ def build_message_relance_3(
     jours_avant_suspension: int = 0,
     autres_impayes_total: float = 0,
     autres_impayes_nb: int = 0,
+    *,
+    lien_espace: str,
 ) -> str:
     """Relance étape 3 — avertissement (EF-NOTIF-004).
 
@@ -277,6 +287,7 @@ def build_message_relance_3(
         autres_impayes_total: Total dû sur les AUTRES factures impayées de
             l'abonné (hors celle-ci), ou 0 s'il n'y en a pas / si illisible.
         autres_impayes_nb: Nombre de ces autres factures impayées.
+        lien_espace: URL complète de l'espace abonné (avec token).
 
     Returns:
         Message WhatsApp formaté.
@@ -296,7 +307,8 @@ def build_message_relance_3(
         f"Bonjour {prenom_nom},\n\n"
         f"AVERTISSEMENT : votre ligne d'eau est en situation d'impayé {_depuis_quand(jours_retard)}{somme}.\n"
         f"{note_autres}\n"
-        f"{menace}"
+        f"{menace}\n\n"
+        f"Votre espace abonné :\n{lien_espace}"
     )
 
 
@@ -305,6 +317,8 @@ def build_message_relance_4(
     montant: float | None,
     periode: str,
     telephone_societe: str,
+    *,
+    lien_espace: str,
 ) -> str:
     """Relance étape 4 — suspension (EF-NOTIF-004).
 
@@ -325,6 +339,7 @@ def build_message_relance_4(
         montant: **Dette totale** de l'abonné, ou None si illisible.
         periode: Mois de la facture qui a déclenché la suspension.
         telephone_societe: Numéro de contact de la société.
+        lien_espace: URL complète de l'espace abonné (avec token).
 
     Returns:
         Message WhatsApp formaté.
@@ -344,10 +359,10 @@ def build_message_relance_4(
         else "Contactez notre service pour le rétablissement."
     )
 
-    return f"Bonjour {prenom_nom},\n\n{cause}\n\n{action}{contact}"
+    return f"Bonjour {prenom_nom},\n\n{cause}\n\n{action}{contact}\n\nVotre espace abonné :\n{lien_espace}"
 
 
-def build_message_retablissement(prenom_nom: str) -> str:
+def build_message_retablissement(prenom_nom: str, *, lien_espace: str) -> str:
     """Message de RÉTABLISSEMENT de la ligne d'eau (EF-NOTIF-004, EF-IMP-005).
 
     Envoyé uniquement quand une suspension a réellement été levée.
@@ -368,12 +383,14 @@ def build_message_retablissement(prenom_nom: str) -> str:
 
     Args:
         prenom_nom: Prénom et NOM de l'abonné.
+        lien_espace: URL complète de l'espace abonné (avec token).
 
     Returns:
         Message WhatsApp formaté.
     """
     return (
-        f"Bonjour {prenom_nom},\n\nVotre dette est soldée et votre ligne d'eau est rétablie.\nMerci de votre règlement."
+        f"Bonjour {prenom_nom},\n\nVotre dette est soldée et votre ligne d'eau est rétablie.\n"
+        f"Merci de votre règlement.\n\nVotre espace abonné :\n{lien_espace}"
     )
 
 
@@ -381,6 +398,8 @@ def build_message_annulation_paiement(
     prenom_nom: str,
     periode: str,
     solde_restant: float,
+    *,
+    lien_espace: str,
 ) -> str:
     """Construit le message d'annulation d'un versement.
 
@@ -402,6 +421,7 @@ def build_message_annulation_paiement(
         prenom_nom: Prénom et NOM de l'abonné.
         periode: Période de la facture concernée (ex. « Août 2026 »).
         solde_restant: Ce qui reste dû sur cette facture après annulation.
+        lien_espace: URL complète de l'espace abonné (avec token).
 
     Returns:
         Message WhatsApp formaté.
@@ -412,11 +432,12 @@ def build_message_annulation_paiement(
         f"par nos services.\n\n"
         f"Reste à payer : {_fcfa(solde_restant)} FCFA\n\n"
         f"Si vous avez bien effectué ce versement, contactez-nous : il s'agit "
-        f"probablement d'une correction de saisie de notre part."
+        f"probablement d'une correction de saisie de notre part.\n\n"
+        f"Votre espace abonné :\n{lien_espace}"
     )
 
 
-def build_message_annulation_facture(prenom_nom: str, periode: str) -> str:
+def build_message_annulation_facture(prenom_nom: str, periode: str, *, lien_espace: str) -> str:
     """Construit le message d'annulation d'une facture jamais payée.
 
     `build_message_annulation_paiement` parle d'un VERSEMENT annulé — le mot
@@ -429,6 +450,7 @@ def build_message_annulation_facture(prenom_nom: str, periode: str) -> str:
     Args:
         prenom_nom: Prénom et NOM de l'abonné.
         periode: Période de la facture annulée (ex. « Août 2026 »).
+        lien_espace: URL complète de l'espace abonné (avec token).
 
     Returns:
         Message WhatsApp formaté.
@@ -437,5 +459,6 @@ def build_message_annulation_facture(prenom_nom: str, periode: str) -> str:
         f"Bonjour {prenom_nom},\n\n"
         f"Votre facture de {periode} a été annulée par nos services.\n\n"
         f"Vous n'avez rien à payer pour cette facture.\n\n"
-        f"Si vous avez des questions, contactez-nous."
+        f"Si vous avez des questions, contactez-nous.\n\n"
+        f"Votre espace abonné :\n{lien_espace}"
     )

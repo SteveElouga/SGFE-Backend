@@ -121,6 +121,17 @@ class EnvoiService:
         self._envois = EnvoiRepository()
         self._tokens = TokenAccesRepository()
 
+    def _lien_espace_abonne(self, abonne_id: str, facture_id: str) -> str:
+        """URL de l'espace abonné, en réutilisant/créant un token via TokenService.
+
+        Chaque message envoyé à un abonné doit porter ce lien (le reçu et les
+        relances 2 à 4 ne l'incluaient pas, contrairement au message de facture
+        et à la relance 1) : l'abonné n'avait alors aucun moyen d'y accéder
+        depuis ces messages-là.
+        """
+        token = TokenService().get_or_create_token(abonne_id=abonne_id, facture_id=facture_id)
+        return f"{settings.FRONTEND_URL}/espace/{token.token}"
+
     def get_whatsapp_qr(self) -> tuple[bool, str, str, str, int]:
         """Retourne (ready, qr, number, phase, depuis_ms) pour l'affichage admin.
 
@@ -262,6 +273,7 @@ class EnvoiService:
             periode=periode,
             montant=montant,
             solde_restant=solde_restant,
+            lien_espace=self._lien_espace_abonne(abonne_id, facture_id),
         )
 
         envoi = self._envois.create(
@@ -377,7 +389,10 @@ class EnvoiService:
             # Plus de montant : `facture.montant` n'est pas le versement, et
             # l'annoncer comme tel était faux à chaque paiement partiel.
             # Voir `build_message_retablissement`.
-            message = build_message_retablissement(prenom_nom=prenom_nom)
+            message = build_message_retablissement(
+                prenom_nom=prenom_nom,
+                lien_espace=self._lien_espace_abonne(abonne_id, facture_id),
+            )
         elif etape == 1:
             # Pour la relance 1, on inclut le lien de l'espace abonné
             tokens_actifs = self._tokens.list_active_by_facture(facture_id)
@@ -410,6 +425,7 @@ class EnvoiService:
                 jours_retard=jours_retard,
                 autres_impayes_total=autres_du,
                 autres_impayes_nb=autres_nb,
+                lien_espace=self._lien_espace_abonne(abonne_id, facture_id),
             )
         elif etape == 3:
             message = build_message_relance_3(
@@ -421,6 +437,7 @@ class EnvoiService:
                 jours_avant_suspension=jours_avant_suspension,
                 autres_impayes_total=autres_du,
                 autres_impayes_nb=autres_nb,
+                lien_espace=self._lien_espace_abonne(abonne_id, facture_id),
             )
         elif etape == 4:
             try:
@@ -436,6 +453,7 @@ class EnvoiService:
                 montant=total_du if total_du > 0 else None,
                 periode=periode,
                 telephone_societe=telephone_societe,
+                lien_espace=self._lien_espace_abonne(abonne_id, facture_id),
             )
         elif etape == 5:  # annulation d'un versement
             # Le solde restant vient du service paiement, seule source de vérité :
@@ -456,9 +474,14 @@ class EnvoiService:
                 prenom_nom=prenom_nom,
                 periode=periode,
                 solde_restant=facture.montant if solde_restant is None else solde_restant,
+                lien_espace=self._lien_espace_abonne(abonne_id, facture_id),
             )
         else:  # etape == 6 — annulation d'une facture jamais payée
-            message = build_message_annulation_facture(prenom_nom=prenom_nom, periode=periode)
+            message = build_message_annulation_facture(
+                prenom_nom=prenom_nom,
+                periode=periode,
+                lien_espace=self._lien_espace_abonne(abonne_id, facture_id),
+            )
 
         type_envoi = _ETAPE_TO_TYPE[etape]
         envoi = self._envois.create(
