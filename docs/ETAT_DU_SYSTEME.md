@@ -8,6 +8,33 @@
 > **Date de résolution :** 2026-07-03 — les 24 anomalies du §4 (hors ANO-016, Reporting Service, différé) ont chacune fait l'objet d'une branche dédiée, d'une PR vers `develop`, d'une CI verte, puis d'un merge. `develop` reflète désormais l'état corrigé décrit dans ce document.
 > **À maintenir par :** quiconque modifie le comportement d'un service — mettre à jour la section du service concerné et le registre d'anomalies (§4) en même temps que le code, dans la même PR si possible.
 
+> ⚠️ **Revue de fraîcheur — 3 septembre 2026.** Ce document n'avait pas été
+> retouché depuis sa rédaction du 2-3 juillet, alors que `develop` est passé
+> de la PR #52 à la **PR #167** entretemps (plus de 100 PR mergées). Trois
+> constats corrigés ci-dessous (§3, §7) :
+>
+> 1. **Le Reporting Service existe et fonctionne.** La ligne « ⚪ ABSENT »
+>    du §3 était vraie **au moment précis de l'audit** (2-3 juillet) mais
+>    fausse dès le **5 juillet** (PR #73-#75) — le service n'a simplement
+>    jamais été documenté après coup. Il tourne aujourd'hui en production
+>    logique avec **34 tests**, un `event_consumer.py` idempotent (Redis
+>    Streams + déduplication) et alimente le dashboard GraphQL.
+> 2. **Le volume de tests a plus que doublé** : 508 → **1131**, vérifié par
+>    exécution réelle le 3 septembre 2026 (détail §7).
+> 3. **Le registre d'anomalies (§4) est un instantané figé de juillet**, pas
+>    un flux continu — aucune anomalie n'y a été ajoutée depuis, alors que
+>    le système a beaucoup grossi. Le **suivi des manques et de la dette
+>    technique se fait désormais dans `AUDIT_SGFE.md` §8** (checklist de 94
+>    items, tenue à jour le même jour que cette revue) — ce document-ci
+>    reste la référence pour l'**architecture et les règles métier par
+>    service** (§5), qui n'ont pas été rouvertes ligne à ligne dans cette
+>    passe car rien n'indique qu'elles aient bougé en substance.
+>
+> Le reste du document (§1, §2, §5, §6, §8, §9, §10) décrit fidèlement l'état
+> **de juillet** et n'a pas été réaudité intégralement service par service
+> dans cette passe — seuls les points ci-dessus, factuellement faux ou
+> mesurables sans ambiguïté, ont été corrigés.
+
 ---
 
 
@@ -42,11 +69,13 @@
 | Paiement Service        | 🟢 Fonctionnel, bien testé                         | 60 ✅                    | Service le plus robuste de l'audit ; ANO-023 (code mort) — PR #34, ANO-025 (délai de pause des relances no-op) — PR #45 |
 | Notification Service    | 🟢 Fonctionnel                                     | 46 ✅                    | ANO-013 (confirmation paiement WhatsApp jamais envoyée) — PR #26 ; ANO-014/024 — PR #27       |
 | Config Service          | 🟢 Fonctionnel                                     | 29 ✅                    | ANO-001 (casse des clés) corrigée — PR #18                                         |
-| Reporting Service       | ⚪ **N'existe pas**                                 | —                       | Seul le `.proto` existe ; dossier `services/reporting/` absent                     |
+| Reporting Service       | 🟢 Fonctionnel (livré 2026-07-05, non documenté avant le 3 septembre) | 34 ✅ | Absent à la date exacte de l'audit initial, livré 2 jours plus tard (PR #73-#75) — voir note de fraîcheur en tête de document |
 | whatsapp-service (Node) | 🟢 Fonctionnel                                     | — (pas de tests)        | ANO-005 (auth endpoints) corrigée — PR #21                                         |
 
 
-**Total : 508 tests exécutés à travers les 8 briques Python** (`develop`, vérifié par exécution réelle après le merge des 18 PR de correctifs puis de la refonte PDF facturation — voir §4, §5.5 et §7). Chiffre initial de l'audit avant tout correctif : 439 tests (dont 1 échec, gateway — voir ANO-004).
+**Total au 2-3 juillet 2026 : 508 tests exécutés à travers les 8 briques Python alors connues** (`develop`, vérifié par exécution réelle après le merge des 18 PR de correctifs puis de la refonte PDF facturation — voir §4, §5.5 et §7). Chiffre initial de l'audit avant tout correctif : 439 tests (dont 1 échec, gateway — voir ANO-004).
+
+**Total au 3 septembre 2026 (revue de fraîcheur, 9 briques) : 1131 tests, tous verts** — voir le détail par service en §7.
 
 **Infrastructure (Dockerfiles + pipeline CI/CD) également auditée et corrigée — voir §10** : build multi-stage, non-root en lecture seule, `HEALTHCHECK`, digests pinnés, cache Docker en CI, scan de vulnérabilités (Trivy) bloquant, SBOM + provenance + signature cosign sur les images publiées, versions de dépendances alignées entre services, Dependabot configuré.
 
@@ -93,7 +122,7 @@
 
 ## 3. Vue d'ensemble — ce qui est réellement construit
 
-Le CLAUDE.md racine décrit une cible à **9 composants**. **8 sont réellement implémentés** ; le 9ème (Reporting Service) n'existe que sous forme de contrat `.proto`, sans aucune implémentation Django.
+Le CLAUDE.md racine décrit une cible à **9 composants**. Les **9 sont réellement implémentés** — voir note de fraîcheur en tête de document : le Reporting Service, marqué absent ci-dessous à la date de l'audit initial (2-3 juillet), a été livré le 5 juillet (PR #73-#75) et n'a simplement jamais été redocumenté depuis.
 
 ```
 gateway/              ✅ Django + Strawberry GraphQL, ASGI, aucune BD (dummy backend)
@@ -104,8 +133,10 @@ services/facturation/ ✅ Django + gRPC :50054 — app "factures" (+ génératio
 services/paiement/    ✅ Django + gRPC :50055 — app "paiements" (+ scheduler 8h00)
 services/notification/✅ Django + gRPC :50056 — app "notifications"
 services/config/      ✅ Django + gRPC :50058 — app "parametres"
-services/reporting/   ⚪ ABSENT — seul proto/reporting_service.proto existe (6 RPC déclarés,
-                          0 implémentés). Aucune trace dans docker-compose.yml.
+services/reporting/   ✅ Django + gRPC :50057 — app "stats" (models/repositories/services/
+                          grpc_server/event_consumer Redis Streams idempotent), 34 tests —
+                          livré PR #73-#75 (2026-07-05), jamais réintégré à ce document avant
+                          la revue du 3 septembre 2026 (voir note de fraîcheur ci-dessus)
 whatsapp-service/     ✅ Node.js + Express + whatsapp-web.js (Puppeteer/Chromium),
                           consommé uniquement par Auth (OTP) et Notification (factures/relances)
 ```
@@ -394,7 +425,7 @@ Légende sévérité : 🔴 Critique (bug actif ou faille de sécurité, silenci
 
 ## 7. Couverture de tests
 
-Chiffres vérifiés par exécution réelle sur `develop`, après le merge des 18 PR de correctifs listées au §4.
+Chiffres vérifiés par exécution réelle sur `develop`, après le merge des 18 PR de correctifs listées au §4 (état au 2-3 juillet 2026).
 
 | Service      | Tests exécutés | Résultat | Méthode de vérification                             |
 | ------------ | --------------- | -------- | ----------------------------------------------------- |
@@ -408,7 +439,28 @@ Chiffres vérifiés par exécution réelle sur `develop`, après le merge des 18
 | Gateway      | 112             | ✅ OK    | Exécution réelle (`manage.py test schema`)             |
 | **Total**    | **508**         | **508 ✅** |                                                       |
 
-Trous de couverture restants : absence de tests pour `event_publisher.py` (Abonné), absence de tests pour `schedulers.py` en tant que tel (Campagne, Paiement — la logique métier interne est testée, pas le déclenchement APScheduler), `message_builder.py` (Notification) sans test direct dédié.
+Trous de couverture restants (à cette date) : absence de tests pour `event_publisher.py` (Abonné), absence de tests pour `schedulers.py` en tant que tel (Campagne, Paiement — la logique métier interne est testée, pas le déclenchement APScheduler), `message_builder.py` (Notification) sans test direct dédié.
+
+### 7.bis Mise à jour — 3 septembre 2026
+
+Chiffres ré-exécutés réellement (`DJANGO_SECRET_KEY=x DJANGO_DEBUG=True INTERNAL_GRPC_KEY=x python manage.py test`, par service) dans le cadre de la revue de fraîcheur de ce document.
+
+| Service      | Tests exécutés (03/09) | Tests (02-03/07) | Évolution |
+| ------------ | ---: | ---: | --- |
+| Auth         | 120 | 94  | +26 |
+| Abonné       | 67  | 52  | +15 |
+| Campagne     | 117 | 71  | +46 |
+| Facturation  | 182 | 45  | +137 |
+| Paiement     | 188 | 59  | +129 |
+| Notification | 137 | 46  | +91 |
+| Config       | 31  | 29  | +2 |
+| Reporting    | 34  | — (n'existait pas encore côté doc) | nouveau |
+| Gateway      | 255 | 112 | +143 |
+| **Total**    | **1131** | **508** | **+623** |
+
+La croissance la plus nette (Facturation, Paiement, Notification, Gateway) correspond aux chantiers livrés fin juillet et fin août : robustesse distribuée (idempotence paiement, réconciliation soldes), volet financier correctif (avoir, remboursement, reçu PDF), authentification gRPC interne sur les 8 services, et la fonctionnalité de diffusion WhatsApp. Le détail exhaustif des chantiers correspondants est suivi dans `AUDIT_SGFE.md` §8, pas ici.
+
+Les trous de couverture identifiés en juillet (`event_publisher.py`, `schedulers.py`, `message_builder.py`) n'ont pas été revérifiés individuellement dans cette passe.
 
 ---
 

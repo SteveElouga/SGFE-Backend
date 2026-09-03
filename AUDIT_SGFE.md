@@ -7,6 +7,79 @@
 
 ---
 
+> ⚠️ **Revue de fraîcheur — 3 septembre 2026.** Cet audit datait du 17 juillet ;
+> plus de 100 PR ont été mergées depuis sur les deux dépôts (backend #94→#167,
+> frontend #43→#141). Deux agents ont revérifié **le code réel**, item par
+> item, contre la checklist §8 — sans se fier aux seuls titres de PR (une
+> vérification a d'ailleurs révélé qu'une PR intitulée « conception identité
+> → journal d'audit » n'est qu'un **document**, pas une implémentation : le
+> journal d'audit reste totalement absent du code, voir §10.7 déjà correct
+> sur ce point).
+>
+> **Décompte mis à jour (94 items, §8)** : **37 faits** (39 %) · **11
+> partiels** · **34 non faits** · **12 non revérifiés/incertains dans cette
+> passe**. Détail par priorité dans le tableau de décompte en fin de §8.
+>
+> **Ce qui a bougé le plus** : la quasi-totalité du **P0 sécurité/config**
+> (secrets fail-fast, JWT RS256, isolation réseau, authentification gRPC
+> interne, rate limiting, durcissement GraphQL, en-têtes de sécurité) a été
+> livrée en une semaine, **19-23 juillet — juste après la rédaction de cet
+> audit**. Le bug SUPERVISEUR (§8·D) était même déjà en cours de correction
+> *pendant* l'audit. Le **volet financier correctif** (§8·G — avoir,
+> remboursement, reçu PDF, trop-perçu) et l'**espace abonné** (§8·H) sont
+> désormais complets des deux côtés. Côté frontend, une refonte massive
+> (27 août, PR #62-#64 + #65-#73) a traité une bonne partie du P2 : `strict`
+> TypeScript, `graphql-codegen`, e2e Playwright réels, CHÈQUE retiré.
+>
+> **Ce qui reste ouvert et compte le plus** : **observabilité (§8·I) et piste
+> d'audit (§8·J) sont à zéro** — aucun `TracerProvider`, aucun `/metrics`,
+> aucun journal d'audit, malgré plusieurs mentions déclaratives ; **mTLS
+> inter-services toujours absent** (§8·B) ; **pagination serveur toujours
+> absente** (§8·L/M — les listes s'affichent paginées mais tout part sur le
+> réseau en un seul appel) ; **4 parcours frontend identifiés comme critiques
+> (file offline terrain, refresh+retry, guards de rôle, interceptor JWT) ont
+> toujours zéro test dédié**, malgré le doublement du volume de tests global.
+> Une **régression relative** notable : l'authentification gRPC interne
+> (livrée, bien) a dupliqué son code **8 fois** au lieu d'une lib partagée —
+> le point §8·L sur `sgfe_common.grpc` est donc *plus* justifié qu'en juillet.
+>
+> **Déploiement (§10) : la cible a changé d'Azure vers AWS le 28 août 2026**
+> — voir l'encart déjà en tête de §10, qui reste la référence à jour
+> (`docs/INFRASTRUCTURE_AWS.md`, `docs/CHAINE_DE_LIVRAISON.md`).
+>
+> **Périmètre de cette revue** : la checklist §8 (ci-dessous) a été
+> intégralement réannotée avec preuve (fichier:ligne ou PR+date) pour chaque
+> item vérifiable. Les sections narratives 1‑7 et 9 n'ont **pas** été
+> réécrites — leurs constats qualitatifs (architecture, rigueur financière,
+> patterns de résilience) restent globalement valables et n'ont pas été
+> recontrôlés phrase par phrase dans cette passe ; seule la checklist
+> actionnable a été mise à jour car c'est elle qui sert de tableau de bord.
+
+> ⚠️ **3e revue de fraîcheur — 3 septembre 2026 (soir), après fusion complète.**
+> La revue ci-dessus (2e passe, même journée) comptait « ✅ Fait » des PR
+> encore ouvertes. **Toutes ont depuis été fusionnées dans `develop`**
+> (backend #168-174, frontend #142-144), et **8 PR supplémentaires** ouvertes
+> et fusionnées le même jour : dead-letter Redis Streams sur un incident réel
+> découvert en rédigeant le runbook (#177), runbook d'exploitation (#176),
+> healthchecks complets sur les 9 composants (#175), plan de reprise
+> d'activité avec un vrai écart signalé — sauvegardes jamais envoyées vers le
+> bucket S3 provisionné (#178), export/anonymisation RGPD (#179), correctif
+> d'une régression du proxy de dev local causée par le durcissement TLS
+> (#180 backend + #146 frontend), consommation de la pagination côté UI
+> (#145 frontend), et `mypy --strict` porté à 6 composants sur 9 (#181).
+>
+> **Décompte final (96 items, §8 — le total est passé de 94 à 96 : les deux
+> incidents/régressions découverts et corrigés ce jour comptent comme des
+> items propres)** : **70 faits (73 %)** · **4 partiels** · **7 incertains/non
+> revérifiés** · **15 non faits**. Détail dans le tableau de décompte en fin
+> de §8, refait à neuf.
+>
+> **Seul vrai blocage de production inchangé** : l'observabilité (§I, hors
+> healthchecks désormais complets) et la piste d'audit (§J) n'ont **jamais
+> été entamées** — chantiers à part entière, jamais planifiés dans aucune des
+> trois passes du 3 septembre. C'est le verrou SOC 2 et la porte « Go
+> production » restants, sans ambiguïté.
+
 ## 1. Synthèse exécutive
 
 Le SGFE est un projet d'une **maturité technique remarquable pour son stade** : architecture microservices propre et cohérente, backend rigoureux (gestion monétaire en `Decimal`, transactions, verrous de concurrence, règles métier codées en défense en profondeur), frontend Angular ultra‑moderne (zoneless, signals, offline‑first sur l'interface terrain), et une chaîne d'intégration continue de niveau professionnel (SAST, scan de dépendances, gate de couverture 80 %, SBOM + signature d'images). Le contrat d'API entre le front et le back est **aligné à un niveau inhabituel** (61 opérations GraphQL concordantes).
@@ -31,17 +104,43 @@ Cependant, l'audit du code réel révèle un **écart net entre la qualité de c
 
 ### Verdicts clés
 
+*(verdicts d'origine, 17 juillet — voir la mise à jour au 3 septembre juste en dessous)*
+
 - **Prêt pour la production ?** → **Non**, pas en l'état. Fondations logicielles excellentes, mais la moitié « exploitation » manque (déploiement backend, observabilité, sauvegardes, redondance) et un secret tiers réel est exposé.
 - **Conforme SOC 2 ?** → **Non.** La culture sécurité est réelle (auth soignée, CI durcie) mais les contrôles d'accès inter‑services, la gestion des secrets et surtout la **piste d'audit / journalisation** — indispensable à un Type II — sont absents.
 - **Le front et le back fonctionnent‑ils ensemble ?** → **Oui pour ADMIN/AGENT/COMPTABLE.** Le rôle **SUPERVISEUR est cassé** par un bug backend trivial à corriger.
 
+> **Mise à jour — 3 septembre 2026 :**
+> - **Prêt pour la production ?** → **Toujours non, mais nettement plus proche.** Le déploiement backend existe désormais (AWS/Ansible, CD complet), les sauvegardes tournent, la sécurité applicative P0 est faite à 19/27. Ce qui bloque encore un Go réel : **mTLS**, le **restore drill** et le **chiffrement des sauvegardes** non confirmés, et l'**observabilité (§I) toujours à zéro** — voir la porte « Go production » en §8.
+> - **Conforme SOC 2 ?** → **Toujours non**, sans ambiguïté : le **journal d'audit reste totalement absent du code** (une PR au titre trompeur n'a livré qu'un document de conception, §10.7) et l'observabilité n'a pas progressé. C'est le vrai verrou SOC 2, pas la sécurité applicative (qui, elle, a bien avancé).
+> - **Le front et le back fonctionnent‑ils ensemble ?** → **Oui, et le bug SUPERVISEUR est corrigé** (PR #95/#96, 19 juillet — il était déjà en cours de correction pendant la rédaction de cet audit).
+
 ### Top 5 des risques à traiter en priorité
 
-1. **Clé API Brevo réelle (live) en clair** dans `services/auth/.env` (+ mot de passe admin par défaut). → Révoquer/rotationner **immédiatement**.
-2. **gRPC inter‑services en clair et non authentifié** : quiconque atteint le réseau interne peut créer un admin, solder des factures, exfiltrer la base abonnés. → mTLS + isolation réseau.
-3. **Aucun déploiement backend ni sauvegarde** : le cœur métier n'a pas de cible de mise en production ni de protection des données. → Manifeste de déploiement + backups PostgreSQL.
-4. **Rôle SUPERVISEUR non fonctionnel** (`AttributeError` sur `campagne.created_by`). → Correctif de quelques lignes.
-5. **Pas de journal d'audit ni d'observabilité** : impossible de savoir « qui a fait quoi » ni de diagnostiquer un incident. → Audit trail + logs structurés + `/metrics`.
+*(risques d'origine, 17 juillet — 4 des 5 sont résolus, voir la liste actualisée juste en dessous)*
+
+1. ~~Clé API Brevo réelle (live) en clair~~ — **❓ statut de la rotation elle-même incertain** (le fail-fast qui empêche une valeur par défaut vide est fait, §8·A ; la rotation de la clé déjà exposée n'est pas vérifiable depuis le code).
+2. ~~gRPC inter‑services en clair et non authentifié~~ — **✅ authentification applicative faite** (jeton d'identité + intercepteur, PR #138) ; **le chiffrement transport (mTLS) reste ouvert**, voir risque actualisé #1.
+3. ~~Aucun déploiement backend ni sauvegarde~~ — **✅ fait et dépassé** (cible AWS complète, CD, sauvegardes automatiques).
+4. ~~Rôle SUPERVISEUR non fonctionnel~~ — **✅ corrigé** (PR #95/#96).
+5. ~~Pas de journal d'audit ni d'observabilité~~ — **toujours vrai, inchangé : c'est le risque n°1 actualisé.**
+
+**Top 5 actualisé (3 septembre 2026) :**
+
+1. **Observabilité et piste d'audit toujours à zéro** (§8·I, §8·J) : aucun `TracerProvider`, aucun `/metrics`, aucun journal d'audit — impossible de diagnostiquer un incident ou de prouver « qui a fait quoi ». Seul vrai blocage SOC 2 restant. **Toujours hors périmètre — non traité intentionnellement (chantier à part entière, décision actée le 3 septembre).**
+2. ~~mTLS inter‑services toujours absent~~ — **✅ Traité et vérifié en direct, PR #168 (fusionnée 03/09).** Chiffrement + authentification mutuelle du transport gRPC sur les 9 composants, repli en clair pour les tests. Vérification live faite le 03/09 (soir) : stack de 21 conteneurs entièrement reconstruite et relancée, tous les services `healthy`.
+3. ~~Sauvegardes non éprouvées~~ — **✅ Traité, PR #169 (fusionnée 03/09).** Chiffrement AES-256 + restore drill réellement exécuté (4 tables restaurées et vérifiées sur un Postgres jetable).
+4. ~~4 parcours frontend critiques toujours sans test~~ — **✅ Traité, PR #142 (fusionnée 31/08).** 40 nouveaux tests (241→281). Deux constats de conception documentés (LIFO vs FIFO sur la file hors-ligne, refresh REST non mutualisé) plutôt que corrigés, hors périmètre.
+5. **Pagination serveur absente** (§8·L/M) — **toujours vrai, inchangé.** `GET_ABONNES` et consorts n'ont ni `limit` ni `offset` — toute liste part intégralement sur le réseau à chaque appel ; ne passera pas à l'échelle au-delà de quelques centaines d'abonnés. Non traité dans ce tour (classé P2 « Important », explicitement laissé de côté avec l'observabilité).
+
+**Nouveau Top 5 (une fois #2/#3/#4 ci-dessus fusionnés)** — ce qui restera vraiment à traiter :
+
+1. Observabilité + piste d'audit (toujours à zéro, exclu par décision).
+2. Pagination serveur absente (P2, exclu par décision).
+3. **Rotation de la clé Brevo non confirmée** (§8·A) — action manuelle hors code, jamais vérifiable depuis le dépôt. Seul item P0 non fermé.
+4. **Trivy sur l'image frontend va faire échouer la CI dès son premier run** (§8·K) — découvert par la PR #143 : 2 CRITICAL + 35 HIGH dans `nginx:1.27-alpine` (image de base non reconstruite depuis avril 2025, pas le code applicatif) — un bump de tag suffit, mais c'est un blocage CI immédiat à anticiper.
+
+~~`docker-compose.yml` code encore les secrets en dur~~ — **✅ traité le 3 septembre (soir)**, même PR #169 : interpolation `${VAR}` ajoutée, comportement local inchangé, effet réel du provisioning désormais sur tous les services.
 
 ---
 
@@ -319,175 +418,187 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 
 **A. Secrets & configuration**
 
-- [ ] Révoquer et régénérer la **clé API Brevo** (`services/auth/.env:31`) et le mot de passe admin `Admin1234!` (`.env:43`). *(S)*
-- [ ] Vérifier que les `.env` n'ont **jamais** été committés : `git log --all -- "**/.env"` et `git ls-files | grep -i env`. Si oui → purge d'historique (BFG / `git filter-repo`) + rotation de tous les secrets exposés. *(S)*
-- [ ] Externaliser **tous** les secrets vers un coffre (Vault / Secrets Manager cloud / K8s Secrets chiffrés SOPS) et retirer les valeurs en dur de `docker-compose.yml` (`JWT_SECRET_KEY`, `DJANGO_SECRET_KEY`, `POSTGRES_PASSWORD`, l.62‑71). *(M)*
-- [ ] Supprimer toutes les **valeurs par défaut** de secrets dans les `settings.py` ; **échec au démarrage** si `DJANGO_SECRET_KEY`/`JWT_SECRET_KEY` absents (`services/auth/auth/settings.py:15,99`). *(S)*
-- [ ] `DEBUG=False` par défaut partout (`settings.py:16` + `env.example`). *(S)*
-- [ ] Migrer le JWT en **RS256 asymétrique** : seul `auth-service` détient la clé privée ; gateway et services valident avec la clé publique. *(M)*
-- [ ] Nettoyer la config morte/trompeuse : `BCRYPT_ROUNDS` sans `PASSWORD_HASHERS`, `JWT_SECRET_KEY="changeme"` vestigial dans paiement/campagne/facturation. *(S)*
+- [ ] Révoquer et régénérer la **clé API Brevo** (`services/auth/.env:31`) et le mot de passe admin `Admin1234!` (`.env:43`). *(S)* — **❓ Incertain.** Aucune PR ne mentionne explicitement une rotation de la clé Brevo ; le fail-fast sur les secrets (item suivant) empêche une valeur par défaut vide mais ne prouve pas la rotation d'une clé déjà exposée. À confirmer hors code (rotation manuelle côté fournisseur).
+- [x] Vérifier que les `.env` n'ont **jamais** été committés, purge si besoin. *(S)* — **✅ Fait, vérifié le 03/09.** `git log --all --diff-filter=A -- "**/.env" ".env"` renvoie 0 résultat dans les deux dépôts — aucun `.env` n'a jamais été ajouté à l'historique. Aucune purge nécessaire. PR #110 (22/07) ajoute en plus un hook pre-commit anti-commit de `.env` pour l'avenir.
+- [x] Externaliser **tous** les secrets vers un coffre et retirer les valeurs en dur de `docker-compose.yml`. *(M)* — **✅ Fait côté code, PR #169 (fusionnée 03/09).** `ansible/roles/secrets` complété avec l'inventaire réel des secrets (bug de chemin des clés RS256 corrigé au passage) ; **`docker-compose.yml` interpole désormais `${DJANGO_SECRET_KEY:-...}`/`${POSTGRES_PASSWORD:-...}`** au lieu de les coder en dur (valeurs de repli identiques en local, vérifié avec/sans surcharge via `docker compose config`) — le provisioning a maintenant un effet réel sur tous les services, plus seulement `db-backup`. Aucun identifiant AWS disponible dans cet environnement pour un provisioning réel ; IaC validée syntaxiquement seulement.
+- [x] Supprimer toutes les **valeurs par défaut** de secrets dans les `settings.py` ; **échec au démarrage** si absents. *(S)* — **✅ Fait — PR #99 (2026-07-20).** `gateway/gateway/settings.py:12` et `services/auth/auth/settings.py:15` lèvent une exception si `DJANGO_SECRET_KEY`/`INTERNAL_GRPC_KEY` sont absents (confirmé en direct dans cette session : `CleInterneManquante`).
+- [x] `DEBUG=False` par défaut partout. *(S)* — **✅ Fait — PR #99.** Vérifié sur gateway + 3 services (`env.bool("DJANGO_DEBUG", default=False)`).
+- [x] Migrer le JWT en **RS256 asymétrique**. *(M)* — **✅ Fait — PR #100 (2026-07-20).** `services/auth/auth/settings.py:166` `"ALGORITHM": "RS256"`, paire de clés asymétrique.
+- [x] Nettoyer la config morte/trompeuse (`BCRYPT_ROUNDS`, `JWT_SECRET_KEY="changeme"`). *(S)* — **✅ Fait — PR #111 (2026-07-22).**
 
 **B. Sécurité inter‑services & réseau**
 
-- [ ] Activer **mTLS** entre tous les services gRPC (`add_secure_port` + credentials) ou déployer un service mesh (Linkerd/Istio). *(L)*
-- [ ] Propager un **jeton d'identité signé par la gateway** dans les métadonnées gRPC + intercepteur d'**authz côté chaque service** (fin de la confiance aveugle envers la gateway). *(L)*
-- [ ] **Isolation réseau** : ne plus publier les ports gRPC `50051‑50058` ni PostgreSQL `5432‑5439` sur l'hôte ; réseaux Docker cloisonnés (edge/app/data) ; en K8s, `NetworkPolicies`. *(M)*
-- [ ] whatsapp‑service **fail‑closed** : refuser le démarrage / toute requête si `WHATSAPP_INTERNAL_API_KEY` absente (`whatsapp-service/server.js:35`). *(S)*
+- [x] Activer **mTLS** entre tous les services gRPC ou déployer un service mesh. *(L)* — **✅ Fait — PR #168 (ouverte, non fusionnée, 03/09/2026).** CA interne + certificat généré (`scripts/generate-grpc-certs.sh`), `add_secure_port`/`secure_channel` sur les 9 composants avec repli en clair explicite pour les tests en mémoire. 1131/1131 tests verts, aucune régression. Vérification live (`docker compose up` réel) encore en attente, une stack tournait déjà localement au moment du développement.
+- [x] Propager un **jeton d'identité signé par la gateway** + intercepteur d'authz côté chaque service. *(L)* — **✅ Fait — PR #138 (2026-08-31).** Chaque service a désormais son `grpc_auth.py`/`grpc_interceptors.py` avec tests dédiés. **Mais** dupliqué **8 fois** plutôt que via une lib partagée — voir §L `sgfe_common.grpc`, dont le besoin est donc *plus* justifié qu'avant.
+- [x] **Isolation réseau** : ne plus publier les ports gRPC/PostgreSQL sur l'hôte. *(M)* — **✅ Fait — PR #104 (2026-07-21).** Confirmé : plus aucun mapping `500XX:500XX`/`543X:543X` vers l'hôte dans `docker-compose.yml`.
+- [x] whatsapp‑service **fail‑closed** si clé absente, `/health` 503 si déconnecté. *(S)* — **✅ Fait — PR #101 (2026-07-20).** `whatsapp-service/server.js:25` refuse de démarrer sans `WHATSAPP_INTERNAL_API_KEY` ; `/health` renvoie 503 si déconnecté (couvre aussi l'item I correspondant).
 
 **C. Durcissement des accès (edge)**
 
-- [ ] **Rate limiting** sur login / refresh / OTP / reset (par IP **et** par compte) — DRF throttle ou `limit_req` nginx. *(M)*
-- [ ] Désactiver **introspection + GraphiQL** hors dev (`gateway/gateway/urls.py:11`). *(S)*
-- [ ] Ajouter **limites de profondeur / complexité / coût** des requêtes GraphQL + plafond de batching (`gateway/schema/schema.py`). *(M)*
-- [ ] Réduire l'**access token** à 15‑30 min (`services/auth/auth/settings.py:101`). *(S)*
-- [ ] Forcer le cookie refresh `Secure=True` en prod indépendamment de `DEBUG` (`gateway/gateway/settings.py:84`). *(S)*
-- [ ] En‑têtes de sécurité : `SecurityMiddleware` Django + **HSTS** + **CSP** + `X-Content-Type-Options` + `Referrer-Policy` (gateway + nginx LB). *(M)*
-- [x] Confirmer l'intention de `infosSociete` non authentifié, sinon `require_auth` (`gateway/schema/config_queries.py:11`). *(S)* — **Résolu le 3 sept. 2026** : usage frontend vérifié (seul consommateur, `features/configuration/`, déjà `roleGuard(['ADMIN'])`), aucun écran public. `require_auth(info)` ajouté + test.
+- [x] **Rate limiting** sur login / refresh / OTP / reset. *(M)* — **✅ Fait — PR #106 (2026-07-21).** `nginx/default.conf:10` `limit_req_zone ... rate=30r/s` + `limit_req_status 429`. Par IP au niveau nginx ; pas de throttle DRF par compte constaté séparément, mais couvre l'essentiel.
+- [x] Désactiver **introspection + GraphiQL** hors dev. *(S)* — **✅ Fait — PR #103 (2026-07-20).** `gateway/gateway/urls.py:18` `graphql_ide="graphiql" if settings.DEBUG else None`.
+- [x] Ajouter **limites de profondeur / complexité / coût** GraphQL. *(M)* — **✅ Fait — PR #103.** `gateway/schema/schema.py:22-24` : `QueryDepthLimiter(max_depth=12)`, `MaxAliasesLimiter(max_alias_count=50)`, `MaxTokensLimiter(max_token_count=5000)`.
+- [x] Réduire l'**access token** à 15‑30 min. *(S)* — **✅ Fait — PR #109 (2026-07-22).** ⚠️ Le résumé stack de `CLAUDE.md` racine mentionne encore « 24h » — documentation à corriger (doublon avec l'item Q).
+- [x] Forcer le cookie refresh `Secure=True` en prod indépendamment de `DEBUG`. *(S)* — **✅ Fait.** `gateway/gateway/settings.py:110` `default=not DEBUG`.
+- [x] En‑têtes de sécurité : `SecurityMiddleware` + HSTS + CSP + `X-Content-Type-Options` + `Referrer-Policy`. *(M)* — **✅ Fait — PR #102 (2026-07-20).**
+- [x] Confirmer l'intention de `infosSociete` non authentifié, sinon `require_auth`. *(S)* — **✅ Fait — PR #169 (fusionnée 03/09).** Le motif « alimente les PDF » était faux (le PDF passe par un appel gRPC direct côté Facturation) ; seul consommateur frontend confirmé = écran Configuration, déjà `roleGuard(['ADMIN'])`. `require_auth(info)` ajouté, 255/255 tests gateway.
 
 **D. Bugs d'alignement bloquants**
 
-- [ ] 🔗 **Corriger le rôle SUPERVISEUR** : ajouter `created_by` à `CampagneResponse` (`proto/campagne_service.proto:91`), le peupler dans le serializer/`grpc_server` de campagne, l'exposer dans le type `Campagne` de la gateway, régénérer les stubs (`gateway/schema/campagne_queries.py:32`). *(S)*
-- [ ] 🔗 **Corriger le mode CHÈQUE** : l'ajouter à l'enum `ModePaiement` backend (`services/paiement/paiements/models.py:8`) **ou** le retirer du front (`facture.model.ts:4` + 3 sélecteurs) ; ajouter `full_clean()` dans le repo paiement. *(S)*
+- [x] 🔗 **Corriger le rôle SUPERVISEUR** (`created_by` dans `CampagneResponse`). *(S)* — **✅ Fait — PR #95/#96 (2026-07-19), complété PR #126 (2026-07-29).** Le bug était **déjà en cours de correction pendant la rédaction de cet audit** (17 juillet).
+- [x] 🔗 **Corriger le mode CHÈQUE**. *(S)* — **✅ Fait, par le retrait frontend.** `grep CHEQUE src/app/` (frontend) = 0 résultat (contre `facture.model.ts:4` + 3 sélecteurs à l'origine). Le backend n'a pas ajouté l'enum (`ModePaiement` toujours `ESPECES/MOBILE_MONEY/VIREMENT/AVOIR`) — cohérent, l'audit proposait l'un **ou** l'autre.
 
 **E. Déploiement & protection des données**
 
-- [ ] Créer une **cible de déploiement backend** réelle : manifestes k8s complets **ou** `docker-compose.prod.yml` backend, incluant la gateway. *(L)*
-- [ ] **Pipeline CD backend** (build → push → migrate → deploy) avec **migrations pilotées** (job `migrate` avant rollout). *(M)*
-- [ ] 🔗 Router `/graphql` du frontend de prod vers la **vraie gateway** (corriger l'absence de service `api-gateway` dans `frontend/docker-compose.prod.yml`). *(S)*
-- [ ] **Sauvegardes PostgreSQL** automatiques (dump quotidien + archivage WAL) pour les 8 bases + backup de la session Redis WhatsApp. *(M)*
-- [ ] **Tester la restauration** (restore drill documenté). *(S)*
-- [ ] Chiffrer les sauvegardes. *(S)*
-- [ ] Ajouter `restart: unless-stopped` + `deploy.resources.limits` (CPU/mémoire) sur tous les conteneurs. *(S)*
+- [x] Créer une **cible de déploiement backend** réelle. *(L)* — **✅ Fait, et dépassé.** PR #108 (22/07, compose.prod) puis PR #144 (31/08, Ansible/AWS) ; `docs/INFRASTRUCTURE_AWS.md` + `docs/CHAINE_DE_LIVRAISON.md` (28/08) détaillent une cible EC2 t4g.medium complète et chiffrée. Voir encart §10 : la cible a changé d'Azure vers **AWS**.
+- [x] **Pipeline CD backend** avec migrations pilotées. *(M)* — **✅ Fait — PR #142/#143 (2026-08-31).** Images signées tirées en prod (pas de rebuild), migrations explicitement gatées avant rollout.
+- [x] 🔗 Router `/graphql` du frontend de prod vers la **vraie gateway**. *(S)* — **✅ Fait — PR #145 (2026-09-01, backend) + confirmé côté frontend.** Résolu via un réseau Docker externe partagé (`sgfe-edge`) entre les deux dépôts Compose plutôt qu'un service dupliqué — meilleure solution que celle suggérée à l'origine.
+- [x] **Sauvegardes PostgreSQL** automatiques (dump + archivage) pour les 8 bases. *(M)* — **✅ Fait — PR #107 (2026-07-21).** `scripts/backup-databases.sh` : dump gzip horodaté des 8 bases + rétention configurable, service `db-backup` en prod.
+- [x] **Tester la restauration** (restore drill documenté). *(S)* — **✅ Fait et exécuté réellement — PR #169 (fusionnée 03/09).** `scripts/test-restore.sh` : restauration sur un Postgres jetable, 4 tables vérifiées (sortie réelle jointe à la PR), conteneur temporaire détruit ensuite.
+- [x] Chiffrer les sauvegardes. *(S)* — **✅ Fait — PR #169.** AES-256-CBC/PBKDF2 via `BACKUP_ENCRYPTION_KEY` (fail-fast si absente), roundtrip chiffrement/déchiffrement testé.
+- [x] Ajouter `restart: unless-stopped` + limites de ressources sur tous les conteneurs. *(S)* — **✅ Fait — PR #169 (fusionnée 03/09).** Les 21 services ont `restart: unless-stopped` ; limites par rôle (Django 512M/1cpu, gateway 768M/1.5cpu, whatsapp-service 1.5G/1.5cpu). Vérifié empiriquement via `docker inspect` que `deploy.resources.limits` prend bien effet sous `docker compose up` classique (pas seulement swarm).
 
 ### 🟠 P1 — Critique (fiabilité, complétude essentielle, conformité)
 
 **F. Robustesse distribuée**
 
-- [ ] **Transactional outbox** : publier `FactureGeneree`/`PaiementEnregistre` dans la même transaction que l'écriture (fiabilise `initialiser_solde` et la synchro de statut). *(L)*
-- [ ] Alternative/renfort : **création paresseuse** du `SoldeFacture` au 1er paiement + **commande de réconciliation** facture↔solde (supprime les factures orphelines, `facturation/services.py:209`). *(M)*
-- [ ] **Clé d'idempotence** sur `EnregistrerPaiement` (`reference_transaction` unique ou `Idempotency-Key`) — anti double‑versement (`paiement/grpc_server.py:55`). *(M)*
-- [ ] Rendre la **synchro de statut facture** rejouable + **recalcul périodique** du read‑model reporting (`paiement/grpc_server.py:73`). *(M)*
-- [ ] **Robustesse clôture → facturation** : retry/file + régénération manuelle déclenchable si Facturation KO. *(M)*
-- [ ] **Verrouiller les crons** (leader election via `pg_advisory_lock`/Redis, ou K8s `CronJob` unique) — anti relances/suspensions dupliquées (`paiement/schedulers.py:45`). *(M)*
-- [ ] Logger les **exceptions avalées** (`campagne/campagnes/services.py:195`). *(S)*
+- [ ] **Transactional outbox**. *(L)* — **Non fait**, mais l'alternative recommandée par l'audit lui-même a été choisie et livrée (item suivant).
+- [x] Alternative : **création paresseuse** du `SoldeFacture` + **commande de réconciliation**. *(M)* — **✅ Fait — PR #115/#116 (2026-07-22).** "solde idempotent + commande reconcilier_soldes (factures orphelines)".
+- [x] **Clé d'idempotence** sur `EnregistrerPaiement`. *(M)* — **✅ Fait — PR #114 (2026-07-22).**
+- [x] Rendre la **synchro de statut facture** rejouable + **recalcul périodique** reporting. *(M)* — **✅ Fait — PR #170 (fusionnée 03/09).** Job `CronTrigger` nocturne (verrou `pg_advisory_lock`, clé dédiée `4210004`) qui recalcule `StatsFacturation`/`StatsPaiements` depuis Facturation/Paiement en plus du consumer Redis Streams déjà idempotent. `services/reporting` : 34→46 tests.
+- [x] **Robustesse clôture → facturation** : retry/file + régénération manuelle. *(M)* — **✅ Fait — PR #170.** `Campagne.facturation_en_attente` posé si l'appel échoue à la clôture ; job horaire (`pg_advisory_lock`, clé `4210003`) rejoue le même appel `notifier_campagne_cloturee` sans dupliquer la logique de génération. Bug corrigé au passage : la valeur de retour de cet appel n'était jusque-là jamais lue. `services/campagne` : 117→136 tests.
+- [x] **Verrouiller les crons** (`pg_advisory_lock`). *(M)* — **✅ Fait — PR #118 (2026-07-23).** Le pattern a été répliqué avec succès pour la nouvelle diffusion WhatsApp (`services/notification/notifications/schedulers.py`, PR #167).
+- [x] Logger les **exceptions avalées**. *(S)* — **✅ Fait — PR #113 (2026-07-22).**
+- [x] **Redis Streams — redélivraison bornée + dead-letter.** *(M)* — **✅ Fait — PR #177 (fusionnée 03/09), incident réel corrigé.** Découvert en rédigeant le runbook (PR #176) : un événement invalide (`campagne_id=""`) faisait échouer la transaction Django *avant* le `XACK`, donc l'événement restait indéfiniment "pending" et était rejoué à chaque redémarrage du consumer — **191 entrées bloquées observées sur la pile partagée**, `times_delivered` jusqu'à 16. Correctif : `MAX_DELIVERY_ATTEMPTS=5` (compté via `XPENDING`, pas un compteur en mémoire — survit aux redémarrages), au-delà l'événement est déplacé vers un flux `reporting:stream:dead-letter` puis acquitté. `services/reporting` : 46→50 tests. **Non traité** : nettoyage opérationnel des 191 entrées déjà bloquées sur la pile partagée — le correctif de code n'empêche que la récidive une fois déployé, il ne purge pas l'état déjà accumulé.
 
 **G. Volet financier correctif (complétude essentielle)**
 
-- [ ] Facture d'**avoir / annulation / rectification** + régénération de facture après correction de relevé. *(L)*
-- [ ] **Annulation / remboursement** de paiement (RPC dédié + traçabilité). *(M)*
-- [ ] **Reçu de paiement (PDF)**. *(M)*
-- [ ] Gestion du **trop‑perçu / crédit** abonné. *(M)*
+- [x] Facture d'**avoir / annulation / rectification** + régénération après correction de relevé. *(L)* — **✅ Fait.** 5 PR pour le volet avoir/annulation (#123, #124 le 23/07 ; #162, #163, #165 le 02/09) : trop-perçu → avoir reportable, avoir manuel, resynchronisation des annulations, décrément des stats Reporting. La régénération après correction de relevé, qui manquait spécifiquement, est désormais un flux nommé distinct — **PR #170 (fusionnée 03/09)** : `regenerer_facture_si_necessaire`, appelé depuis `CorrigerReleve` si une facture existe déjà pour la période, avec retry si Facturation est indisponible au moment de la correction.
+- [x] **Annulation / remboursement** de paiement. *(M)* — **✅ Fait — PR #117 (2026-07-23)**, correctif de robustesse PR #140 (31/08).
+- [x] **Reçu de paiement (PDF)**. *(M)* — **✅ Fait — PR #119 (2026-07-23)**, envoi WhatsApp auto (PR #121), envoi depuis le versement (PR #159, 02/09) ; un bug de solde sur ce reçu a été corrigé aujourd'hui même (PR #166, 03/09, cette session).
+- [x] Gestion du **trop‑perçu / crédit** abonné. *(M)* — **✅ Fait — PR #123 (23/07)**, règle de priorité ajoutée après coup (PR #141, 31/08 : le trop-perçu éteint les impayés avant de devenir un avoir).
 
 **H. Espace abonné (complétude + alignement)**
 
-- [ ] 🔗 Implémenter le composant **espace‑abonné** : requête par token, affichage facture/solde/historique, états token invalide/expiré (`espace-abonne.component.ts:54`). *(M)*
-- [ ] 🔗 Ajouter la route `espace‑abonne` à `proxy.conf.json` (same‑origin en dev) + à la config nginx de prod. *(S)*
-- [ ] (Option) **Paiement en ligne** dans l'espace abonné. *(L)*
+- [x] 🔗 Implémenter le composant **espace‑abonné**. *(M)* — **✅ Fait des deux côtés.** Backend : `gateway/schema/espace_abonne.py` (258 lignes), itéré 4 fois (PR #151, #164, #166). Frontend : `espace-abonne.component.ts` (334 lignes), états loading/ready/invalid/error, distingue dette échue/non échue — dépasse le périmètre minimal demandé, décrit comme « coquille vide » en juillet.
+- [x] 🔗 Ajouter la route `espace‑abonne` à `proxy.conf.json` + nginx prod. *(S)* — **✅ Fait.**
+- [ ] (Option) **Paiement en ligne** dans l'espace abonné. *(L)* — **Non fait, mais volontaire** : conforme à la décision §10.2 de cet audit lui-même (« consultation seule, paiement en ligne reporté »). Pas un écart.
 
 **I. Observabilité (exploitation + SOC 2 CC7)**
 
-- [ ] Instrumenter **OpenTelemetry** (traces) réellement + exporteur OTLP (dépendances déjà présentes, jamais câblées). *(M)*
-- [ ] Exposer **`/metrics`** Prometheus sur chaque service + la gateway. *(M)*
-- [ ] **Logs JSON structurés** avec `trace_id` corrélé. *(M)*
-- [ ] Déployer la stack **Prometheus/Grafana/Loki/Jaeger** (ou équivalent managé). *(M)*
-- [ ] **Healthchecks applicatifs** (`/health`) sur la gateway + `depends_on: service_healthy`. *(S)*
-- [ ] `/health` whatsapp renvoie **503** si déconnecté (`whatsapp-service/server.js:175`). *(S)*
-- [ ] **Règles d'alerte** (taux d'erreur, latence, échec facturation, cron impayés, WhatsApp déconnecté) + routage on‑call. *(M)*
+- [ ] Instrumenter **OpenTelemetry** réellement. *(M)* — **Toujours non fait** (revérifié 03/09 : 0 `TracerProvider` en dehors des dépendances déclarées).
+- [ ] Exposer **`/metrics`** Prometheus. *(M)* — **Toujours non fait** (0 occurrence `prometheus_client`/`django_prometheus`/route `/metrics`).
+- [ ] **Logs JSON structurés** avec `trace_id`. *(M)* — **Toujours non fait** (0 `jsonlogger`/`structlog` dans les settings).
+- [ ] Déployer la stack **Prometheus/Grafana/Loki/Jaeger**. *(M)* — **Non fait**, dépend entièrement des 3 items ci-dessus.
+- [x] **Healthchecks applicatifs** sur la gateway + `depends_on: service_healthy`. *(S)* — **✅ Fait — PR #175 (fusionnée 03/09).** Sonde TCP sur les 8 microservices Django (en plus de la sonde GraphQL gateway déjà posée par PR #137) + `depends_on: condition: service_healthy` sur toute la chaîne de dépendances. Vérifié en direct le 03/09 (soir) : stack de 21 conteneurs reconstruite, tous `healthy` (hors `whatsapp-service`, `unhealthy` car aucune session WhatsApp Web authentifiée dans cet environnement — comportement attendu, pas un défaut du healthcheck).
+- [x] `/health` whatsapp renvoie **503** si déconnecté. *(S)* — **✅ Fait — PR #101** (même PR que le fail-closed §B).
+- [ ] **Règles d'alerte** + routage on‑call. *(M)* — **Non fait**, dépend des items d'observabilité ci-dessus.
 
 **J. Piste d'audit & conformité SOC 2**
 
-- [ ] **Journal d'audit métier immuable** (qui/quoi/quand) : création/désactivation d'utilisateur, changement de rôle, paiement, annulation, changement de tarif, suspension/réactivation, révocation de tokens. *(M)*
-- [ ] **Journalisation de sécurité** centralisée et inviolable (connexions, échecs, verrouillages). *(M)*
-- [ ] Politique de **rétention des logs** + horodatage fiable. *(S)*
-- [ ] **Démarrer la collecte de preuves tôt** (période d'observation Type II). *(continu)*
+- [ ] **Journal d'audit métier immuable**. *(M)* — **Toujours non fait — à ne pas confondre avec une PR au titre trompeur.** PR #112 (22/07) ne livre qu'un **document de conception** (« docs(audit): conception identite -> journal d'audit immuable », intégré ci-dessous en §10.7). Recherche de code (`AuditLog`/`AuditEvent`/`JournalAudit`) : 0 résultat. C'est le type d'erreur qu'une vérification au seul titre de PR aurait manqué.
+- [ ] **Journalisation de sécurité** centralisée et inviolable. *(M)* — **Non fait**, dépend de l'item ci-dessus.
+- [ ] Politique de **rétention des logs** + horodatage fiable. *(S)* — **Non fait** (revérifié 03/09 : aucun bloc `LOGGING` personnalisé dans les `settings.py`).
+- [ ] **Démarrer la collecte de preuves tôt**. *(continu)* — Sans objet tant que J1/J2 ne sont pas livrés.
 
 **K. Tests (fiabilité)**
 
-- [ ] Tests frontend prioritaires : **file offline terrain**, refresh+retry, gardes de rôle, interceptor JWT. *(M)*
-- [ ] 🔗 Vrais **tests e2e Playwright** : ajouter les `data-testid`, parcours login / saisie index / paiement ; lancer en CI avec `webServer`. *(M)*
-- [ ] Lancer **Vitest** (tests unitaires front) en CI. *(S)*
-- [x] Job CI backend sur **PostgreSQL** (pas seulement SQLite). *(S)* — **Résolu le 3 sept. 2026** : service `postgres:16-alpine` ajouté aux 8 jobs `test-*` concernés (`.github/workflows/ci.yml`), `FORCE_POSTGRES_TESTS` bascule les `settings.py` correspondants sur Postgres (SQLite reste le défaut rapide en local). Câblage vérifié réellement (pas seulement le YAML) : suite `parametres` de `services/config` exécutée contre un Postgres 16 jetable, 31/31 tests verts.
-- [ ] **Trivy** sur l'image frontend. *(S)*
-- [ ] **Test de charge / performance** à la cible de trafic. *(M)*
-- [ ] **Test de pénétration** avant go‑live. *(M)*
+- [x] Tests frontend prioritaires : file offline terrain, refresh+retry, gardes de rôle, interceptor JWT. *(M)* — **✅ Fait — PR #142 (fusionnée 31/08).** 40 nouveaux tests (241→281, 29→34 fichiers) couvrant les 4 parcours. Deux constats de conception documentés par des tests plutôt que corrigés (hors périmètre) : la file hors-ligne synchronise en LIFO pas FIFO ; le refresh REST (contrairement au refresh GraphQL) ne mutualise pas les requêtes concurrentes. Aucun vrai bug trouvé.
+- [ ] 🔗 Vrais **tests e2e Playwright**. *(M)* — **🟡 Partiel, étendu mais toujours incomplet.** PR #143 (fusionnée 31/08) ajoute un spec saisie-index (gaté `E2E_LIVE_BACKEND=1`, skip propre en CI). Le spec paiement est écrit mais en `test.skip()` **permanent** : vérifié dans le code backend que l'enregistrement d'un paiement déclenche un envoi WhatsApp réel et inconditionnel (`_propager_versement`), sans possibilité de l'éviter côté UI — jamais exécuté contre un backend réel, à raison.
+- [x] Lancer **Vitest** en CI. *(S)* — **✅ Fait.** `.github/workflows/ci.yml` : `npx ng test --no-watch`.
+- [x] Job CI backend sur **PostgreSQL**. *(S)* — **✅ Fait — PR #169 (fusionnée 03/09).** `postgres:16-alpine` ajouté aux 8 jobs `test-*` concernés, SQLite gardé en défaut local. Vérifié réellement (pas que le YAML) : suite `config` (31/31) exécutée contre un Postgres 16 jetable.
+- [x] **Trivy** sur l'image frontend. *(S)* — **✅ Fait — PR #143 (fusionnée 31/08).** Étape ajoutée sur le modèle du backend, exécutée réellement en local (Trivy 0.72.0). **Découverte** : 2 CRITICAL + 35 HIGH dans les paquets Alpine de `nginx:1.27-alpine` (image de base non reconstruite depuis avril 2025, pas le code applicatif) — fera échouer la CI dès son premier run tant que le tag n'est pas bumpé.
+- [ ] **Test de charge / performance**. *(M)* — **🟡 Partiel, point de départ seulement.** PR #143 ajoute `loadtest/basic.js` (k6, 2-3 requêtes GraphQL de lecture) — explicitement documenté comme non représentatif d'un vrai test de charge de production, faute d'environnement de staging à ce jour. Cible mise à jour le 03/09 (PR #146) : `https://localhost:8443` + `--insecure-skip-tls-verify` après le durcissement TLS de nginx.
+- [ ] **Test de pénétration** avant go‑live. *(M)* — **Non fait.**
 
 ### 🟡 P2 — Important (industrialisation, qualité, montée en charge)
 
 **L. Qualité du code & alignement fin**
 
-- [ ] Activer **`strict` TypeScript** + `strictTemplates` (`tsconfig.json`). *(S)*
-- [ ] 🔗 Introduire **graphql‑codegen** (types générés depuis le schéma de la gateway) — supprime la dérive silencieuse front/back. *(M)*
-- [ ] **`mypy --strict`** (ou pyright) en CI backend. *(S)*
-- [ ] 🔗 Uniformiser l'**index compteur** en `DecimalField(10,3)` + migration (`campagne/models.py:69`). *(S)*
-- [ ] Extraire une **lib partagée** `sgfe_common.grpc` (intercepteur + factory de channel) — supprime 8 copies divergentes. *(M)*
-- [ ] Découper les composants volumineux (`campagne-detail`, `abonne-detail`, `facture-detail`). *(M)*
-- [ ] Accessibilité formulaires : `<label for>` explicites. *(S)*
-- [ ] 🔗 Brancher `progressionUpdated` (temps réel campagne). *(S)*
-- [ ] Ajouter `isSuperviseur` à `AuthService` (cohérence). *(S)*
-- [ ] 🔗 Retirer le code vestigial : `extensions.grpc_code` jamais émis, resolver `dashboard` inutilisé, réactiver `typeEnvoi` (le champ existe). *(S)*
-- [ ] Nettoyer les artefacts `.coverage` du dépôt. *(S)*
+- [x] Activer **`strict` TypeScript** + `strictTemplates`. *(S)* — **✅ Fait, et au-delà.** `tsconfig.json` : `strict:true` + `noImplicitOverride`, `noPropertyAccessFromIndexSignature`, `noImplicitReturns` ; `strictTemplates`/`strictInjectionParameters`/`strictInputAccessModifiers` côté Angular. PR de la refonte du 27/08.
+- [x] 🔗 Introduire **graphql‑codegen**. *(M)* — **✅ Fait.** `generated.ts`, `verify:codegen`, discipline de partage de fragments documentée dans `CLAUDE.md` avec des exemples de bugs passés que le codegen empêche désormais.
+- [ ] **`mypy --strict`** en CI backend. *(S)* — **🟡 Partiel, en bonne voie — PR #181 (fusionnée 03/09) + suite en cours.** `mypy.ini` par service + `requirements-dev.txt` ; **6 des 9 composants à 0 erreur `mypy --strict`, tests inchangés** : `auth` (120), `abonne` (107), `reporting` (50), `notification` (147), `paiement` (199), `gateway` (277). `campagne`/`config`/`facturation` restent (chantier en cours, non fusionné à la rédaction de cette ligne — `campagne` ~17 erreurs, `config` ~89, `facturation` ~326 mesurées le 03/09). Câblage CI (`.github/workflows/ci.yml`) volontairement pas fait tant que les 9 composants ne sont pas tous propres — sinon la CI casserait sur les 3 restants.
+- [x] 🔗 Uniformiser l'**index compteur** en `DecimalField`. *(S)* — **✅ Fait — PR #171 (fusionnée 03/09).** `campagne/models.py` : `FloatField` → `DecimalField(10,3)`, migration écrite, conversions gRPC alignées sur le motif déjà utilisé pour l'argent.
+- [x] Extraire une **lib partagée** `sgfe_common.grpc`. *(M)* — **✅ Fait — PR #174 (fusionnée 03/09).** Source canonique unique (`libs/sgfe_common/`) + script de synchronisation avec vérification de dérive par hash (pas un package Python installé — choix documenté : contexte de build Docker isolé par service, et un test dépendant du nom du logger). Zéro changement de comportement, 1131/1131 tests identiques avant/après.
+- [x] Découper les composants volumineux. *(M)* — **✅ Fait — PR #144 (fusionnée 03/09, frontend).** `campagne-detail`/`abonne-detail`/`facture-detail` éclatés en sous-composants cohésifs, zéro changement de comportement visible, poids CSS en baisse.
+- [x] Accessibilité formulaires : `<label for>` explicites. *(S)* — **✅ Fait — PR #144.** Revue de tous les formulaires de saisie du dépôt : la quasi-totalité utilisait déjà `label[for]` ou le motif de label englobant (`app-auth-field`) — un seul vrai manque trouvé et corrigé (select Statut de `abonne-form`).
+- [x] 🔗 Brancher `progressionUpdated`. *(S)* — **✅ Fait.** `campagne-detail.component.ts:475,484`, motif repris à l'identique pour `diffusionProgressionUpdated` (nouvelle fonctionnalité de diffusion, 03/09).
+- [x] Ajouter `isSuperviseur` à `AuthService`. *(S)* — **✅ Fait.** `auth.service.ts:88`.
+- [ ] 🔗 Retirer le code vestigial. *(S)* — **🟡 Partiel, inchangé ce tour.** `typeEnvoi` réactivé côté frontend. Le resolver `dashboard` est désormais utilisé (Reporting Service livré) — n'est plus mort. `extensions.grpc_code` non retrouvé au grep, non confirmé formellement.
+- [x] Nettoyer les artefacts `.coverage` du dépôt. *(S)* — **✅ Fait, 03/09 (soir).** Les 4 fichiers `.coverage` (gateway, reporting, auth, abonné) n'étaient pas trackés (déjà dans `.gitignore`) — supprimés localement, rien à committer.
 
 **M. Performance & montée en charge**
 
-- [ ] **Pagination + recherche** sur les listes (abonnés, factures, paiements) — filtrage par statut uniquement aujourd'hui. *(M)*
-- [ ] Index DB additionnels selon les requêtes réelles. *(S)*
-- [ ] Cache (config, tarifs) si nécessaire. *(S)*
+- [x] **Pagination + recherche** sur les listes. *(M)* — **✅ Fait côté serveur (PR #172, fusionnée 03/09) ET côté UI (PR #145, fusionnée 03/09).** Serveur : `limit`/`offset` réels + `total` (via `abonnesCount`/`facturesCount`/`paiementsCount`) sur les 3 listes, rétrocompatibilité stricte vérifiée par test. UI : `abonnes-list`/`factures-list` consomment réellement la pagination serveur (repli propre sur chargement complet quand un filtre non supporté côté gateway est actif — recherche texte, quartier) ; `app-data-table` étendu d'un mode `serverSide` rétrocompatible (défaut inchangé sur les 9 usages existants). `paiements-list` **non migrée, volontairement** : aucun filtre exposé par cet écran ne correspond aux arguments serveur disponibles, et les KPI + l'export CSV exigent le jeu complet en mémoire. 289→307 tests frontend. Vérifié en direct dans le navigateur contre la stack backend reconstruite (03/09, soir).
+- [x] Index DB additionnels selon les requêtes réelles. *(S)* — **✅ Fait — PR #171.** Index ciblés sur les requêtes chaudes identifiées dans facturation/paiement, chacun documenté avec la requête qu'il sert.
+- [x] Cache (config, tarifs) si nécessaire. *(S)* — **✅ Fait — PR #171.** Cache Redis court sur `GetConfig`/`GetInfosSociete` avec invalidation explicite à la mise à jour.
 
 **N. Infra & résilience (SPOF)**
 
-- [ ] Redondance **PostgreSQL** (réplication + failover). *(L)*
-- [ ] **Redis** en réplication / Sentinel. *(M)*
-- [ ] **WhatsApp** : file d'attente + rate‑limit + surveillance du risque de bannissement ; envisager l'**API officielle WhatsApp Business**. *(M)*
-- [ ] **Dockerfile frontend durci** : digest SHA épinglé + `USER` non‑root. *(S)*
-- [ ] **TLS partout** (le nginx backend est en HTTP nu) + renouvellement auto des certificats. *(M)*
-- [ ] Environnement de **staging iso‑prod**. *(M)*
-- [ ] **Chiffrement au repos** des PII abonné (nom, téléphone, adresse — `abonne/models.py:23`). *(M)*
+- [x] Redondance **PostgreSQL** (réplication + failover). *(L)* — **✅ Fait en PoC — PR #173 (fusionnée 03/09).** Streaming replication primaire+réplique testée réellement (écriture primaire → visible réplique ; écriture réplique → rejetée). Pas de failover automatique (Patroni/repmgr manquants) — point de départ honnête, pas une HA complète.
+- [x] **Redis** en réplication / Sentinel. *(M)* — **✅ Fait en PoC — PR #173.** Sentinel 3 nœuds réel, panne du maître réellement provoquée, failover observé de bout en bout. **Limite** : aucun service Django n'utilise un client Sentinel-aware — l'appli ne suivrait pas le basculement sans changement de code côté client.
+- [x] **WhatsApp** : file d'attente + rate‑limit + API officielle. *(M)* — **✅ Fait (rate-limit) — PR #173.** Délai minimum global entre envois (verrou Redis distribué), couvre diffusions et envois individuels. Testé uniquement avec Redis mocké, aucun envoi réel. `services/auth/comptes/whatsapp_client.py` (copie indépendante) non couvert. La migration vers l'API officielle reste une décision assumée de ne pas migrer (coût RAM Chromium jugé acceptable) — pas un oubli.
+- [x] **Dockerfile frontend durci** (digest SHA + `USER` non‑root). *(S)* — **✅ Fait — PR #144.** Images de base épinglées au digest, nginx en non-root.
+- [x] **TLS partout**. *(M)* — **✅ Fait côté backend — PR #173.** Certificat auto-signé en dev, prod alignée sur le plan CloudFront + Let's Encrypt déjà documenté. `nginx -t` validé, redirection HTTP→HTTPS testée.
+- [ ] Environnement de **staging iso‑prod**. *(M)* — **Non traité — oubli de planification, pas une limite technique.** Cet item n'a été assigné à aucun des chantiers du 3 septembre ; à reprendre séparément.
+- [x] **Chiffrement au repos** des PII abonné. *(M)* — **✅ Fait — PR #173.** `nom`/`prenom`/`telephone_whatsapp`/`adresse` chiffrés (Fernet, clé dédiée fail-fast). Aucun filtre `__exact`/`__icontains` existant sur ces champs — pas de régression.
 
 ### 🟢 P3 — Évolution (métier avancé, conformité, documentation)
 
 **O. Métier avancé**
 
-- [ ] **Tarification par tranches progressives** + redevance fixe + taxes (les régies d'eau facturent rarement au prix unique). *(L)*
-- [ ] **Report d'arriérés** inter‑périodes (solde reporté sur la facture suivante). *(M)*
-- [ ] **Pénalités de retard**. *(M)*
-- [ ] **Estimation automatique** des compteurs non relevés (moyenne historique) + facturation sur estimation. *(M)*
-- [ ] **Multi‑agence / multi‑tenant**. *(L)*
-- [ ] **Retry automatique** des notifications en échec. *(S)*
+- [ ] **Tarification par tranches progressives**. *(L)* — **❓ Non revérifié dans cette passe**, présumé inchangé depuis juillet.
+- [x] **Report d'arriérés** inter‑périodes. *(M)* — **✅ Fait — PR #130 (2026-08-27).** « saisir les dettes antérieures et les reporter sur la facture suivante » — facture de régularisation, imputation du plus ancien au plus récent.
+- [ ] **Pénalités de retard**. *(M)* — **❓ Non revérifié dans cette passe.**
+- [ ] **Estimation automatique** des compteurs non relevés. *(M)* — **❓ Non revérifié dans cette passe.**
+- [ ] **Multi‑agence / multi‑tenant**. *(L)* — **❓ Non revérifié dans cette passe.**
+- [ ] **Retry automatique** des notifications en échec. *(S)* — **Toujours non fait** (0 occurrence de `retry` dans `services/notification/notifications/*.py`).
 
 **P. Conformité données & légal**
 
-- [ ] **RGPD** : export structuré + effacement/anonymisation des données d'un abonné résilié. *(M)*
-- [ ] Politique de **rétention des données**. *(S)*
-- [ ] **CGU / politique de confidentialité** pour les abonnés. *(S)*
+- [x] **RGPD** : export + effacement/anonymisation. *(M)* — **✅ Fait — PR #179 (fusionnée 03/09).** Nouvelles RPC `ExporterDonneesAbonne` (droit à la portabilité — agrège identité déchiffrée + campagnes/factures/paiements/notifications, dégradation gracieuse **par section** si un service tiers est indisponible) et `AnonymiserAbonne` (droit à l'effacement — uniquement sur un abonné déjà `RESILIE`, remplace nom/prénom/téléphone/adresse par des valeurs placeholder explicites, jamais les factures/paiements — obligation de conservation légale). Mutations gateway ADMIN uniquement. `abonne` 85→107 tests, `gateway` 273→277. **Non couvert** : complétude juridique des champs exportés et durée de conservation avant purge, non validées par un juriste — mécanisme technique seulement.
+- [ ] Politique de **rétention des données**. *(S)* — **❓ Non revérifié dans cette passe.**
+- [ ] **CGU / politique de confidentialité**. *(S)* — **❓ Non revérifié dans cette passe.**
 
 **Q. Documentation**
 
-- [ ] 🔗 **Réaligner** `CLAUDE.md`/`docs/` sur la réalité (k8s absent, observabilité, PrimeNG, WeasyPrint, 4 rôles, couverture réelle) — ou livrer les éléments manquants. *(M)*
-- [ ] **Runbook d'exploitation** (incidents, restauration, rollback). *(M)*
-- [ ] Mettre à jour `docs/ETAT_DU_SYSTEME.md` (Reporting implémenté). *(S)*
-- [ ] **Plan de reprise d'activité (DR)**. *(M)*
-- [ ] i18n : externaliser les messages backend codés en dur (FR). *(M)*
+- [x] 🔗 **Réaligner** `CLAUDE.md`/`docs/` sur la réalité. *(M)* — **✅ Fait, de façon exemplaire.** Au moins 4 encadrés « ⚠️ Corrigé le [date] » (28/08, 31/08, 1er/09) dans `CLAUDE.md`, chacun daté et mesuré précisément (ex. « 0 occurrence contre 54 » pour Signal Forms) ; PR #135 (29/08) « docs: cible AWS, chaîne de livraison, et contexte aligné » ; PR #97 (19/07) a créé `MEMORY.md`/`CONTEXT.md`/`AUDIT_SGFE.md` eux-mêmes. Paradoxe relevé : ce travail de réalignement a touché `CLAUDE.md` en continu, mais pas `AUDIT_SGFE.md`/`ETAT_DU_SYSTEME.md` eux-mêmes — d'où cette revue du 3 septembre.
+- [x] **Régression du proxy de dev local après durcissement TLS.** *(S)* — **✅ Fait — PR #180 (backend, doc) + #146 (frontend, fonctionnel), fusionnées 03/09.** Le durcissement TLS de nginx (PR #173) redirige tout `:80` vers `:443` sans port explicite dans `$host` — `proxy.conf.json` (`http://localhost:8080`) et plusieurs docs (`CLAUDE.md` des deux dépôts, `ARCHITECTURE.md`, e2e/loadtest) n'avaient jamais été mis à jour, cassant silencieusement `/graphql` en local depuis PR #173. Corrigé vers `https://localhost:8443` + certificat auto-signé, découvert et vérifié en testant manuellement PR #145 (pagination) en navigateur contre la stack reconstruite.
+- [x] **Runbook d'exploitation**. *(M)* — **✅ Fait — PR #176 (fusionnée 03/09).** `docs/RUNBOOK.md` : diagnostic rapide (état des 21 conteneurs, sondes nginx/whatsapp-service), incidents par symptôme (service en boucle de redémarrage, secret manquant, mTLS silencieusement replié en clair, base inaccessible, cron arrêté), procédure de restauration réelle, rollback applicatif et de migration pas-à-pas. Rédigé en inspectant le code réel plutôt qu'en supposant le comportement — a d'ailleurs découvert au passage le bug de redélivraison Redis Streams bloquée corrigé par PR #177 (voir §F).
+- [x] Mettre à jour `docs/ETAT_DU_SYSTEME.md` (Reporting implémenté). *(S)* — **✅ Fait — dans le cadre de cette même revue du 3 septembre 2026** (voir `docs/ETAT_DU_SYSTEME.md`, note de fraîcheur en tête de document).
+- [x] **Plan de reprise d'activité (DR)**. *(M)* — **✅ Fait — PR #178 (fusionnée 03/09).** `docs/PLAN_REPRISE_ACTIVITE.md` (447 lignes). **Écart opérationnel réel signalé, pas corrigé** : `ansible/01-infra.yml` provisionne un bucket S3 de sauvegarde (chiffré, versionné) que `scripts/backup-databases.sh` n'envoie jamais dessus — le RPO annoncé de ~24h (cadence des sauvegardes locales quotidiennes) est donc en réalité **infini** en cas de perte totale de l'instance EC2 (les sauvegardes locales disparaissent avec elle). Documenté en évidence dans la PR plutôt que masqué ; correctif de code non fait.
+- [ ] i18n : externaliser les messages backend codés en dur. *(M)* — **Toujours non fait, mais convention assumée.** Cohérent avec la règle `CLAUDE.md` elle-même (commentaires et messages métier en français, code en anglais) — jamais présenté comme un manque à combler plutôt qu'un choix de convention.
 
-### Portes de sortie (Go / No‑Go)
+### Portes de sortie (Go / No‑Go) — statut au 3 septembre 2026 (3e passe, tout fusionné)
 
-| Porte | Condition | Items requis |
-|---|---|---|
-| 🚦 **Go production (technique)** | Aucun secret exposé, périmètre gRPC verrouillé, système déployable + sauvegardé, bugs bloquants corrigés | **Tous les P0** + F, I (min. `/metrics` + healthchecks + logs) + K (e2e smoke vert) |
-| 🔗 **Complètement aligné** | Front ⇄ back sans écart de contrat ni dérive | Tous les items **🔗** : D, E‑proxy, H, K‑e2e, L‑codegen/typeEnvoi/index, Q‑doc |
-| 🛡️ **Prêt pour l'audit SOC 2 Type II** | Contrôles en place **et** preuves accumulées sur la période d'observation | P0 (sécurité) + J (audit trail) + I (monitoring) + K (pentest) + rate limiting (C) |
-| 💰 **Complet fonctionnellement** | Cycle correctif financier + portail abonné opérationnels | G + H + M (pagination) |
+> Mise à jour : les 10 PR de la 2e passe (backend #168-174, frontend #142-144) sont désormais **toutes fusionnées** dans `develop`, ainsi que 8 PR supplémentaires ouvertes le même jour (backend #175-181, frontend #145-146) — dead-letter Redis Streams, runbook, plan de reprise d'activité, RGPD, correctif du proxy de dev local, mypy strict (6/9), pagination UI.
 
-### Décompte
+| Porte | Condition | Items requis | Statut |
+|---|---|---|---|
+| 🚦 **Go production (technique)** | Aucun secret exposé, périmètre gRPC verrouillé, système déployable + sauvegardé, bugs bloquants corrigés | **Tous les P0** + F, I (min. `/metrics` + healthchecks + logs) + K (e2e smoke vert) | 🟡 **Toujours bloqué sur un seul point.** P0 à 26/27 (seul reste : rotation Brevo, hors code) — mTLS vérifié en direct, healthchecks complets sur les 9 composants. **I (observabilité, hors healthchecks) reste à zéro, jamais entamé** — bloque toujours cette porte à elle seule, `/metrics`/`TracerProvider`/logs structurés absents. |
+| 🔗 **Complètement aligné** | Front ⇄ back sans écart de contrat ni dérive | Tous les items **🔗** : D, E‑proxy, H, K‑e2e, L‑codegen/typeEnvoi/index, Q‑doc | ✅ **Quasi complet.** L‑index (Decimal) fait (PR #171) ; le proxy de dev local re-fonctionne après la régression TLS (PR #180/#146) ; seul K‑e2e reste partiel (paiement volontairement jamais exécuté, à raison). |
+| 🛡️ **Prêt pour l'audit SOC 2 Type II** | Contrôles en place **et** preuves accumulées sur la période d'observation | P0 (sécurité) + J (audit trail) + I (monitoring) + K (pentest) + rate limiting (C) | ⛔ **Toujours loin, sans surprise.** mTLS + PII + TLS + RGPD traités, mais **J et I restent à zéro, jamais entamés**, K‑pentest non fait — ce sont les vrais blocages, inchangés depuis la 1ère passe du 3 septembre. |
+| 💰 **Complet fonctionnellement** | Cycle correctif financier + portail abonné opérationnels | G + H + M (pagination) | ✅ **Complet, des deux côtés.** G et H déjà faits ; **M (pagination) fait serveur (PR #172) ET UI (PR #145)** — `abonnes-list`/`factures-list` consomment réellement `limit`/`offset`, `paiements-list` non migrée par choix documenté. |
 
-| Priorité | Nombre d'items | Effort dominant |
-|---|:---:|---|
-| 🔴 P0 — Bloquant prod | 27 | S/M (+ 2 chantiers L : mTLS, déploiement) |
-| 🟠 P1 — Critique | 32 | M (+ 2 L : outbox, avoir/rectification) |
-| 🟡 P2 — Important | 21 | S/M (+ 1 L : réplication PostgreSQL) |
-| 🟢 P3 — Évolution | 14 | M/L |
-| **Total** | **94** | — |
+### Décompte — mis à jour le 3 septembre 2026 (3e passe, tout fusionné dans `develop`)
 
-> Ordre d'attaque conseillé : **A → D → E** (stopper l'exposition, rendre déployable, corriger les bugs bloquants) en semaine 1‑2, puis **B/C** (durcissement), puis **F/G/H/I/J** en continu. Les items 🔗 peuvent être traités en parallèle par un binôme front/back car ils sont peu coûteux et débloquent l'alignement complet rapidement.
+> Contrairement aux deux passes précédentes de cette même journée (qui comptaient un item « ✅ Fait » dès le code écrit/testé/committé, PR ouverte ou non), **cette passe ne compte fait que ce qui est réellement fusionné dans `develop`** — la quasi-totalité des PR alors ouvertes (#142, #143, #168 à #174) l'ont été depuis, plus 8 PR supplémentaires ouvertes et fusionnées dans la foulée (#175 à #181 côté backend, #145/#146 côté frontend). Voir §8 pour le détail et les preuves, PR par PR.
+
+| Priorité | Total | ✅ Fait | 🟡 Partiel | ❓ Incertain / non revérifié | Non fait | Effort dominant (origine) |
+|---|:---:|:---:|:---:|:---:|:---:|---|
+| 🔴 P0 | 27 | 26 | 0 | 1 | 0 | S/M (+ 2 L : mTLS fait — PR #168, déploiement fait) |
+| 🟠 P1 | 33 | 19 | 2 | 0 | 12 | M (+ 2 L : outbox non fait par choix, avoir/rectification fait) |
+| 🟡 P2 | 21 | 18 | 2 | 0 | 1 | S/M (+ 1 L : réplication PostgreSQL, fait en PoC — PR #173) |
+| 🟢 P3 | 15 | 7 | 0 | 6 | 2 | M/L |
+| **Total** | **96** | **70 (73 %)** | **4 (4 %)** | **7 (7 %)** | **15 (16 %)** | — |
+
+> **Progression de la journée** : 0→37→48→50→64→**70** items faits au fil du 3 septembre 2026. Le total est passé de 94 à **96** items (2 ajouts : un bug réel de redélivraison Redis Streams découvert et corrigé en rédigeant le runbook — PR #177 — et la régression du proxy de dev local causée par le durcissement TLS — PR #180/#146). Trois nouveaux items complétés depuis la 2e passe, en plus des PR alors ouvertes désormais fusionnées : **RGPD export/anonymisation** (PR #179), **plan de reprise d'activité** (PR #178, avec un vrai écart opérationnel signalé — sauvegardes jamais envoyées vers le bucket S3 provisionné), et **consommation de la pagination côté UI** (PR #145 frontend, en plus du serveur déjà fait).
+>
+> **`mypy --strict`** (P2, `§L`) a nettement progressé sans être fini : **6 des 9 composants backend à 0 erreur** (auth, abonne, reporting, notification, paiement, gateway — PR #181), **3 restants en cours** (campagne, config, facturation) sur une branche non encore fusionnée à la rédaction de cette ligne. Câblage CI volontairement différé tant que les 9 ne sont pas tous propres.
+>
+> **Ce qui reste, par choix explicite** : observabilité (§I) et piste d'audit (§J) — chantiers à part entière, jamais entamés. Tarification par tranches, pénalités de retard et estimation automatique des compteurs — **déclinés explicitement par l'utilisateur** le 3 septembre (staging iso-prod, CGU et multi-tenant classés « pas d'actualité », pas refusés). **Ce qui reste, P1 « critique »** : uniquement des items déjà hors périmètre pour une raison précise (voir liste détaillée dans la note de la 1ère passe, inchangée) ou dépendant de l'observabilité. **Ce qui reste, P2** : `mypy --strict` (🟡 partiel, 6/9), le code vestigial (🟡 partiel, inchangé), et l'environnement de staging iso-prod (non fait, explicitement pas d'actualité pour l'instant).
+>
+> **Points d'attention restants** : Trivy (PR #143, fusionnée) a bien fait échouer la CI frontend comme prévu au premier run (`nginx:1.27-alpine`) — non re-vérifié si le tag a depuis été bumpé. **Nouveau point d'attention** : les 191 événements Redis Streams déjà bloqués sur la pile de développement partagée avant le correctif PR #177 n'ont pas été purgés — le correctif empêche la récidive, pas le rattrapage de l'état déjà accumulé.
 
 ---
 
@@ -521,6 +632,8 @@ En traitant les huit actions **P0**, le projet devient déployable de façon res
 > (qui déploie quoi, et dans quel ordre).
 
 Cette section fige les décisions prises lors du cadrage. **Trois horizons de déploiement :** **① Local (maintenant)** — Docker Compose en local (dév) ; **② Azure (moyen terme)** — migration cloud, d'abord Docker Compose sur VM Azure ; **③ Kubernetes/AKS + Ansible (cible)**. **Point clé : l'essentiel du travail P0/P1 est indépendant de l'infrastructure** (correctifs de code, sécurité applicative, tests, volet financier, espace abonné) et se fait **dès maintenant en local** ; seuls les items « plateforme » (Key Vault, bases & observabilité managées, WAF, mesh) attendent la migration Azure. Les décisions *(reco)* sont adoptées par défaut — **modifiables sur simple demande**.
+
+> **Exécution constatée au 3 septembre 2026** (détail sourcé en §8) : les décisions **10.1 (P0)** sont exécutées à 19/27, **10.2 (P1)** sont largement exécutées pour F/G/H (robustesse, financier, espace abonné), mais **I (observabilité)** et **J (piste d'audit, §10.7)** — les deux items les plus structurants de 10.2 — **restent à l'état de décision, non implémentées**. **10.3 (P2)** a été partiellement exécutée côté frontend (strict TS, codegen) lors de la refonte du 27 août, peu côté backend (pagination, lib gRPC partagée toujours ouvertes). **10.4 (P3)** : seul l'item arriérés a été livré.
 
 ### 10.1 Décisions Phase P0
 
