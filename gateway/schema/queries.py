@@ -3,6 +3,7 @@ import strawberry
 from schema.abonne_queries import AbonneQueries
 from schema.auth_queries import AuthQueries
 from schema.campagne_queries import CampagneQueries
+from schema.communication_queries import CommunicationQueries
 from schema.config_queries import ConfigQueries
 from schema.facturation_queries import FacturationQueries
 from schema.notification_queries import NotificationQueries
@@ -20,6 +21,7 @@ class Query(
     FacturationQueries,
     PaiementQueries,
     NotificationQueries,
+    CommunicationQueries,
     ReportingQueries,
     StatsQueries,
 ):

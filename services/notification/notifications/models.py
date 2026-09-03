@@ -70,6 +70,78 @@ class Envoi(models.Model):
         return f"Envoi {self.type_envoi} — {self.abonne_id} — {self.statut}"
 
 
+class StatutDiffusion(models.TextChoices):
+    EN_COURS = "EN_COURS", "En cours"
+    TERMINEE = "TERMINEE", "Terminée"
+
+
+class StatutDiffusionEnvoi(models.TextChoices):
+    EN_ATTENTE = "EN_ATTENTE", "En attente"
+    ENVOYE = "ENVOYE", "Envoyé"
+    ECHEC = "ECHEC", "Échec"
+
+
+class Diffusion(models.Model):
+    """Message libre envoyé à un ensemble d'abonnés (annonce, coupure d'eau…).
+
+    Distincte de `Envoi` : celui-ci trace un message métier vers UN abonné,
+    déclenché par un événement (facture, paiement, impayé) ; une `Diffusion`
+    est composée à la main par un ADMIN et vise potentiellement des dizaines
+    d'abonnés à la fois.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    message = models.TextField()
+    statut = models.CharField(
+        max_length=20,
+        choices=StatutDiffusion.choices,
+        default=StatutDiffusion.EN_COURS,
+    )
+    # Identifiant Auth Service de l'ADMIN qui a lancé la diffusion — résolu en
+    # nom d'utilisateur affichable côté gateway, même pattern que
+    # `PaiementResponse.enregistre_par`.
+    created_by = models.CharField(max_length=36, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "diffusions"
+
+    def __str__(self) -> str:
+        return f"Diffusion {self.id} — {self.statut}"
+
+
+class DiffusionEnvoi(models.Model):
+    """Un envoi individuel au sein d'une diffusion — une ligne par abonné visé.
+
+    `nb_total`/`nb_envoyes`/`nb_echecs` ne sont volontairement pas stockés sur
+    `Diffusion` : ils se recalculent par agrégation sur ces lignes à chaque
+    lecture, pour ne jamais afficher un compteur qui a dérivé de l'état réel.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    diffusion = models.ForeignKey(Diffusion, on_delete=models.CASCADE, related_name="envois")
+    abonne_id = models.CharField(max_length=36)
+    telephone = models.CharField(max_length=20)
+    statut = models.CharField(
+        max_length=20,
+        choices=StatutDiffusionEnvoi.choices,
+        default=StatutDiffusionEnvoi.EN_ATTENTE,
+    )
+    erreur = models.TextField(blank=True, default="")
+    date_envoi = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "diffusion_envois"
+        indexes = [
+            models.Index(fields=["diffusion", "statut"]),
+            models.Index(fields=["abonne_id"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"DiffusionEnvoi {self.abonne_id} — {self.statut}"
+
+
 class TokenAcces(models.Model):
     """Token UUID partagé dans l'URL publique de l'espace abonné."""
 

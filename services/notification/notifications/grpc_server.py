@@ -35,8 +35,8 @@ import notification_service_pb2_grpc as pb_grpc  # type: ignore[import]  # noqa:
 
 from notifications.grpc_interceptors import ErrorHandlingInterceptor  # noqa: E402
 from notifications.grpc_auth import AuthServerInterceptor  # noqa: E402
-from notifications.serializers import envoi_to_proto, token_to_valider_response  # noqa: E402
-from notifications.services import EnvoiService, TokenService, notifier_admins  # noqa: E402
+from notifications.serializers import diffusion_to_proto, envoi_to_proto, token_to_valider_response  # noqa: E402
+from notifications.services import DiffusionService, EnvoiService, TokenService, notifier_admins  # noqa: E402
 from notifications.whatsapp_client import WhatsAppDeliveryError  # noqa: E402
 
 
@@ -52,6 +52,7 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
     def __init__(self) -> None:
         self._envoi_service = EnvoiService()
         self._token_service = TokenService()
+        self._diffusion_service = DiffusionService()
 
     def EnvoyerFacture(self, request, context):
         """Envoie la facture par WhatsApp.
@@ -179,6 +180,30 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):
         except WhatsAppDeliveryError as exc:
             return pb.StatusResponse(success=False, message=str(exc))
         return pb.StatusResponse(success=True, message="Message de test envoyé")
+
+    def CreerDiffusion(self, request, context):
+        """Crée une diffusion et une ligne d'envoi par abonné dont le
+        téléphone a pu être résolu — les envois eux-mêmes partent en fond
+        (`schedulers.diffusion_processor_job`), jamais depuis ce RPC."""
+        diffusion = self._diffusion_service.creer_diffusion(
+            message=request.message,
+            abonne_ids=list(request.abonne_ids),
+            created_by=request.created_by,
+        )
+        return diffusion_to_proto(diffusion, self._diffusion_service.compter(diffusion))
+
+    def GetDiffusion(self, request, context):
+        """Récupère une diffusion par son UUID. NOT_FOUND si absente (via
+        l'intercepteur, ObjectDoesNotExist → NOT_FOUND)."""
+        diffusion = self._diffusion_service.get_diffusion(request.diffusion_id)
+        return diffusion_to_proto(diffusion, self._diffusion_service.compter(diffusion))
+
+    def ListDiffusions(self, request, context):
+        """Liste toutes les diffusions, la plus récente d'abord."""
+        diffusions = self._diffusion_service.list_diffusions()
+        return pb.ListDiffusionsResponse(
+            diffusions=[diffusion_to_proto(d, self._diffusion_service.compter(d)) for d in diffusions]
+        )
 
 
 def serve() -> None:

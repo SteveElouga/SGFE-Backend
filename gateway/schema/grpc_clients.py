@@ -505,6 +505,22 @@ class NotificationServiceClient:
     def tester_envoi(self, phone_number: str) -> notification_pb.StatusResponse:
         return self._stub.TesterEnvoi(notification_pb.TesterEnvoiRequest(phone_number=phone_number))
 
+    def creer_diffusion(
+        self, message: str, abonne_ids: list[str], created_by: str
+    ) -> notification_pb.DiffusionResponse:
+        """Crée une diffusion. Le ciblage (quartier/camp/statut/sélection
+        manuelle) est déjà résolu par l'appelant en liste d'abonne_id — ce
+        client n'a pas à connaître la logique de filtrage des abonnés."""
+        return self._stub.CreerDiffusion(
+            notification_pb.CreerDiffusionRequest(message=message, abonne_ids=abonne_ids, created_by=created_by)
+        )
+
+    def get_diffusion(self, diffusion_id: str) -> notification_pb.DiffusionResponse:
+        return self._stub.GetDiffusion(notification_pb.DiffusionIdRequest(diffusion_id=diffusion_id))
+
+    def list_diffusions(self) -> notification_pb.ListDiffusionsResponse:
+        return self._stub.ListDiffusions(notification_pb.EmptyRequest())
+
 
 class ReportingServiceClient:
     """Client gRPC vers reporting-service:50057 (voir proto/reporting_service.proto)."""

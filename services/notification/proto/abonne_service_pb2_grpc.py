@@ -94,6 +94,11 @@ class AbonneServiceStub:
                 request_serializer=abonne__service__pb2.AbonneIdRequest.SerializeToString,
                 response_deserializer=abonne__service__pb2.ListHistoriqueResponse.FromString,
                 _registered_method=True)
+        self.ListZones = channel.unary_unary(
+                '/abonne.AbonneService/ListZones',
+                request_serializer=abonne__service__pb2.EmptyRequest.SerializeToString,
+                response_deserializer=abonne__service__pb2.ListZonesResponse.FromString,
+                _registered_method=True)
 
 
 class AbonneServiceServicer:
@@ -171,6 +176,14 @@ class AbonneServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListZones(self, request, context):
+        """Zones de relevé distinctes (quartier + camp) avec le nombre d'abonnés
+        actifs — sert à l'affectation des agents par zone (Campagne/Gateway).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AbonneServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -233,6 +246,11 @@ def add_AbonneServiceServicer_to_server(servicer, server):
                     servicer.GetHistoriqueCompteur,
                     request_deserializer=abonne__service__pb2.AbonneIdRequest.FromString,
                     response_serializer=abonne__service__pb2.ListHistoriqueResponse.SerializeToString,
+            ),
+            'ListZones': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListZones,
+                    request_deserializer=abonne__service__pb2.EmptyRequest.FromString,
+                    response_serializer=abonne__service__pb2.ListZonesResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -559,6 +577,33 @@ class AbonneService:
             '/abonne.AbonneService/GetHistoriqueCompteur',
             abonne__service__pb2.AbonneIdRequest.SerializeToString,
             abonne__service__pb2.ListHistoriqueResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListZones(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/abonne.AbonneService/ListZones',
+            abonne__service__pb2.EmptyRequest.SerializeToString,
+            abonne__service__pb2.ListZonesResponse.FromString,
             options,
             channel_credentials,
             insecure,

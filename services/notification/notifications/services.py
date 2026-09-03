@@ -2,6 +2,7 @@
 
 EnvoiService : envoi et suivi des messages WhatsApp.
 TokenService : gestion des tokens d'accès à l'espace abonné.
+DiffusionService : messages libres envoyés à un ensemble d'abonnés.
 """
 
 import logging
@@ -30,8 +31,8 @@ from notifications.message_builder import (
     build_message_annulation_paiement,
     build_message_retablissement,
 )
-from notifications.models import Envoi, StatutEnvoi, TokenAcces, TypeEnvoi
-from notifications.repositories import EnvoiRepository, TokenAccesRepository
+from notifications.models import Diffusion, Envoi, StatutDiffusionEnvoi, StatutEnvoi, TokenAcces, TypeEnvoi
+from notifications.repositories import DiffusionRepository, EnvoiRepository, TokenAccesRepository
 from notifications.whatsapp_client import WhatsAppDeliveryError, whatsapp_client
 
 logger = logging.getLogger(__name__)
@@ -661,3 +662,83 @@ class TokenService:
         count = self._tokens.revoquer_tous_actifs()
         logger.info("Révocation de masse des tokens d'accès", extra={"count": count})
         return count
+
+
+class DiffusionService:
+    """Logique métier des diffusions — message libre vers un ensemble d'abonnés.
+
+    L'envoi lui-même n'a pas lieu ici : cette classe ne fait que créer la
+    diffusion et ses lignes ``EN_ATTENTE``. C'est `traiter_lot_en_attente`
+    (appelée par le job de fond, `schedulers.py`) qui les envoie réellement,
+    quelques-unes à la fois — jamais toutes d'un coup, pour ne pas ressembler
+    à du spam sur le compte WhatsApp Web partagé par tout le système.
+    """
+
+    def __init__(self) -> None:
+        self._diffusions = DiffusionRepository()
+
+    def creer_diffusion(self, message: str, abonne_ids: list[str], created_by: str = "") -> Diffusion:
+        """Crée la diffusion et une ligne d'envoi par abonné dont le téléphone
+        a pu être résolu.
+
+        Un abonné introuvable ou un Abonné Service injoignable pour CET
+        abonné précis ne bloque pas les autres : dégradation par abonné, pas
+        par diffusion entière — même esprit que `_echec_amont` pour un envoi
+        individuel, mais ici on omet la ligne plutôt que de créer un envoi
+        qu'on sait déjà voué à l'échec.
+        """
+        resolus: list[tuple[str, str]] = []
+        for abonne_id in abonne_ids:
+            try:
+                abonne = abonne_client.get_abonne(abonne_id)
+            except grpc.RpcError as exc:
+                logger.warning(
+                    "Abonné introuvable pour la diffusion — ligne omise",
+                    extra={"abonne_id": abonne_id, "erreur": str(exc)},
+                )
+                continue
+            resolus.append((abonne_id, abonne.telephone_whatsapp))
+
+        return self._diffusions.create(message=message, created_by=created_by, abonnes=resolus)
+
+    def get_diffusion(self, diffusion_id: str) -> Diffusion:
+        """Récupère une diffusion par son UUID. Lève ObjectDoesNotExist si absente."""
+        return self._diffusions.get_by_id(diffusion_id)
+
+    def list_diffusions(self) -> list[Diffusion]:
+        """Liste toutes les diffusions, la plus récente d'abord."""
+        return self._diffusions.list_all()
+
+    def compter(self, diffusion: Diffusion) -> tuple[int, int, int]:
+        """(nb_total, nb_envoyes, nb_echecs) d'une diffusion."""
+        return self._diffusions.compter(diffusion)
+
+    def traiter_lot_en_attente(self, taille_lot: int) -> list[str]:
+        """Envoie un lot de lignes ``EN_ATTENTE`` et referme les diffusions
+        complètes. Retourne les id des diffusions dont l'état (progression ou
+        passage à TERMINEE) vient de changer — pour que l'appelant publie
+        l'événement Redis correspondant.
+
+        Appelée par le job de fond (`schedulers.py`), jamais directement par
+        un RPC : un client gRPC n'a pas à décider du rythme d'envoi.
+        """
+        lot = self._diffusions.prochains_en_attente(taille_lot)
+        diffusion_ids_touchees = set()
+
+        for envoi in lot:
+            diffusion_ids_touchees.add(str(envoi.diffusion_id))
+            try:
+                whatsapp_client.send(envoi.telephone, envoi.diffusion.message)
+                envoi.statut = StatutDiffusionEnvoi.ENVOYE
+                envoi.date_envoi = timezone.now()
+            except WhatsAppDeliveryError as exc:
+                envoi.statut = StatutDiffusionEnvoi.ECHEC
+                envoi.erreur = str(exc)
+                logger.warning(
+                    "Échec envoi diffusion",
+                    extra={"diffusion_id": str(envoi.diffusion_id), "abonne_id": envoi.abonne_id, "erreur": str(exc)},
+                )
+            self._diffusions.save_envoi(envoi)
+
+        diffusion_ids_touchees.update(self._diffusions.terminer_si_completes())
+        return list(diffusion_ids_touchees)

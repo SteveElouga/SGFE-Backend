@@ -16,6 +16,13 @@ service NotificationService {
   rpc NotifierAdmins (NotifierAdminsRequest) returns (StatusResponse);
   rpc GetWhatsAppQr (EmptyRequest) returns (WhatsAppQrResponse);
   rpc TesterEnvoi (TesterEnvoiRequest) returns (StatusResponse);
+
+  // Diffusion : message libre envoyé à un ensemble d'abonnés (ADMIN). Le
+  // ciblage (quartier/camp/statut/sélection manuelle) est résolu côté
+  // gateway, qui transmet directement la liste d'abonne_id retenue.
+  rpc CreerDiffusion (CreerDiffusionRequest) returns (DiffusionResponse);
+  rpc GetDiffusion (DiffusionIdRequest) returns (DiffusionResponse);
+  rpc ListDiffusions (EmptyRequest) returns (ListDiffusionsResponse);
 }
 
 message EnvoyerFactureRequest {
@@ -134,3 +141,26 @@ message RevoquerTousTokensResponse {
 message TesterEnvoiRequest {
   string phone_number = 1;
 }
+
+message CreerDiffusionRequest {
+  string message = 1;
+  repeated string abonne_ids = 2;
+  string created_by = 3;
+}
+
+message DiffusionIdRequest { string diffusion_id = 1; }
+
+message DiffusionResponse {
+  string diffusion_id = 1;
+  string message = 2;
+  string statut = 3;         // EN_COURS | TERMINEE
+  // Calculés par agrégation côté service à chaque lecture — jamais stockés,
+  // pour ne jamais afficher un compteur qui a dérivé de l'état réel.
+  int32 nb_total = 4;
+  int32 nb_envoyes = 5;
+  int32 nb_echecs = 6;
+  string created_by = 7;
+  string created_at = 8;
+}
+
+message ListDiffusionsResponse { repeated DiffusionResponse diffusions = 1; }

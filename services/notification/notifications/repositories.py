@@ -2,8 +2,17 @@
 
 from datetime import date
 
+from django.db.models import Count, Q
 
-from notifications.models import Envoi, StatutEnvoi, TokenAcces
+from notifications.models import (
+    Diffusion,
+    DiffusionEnvoi,
+    Envoi,
+    StatutDiffusion,
+    StatutDiffusionEnvoi,
+    StatutEnvoi,
+    TokenAcces,
+)
 
 
 class EnvoiRepository:
@@ -48,6 +57,72 @@ class EnvoiRepository:
         """Persiste les modifications d'un envoi."""
         envoi.save()
         return envoi
+
+
+class DiffusionRepository:
+    """Accès base de données pour les diffusions de masse."""
+
+    def create(self, message: str, created_by: str, abonnes: list[tuple[str, str]]) -> Diffusion:
+        """Crée une diffusion et ses lignes d'envoi (une par abonné visé).
+
+        `abonnes` : paires (abonne_id, telephone) déjà résolues par l'appelant.
+        Une seule transaction : soit la diffusion et toutes ses lignes existent,
+        soit aucune — jamais une diffusion sans destinataire par écriture
+        interrompue à mi-chemin.
+        """
+        from django.db import transaction
+
+        with transaction.atomic():
+            diffusion = Diffusion.objects.create(message=message, created_by=created_by)
+            DiffusionEnvoi.objects.bulk_create(
+                DiffusionEnvoi(diffusion=diffusion, abonne_id=abonne_id, telephone=telephone)
+                for abonne_id, telephone in abonnes
+            )
+        return diffusion
+
+    def get_by_id(self, diffusion_id: str) -> Diffusion:
+        """Récupère une diffusion par son UUID. Lève ObjectDoesNotExist si absente."""
+        return Diffusion.objects.get(id=diffusion_id)
+
+    def list_all(self) -> list[Diffusion]:
+        """Liste toutes les diffusions, la plus récente d'abord."""
+        return list(Diffusion.objects.order_by("-created_at"))
+
+    def compter(self, diffusion: Diffusion) -> tuple[int, int, int]:
+        """(nb_total, nb_envoyes, nb_echecs) — calculés à la demande, jamais stockés."""
+        agg = diffusion.envois.aggregate(
+            total=Count("id"),
+            envoyes=Count("id", filter=Q(statut=StatutDiffusionEnvoi.ENVOYE)),
+            echecs=Count("id", filter=Q(statut=StatutDiffusionEnvoi.ECHEC)),
+        )
+        return agg["total"], agg["envoyes"], agg["echecs"]
+
+    def prochains_en_attente(self, limite: int) -> list[DiffusionEnvoi]:
+        """Un lot de lignes EN_ATTENTE à traiter, les diffusions les plus
+        anciennes d'abord — pour qu'une diffusion lancée avant une autre
+        termine avant elle plutôt que d'être intercalée au hasard."""
+        return list(
+            DiffusionEnvoi.objects.filter(statut=StatutDiffusionEnvoi.EN_ATTENTE)
+            .select_related("diffusion")
+            .order_by("diffusion__created_at", "id")[:limite]
+        )
+
+    def save_envoi(self, envoi: DiffusionEnvoi) -> DiffusionEnvoi:
+        """Persiste les modifications d'une ligne d'envoi."""
+        envoi.save()
+        return envoi
+
+    def terminer_si_completes(self) -> list[str]:
+        """Passe en TERMINEE toute diffusion EN_COURS sans ligne EN_ATTENTE
+        restante. Retourne les id de celles qui viennent de changer, pour que
+        l'appelant publie l'événement de progression correspondant."""
+        termine_ids = []
+        for diffusion in Diffusion.objects.filter(statut=StatutDiffusion.EN_COURS):
+            if not diffusion.envois.filter(statut=StatutDiffusionEnvoi.EN_ATTENTE).exists():
+                diffusion.statut = StatutDiffusion.TERMINEE
+                diffusion.save()
+                termine_ids.append(str(diffusion.id))
+        return termine_ids
 
 
 class TokenAccesRepository:

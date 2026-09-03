@@ -236,6 +236,8 @@ services:
     depends_on:
       notification-postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       facturation-service:
         condition: service_started
       abonne-service:
@@ -265,6 +267,7 @@ services:
       WHATSAPP_SERVICE_URL: http://whatsapp-service:3000
       WHATSAPP_INTERNAL_API_KEY: ${WHATSAPP_INTERNAL_API_KEY:-whatsapp-dev-placeholder-do-not-use-in-production}
       FRONTEND_URL: http://localhost:4321
+      REDIS_URL: "redis://redis:6379/0"
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
   abonne-service:

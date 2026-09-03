@@ -21,7 +21,15 @@ if _proto_path not in sys.path:
 import notification_service_pb2 as pb  # type: ignore[import]  # noqa: E402
 
 from notifications.grpc_server import NotificationServiceServicer  # noqa: E402
-from notifications.models import Envoi, StatutEnvoi, TokenAcces, TypeEnvoi  # noqa: E402
+from notifications.models import (  # noqa: E402
+    Diffusion,
+    DiffusionEnvoi,
+    Envoi,
+    StatutDiffusionEnvoi,
+    StatutEnvoi,
+    TokenAcces,
+    TypeEnvoi,
+)
 from notifications.whatsapp_client import WhatsAppDeliveryError  # noqa: E402
 
 
@@ -396,3 +404,75 @@ class TestGetEnvoiRPC(TestCase):
         self.assertIsInstance(response, pb.EnvoiResponse)
         self.assertEqual(response.envoi_id, str(envoi.id))
         self.assertEqual(response.statut, StatutEnvoi.ENVOYE)
+
+
+class TestCreerDiffusionRPC(TestCase):
+    """Tests du RPC CreerDiffusion."""
+
+    @patch("notifications.services.abonne_client")
+    def test_cree_la_diffusion_et_ses_lignes(self, mock_abonne):
+        mock_abonne.get_abonne.return_value = _make_abonne_mock()
+
+        servicer = NotificationServiceServicer()
+        request = pb.CreerDiffusionRequest(
+            message="Coupure d'eau demain",
+            abonne_ids=[str(uuid.uuid4()), str(uuid.uuid4())],
+            created_by="admin-1",
+        )
+        context = MagicMock()
+
+        response = servicer.CreerDiffusion(request, context)
+
+        self.assertIsInstance(response, pb.DiffusionResponse)
+        self.assertEqual(response.message, "Coupure d'eau demain")
+        self.assertEqual(response.statut, "EN_COURS")
+        self.assertEqual(response.nb_total, 2)
+        self.assertEqual(response.nb_envoyes, 0)
+        context.abort.assert_not_called()
+
+
+class TestGetDiffusionRPC(TestCase):
+    """Tests du RPC GetDiffusion."""
+
+    def test_diffusion_introuvable_leve_erreur(self):
+        from django.core.exceptions import ObjectDoesNotExist
+
+        servicer = NotificationServiceServicer()
+        request = pb.DiffusionIdRequest(diffusion_id=str(uuid.uuid4()))
+        context = MagicMock()
+
+        with self.assertRaises(ObjectDoesNotExist):
+            servicer.GetDiffusion(request, context)
+
+    def test_diffusion_existante_agrege_les_compteurs(self):
+        diffusion = Diffusion.objects.create(message="Annonce")
+        DiffusionEnvoi.objects.create(
+            diffusion=diffusion, abonne_id="a1", telephone="+1", statut=StatutDiffusionEnvoi.ENVOYE
+        )
+        DiffusionEnvoi.objects.create(
+            diffusion=diffusion, abonne_id="a2", telephone="+2", statut=StatutDiffusionEnvoi.ECHEC
+        )
+
+        servicer = NotificationServiceServicer()
+        request = pb.DiffusionIdRequest(diffusion_id=str(diffusion.id))
+        context = MagicMock()
+
+        response = servicer.GetDiffusion(request, context)
+
+        self.assertEqual(response.nb_total, 2)
+        self.assertEqual(response.nb_envoyes, 1)
+        self.assertEqual(response.nb_echecs, 1)
+
+
+class TestListDiffusionsRPC(TestCase):
+    """Tests du RPC ListDiffusions."""
+
+    def test_liste_toutes_les_diffusions(self):
+        Diffusion.objects.create(message="Première")
+        Diffusion.objects.create(message="Seconde")
+
+        servicer = NotificationServiceServicer()
+        response = servicer.ListDiffusions(pb.EmptyRequest(), MagicMock())
+
+        self.assertIsInstance(response, pb.ListDiffusionsResponse)
+        self.assertEqual(len(response.diffusions), 2)
