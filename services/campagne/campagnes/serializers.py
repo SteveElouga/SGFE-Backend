@@ -50,8 +50,10 @@ def audit_to_proto(audit: ReleveAudit) -> pb.ReleveAudit:
         auteur_id=audit.auteur_id,
         auteur_username=audit.auteur_username,
         auteur_role=audit.auteur_role,
-        ancien_index=audit.ancien_index if audit.ancien_index is not None else 0.0,
-        nouvel_index=audit.nouvel_index if audit.nouvel_index is not None else 0.0,
+        # Frontière gRPC sortante : le proto transporte un double, la donnée
+        # interne est un Decimal (voir campagnes/models.py).
+        ancien_index=float(audit.ancien_index) if audit.ancien_index is not None else 0.0,
+        nouvel_index=float(audit.nouvel_index) if audit.nouvel_index is not None else 0.0,
         horodatage=_to_iso(audit.horodatage),
     )
 
@@ -65,9 +67,11 @@ def releve_to_proto(releve: Releve) -> pb.ReleveResponse:
     return pb.ReleveResponse(
         releve_id=str(releve.id),
         abonne_id=releve.abonne_id,
-        ancien_index=releve.ancien_index,
-        nouveau_index=releve.nouveau_index if releve.nouveau_index is not None else 0.0,
-        consommation=releve.consommation if releve.consommation is not None else 0.0,
+        # Frontière gRPC sortante : le proto transporte un double, la donnée
+        # interne est un Decimal (voir campagnes/models.py).
+        ancien_index=float(releve.ancien_index),
+        nouveau_index=float(releve.nouveau_index) if releve.nouveau_index is not None else 0.0,
+        consommation=float(releve.consommation) if releve.consommation is not None else 0.0,
         date_releve=_to_iso(releve.date_releve),
         observation=releve.observation,
         statut=releve.statut,

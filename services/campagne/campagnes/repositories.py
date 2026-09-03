@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Optional
 
 from django.core.exceptions import ObjectDoesNotExist
@@ -96,7 +97,7 @@ class ReleveRepository:
         self,
         campagne: Campagne,
         abonne_id: str,
-        ancien_index: float,
+        ancien_index: Decimal,
         quartier: str = "",
         camp: Optional[int] = None,
     ) -> Releve:
@@ -126,7 +127,7 @@ class ReleveRepository:
     def saisir_index(
         self,
         releve: Releve,
-        nouveau_index: float,
+        nouveau_index: Decimal,
         agent_id: str,
         observation: str = "",
     ) -> Releve:
@@ -152,7 +153,7 @@ class ReleveRepository:
     def corriger(
         self,
         releve: Releve,
-        nouveau_index: float,
+        nouveau_index: Decimal,
         observation: str = "",
     ) -> Releve:
         """Corrige la valeur d'un relevé déjà saisi.
@@ -190,7 +191,7 @@ class ReleveRepository:
             result[row["statut"]] = row["total"]
         return result
 
-    def sum_consommation_by_campagne(self, campagne_id: str) -> float:
+    def sum_consommation_by_campagne(self, campagne_id: str) -> Decimal:
         """Somme des consommations relevées (statut RELEVE) d'une campagne."""
         from django.db.models import Sum
 
@@ -199,7 +200,7 @@ class ReleveRepository:
             .aggregate(total=Sum("consommation"))
             .get("total")
         )
-        return float(total or 0.0)
+        return total if total is not None else Decimal("0")
 
     def count_releves_by_zone(self, campagne_id: str) -> dict[tuple[str, Optional[int]], int]:
         """Nombre de relevés RELEVE par zone (quartier, camp) pour une campagne."""
@@ -237,8 +238,8 @@ class ReleveAuditRepository:
         auteur_id: str,
         auteur_username: str = "",
         auteur_role: str = "",
-        ancien_index: Optional[float] = None,
-        nouvel_index: Optional[float] = None,
+        ancien_index: Optional[Decimal] = None,
+        nouvel_index: Optional[Decimal] = None,
     ) -> ReleveAudit:
         return ReleveAudit.objects.create(
             releve=releve,

@@ -72,9 +72,12 @@ class Releve(models.Model):
     campagne = models.ForeignKey(Campagne, on_delete=models.CASCADE, related_name="releves")
     # ID de l'abonné dans Abonné Service — pas de FK inter-service
     abonne_id = models.CharField(max_length=36)
-    ancien_index = models.FloatField()
-    nouveau_index = models.FloatField(null=True, blank=True)
-    consommation = models.FloatField(null=True, blank=True)
+    # Decimal (pas float) : même convention que les montants d'argent du
+    # projet (voir CLAUDE.md racine) — un index de compteur est une mesure
+    # exacte, pas une valeur flottante approximée.
+    ancien_index = models.DecimalField(max_digits=10, decimal_places=3)
+    nouveau_index = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
+    consommation = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
     date_releve = models.DateTimeField(null=True, blank=True)
     observation = models.TextField(blank=True, default="")
     statut = models.CharField(max_length=20, choices=StatutReleve.choices, default=StatutReleve.A_RELEVER)
@@ -112,9 +115,10 @@ class ReleveAudit(models.Model):
     auteur_id = models.CharField(max_length=36)
     auteur_username = models.CharField(max_length=150, blank=True, default="")
     auteur_role = models.CharField(max_length=20, blank=True, default="")
-    # Index avant/après l'action, pour tracer la valeur corrigée.
-    ancien_index = models.FloatField(null=True, blank=True)
-    nouvel_index = models.FloatField(null=True, blank=True)
+    # Index avant/après l'action, pour tracer la valeur corrigée. Decimal,
+    # cohérent avec Releve.ancien_index/nouveau_index (même quantité).
+    ancien_index = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
+    nouvel_index = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
     horodatage = models.DateTimeField(auto_now_add=True)
 
     class Meta:

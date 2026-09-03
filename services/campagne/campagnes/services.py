@@ -1,6 +1,7 @@
 """Logique métier du Campagne Service."""
 
 import logging
+from decimal import Decimal
 from typing import Optional
 
 import grpc
@@ -159,7 +160,7 @@ class CampagneService:
         self,
         campagne_id: str,
         abonne_id: str,
-        ancien_index: float,
+        ancien_index: Decimal,
     ) -> Releve:
         campagne = self._repo.get_by_id(campagne_id)
         if campagne.statut not in (StatutCampagne.PLANIFIEE, StatutCampagne.EN_COURS):
@@ -441,7 +442,7 @@ class ReleveService:
     def saisir_index(
         self,
         releve_id: str,
-        nouveau_index: float,
+        nouveau_index: Decimal,
         agent_id: str,
         observation: str = "",
         auteur_username: str = "",
@@ -478,7 +479,7 @@ class ReleveService:
     def corriger_releve(
         self,
         releve_id: str,
-        nouveau_index: float,
+        nouveau_index: Decimal,
         auteur_id: str,
         auteur_username: str = "",
         auteur_role: str = "",

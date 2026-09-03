@@ -1,5 +1,7 @@
 """Tests des sérialiseurs protobuf — campagne_to_proto / releve_to_proto."""
 
+from decimal import Decimal
+
 from django.test import SimpleTestCase
 
 from campagnes.models import Campagne, Releve, StatutCampagne, StatutReleve
@@ -14,9 +16,9 @@ class ReleveToProtoTests(SimpleTestCase):
         releve = Releve(
             campagne=campagne,
             abonne_id="abonne-1",
-            ancien_index=100.0,
-            nouveau_index=150.0,
-            consommation=50.0,
+            ancien_index=Decimal("100"),
+            nouveau_index=Decimal("150"),
+            consommation=Decimal("50"),
             date_releve=datetime.datetime(2026, 7, 15, 10, 0, 0),
             statut=StatutReleve.RELEVE,
         )
@@ -33,9 +35,9 @@ class ReleveToProtoTests(SimpleTestCase):
         releve = Releve(
             campagne=campagne,
             abonne_id="abonne-1",
-            ancien_index=100.0,
-            nouveau_index=150.0,
-            consommation=50.0,
+            ancien_index=Decimal("100"),
+            nouveau_index=Decimal("150"),
+            consommation=Decimal("50"),
             date_releve="2026-07-15T10:00:00",
             statut=StatutReleve.RELEVE,
         )
@@ -47,7 +49,7 @@ class ReleveToProtoTests(SimpleTestCase):
         releve = Releve(
             campagne=campagne,
             abonne_id="abonne-1",
-            ancien_index=100.0,
+            ancien_index=Decimal("100"),
             date_releve=None,
             statut=StatutReleve.A_RELEVER,
         )
