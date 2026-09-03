@@ -70,6 +70,11 @@ message ListPaiementsRequest {
   // `campagne_id` vide.
   string date_debut = 3;
   string date_fin = 4;
+  // Pagination optionnelle, appliquée APRÈS les filtres ci-dessus. Omise
+  // (`optional`, pas une valeur zéro), la liste complète filtrée est rendue
+  // à l'identique — comportement historique préservé.
+  optional int32 limit = 5;
+  optional int32 offset = 6;
 }
 
 message PaiementResponse {
@@ -144,7 +149,14 @@ message SuiviImpayeResponse {
   string resolu_le = 6;
 }
 
-message ListPaiementsResponse { repeated PaiementResponse paiements = 1; }
+message ListPaiementsResponse {
+  repeated PaiementResponse paiements = 1;
+  // Nombre total de paiements correspondant au filtre, indépendamment de la
+  // pagination — permet à un pager de calculer le nombre de pages sans tout
+  // charger. Sur les endpoints non paginés qui réutilisent ce message
+  // (`ListPaiementsParCampagne`), vaut simplement le nombre d'éléments rendus.
+  int32 total = 2;
+}
 message ListImpayesResponse { repeated SoldeResponse impayes = 1; }
 
 message AbonneIdRequest { string abonne_id = 1; }

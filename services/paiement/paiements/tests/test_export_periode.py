@@ -88,6 +88,31 @@ class TestFiltrePeriode(TestCase):
     def test_sans_borne_le_comportement_est_inchange(self) -> None:
         self.assertEqual(len(self._jours()), 3)
 
+    def test_pagination_omise_preserve_le_comportement_historique(self) -> None:
+        # Rétrocompatibilité stricte : `limit`/`offset` à `None` (défaut) doit
+        # rendre exactement la liste complète, comme avant leur introduction.
+        self.assertEqual(len(self.repo.list_by_facture_and_abonne("", "")), 3)
+
+    def test_pagination_tronque_et_ordonne_chronologiquement(self) -> None:
+        # Une pagination sans borne de date impose quand même un ordre
+        # stable : une page n'a de sens que sur un ordre déterministe.
+        page = self.repo.list_by_facture_and_abonne("", "", limit=2, offset=0)
+        self.assertEqual([p.date_paiement for p in page], [date(2026, 6, 10), date(2026, 7, 10)])
+
+    def test_pagination_hors_limites_renvoie_liste_vide(self) -> None:
+        self.assertEqual(self.repo.list_by_facture_and_abonne("", "", limit=10, offset=100), [])
+
+    def test_pagination_se_combine_au_filtre_facture(self) -> None:
+        page = self.repo.list_by_facture_and_abonne("fac-camp", "", limit=1, offset=1)
+        self.assertEqual([p.facture_id for p in page], ["fac-camp"])
+
+    def test_count_by_facture_and_abonne_ignore_la_pagination(self) -> None:
+        self.assertEqual(self.repo.count_by_facture_and_abonne("", ""), 3)
+        self.assertEqual(self.repo.count_by_facture_and_abonne("fac-camp", ""), 2)
+        # Le total ne varie pas selon une éventuelle pagination de la liste.
+        self.repo.list_by_facture_and_abonne("", "", limit=1)
+        self.assertEqual(self.repo.count_by_facture_and_abonne("", ""), 3)
+
 
 class TestValidationDesBornes(TestCase):
     def test_date_illisible_leve(self) -> None:
@@ -99,3 +124,7 @@ class TestValidationDesBornes(TestCase):
 
     def test_chaine_vide_signifie_pas_de_borne(self) -> None:
         PaiementService().list_paiements(date_debut="", date_fin="")  # ne lève pas
+
+    def test_count_paiements_valide_les_dates_comme_list_paiements(self) -> None:
+        with self.assertRaises(ValidationError):
+            PaiementService().count_paiements(date_debut="10/07/2026")
