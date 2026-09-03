@@ -590,6 +590,8 @@ class PaiementService:
         abonne_id: str = "",
         date_debut: str = "",
         date_fin: str = "",
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> list[Paiement]:
         """Liste les paiements, filtrés par facture, abonné et/ou période.
 
@@ -597,8 +599,29 @@ class PaiementService:
         de paiement. C'est ce qu'un journal de caisse demande — et le seul chemin
         par lequel un paiement de régularisation devient exportable, son
         `SoldeFacture` portant un `campagne_id` vide.
+
+        `limit`/`offset` optionnels : omis, la liste complète filtrée est
+        retournée — comportement historique préservé à l'identique.
         """
         return self._paiement_repo.list_by_facture_and_abonne(
+            facture_id,
+            abonne_id,
+            date_debut=_borne_ou_none(date_debut, "date_debut"),
+            date_fin=_borne_ou_none(date_fin, "date_fin"),
+            limit=limit,
+            offset=offset,
+        )
+
+    def count_paiements(
+        self,
+        facture_id: str = "",
+        abonne_id: str = "",
+        date_debut: str = "",
+        date_fin: str = "",
+    ) -> int:
+        """Nombre total de paiements correspondant au filtre, indépendamment de
+        toute pagination."""
+        return self._paiement_repo.count_by_facture_and_abonne(
             facture_id,
             abonne_id,
             date_debut=_borne_ou_none(date_debut, "date_debut"),

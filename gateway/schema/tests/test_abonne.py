@@ -84,6 +84,51 @@ class AbonneQueryTests(SimpleTestCase):
             )
             mock_list.assert_called_once_with("SUSPENDU")
 
+    def test_abonnes_sans_limit_offset_renvoie_tout_comme_avant(self):
+        """Non-régression explicite : une requête sans `limit`/`offset`
+        continue de tout renvoyer, et le client gRPC est appelé exactement
+        comme avant leur introduction (rétrocompatibilité stricte)."""
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(
+                abonne_client,
+                "list_abonnes",
+                return_value=make_list_abonnes_response(
+                    make_abonne_response(), make_abonne_response(abonne_id="abonne-2")
+                ),
+            ) as mock_list,
+        ):
+            result = schema.execute_sync("query { abonnes { numeroAbonne } }", context_value=self._admin_context())
+
+        self.assertIsNone(result.errors)
+        self.assertEqual(len(result.data["abonnes"]), 2)
+        mock_list.assert_called_once_with("")
+
+    def test_abonnes_avec_pagination_transmet_limit_offset(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(abonne_client, "list_abonnes", return_value=make_list_abonnes_response()) as mock_list,
+        ):
+            result = schema.execute_sync(
+                "query { abonnes(limit: 5, offset: 10) { numeroAbonne } }", context_value=self._admin_context()
+            )
+            mock_list.assert_called_once_with("", limit=5, offset=10)
+
+        self.assertIsNone(result.errors)
+
+    def test_abonnes_count(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(abonne_client, "count_abonnes", return_value=42) as mock_count,
+        ):
+            result = schema.execute_sync(
+                "query { abonnesCount(statut: SUSPENDU) }", context_value=self._admin_context()
+            )
+            mock_count.assert_called_once_with("SUSPENDU")
+
+        self.assertIsNone(result.errors)
+        self.assertEqual(result.data["abonnesCount"], 42)
+
 
 class AbonneMutationTests(SimpleTestCase):
     def _admin_context(self):

@@ -380,13 +380,23 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.ListPaiementsResponse:
         """Liste les paiements filtrés par facture et/ou abonné."""
+        limit = request.limit if request.HasField("limit") else None
+        offset = request.offset if request.HasField("offset") else None
         paiements = self._svc.list_paiements(
             facture_id=request.facture_id,
             abonne_id=request.abonne_id,
             date_debut=request.date_debut,
             date_fin=request.date_fin,
+            limit=limit,
+            offset=offset,
         )
-        return pb.ListPaiementsResponse(paiements=[paiement_to_proto(p) for p in paiements])
+        total = self._svc.count_paiements(
+            facture_id=request.facture_id,
+            abonne_id=request.abonne_id,
+            date_debut=request.date_debut,
+            date_fin=request.date_fin,
+        )
+        return pb.ListPaiementsResponse(paiements=[paiement_to_proto(p) for p in paiements], total=total)
 
     def ListPaiementsParCampagne(
         self,
@@ -395,7 +405,7 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):
     ) -> pb.ListPaiementsResponse:
         """Liste les paiements de toutes les factures d'une campagne (export CSV)."""
         paiements = self._svc.list_paiements_par_campagne(campagne_id=request.campagne_id)
-        return pb.ListPaiementsResponse(paiements=[paiement_to_proto(p) for p in paiements])
+        return pb.ListPaiementsResponse(paiements=[paiement_to_proto(p) for p in paiements], total=len(paiements))
 
     def ListImpayes(
         self,

@@ -146,6 +146,42 @@ class AbonneServiceTests(TestCase):
         suspendus = self.service.list_abonnes(StatutAbonne.SUSPENDU)
         self.assertEqual([a.id for a in suspendus], [a1.id])
 
+    def test_list_abonnes_sans_pagination_renvoie_tout(self):
+        # Rétrocompatibilité stricte : `limit`/`offset` omis (valeur par
+        # défaut `None`) doit préserver le comportement historique.
+        for i in range(1, 4):
+            _create_abonne(self.service, numero_compteur=i)
+        self.assertEqual(len(self.service.list_abonnes()), 3)
+
+    def test_list_abonnes_avec_pagination_tronque_et_decale(self):
+        for i in range(1, 6):
+            _create_abonne(self.service, numero_compteur=i)
+        page = self.service.list_abonnes(limit=2, offset=1)
+        self.assertEqual([a.numero_abonne for a in page], ["AB-0002", "AB-0003"])
+
+    def test_list_abonnes_pagination_hors_limites_renvoie_liste_vide(self):
+        _create_abonne(self.service)
+        page = self.service.list_abonnes(limit=10, offset=100)
+        self.assertEqual(page, [])
+
+    def test_list_abonnes_pagination_se_combine_au_filtre_statut(self):
+        # La pagination doit s'appliquer sur le résultat FILTRÉ par statut,
+        # pas sur la table brute.
+        a1 = _create_abonne(self.service, numero_compteur=1)
+        _create_abonne(self.service, numero_compteur=2)
+        self.service.suspendre_abonne(str(a1.id))
+        page = self.service.list_abonnes(StatutAbonne.SUSPENDU, limit=1, offset=0)
+        self.assertEqual([a.id for a in page], [a1.id])
+        self.assertEqual(self.service.count_abonnes(StatutAbonne.SUSPENDU), 1)
+
+    def test_count_abonnes_ignore_la_pagination(self):
+        for i in range(1, 4):
+            _create_abonne(self.service, numero_compteur=i)
+        self.assertEqual(self.service.count_abonnes(), 3)
+        # Le total ne varie pas selon une éventuelle pagination de la liste.
+        self.service.list_abonnes(limit=1)
+        self.assertEqual(self.service.count_abonnes(), 3)
+
 
 class CompteurServiceTests(TestCase):
     def setUp(self):

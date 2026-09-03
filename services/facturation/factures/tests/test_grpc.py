@@ -10,7 +10,7 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.test import TestCase
 
 from factures.exceptions import PreconditionError
-from factures.models import StatutFacture, Tarif
+from factures.models import Facture, StatutFacture, Tarif
 from factures.pdf_generator import InfosSociete
 from factures.services import TarifService
 
@@ -265,3 +265,87 @@ class AnnulerFactureTests(TestCase):
 
         self.assertEqual(response.statut, StatutFacture.ANNULEE)
         mock_publish.assert_called_once_with(self.facture_id, self.campagne_id, "FACTURE_UPDATED")
+
+
+class ListFacturesTests(TestCase):
+    """`limit`/`offset` optionnels sur `ListFactures` — rétrocompatibilité
+    stricte (omis, comportement historique inchangé), combinaison avec les
+    filtres existants, et `total` cohérent avec le nombre réel de lignes
+    filtrées (pas la page rendue)."""
+
+    def setUp(self):
+        from factures.grpc_server import FacturationServicer
+        from factures.tests.helpers import service_avec_clients_mockes
+
+        self.servicer = FacturationServicer.__new__(FacturationServicer)
+        self.servicer._facture_svc = service_avec_clients_mockes()
+
+        for i in range(5):
+            f = Facture.objects.create(
+                numero_facture=f"FACT-{i}",
+                abonne_id="ab-1",
+                campagne_id="camp-x",
+                ancien_index=Decimal("0"),
+                nouveau_index=Decimal("10"),
+                consommation=Decimal("10"),
+                prix_m3=Decimal("500"),
+                montant=Decimal("5000"),
+                statut=StatutFacture.IMPAYEE,
+                date_releve=datetime.date(2026, 7, 1 + i),
+                date_limite_paiement=datetime.date(2026, 7, 6 + i),
+            )
+            # `date_generation` est `auto_now_add` : repositionnée pour un tri
+            # déterministe (le repository trie par `-date_generation`).
+            Facture.objects.filter(pk=f.pk).update(
+                date_generation=datetime.datetime(2026, 7, 1 + i, 9, 0, tzinfo=datetime.UTC)
+            )
+
+    def _pb(self):
+        import sys
+        from pathlib import Path
+
+        from django.conf import settings
+
+        sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
+        import facturation_service_pb2 as pb
+
+        return pb
+
+    def test_sans_pagination_renvoie_tout_et_total_coherent(self):
+        # Non-régression : `limit`/`offset` omis (champs proto3 `optional`
+        # non définis) doit préserver le comportement historique.
+        pb = self._pb()
+        response = self.servicer.ListFactures(pb.ListFacturesRequest(campagne_id="camp-x"), _make_context())
+        self.assertEqual(len(response.factures), 5)
+        self.assertEqual(response.total, 5)
+
+    def test_avec_pagination_tronque_et_ordonne_du_plus_recent(self):
+        pb = self._pb()
+        response = self.servicer.ListFactures(
+            pb.ListFacturesRequest(campagne_id="camp-x", limit=2, offset=0), _make_context()
+        )
+        self.assertEqual([f.numero_facture for f in response.factures], ["FACT-4", "FACT-3"])
+        # Le total porte sur l'ensemble filtré, pas sur la seule page rendue.
+        self.assertEqual(response.total, 5)
+
+    def test_pagination_hors_limites_renvoie_liste_vide_pas_une_erreur(self):
+        pb = self._pb()
+        response = self.servicer.ListFactures(
+            pb.ListFacturesRequest(campagne_id="camp-x", limit=10, offset=100), _make_context()
+        )
+        self.assertEqual(len(response.factures), 0)
+        self.assertEqual(response.total, 5)
+
+    def test_pagination_se_combine_au_filtre_statut(self):
+        # La pagination doit porter sur le résultat FILTRÉ par statut, pas sur
+        # la table brute.
+        pb = self._pb()
+        f0 = Facture.objects.get(numero_facture="FACT-0")
+        f0.statut = StatutFacture.PARTIELLE
+        f0.save(update_fields=["statut"])
+
+        response = self.servicer.ListFactures(
+            pb.ListFacturesRequest(campagne_id="camp-x", statut="IMPAYEE", limit=2, offset=0), _make_context()
+        )
+        self.assertEqual(len(response.factures), 2)
+        self.assertEqual(response.total, 4)

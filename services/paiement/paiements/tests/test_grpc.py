@@ -23,7 +23,7 @@ import paiement_service_pb2 as pb
 
 from paiements.grpc_server import PaiementServicer
 from paiements.models import AvoirAbonne, ModePaiement, SoldeFacture, StatutSolde
-from paiements.repositories import SoldeFactureRepository
+from paiements.repositories import PaiementRepository, SoldeFactureRepository
 from paiements.services import PaiementService
 
 
@@ -599,6 +599,71 @@ class TestListPaiementsRPC(TestCase):
         request = pb.ListPaiementsRequest(facture_id="facture-001", abonne_id="")
         response = self.servicer.ListPaiements(request, _mock_context())
         self.assertEqual(len(response.paiements), 0)
+
+    def test_list_paiements_sans_pagination_total_zero_si_aucun_paiement(self) -> None:
+        # Non-régression : `limit`/`offset` omis (champs proto3 `optional`
+        # non définis) doit préserver le comportement historique.
+        request = pb.ListPaiementsRequest(facture_id="facture-001", abonne_id="")
+        self.assertEqual(self.servicer.ListPaiements(request, _mock_context()).total, 0)
+
+
+class TestListPaiementsRPCPagination(TestCase):
+    """`limit`/`offset` optionnels sur `ListPaiements` — rétrocompatibilité
+    stricte (omis, comportement historique inchangé), combinaison avec les
+    filtres existants, et `total` cohérent avec le nombre réel de lignes
+    filtrées (pas la page rendue)."""
+
+    def setUp(self) -> None:
+        with patch("paiements.grpc_server.FacturationServiceClient"):
+            self.servicer = PaiementServicer()
+        _creer_solde("facture-001", "abonne-001", 500.00)
+        for i in range(5):
+            PaiementRepository().create(
+                facture_id="facture-001",
+                abonne_id="abonne-001",
+                montant=Decimal("10"),
+                date_paiement=date(2026, 7, 1 + i),
+                mode_paiement=ModePaiement.ESPECES,
+                reference_transaction="",
+                enregistre_par="caissier",
+            )
+
+    def test_sans_pagination_renvoie_tout_et_total_coherent(self) -> None:
+        request = pb.ListPaiementsRequest(facture_id="facture-001")
+        response = self.servicer.ListPaiements(request, _mock_context())
+        self.assertEqual(len(response.paiements), 5)
+        self.assertEqual(response.total, 5)
+
+    def test_avec_pagination_tronque_et_ordonne_chronologiquement(self) -> None:
+        request = pb.ListPaiementsRequest(facture_id="facture-001", limit=2, offset=0)
+        response = self.servicer.ListPaiements(request, _mock_context())
+        self.assertEqual([p.date_paiement for p in response.paiements], ["2026-07-01", "2026-07-02"])
+        # Le total porte sur l'ensemble filtré, pas sur la seule page rendue.
+        self.assertEqual(response.total, 5)
+
+    def test_pagination_hors_limites_renvoie_liste_vide_pas_une_erreur(self) -> None:
+        request = pb.ListPaiementsRequest(facture_id="facture-001", limit=10, offset=100)
+        response = self.servicer.ListPaiements(request, _mock_context())
+        self.assertEqual(len(response.paiements), 0)
+        self.assertEqual(response.total, 5)
+
+    def test_pagination_se_combine_au_filtre_abonne(self) -> None:
+        # Un paiement d'un autre abonné, hors filtre : ne doit compter ni
+        # dans la page ni dans le total.
+        _creer_solde("facture-002", "abonne-002", 500.00)
+        PaiementRepository().create(
+            facture_id="facture-002",
+            abonne_id="abonne-002",
+            montant=Decimal("10"),
+            date_paiement=date(2026, 8, 1),
+            mode_paiement=ModePaiement.ESPECES,
+            reference_transaction="",
+            enregistre_par="caissier",
+        )
+        request = pb.ListPaiementsRequest(abonne_id="abonne-001", limit=2, offset=0)
+        response = self.servicer.ListPaiements(request, _mock_context())
+        self.assertEqual(len(response.paiements), 2)
+        self.assertEqual(response.total, 5)
 
 
 class TestListPaiementsParCampagneRPC(TestCase):

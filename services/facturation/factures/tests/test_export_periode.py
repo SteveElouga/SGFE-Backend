@@ -94,6 +94,30 @@ class TestFiltrePeriode(TestCase):
     def test_sans_critere_tout_sort(self) -> None:
         self.assertEqual(self._numeros(), {"FACT-JUIN", "FACT-JUIL", "REG-JUIL"})
 
+    def test_pagination_omise_preserve_le_comportement_historique(self) -> None:
+        # Rétrocompatibilité stricte : `limit`/`offset` à `None` (défaut) doit
+        # rendre exactement la liste complète, comme avant leur introduction.
+        self.assertEqual(len(self.repo.list_by_filters()), 3)
+
+    def test_pagination_tronque_et_ordonne_du_plus_recent(self) -> None:
+        # Tri par défaut : `-date_generation`, la plus récente d'abord.
+        page = self.repo.list_by_filters(limit=2, offset=0)
+        self.assertEqual([f.numero_facture for f in page], ["REG-JUIL", "FACT-JUIL"])
+
+    def test_pagination_hors_limites_renvoie_liste_vide(self) -> None:
+        self.assertEqual(self.repo.list_by_filters(limit=10, offset=100), [])
+
+    def test_pagination_se_combine_au_filtre_campagne(self) -> None:
+        page = self.repo.list_by_filters(campagne_id="camp-juillet", limit=1, offset=0)
+        self.assertEqual([f.numero_facture for f in page], ["FACT-JUIL"])
+
+    def test_count_by_filters_ignore_la_pagination(self) -> None:
+        self.assertEqual(self.repo.count_by_filters(), 3)
+        self.assertEqual(self.repo.count_by_filters(campagne_id="camp-juillet"), 1)
+        # Le total ne varie pas selon une éventuelle pagination de la liste.
+        self.repo.list_by_filters(limit=1)
+        self.assertEqual(self.repo.count_by_filters(), 3)
+
 
 class TestValidationDesBornes(TestCase):
     """Une borne illisible lève, elle n'est pas ignorée.
@@ -115,3 +139,26 @@ class TestValidationDesBornes(TestCase):
 
     def test_chaine_vide_signifie_pas_de_borne(self) -> None:
         self.svc.list_factures(date_debut="", date_fin="")  # ne lève pas
+
+
+class TestPaginationFactures(TestCase):
+    """Pagination au niveau du service métier (`FactureService`)."""
+
+    def setUp(self) -> None:
+        self.svc = FactureService()
+        for i in range(5):
+            _facture(f"FACT-{i}", datetime.date(2026, 7, 1 + i), "camp-x", NatureFacture.CONSOMMATION)
+
+    def test_limit_offset_transmis_au_repository(self) -> None:
+        page = self.svc.list_factures(campagne_id="camp-x", limit=2, offset=1)
+        self.assertEqual(len(page), 2)
+
+    def test_count_factures_ignore_la_pagination(self) -> None:
+        self.assertEqual(self.svc.count_factures(campagne_id="camp-x"), 5)
+
+    def test_pagination_hors_limites_renvoie_liste_vide(self) -> None:
+        self.assertEqual(self.svc.list_factures(campagne_id="camp-x", limit=10, offset=100), [])
+
+    def test_count_factures_valide_le_statut_comme_list_factures(self) -> None:
+        with self.assertRaises(ValidationError):
+            self.svc.count_factures(statut="PAS_UN_STATUT")

@@ -80,6 +80,11 @@ message ListFacturesRequest {
   // relevé. C'est la seule date que portent les deux natures de facture.
   string date_debut = 4;
   string date_fin = 5;
+  // Pagination optionnelle, appliquée APRÈS les filtres ci-dessus. Omise
+  // (`optional`, pas une valeur zéro), la liste complète filtrée est rendue
+  // à l'identique — comportement historique préservé.
+  optional int32 limit = 6;
+  optional int32 offset = 7;
 }
 
 message UpdateStatutRequest {
@@ -138,7 +143,14 @@ message PDFResponse {
 }
 
 message GenererFacturesResponse { repeated FactureResponse factures = 1; }
-message ListFacturesResponse { repeated FactureResponse factures = 1; }
+message ListFacturesResponse {
+  repeated FactureResponse factures = 1;
+  // Nombre total de factures correspondant au filtre, indépendamment de la
+  // pagination — permet à un pager de calculer le nombre de pages sans tout
+  // charger. Sur les endpoints non paginés qui réutilisent ce message
+  // (`GetFacturesParCampagne`), vaut simplement le nombre d'éléments rendus.
+  int32 total = 2;
+}
 message EmptyRequest {}
 
 message AnnulerFactureRequest {

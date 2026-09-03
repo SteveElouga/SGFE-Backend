@@ -87,22 +87,16 @@ class PaiementRepository:
         paiement.save(update_fields=["annule", "annule_le", "annule_par", "motif_annulation"])
         return paiement
 
-    def list_by_facture_and_abonne(
+    def _filtres(
         self,
-        facture_id: str,
-        abonne_id: str,
+        facture_id: str = "",
+        abonne_id: str = "",
         date_debut: date | None = None,
         date_fin: date | None = None,
-    ) -> list[Paiement]:
-        """Liste les paiements filtrés par facture, abonné et/ou PÉRIODE.
-
-        Les bornes portent sur `date_paiement` — la date de caisse, celle qu'un
-        journal demande. Incluses.
-
-        Tri chronologique dès qu'une borne est posée : un journal se lit dans
-        l'ordre où l'argent est entré. Sans borne, l'ordre reste celui d'avant,
-        pour ne pas changer le comportement des appelants existants.
-        """
+    ):
+        """Queryset filtré, partagé par `list_by_facture_and_abonne` et
+        `count_by_facture_and_abonne` — le comptage et la page rendue portent
+        ainsi toujours sur les mêmes critères, jamais sur la table entière."""
         qs = Paiement.objects.all()
         if facture_id:
             qs = qs.filter(facture_id=facture_id)
@@ -112,9 +106,51 @@ class PaiementRepository:
             qs = qs.filter(date_paiement__gte=date_debut)
         if date_fin:
             qs = qs.filter(date_paiement__lte=date_fin)
-        if date_debut or date_fin:
+        return qs
+
+    def list_by_facture_and_abonne(
+        self,
+        facture_id: str,
+        abonne_id: str,
+        date_debut: date | None = None,
+        date_fin: date | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[Paiement]:
+        """Liste les paiements filtrés par facture, abonné et/ou PÉRIODE.
+
+        Les bornes portent sur `date_paiement` — la date de caisse, celle qu'un
+        journal demande. Incluses.
+
+        Tri chronologique dès qu'une borne est posée, ou qu'une pagination est
+        demandée (une page n'a de sens que sur un ordre stable) : un journal se
+        lit dans l'ordre où l'argent est entré. Sans borne ni pagination,
+        l'ordre reste celui d'avant, pour ne pas changer le comportement des
+        appelants existants.
+
+        `limit`/`offset` optionnels, appliqués après le tri : omis (`None`),
+        la liste complète filtrée est retournée — comportement historique
+        préservé à l'identique.
+        """
+        qs = self._filtres(facture_id, abonne_id, date_debut, date_fin)
+        paginer = limit is not None or offset is not None
+        if date_debut or date_fin or paginer:
             qs = qs.order_by("date_paiement", "created_at")
+        if paginer:
+            start = offset or 0
+            qs = qs[start : start + limit] if limit is not None else qs[start:]
         return list(qs)
+
+    def count_by_facture_and_abonne(
+        self,
+        facture_id: str = "",
+        abonne_id: str = "",
+        date_debut: date | None = None,
+        date_fin: date | None = None,
+    ) -> int:
+        """Nombre total de paiements correspondant au filtre, indépendamment de
+        toute pagination."""
+        return self._filtres(facture_id, abonne_id, date_debut, date_fin).count()
 
     def list_by_campagne(self, campagne_id: str) -> list[Paiement]:
         """Liste les paiements des factures rattachées à une campagne.

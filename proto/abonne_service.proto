@@ -21,7 +21,14 @@ service AbonneService {
 
 message AbonneIdRequest { string abonne_id = 1; }
 
-message ListAbonnesRequest { string statut = 1; }
+message ListAbonnesRequest {
+  string statut = 1;
+  // Pagination optionnelle. Omis (absence de valeur, pas juste zéro — d'où
+  // `optional`), la liste complète est renvoyée : comportement historique
+  // strictement préservé pour tout appelant qui ne les connaît pas encore.
+  optional int32 limit = 2;
+  optional int32 offset = 3;
+}
 
 message CreateAbonneRequest {
   string nom = 1;
@@ -91,7 +98,13 @@ message CompteurResponse {
   string position = 8;
 }
 
-message ListAbonnesResponse { repeated AbonneResponse abonnes = 1; }
+message ListAbonnesResponse {
+  repeated AbonneResponse abonnes = 1;
+  // Nombre total d'abonnés correspondant au filtre, indépendamment de la
+  // pagination — permet à un pager de calculer le nombre de pages sans tout
+  // charger.
+  int32 total = 2;
+}
 message EmptyRequest {}
 
 // Une zone de relevé = une paire (quartier, camp) portée par les compteurs.

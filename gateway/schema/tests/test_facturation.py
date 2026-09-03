@@ -78,6 +78,42 @@ class TestFacturationQueries(SimpleTestCase):
     @patch("schema.facturation_queries.facturation_client")
     @patch("schema.facturation_queries.require_auth")
     @patch("schema.facturation_queries.require_role")
+    def test_factures_sans_limit_offset_appelle_le_client_comme_avant(self, mock_role, mock_auth, mock_client) -> None:
+        """Non-régression explicite : `limit`/`offset` omis, l'appel au client
+        gRPC reste identique à ce qu'il était avant leur introduction."""
+        mock_auth.return_value = MagicMock(role="ADMIN")
+        mock_client.list_factures.return_value = MagicMock(factures=[_facture_response()])
+        info = MagicMock()
+        result = FacturationQueries().factures(info)
+        self.assertEqual(len(result), 1)
+        mock_client.list_factures.assert_called_once_with(campagne_id="", abonne_id="", statut="")
+
+    @patch("schema.facturation_queries.facturation_client")
+    @patch("schema.facturation_queries.require_auth")
+    @patch("schema.facturation_queries.require_role")
+    def test_factures_avec_pagination_transmet_limit_offset(self, mock_role, mock_auth, mock_client) -> None:
+        mock_auth.return_value = MagicMock(role="ADMIN")
+        mock_client.list_factures.return_value = MagicMock(factures=[])
+        info = MagicMock()
+        FacturationQueries().factures(info, campagne_id="camp-001", limit=10, offset=5)
+        mock_client.list_factures.assert_called_once_with(
+            campagne_id="camp-001", abonne_id="", statut="", limit=10, offset=5
+        )
+
+    @patch("schema.facturation_queries.facturation_client")
+    @patch("schema.facturation_queries.require_auth")
+    @patch("schema.facturation_queries.require_role")
+    def test_factures_count(self, mock_role, mock_auth, mock_client) -> None:
+        mock_auth.return_value = MagicMock(role="ADMIN")
+        mock_client.count_factures.return_value = 7
+        info = MagicMock()
+        result = FacturationQueries().factures_count(info, campagne_id="camp-001")
+        self.assertEqual(result, 7)
+        mock_client.count_factures.assert_called_once_with(campagne_id="camp-001", abonne_id="", statut="")
+
+    @patch("schema.facturation_queries.facturation_client")
+    @patch("schema.facturation_queries.require_auth")
+    @patch("schema.facturation_queries.require_role")
     def test_factures_par_campagne(self, mock_role, mock_auth, mock_client) -> None:
         mock_auth.return_value = MagicMock(role="ADMIN")
         mock_client.get_factures_par_campagne.return_value = MagicMock(factures=[_facture_response()])

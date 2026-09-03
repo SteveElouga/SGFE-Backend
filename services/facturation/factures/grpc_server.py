@@ -197,14 +197,25 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
         request: pb.ListFacturesRequest,
         context: grpc.ServicerContext,
     ) -> pb.ListFacturesResponse:
+        limit = request.limit if request.HasField("limit") else None
+        offset = request.offset if request.HasField("offset") else None
         factures = self._facture_svc.list_factures(
             campagne_id=request.campagne_id,
             abonne_id=request.abonne_id,
             statut=request.statut,
             date_debut=request.date_debut,
             date_fin=request.date_fin,
+            limit=limit,
+            offset=offset,
         )
-        return pb.ListFacturesResponse(factures=[facture_to_proto(f) for f in factures])
+        total = self._facture_svc.count_factures(
+            campagne_id=request.campagne_id,
+            abonne_id=request.abonne_id,
+            statut=request.statut,
+            date_debut=request.date_debut,
+            date_fin=request.date_fin,
+        )
+        return pb.ListFacturesResponse(factures=[facture_to_proto(f) for f in factures], total=total)
 
     def GetFacturesParCampagne(
         self,
@@ -212,7 +223,7 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):
         context: grpc.ServicerContext,
     ) -> pb.ListFacturesResponse:
         factures = self._facture_svc.list_factures(campagne_id=request.campagne_id)
-        return pb.ListFacturesResponse(factures=[facture_to_proto(f) for f in factures])
+        return pb.ListFacturesResponse(factures=[facture_to_proto(f) for f in factures], total=len(factures))
 
     def GetFacturePDF(
         self,

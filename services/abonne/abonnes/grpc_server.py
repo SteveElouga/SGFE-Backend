@@ -45,12 +45,16 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
         return self._response(abonne)
 
     def ListAbonnes(self, request, context):
-        abonnes = self.abonne_service.list_abonnes(request.statut or None)
-        return pb.ListAbonnesResponse(abonnes=[self._response(a) for a in abonnes])
+        limit = request.limit if request.HasField("limit") else None
+        offset = request.offset if request.HasField("offset") else None
+        statut = request.statut or None
+        abonnes = self.abonne_service.list_abonnes(statut, limit=limit, offset=offset)
+        total = self.abonne_service.count_abonnes(statut)
+        return pb.ListAbonnesResponse(abonnes=[self._response(a) for a in abonnes], total=total)
 
     def ListAbonnesActifs(self, request, context):
         abonnes = self.abonne_service.list_abonnes_actifs()
-        return pb.ListAbonnesResponse(abonnes=[self._response(a) for a in abonnes])
+        return pb.ListAbonnesResponse(abonnes=[self._response(a) for a in abonnes], total=len(abonnes))
 
     def CreateAbonne(self, request, context):
         abonne = self.abonne_service.create_abonne(
