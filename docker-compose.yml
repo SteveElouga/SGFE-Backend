@@ -73,12 +73,19 @@ services:
       WHATSAPP_SERVICE_URL: http://whatsapp-service:3000
       WHATSAPP_INTERNAL_API_KEY: ${WHATSAPP_INTERNAL_API_KEY:-whatsapp-dev-placeholder-do-not-use-in-production}
       PHONE_OTP_VALIDITY_MINUTES: "10"
+      GRPC_TLS_CA: /app/certs/ca.crt
+      GRPC_TLS_CERT: /app/certs/server.crt
+      GRPC_TLS_KEY: /app/certs/server.key
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
     volumes:
       # Clés JWT RS256 (gitignorées) : à générer via ./scripts/gen-jwt-keys.sh en
       # local, fournies par le secrets manager en prod. Sans elles, l'auth-service
       # refuse de démarrer (fail-fast RS256).
       - ./services/auth/keys:/app/keys:ro
+      # CA + certificat mTLS gRPC interne (gitignorés) : à générer via
+      # ./scripts/generate-grpc-certs.sh en local. Absents -> repli en clair
+      # (voir comptes/grpc_auth.py), jamais un échec au démarrage.
+      - ./certs:/app/certs:ro
 
   abonne-postgres:
     image: postgres:16-alpine
@@ -160,8 +167,12 @@ services:
       JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
       PDF_STORAGE_DIR: /app/pdfs
       REDIS_URL: "redis://redis:6379/0"
+      GRPC_TLS_CA: /app/certs/ca.crt
+      GRPC_TLS_CERT: /app/certs/server.crt
+      GRPC_TLS_KEY: /app/certs/server.key
     volumes:
       - facturation_pdfs:/app/pdfs
+      - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
   paiement-postgres:
@@ -215,6 +226,11 @@ services:
       REPORTING_GRPC_HOST: reporting-service
       REPORTING_GRPC_PORT: "50057"
       JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
+      GRPC_TLS_CA: /app/certs/ca.crt
+      GRPC_TLS_CERT: /app/certs/server.crt
+      GRPC_TLS_KEY: /app/certs/server.key
+    volumes:
+      - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
   notification-postgres:
@@ -268,6 +284,11 @@ services:
       WHATSAPP_INTERNAL_API_KEY: ${WHATSAPP_INTERNAL_API_KEY:-whatsapp-dev-placeholder-do-not-use-in-production}
       FRONTEND_URL: http://localhost:4321
       REDIS_URL: "redis://redis:6379/0"
+      GRPC_TLS_CA: /app/certs/ca.crt
+      GRPC_TLS_CERT: /app/certs/server.crt
+      GRPC_TLS_KEY: /app/certs/server.key
+    volumes:
+      - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
   abonne-service:
@@ -288,6 +309,11 @@ services:
       ABONNE_DB_PASSWORD: devpassword
       ABONNE_GRPC_PORT: "50052"
       REDIS_URL: "redis://redis:6379/0"
+      GRPC_TLS_CA: /app/certs/ca.crt
+      GRPC_TLS_CERT: /app/certs/server.crt
+      GRPC_TLS_KEY: /app/certs/server.key
+    volumes:
+      - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
   campagne-service:
@@ -317,6 +343,11 @@ services:
       REPORTING_GRPC_HOST: reporting-service
       REPORTING_GRPC_PORT: "50057"
       JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
+      GRPC_TLS_CA: /app/certs/ca.crt
+      GRPC_TLS_CERT: /app/certs/server.crt
+      GRPC_TLS_KEY: /app/certs/server.key
+    volumes:
+      - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
   config-postgres:
@@ -351,6 +382,11 @@ services:
       CONFIG_DB_PASSWORD: devpassword
       CONFIG_GRPC_PORT: "50058"
       REDIS_URL: "redis://redis:6379/0"
+      GRPC_TLS_CA: /app/certs/ca.crt
+      GRPC_TLS_CERT: /app/certs/server.crt
+      GRPC_TLS_KEY: /app/certs/server.key
+    volumes:
+      - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
   reporting-postgres:
@@ -385,6 +421,11 @@ services:
       REPORTING_DB_PASSWORD: devpassword
       REPORTING_GRPC_PORT: "50057"
       REDIS_URL: "redis://redis:6379/0"
+      GRPC_TLS_CA: /app/certs/ca.crt
+      GRPC_TLS_CERT: /app/certs/server.crt
+      GRPC_TLS_KEY: /app/certs/server.key
+    volumes:
+      - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && python manage.py grpc_server"
 
   gateway:
@@ -423,6 +464,11 @@ services:
       GATEWAY_HTTP_PORT: "8000"
       COOKIE_SECURE: "False"
       REDIS_URL: "redis://redis:6379/0"
+      GRPC_TLS_CA: /app/certs/ca.crt
+      GRPC_TLS_CERT: /app/certs/server.crt
+      GRPC_TLS_KEY: /app/certs/server.key
+    volumes:
+      - ./certs:/app/certs:ro
     expose:
       - "8000"
     # Le SEUL service de cette pile joignable depuis la pile frontend.

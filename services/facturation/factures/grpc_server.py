@@ -18,7 +18,7 @@ import facturation_service_pb2_grpc as pb_grpc
 from .event_publisher import publish_facture_event, publish_tarif_event
 from .grpc_clients import CampagneServiceClient, ConfigServiceClient
 from .grpc_interceptors import ErrorHandlingInterceptor
-from .grpc_auth import AuthServerInterceptor
+from .grpc_auth import AuthServerInterceptor, ouvrir_port_grpc
 from .serializers import facture_to_proto, tarif_to_proto
 from .services import (
     BilanImpayesService,
@@ -274,7 +274,7 @@ def serve() -> None:
     )
     pb_grpc.add_FacturationServiceServicer_to_server(FacturationServicer(), server)
     port = settings.FACTURATION_GRPC_PORT
-    server.add_insecure_port(f"[::]:{port}")
+    ouvrir_port_grpc(server, port)
     server.start()
     logger.info("Facturation Service gRPC démarré sur le port %s", port)
     server.wait_for_termination()

@@ -48,6 +48,10 @@ k8s/secrets/*.yaml
 **/keys/*.pem
 **/keys/*.key
 
+# CA + certificat mTLS gRPC interne (générés via scripts/generate-grpc-certs.sh)
+# — secrets locaux, JAMAIS committés, même traitement que les clés JWT et .env.
+/certs/
+
 # Sauvegardes PostgreSQL locales (dumps) — jamais committées
 /backups/
 
