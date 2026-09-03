@@ -153,9 +153,11 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/auth/requirements.txt
-      - run: pip install -r requirements.txt ruff==0.15.20 coverage pip-audit bandit
+      - run: pip install -r requirements.txt -r requirements-dev.txt ruff==0.15.20 coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
+      - name: Vérification des types (mypy --strict)
+        run: mypy --strict comptes/
       - name: Audit des dépendances (pip-audit)
         run: pip-audit -r requirements.txt
       - name: Analyse statique de sécurité (bandit)
@@ -179,9 +181,11 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: gateway/requirements.txt
-      - run: pip install -r requirements.txt ruff==0.15.20 coverage pip-audit bandit
+      - run: pip install -r requirements.txt -r requirements-dev.txt ruff==0.15.20 coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
+      - name: Vérification des types (mypy --strict)
+        run: mypy --strict schema/
       - name: Audit des dépendances (pip-audit)
         run: pip-audit -r requirements.txt
       - name: Analyse statique de sécurité (bandit)
@@ -227,7 +231,7 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/abonne/requirements.txt
-      - run: pip install -r requirements.txt ruff==0.15.20 coverage pip-audit bandit
+      - run: pip install -r requirements.txt -r requirements-dev.txt ruff==0.15.20 coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
       - name: Audit des dépendances (pip-audit)
@@ -236,6 +240,8 @@ jobs:
         run: bandit -r . --exclude ./proto,./abonnes/migrations -ll
       - name: Génère une clé Fernet éphémère (CI uniquement, jamais committée)
         run: echo "PII_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
+      - name: Vérification des types (mypy --strict)
+        run: mypy --strict abonnes/
       - name: Tests + couverture
         run: |
           coverage run --source=abonnes manage.py test abonnes
@@ -277,9 +283,11 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/campagne/requirements.txt
-      - run: pip install -r requirements.txt ruff==0.15.20 coverage pip-audit bandit
+      - run: pip install -r requirements.txt -r requirements-dev.txt ruff==0.15.20 coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
+      - name: Vérification des types (mypy --strict)
+        run: mypy --strict campagnes/
       - name: Audit des dépendances (pip-audit)
         run: pip-audit -r requirements.txt
       - name: Analyse statique de sécurité (bandit)
@@ -325,9 +333,11 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/facturation/requirements.txt
-      - run: pip install -r requirements.txt ruff==0.15.20 coverage pip-audit bandit
+      - run: pip install -r requirements.txt -r requirements-dev.txt ruff==0.15.20 coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
+      - name: Vérification des types (mypy --strict)
+        run: mypy --strict factures/
       - name: Audit des dépendances (pip-audit)
         run: pip-audit -r requirements.txt
       - name: Analyse statique de sécurité (bandit)
@@ -373,9 +383,11 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/paiement/requirements.txt
-      - run: pip install -r requirements.txt ruff==0.15.20 coverage pip-audit bandit
+      - run: pip install -r requirements.txt -r requirements-dev.txt ruff==0.15.20 coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
+      - name: Vérification des types (mypy --strict)
+        run: mypy --strict paiements/
       - name: Audit des dépendances (pip-audit)
         run: pip-audit -r requirements.txt
       - name: Analyse statique de sécurité (bandit)
@@ -421,9 +433,11 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/notification/requirements.txt
-      - run: pip install -r requirements.txt ruff==0.15.20 coverage pip-audit bandit
+      - run: pip install -r requirements.txt -r requirements-dev.txt ruff==0.15.20 coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
+      - name: Vérification des types (mypy --strict)
+        run: mypy --strict notifications/
       - name: Audit des dépendances (pip-audit)
         run: pip-audit -r requirements.txt
       - name: Analyse statique de sécurité (bandit)
@@ -469,9 +483,11 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/config/requirements.txt
-      - run: pip install -r requirements.txt ruff==0.15.20 coverage pip-audit bandit
+      - run: pip install -r requirements.txt -r requirements-dev.txt ruff==0.15.20 coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
+      - name: Vérification des types (mypy --strict)
+        run: mypy --strict parametres/
       - name: Audit des dépendances (pip-audit)
         run: pip-audit -r requirements.txt
       - name: Analyse statique de sécurité (bandit)
@@ -517,9 +533,11 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/reporting/requirements.txt
-      - run: pip install -r requirements.txt ruff==0.15.20 coverage pip-audit bandit
+      - run: pip install -r requirements.txt -r requirements-dev.txt ruff==0.15.20 coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
+      - name: Vérification des types (mypy --strict)
+        run: mypy --strict stats/
       - name: Audit des dépendances (pip-audit)
         run: pip-audit -r requirements.txt
       - name: Analyse statique de sécurité (bandit)
