@@ -144,6 +144,11 @@ class AbonneServiceClient:
         si l'abonné n'est pas déjà RESILIE."""
         return self._stub.AnonymiserAbonne(abonne_pb.AbonneIdRequest(abonne_id=abonne_id))
 
+    def exporter_donnees_abonne(self, abonne_id: str) -> abonne_pb.ExportDonneesAbonneResponse:
+        """RGPD — droit à la portabilité. Réponse synchrone (voir
+        abonnes/export.py côté Abonné Service pour le choix de format/volume)."""
+        return self._stub.ExporterDonneesAbonne(abonne_pb.AbonneIdRequest(abonne_id=abonne_id))
+
     def update_compteur(self, abonne_id: str, **kwargs) -> abonne_pb.CompteurResponse:
         return self._stub.UpdateCompteur(abonne_pb.UpdateCompteurRequest(abonne_id=abonne_id, **kwargs))
 

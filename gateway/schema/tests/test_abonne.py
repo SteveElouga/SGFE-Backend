@@ -315,6 +315,34 @@ class AbonneMutationTests(SimpleTestCase):
         self.assertIsNotNone(result.errors)
         self.assertIn("Accès non autorisé", str(result.errors))
 
+    def test_exporter_donnees_abonne_success_as_admin(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(
+                abonne_client,
+                "exporter_donnees_abonne",
+                return_value=Mock(json_export='{"abonne_id": "abonne-1"}'),
+            ) as mock_export,
+        ):
+            result = schema.execute_sync(
+                'mutation { exporterDonneesAbonne(abonneId: "abonne-1") }',
+                context_value=self._admin_context(),
+            )
+            mock_export.assert_called_once_with("abonne-1")
+
+        self.assertIsNone(result.errors)
+        self.assertEqual(result.data["exporterDonneesAbonne"], '{"abonne_id": "abonne-1"}')
+
+    def test_exporter_donnees_abonne_requires_admin_role(self):
+        with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="AGENT")):
+            result = schema.execute_sync(
+                'mutation { exporterDonneesAbonne(abonneId: "abonne-1") }',
+                context_value=self._admin_context(),
+            )
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("Accès non autorisé", str(result.errors))
+
     def test_remplacer_compteur_requires_admin_role(self):
         with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="COMPTABLE")):
             result = schema.execute_sync(

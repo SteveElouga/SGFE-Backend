@@ -1,3 +1,4 @@
+import json
 import sys
 from concurrent import futures
 from pathlib import Path
@@ -12,6 +13,7 @@ import abonne_service_pb2 as pb
 import abonne_service_pb2_grpc as pb_grpc
 
 from abonnes.event_publisher import publish_abonne_event
+from abonnes.export import ExportService
 from abonnes.grpc_interceptors import ErrorHandlingInterceptor
 from abonnes.grpc_auth import AuthServerInterceptor, ouvrir_port_grpc
 from abonnes.serializers import abonne_to_response, compteur_to_response, historique_to_response
@@ -27,6 +29,9 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
     def __init__(self) -> None:
         self.abonne_service = AbonneService()
         self.compteur_service = CompteurService()
+        # Construction sans I/O (canaux gRPC paresseux, voir grpc_clients.py)
+        # — sûr même si les services externes qu'il consomme sont éteints.
+        self.export_service = ExportService()
 
     def _response(self, abonne) -> pb.AbonneResponse:
         try:
@@ -102,6 +107,10 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
         abonne = self.abonne_service.anonymiser_abonne(request.abonne_id)
         publish_abonne_event(str(abonne.id))
         return self._response(abonne)
+
+    def ExporterDonneesAbonne(self, request, context):
+        json_export = json.dumps(self.export_service.exporter(request.abonne_id), ensure_ascii=False, indent=2)
+        return pb.ExportDonneesAbonneResponse(json_export=json_export)
 
     def GetCompteur(self, request, context):
         compteur = self.compteur_service.get_compteur_actif(request.abonne_id)

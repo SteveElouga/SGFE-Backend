@@ -68,6 +68,19 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # --- gRPC ---
 ABONNE_GRPC_PORT = env.int("ABONNE_GRPC_PORT", default=50052)
 
+# Abonné Service n'appelait jusqu'ici aucun autre service (voir CLAUDE.md).
+# Ces quatre clients sortants ne servent qu'à l'export RGPD (droit à la
+# portabilité, abonnes/export.py) : relevés, factures, paiements et envois
+# WhatsApp d'un abonné vivent dans d'autres bases, jamais répliquées ici.
+CAMPAGNE_GRPC_HOST = env("CAMPAGNE_GRPC_HOST", default="localhost")
+CAMPAGNE_GRPC_PORT = env.int("CAMPAGNE_GRPC_PORT", default=50053)
+FACTURATION_GRPC_HOST = env("FACTURATION_GRPC_HOST", default="localhost")
+FACTURATION_GRPC_PORT = env.int("FACTURATION_GRPC_PORT", default=50054)
+PAIEMENT_GRPC_HOST = env("PAIEMENT_GRPC_HOST", default="localhost")
+PAIEMENT_GRPC_PORT = env.int("PAIEMENT_GRPC_PORT", default=50055)
+NOTIFICATION_GRPC_HOST = env("NOTIFICATION_GRPC_HOST", default="localhost")
+NOTIFICATION_GRPC_PORT = env.int("NOTIFICATION_GRPC_PORT", default=50056)
+
 # Authentification de la couche gRPC interne (registre, point 1).
 #
 # Secret partagé entre tous les services. Sans lui, le serveur gRPC refuse de

@@ -1,3 +1,6 @@
+import json
+from unittest.mock import Mock
+
 from django.test import TestCase
 
 from abonnes.grpc_server import AbonneServiceServicer
@@ -251,4 +254,31 @@ class AbonneServiceServicerTests(TestCase):
                     date_remplacement="2024-06-01",
                 ),
                 self.context,
+            )
+
+    def test_exporter_donnees_abonne_renvoie_un_json_structure(self):
+        created = self._create()
+        # Les 4 clients gRPC sortants de l'export sont mockés : ce test ne
+        # doit pas dépendre de campagne/facturation/paiement/notification
+        # réellement joignables (voir abonnes/tests/test_export.py pour la
+        # couverture détaillée de la dégradation gracieuse).
+        self.servicer.export_service._campagne_client = Mock(list_releves_abonne=Mock(return_value=[]))
+        self.servicer.export_service._facturation_client = Mock(list_factures_abonne=Mock(return_value=[]))
+        self.servicer.export_service._paiement_client = Mock(list_paiements_abonne=Mock(return_value=[]))
+        self.servicer.export_service._notification_client = Mock(list_envois_abonne=Mock(return_value=[]))
+
+        response = self.servicer.ExporterDonneesAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
+
+        donnees = json.loads(response.json_export)
+        self.assertEqual(donnees["abonne_id"], created.abonne_id)
+        self.assertEqual(donnees["identite"]["nom"], "Doe")
+        self.assertTrue(donnees["releves"]["disponible"])
+        self.assertFalse(donnees["diffusions_whatsapp"]["disponible"])
+
+    def test_exporter_donnees_abonne_introuvable_raises(self):
+        from django.core.exceptions import ObjectDoesNotExist
+
+        with self.assertRaises(ObjectDoesNotExist):
+            self.servicer.ExporterDonneesAbonne(
+                pb.AbonneIdRequest(abonne_id="00000000-0000-0000-0000-000000000000"), self.context
             )

@@ -68,6 +68,13 @@ class AbonneMutations:
         return abonne_from_grpc(abonne_client.anonymiser_abonne(str(abonne_id)))
 
     @strawberry.mutation
+    def exporter_donnees_abonne(self, info: strawberry.types.Info, abonne_id: strawberry.ID) -> str:
+        """RGPD — droit à la portabilité. Renvoie l'export JSON structuré tel
+        quel (voir abonnes/export.py côté Abonné Service)."""
+        require_role(info, "ADMIN")
+        return abonne_client.exporter_donnees_abonne(str(abonne_id)).json_export
+
+    @strawberry.mutation
     def update_compteur(
         self, info: strawberry.types.Info, abonne_id: strawberry.ID, input: UpdateCompteurInput
     ) -> Compteur:
