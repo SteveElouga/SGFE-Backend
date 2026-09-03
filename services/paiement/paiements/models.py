@@ -114,6 +114,19 @@ class SoldeFacture(models.Model):
 
     class Meta:
         db_table = "soldes_factures"
+        indexes = [
+            # `list_non_soldes_par_abonne` et `total_du_abonne`
+            # (repositories.py) filtrent par abonne_id à CHAQUE versement
+            # (imputation abonné, calcul du solde antérieur sur un PDF,
+            # vérification de réactivation après paiement) — le seul champ de
+            # ce modèle sans index jusqu'ici alors qu'il l'est déjà sur
+            # Facture/Paiement/MouvementAvoir pour le même usage.
+            models.Index(fields=["abonne_id"]),
+            # `list_impayes` (repositories.py) scanne TOUTE la table soldes_factures
+            # chaque jour (cron ImpayeCheckerJob 8h00, voir schedulers.py) en
+            # filtrant sur date_limite_paiement < aujourd'hui.
+            models.Index(fields=["date_limite_paiement"]),
+        ]
 
     def __str__(self) -> str:
         return f"Solde facture {self.facture_id} — {self.statut} ({self.solde_restant} restant)"
