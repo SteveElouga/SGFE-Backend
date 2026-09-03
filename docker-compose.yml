@@ -643,6 +643,13 @@ services:
       - gateway
     ports:
       - "8080:80"
+      - "8443:443"
+    volumes:
+      # Certificat TLS auto-signé de dev — à générer une fois avec
+      # ./scripts/generate-nginx-cert.sh (gitignoré, jamais committé). Sans
+      # lui, nginx refuse de démarrer (fail-fast, même pattern que les clés
+      # JWT RS256 de auth-service ci-dessus).
+      - ./nginx/certs:/etc/nginx/certs:ro
     restart: unless-stopped
     deploy:
       resources:
