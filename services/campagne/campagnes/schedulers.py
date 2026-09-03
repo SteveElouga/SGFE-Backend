@@ -11,6 +11,11 @@ logger = logging.getLogger(__name__)
 # les campagnes planifiées, même en cas de réplication (anti double-démarrage).
 _CAMPAGNE_LOCK_KEY = 4210002
 
+# Verrou consultatif PostgreSQL du job de retry facturation (distinct du
+# précédent : deux jobs indépendants du même service ne doivent pas se
+# bloquer l'un l'autre).
+_FACTURATION_RETRY_LOCK_KEY = 4210003
+
 _scheduler: BackgroundScheduler | None = None
 
 
@@ -62,6 +67,67 @@ def campagne_planifiee_job() -> None:
                 cur.execute("SELECT pg_advisory_unlock(%s)", [_CAMPAGNE_LOCK_KEY])
 
 
+def facturation_retry_job() -> None:
+    """
+    Retente périodiquement les déclenchements de génération/régénération de
+    facture qui ont échoué faute de Facturation Service joignable :
+
+    - campagnes clôturées dont la notification de clôture (`GenererFactures`)
+      a échoué (`Campagne.facturation_en_attente`) ;
+    - relevés corrigés après facturation dont la régénération
+      (`RegenererFacture`) a échoué (`RegenerationFactureEnAttente`).
+
+    Rejoue dans les deux cas le MÊME chemin que l'appel d'origine — jamais de
+    logique de génération dupliquée ici, seulement son déclenchement (voir
+    `services.py::CampagneService.retenter_facturation_en_attente` et
+    `::retenter_corrections_en_attente`).
+
+    Cadence horaire (et non nocturne comme `campagne_planifiee_job`) : une
+    facture bloquée par une panne transitoire de Facturation Service ne
+    devrait pas attendre jusqu'à 24h avant d'être rattrapée. Même patron
+    APScheduler (CronTrigger) + verrou consultatif PostgreSQL que les autres
+    crons de ce dépôt.
+    """
+    import django
+
+    django.setup()
+
+    from django.db import connection
+
+    from campagnes.services import CampagneService
+
+    use_lock = connection.vendor == "postgresql"
+    if use_lock:  # pragma: no cover
+        with connection.cursor() as cur:
+            cur.execute("SELECT pg_try_advisory_lock(%s)", [_FACTURATION_RETRY_LOCK_KEY])
+            if not cur.fetchone()[0]:
+                logger.info("FacturationRetryJob ignoré — verrou détenu par une autre instance.")
+                return
+
+    try:
+        svc = CampagneService()
+
+        campagnes_resolues = svc.retenter_facturation_en_attente()
+        for c in campagnes_resolues:
+            logger.info(
+                "Génération de factures réussie après nouvelle tentative",
+                extra={"campagne_id": str(c.id), "nom": c.nom},
+            )
+
+        corrections_resolues = svc.retenter_corrections_en_attente()
+        for campagne_id, abonne_id in corrections_resolues:
+            logger.info(
+                "Régénération de facture réussie après nouvelle tentative",
+                extra={"campagne_id": campagne_id, "abonne_id": abonne_id},
+            )
+    except Exception as exc:
+        logger.exception("FacturationRetryJob échoué : %s", exc)
+    finally:
+        if use_lock:  # pragma: no cover
+            with connection.cursor() as cur:
+                cur.execute("SELECT pg_advisory_unlock(%s)", [_FACTURATION_RETRY_LOCK_KEY])
+
+
 def start_scheduler() -> None:
     """Démarre le scheduler APScheduler en arrière-plan."""
     global _scheduler
@@ -87,8 +153,16 @@ def start_scheduler() -> None:
         coalesce=True,
         replace_existing=True,
     )
+    _scheduler.add_job(
+        facturation_retry_job,
+        trigger=CronTrigger(minute=0),  # toutes les heures, à l'heure pile
+        id="facturation_retry",
+        misfire_grace_time=30 * 60,
+        coalesce=True,
+        replace_existing=True,
+    )
     _scheduler.start()
-    logger.info("CampagneScheduler démarré — cron à 07:00 tous les jours.")
+    logger.info("CampagneScheduler démarré — cron à 07:00 tous les jours, retry facturation toutes les heures.")
 
 
 def stop_scheduler() -> None:

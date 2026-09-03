@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 
 import campagne_service_pb2 as pb
 
-from campagnes.grpc_clients import AbonneServiceClient
+from campagnes.grpc_clients import AbonneServiceClient, FacturationServiceClient
 from campagnes.grpc_server import CampagneServicer
 from campagnes.models import StatutCampagne, StatutReleve
 from campagnes.services import CampagneService
@@ -31,13 +31,22 @@ _abonne_patcher = patch.object(
     return_value=SimpleNamespace(statut="ACTIF", compteur=SimpleNamespace(index_initial=0.0)),
 )
 
+# CorrigerReleve interroge désormais Facturation Service pour savoir si une
+# facture doit être régénérée (voir TestCorrigerReleveRegenerationFacture).
+# Par défaut, aucune facture n'existe encore : évite qu'une centaine de tests
+# sans rapport avec la facturation ne tentent chacun un appel réseau réel vers
+# un Facturation Service absent en test.
+_facture_active_patcher = patch.object(FacturationServiceClient, "get_facture_active", return_value=None)
+
 
 def setUpModule() -> None:
     _abonne_patcher.start()
+    _facture_active_patcher.start()
 
 
 def tearDownModule() -> None:
     _abonne_patcher.stop()
+    _facture_active_patcher.stop()
 
 
 def _mock_context() -> MagicMock:
@@ -185,6 +194,37 @@ class TestCloturerCampagneRPC(TestCase):
         request = pb.CampagneIdRequest(campagne_id=str(c2.id))
         with self.assertRaises(ValidationError):
             self.servicer.CloturerCampagne(request, _mock_context())
+
+    @patch("campagnes.grpc_server.FacturationServiceClient.notifier_campagne_cloturee", return_value=False)
+    def test_cloturer_echec_facturation_pose_le_marqueur_en_attente(self, mock_notif) -> None:
+        """Régression : un échec gRPC de Facturation Service à la clôture ne
+        doit plus être perdu silencieusement — il doit rester visible et
+        rattrapable via `facturation_en_attente`."""
+        request = pb.CampagneIdRequest(campagne_id=str(self.campagne.id))
+        response = self.servicer.CloturerCampagne(request, _mock_context())
+        self.assertEqual(response.statut, StatutCampagne.CLOTUREE)  # la clôture n'est pas bloquée
+        self.campagne.refresh_from_db()
+        self.assertTrue(self.campagne.facturation_en_attente)
+
+    @patch("campagnes.grpc_server.FacturationServiceClient.notifier_campagne_cloturee", return_value=True)
+    def test_cloturer_succes_ne_pose_pas_le_marqueur(self, mock_notif) -> None:
+        request = pb.CampagneIdRequest(campagne_id=str(self.campagne.id))
+        self.servicer.CloturerCampagne(request, _mock_context())
+        self.campagne.refresh_from_db()
+        self.assertFalse(self.campagne.facturation_en_attente)
+
+    @patch("campagnes.grpc_server.FacturationServiceClient.notifier_campagne_cloturee")
+    def test_cloturer_generer_factures_auto_faux_ne_pose_pas_le_marqueur(self, mock_notif) -> None:
+        """Une campagne configurée sans génération automatique n'appelle jamais
+        Facturation Service — pas de marqueur en attente à poser."""
+        svc = CampagneService()
+        c2 = svc.creer_campagne("C2", 2, 2026, created_by="user-A", generer_factures_auto=False)
+        svc.demarrer_campagne(str(c2.id))
+        request = pb.CampagneIdRequest(campagne_id=str(c2.id))
+        self.servicer.CloturerCampagne(request, _mock_context())
+        mock_notif.assert_not_called()
+        c2.refresh_from_db()
+        self.assertFalse(c2.facturation_en_attente)
 
 
 class TestDemarrerCampagneRPC(TestCase):
@@ -419,6 +459,92 @@ class TestCorrigerReleveRPC(TestCase):
     def test_corriger_releve_introuvable_abort(self) -> None:
         with self.assertRaises(ObjectDoesNotExist):
             self.servicer.CorrigerReleve(self._corriger_request(abonne_id="inconnu"), _mock_context())
+
+
+class TestCorrigerReleveRegenerationFactureRPC(TestCase):
+    """Régression : une correction de relevé postérieure à la facturation doit
+    répercuter la correction sur la facture déjà émise (voir services.py::
+    CampagneService.regenerer_facture_si_necessaire)."""
+
+    def setUp(self) -> None:
+        from campagnes.repositories import CampagneRepository
+        from campagnes.models import RegenerationFactureEnAttente
+
+        self.servicer = CampagneServicer()
+        svc = CampagneService()
+        campagne = svc.creer_campagne("C1", 1, 2026, created_by="user-A")
+        svc.demarrer_campagne(str(campagne.id))
+        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", ancien_index=100.0)
+        self.servicer.SaisirIndex(
+            pb.SaisirIndexRequest(
+                campagne_id=str(campagne.id),
+                abonne_id="abonne-001",
+                nouveau_index=150.0,
+                agent_id="agent-001",
+                auteur_username="bob",
+                auteur_role="AGENT",
+            ),
+            _mock_context(),
+        )
+        CampagneRepository().update_statut(campagne, StatutCampagne.CLOTUREE)
+        self.campagne = campagne
+        self._RegenerationFactureEnAttente = RegenerationFactureEnAttente
+
+    def _corriger_request(self, **kw) -> pb.CorrigerReleveRequest:
+        defaults = dict(
+            campagne_id=str(self.campagne.id),
+            abonne_id="abonne-001",
+            nouveau_index=180.0,
+            auteur_id="admin-001",
+            auteur_username="alice",
+            auteur_role="ADMIN",
+        )
+        return pb.CorrigerReleveRequest(**{**defaults, **kw})
+
+    def test_sans_facture_existante_ne_declenche_rien(self) -> None:
+        """`get_facture_active` renvoie None par défaut (patch de module) :
+        aucune facture n'existe encore, la correction est un no-op côté
+        facturation."""
+        with patch("campagnes.grpc_clients.FacturationServiceClient.regenerer_facture") as mock_regen:
+            self.servicer.CorrigerReleve(self._corriger_request(), _mock_context())
+            mock_regen.assert_not_called()
+        self.assertFalse(self._RegenerationFactureEnAttente.objects.exists())
+
+    @patch("campagnes.grpc_clients.FacturationServiceClient.regenerer_facture", return_value=True)
+    @patch("campagnes.grpc_clients.FacturationServiceClient.get_facture_active", return_value="facture-001")
+    def test_avec_facture_existante_declenche_la_regeneration(self, mock_get_active, mock_regen) -> None:
+        self.servicer.CorrigerReleve(self._corriger_request(), _mock_context())
+
+        mock_get_active.assert_called_once_with(str(self.campagne.id), "abonne-001")
+        mock_regen.assert_called_once()
+        args, kwargs = mock_regen.call_args
+        self.assertEqual(args[0], "facture-001")
+        self.assertEqual(kwargs["regenere_par"], "admin-001")
+        self.assertIn("alice", kwargs["motif"])  # username privilégié sur l'id dans le motif affiché
+        # Résolu du premier coup : rien en attente de retry.
+        self.assertFalse(self._RegenerationFactureEnAttente.objects.exists())
+
+    @patch("campagnes.grpc_clients.FacturationServiceClient.get_facture_active", side_effect=grpc.RpcError("down"))
+    def test_facturation_indisponible_ne_perd_pas_la_correction(self, mock_get_active) -> None:
+        """Facturation Service injoignable au moment de la correction : la
+        correction elle-même doit tout de même réussir (dégradation propre),
+        et une entrée de retry doit être posée pour rattraper la répercussion
+        sur la facture plus tard."""
+        response = self.servicer.CorrigerReleve(self._corriger_request(), _mock_context())
+
+        self.assertEqual(response.nouveau_index, 180.0)  # la correction est bien passée
+        entree = self._RegenerationFactureEnAttente.objects.get(campagne=self.campagne, abonne_id="abonne-001")
+        self.assertIn("alice", entree.motif)
+        self.assertEqual(entree.demande_par, "admin-001")
+
+    @patch("campagnes.grpc_clients.FacturationServiceClient.regenerer_facture", return_value=False)
+    @patch("campagnes.grpc_clients.FacturationServiceClient.get_facture_active", return_value="facture-001")
+    def test_echec_de_regeneration_pose_une_entree_de_retry(self, mock_get_active, mock_regen) -> None:
+        self.servicer.CorrigerReleve(self._corriger_request(), _mock_context())
+
+        self.assertTrue(
+            self._RegenerationFactureEnAttente.objects.filter(campagne=self.campagne, abonne_id="abonne-001").exists()
+        )
 
 
 class TestGetProgressionRPC(TestCase):

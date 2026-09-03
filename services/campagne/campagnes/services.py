@@ -7,12 +7,13 @@ import grpc
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
-from .grpc_clients import AbonneServiceClient
+from .grpc_clients import AbonneServiceClient, FacturationServiceClient
 from .models import ActionAudit, Campagne, Releve, StatutCampagne, StatutReleve
 from .repositories import (
     AffectationZoneRepository,
     CampagneAgentRepository,
     CampagneRepository,
+    RegenerationFactureEnAttenteRepository,
     ReleveAuditRepository,
     ReleveRepository,
 )
@@ -28,7 +29,9 @@ class CampagneService:
         self._releve_repo = ReleveRepository()
         self._agent_repo = CampagneAgentRepository()
         self._zone_repo = AffectationZoneRepository()
+        self._retry_repo = RegenerationFactureEnAttenteRepository()
         self._abonne_client = AbonneServiceClient()
+        self._facturation_client = FacturationServiceClient()
 
     def _verifier_abonne_actif(self, abonne_id: str):
         """Vérifie que l'abonné est ACTIF et le retourne (avec son compteur).
@@ -267,6 +270,116 @@ class CampagneService:
                 }
             )
         return agents
+
+    # ------------------------------------------------------------------ #
+    # Retry facturation (clôture → Facturation Service injoignable)
+    # ------------------------------------------------------------------ #
+
+    def retenter_facturation_en_attente(self) -> list[Campagne]:
+        """Retente la notification de clôture pour les campagnes dont
+        Facturation Service était injoignable au moment de `CloturerCampagne`.
+
+        Rejoue le MÊME appel gRPC (`notifier_campagne_cloturee`, qui déclenche
+        `GenererFactures` côté Facturation Service) que la clôture — aucune
+        logique de génération dupliquée ici, seulement son déclenchement.
+
+        Retourne les campagnes dont la notification a enfin réussi (marqueur
+        `facturation_en_attente` retiré).
+        """
+        resolues: list[Campagne] = []
+        for campagne in self._repo.list_facturation_en_attente():
+            ok = self._facturation_client.notifier_campagne_cloturee(
+                str(campagne.id),
+                numero_mobile_money=campagne.numero_mobile_money,
+                envoyer_whatsapp_auto=campagne.envoyer_whatsapp_auto,
+            )
+            if ok:
+                self._repo.marquer_facturation_en_attente(campagne, False)
+                resolues.append(campagne)
+        return resolues
+
+    # ------------------------------------------------------------------ #
+    # Retry régénération de facture (correction de relevé après facturation)
+    # ------------------------------------------------------------------ #
+
+    def regenerer_facture_si_necessaire(
+        self,
+        campagne_id: str,
+        abonne_id: str,
+        motif: str,
+        demande_par: str = "",
+    ) -> bool:
+        """Régénère la facture d'un abonné si une facture existe déjà pour cette campagne.
+
+        Appelé après une correction de relevé postérieure à la facturation
+        (`CorrigerReleve` reste autorisé sur une campagne CLOTUREE). Ne fait
+        rien si aucune facture n'existe encore pour cet abonné dans cette
+        campagne : la correction a précédé la clôture, ce n'est pas une erreur.
+
+        En cas d'échec ou d'indisponibilité de Facturation Service, programme
+        un retry (`RegenerationFactureEnAttente`) plutôt que d'avaler
+        l'échec : la correction du relevé, déjà validée en base par
+        l'appelant, n'est elle jamais perdue — seule sa répercussion sur la
+        facture est différée.
+
+        Retourne True si résolu (rien à répercuter, ou régénération réussie),
+        False si Facturation Service est resté inaccessible (retry programmé).
+        """
+        campagne = self._repo.get_by_id(campagne_id)
+        try:
+            facture_id = self._facturation_client.get_facture_active(campagne_id, abonne_id)
+        except Exception as exc:
+            # Exception large et non seulement grpc.RpcError : cet appel est
+            # best-effort après une correction déjà validée en base — une
+            # erreur inattendue ici ne doit jamais remonter jusqu'à
+            # l'interceptor et faire échouer la réponse gRPC de CorrigerReleve,
+            # ce qui ferait croire au client que sa correction a été perdue.
+            logger.error(
+                "Facturation Service inaccessible — impossible de savoir si une facture existe déjà pour "
+                "cet abonné après correction du relevé. Nouvelle tentative programmée.",
+                extra={"campagne_id": campagne_id, "abonne_id": abonne_id, "error": str(exc)},
+            )
+            self._retry_repo.upsert(campagne, abonne_id, motif=motif, demande_par=demande_par)
+            return False
+
+        if facture_id is None:
+            # Aucune facture émise pour cet abonné dans cette campagne :
+            # correction antérieure à la clôture, rien à répercuter. Nettoie
+            # un éventuel retry devenu obsolète (ex. la facture visée par une
+            # tentative précédente a depuis été annulée sans remplacement).
+            self._retry_repo.supprimer(campagne_id, abonne_id)
+            return True
+
+        ok = self._facturation_client.regenerer_facture(facture_id, motif=motif, regenere_par=demande_par)
+        if not ok:
+            logger.error(
+                "Facturation Service inaccessible — la facture existante n'a pas pu être régénérée après "
+                "correction du relevé. Nouvelle tentative programmée.",
+                extra={"campagne_id": campagne_id, "abonne_id": abonne_id, "facture_id": facture_id},
+            )
+            self._retry_repo.upsert(campagne, abonne_id, motif=motif, demande_par=demande_par)
+            return False
+
+        self._retry_repo.supprimer(campagne_id, abonne_id)
+        return True
+
+    def retenter_corrections_en_attente(self) -> list[tuple[str, str]]:
+        """Rejoue les régénérations de facture différées faute de Facturation Service joignable.
+
+        Retourne les paires (campagne_id, abonne_id) résolues lors de cette passe.
+        """
+        resolues: list[tuple[str, str]] = []
+        for entree in self._retry_repo.list_all():
+            self._retry_repo.marquer_tentative(entree)
+            ok = self.regenerer_facture_si_necessaire(
+                str(entree.campagne_id),
+                entree.abonne_id,
+                motif=entree.motif,
+                demande_par=entree.demande_par,
+            )
+            if ok:
+                resolues.append((str(entree.campagne_id), entree.abonne_id))
+        return resolues
 
 
 class ReleveService:
