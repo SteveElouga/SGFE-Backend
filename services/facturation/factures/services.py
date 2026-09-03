@@ -401,6 +401,8 @@ class FactureService:
         statut: str = "",
         date_debut: str = "",
         date_fin: str = "",
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> list[Facture]:
         """Retourne les factures filtrées. Tous les paramètres sont optionnels.
 
@@ -408,10 +410,36 @@ class FactureService:
         de génération. Elles rendent possible un journal par période — mois,
         exercice — là où seul le filtre par campagne existait, ce qui laissait
         les régularisations (`campagne_id` vide) exportables par aucun chemin.
+
+        `limit`/`offset` optionnels, appliqués sur le résultat déjà filtré :
+        omis, la liste complète filtrée est retournée — comportement
+        historique préservé à l'identique.
         """
         if statut and statut not in StatutFacture.values:
             raise ValidationError(f"Statut invalide : {statut}. Valeurs attendues : {', '.join(StatutFacture.values)}")
         return self._repo.list_by_filters(
+            campagne_id=campagne_id,
+            abonne_id=abonne_id,
+            statut=statut,
+            date_debut=_date_ou_none(date_debut, "date_debut"),
+            date_fin=_date_ou_none(date_fin, "date_fin"),
+            limit=limit,
+            offset=offset,
+        )
+
+    def count_factures(
+        self,
+        campagne_id: str = "",
+        abonne_id: str = "",
+        statut: str = "",
+        date_debut: str = "",
+        date_fin: str = "",
+    ) -> int:
+        """Nombre total de factures correspondant au filtre, indépendamment de
+        toute pagination."""
+        if statut and statut not in StatutFacture.values:
+            raise ValidationError(f"Statut invalide : {statut}. Valeurs attendues : {', '.join(StatutFacture.values)}")
+        return self._repo.count_by_filters(
             campagne_id=campagne_id,
             abonne_id=abonne_id,
             statut=statut,

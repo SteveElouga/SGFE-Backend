@@ -105,21 +105,22 @@ class FactureRepository:
     def get_by_id(self, facture_id: str) -> Facture:
         return Facture.objects.get(id=facture_id)
 
-    def list_by_filters(
+    def _filtres(
         self,
         campagne_id: str = "",
         abonne_id: str = "",
         statut: str = "",
         date_debut: "datetime.date | None" = None,
         date_fin: "datetime.date | None" = None,
-    ) -> list[Facture]:
-        """Factures filtrées. Tous les critères sont optionnels et se combinent.
+    ):
+        """Queryset filtré, partagé par `list_by_filters` et `count_by_filters`
+        — le comptage et la page rendue portent ainsi toujours sur les mêmes
+        critères, jamais sur la table entière.
 
         Les bornes de PÉRIODE portent sur `date_generation`, et non sur
         `date_releve` : une régularisation n'a pas de relevé, et c'est la seule
         date que portent les deux natures de facture. Bornes incluses.
         """
-        qs = Facture.objects.all()
         filters = Q()
         if campagne_id:
             filters &= Q(campagne_id=campagne_id)
@@ -131,7 +132,41 @@ class FactureRepository:
             filters &= Q(date_generation__date__gte=date_debut)
         if date_fin:
             filters &= Q(date_generation__date__lte=date_fin)
-        return list(qs.filter(filters).order_by("-date_generation"))
+        return Facture.objects.filter(filters)
+
+    def list_by_filters(
+        self,
+        campagne_id: str = "",
+        abonne_id: str = "",
+        statut: str = "",
+        date_debut: "datetime.date | None" = None,
+        date_fin: "datetime.date | None" = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[Facture]:
+        """Factures filtrées. Tous les critères sont optionnels et se combinent.
+
+        `limit`/`offset` optionnels, appliqués après le tri : omis (`None`),
+        la liste complète filtrée est retournée — comportement historique
+        préservé à l'identique.
+        """
+        qs = self._filtres(campagne_id, abonne_id, statut, date_debut, date_fin).order_by("-date_generation")
+        if limit is not None or offset is not None:
+            start = offset or 0
+            qs = qs[start : start + limit] if limit is not None else qs[start:]
+        return list(qs)
+
+    def count_by_filters(
+        self,
+        campagne_id: str = "",
+        abonne_id: str = "",
+        statut: str = "",
+        date_debut: "datetime.date | None" = None,
+        date_fin: "datetime.date | None" = None,
+    ) -> int:
+        """Nombre total de factures correspondant au filtre, indépendamment de
+        toute pagination."""
+        return self._filtres(campagne_id, abonne_id, statut, date_debut, date_fin).count()
 
     def update_statut(self, facture: Facture, statut: str) -> Facture:
         facture.statut = statut
