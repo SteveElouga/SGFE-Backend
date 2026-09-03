@@ -1,5 +1,6 @@
 """Tests de l'ErrorHandlingInterceptor du Campagne Service (mapping exception -> code gRPC)."""
 
+from typing import Any
 from unittest.mock import MagicMock
 
 import grpc
@@ -30,13 +31,13 @@ class AbortForTests(SimpleTestCase):
 
 
 class InterceptorBehaviorTests(SimpleTestCase):
-    def _wrap(self, exc: Exception):
+    def _wrap(self, exc: Exception) -> tuple[Any, MagicMock]:
         interceptor = ErrorHandlingInterceptor()
 
-        def behavior(request, context):
+        def behavior(request: Any, context: Any) -> None:
             raise exc
 
-        handler = grpc.unary_unary_rpc_method_handler(behavior)
+        handler: grpc.RpcMethodHandler[Any, Any] = grpc.unary_unary_rpc_method_handler(behavior)
         continuation = MagicMock(return_value=handler)
         wrapped = interceptor.intercept_service(continuation, MagicMock(method="/Campagne/X"))
         ctx = MagicMock(spec=grpc.ServicerContext)

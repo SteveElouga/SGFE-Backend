@@ -112,6 +112,11 @@ class Facture(models.Model):
             models.Index(fields=["abonne_id"]),
             models.Index(fields=["campagne_id"]),
             models.Index(fields=["statut"]),
+            # `list_by_filters` (repositories.py) trie systématiquement par
+            # -date_generation, quels que soient les filtres (campagne_id/
+            # abonne_id/statut tous optionnels) — c'est l'écran ADMIN/COMPTABLE
+            # "factures" du gateway (facturation_queries.py::factures).
+            models.Index(fields=["-date_generation"]),
         ]
 
     def __str__(self) -> str:

@@ -1,7 +1,9 @@
 """Sérialisation entre les modèles Django et les messages protobuf."""
 
 import sys
+from datetime import date, datetime
 from pathlib import Path
+from typing import Union
 
 from django.conf import settings
 
@@ -9,10 +11,11 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 
 import campagne_service_pb2 as pb
 
+from campagnes.dtos import AgentAffecteDict
 from campagnes.models import Campagne, Releve, ReleveAudit
 
 
-def _to_iso(value) -> str:
+def _to_iso(value: Union[date, datetime, str, None]) -> str:
     """Convertit date/datetime/str en format ISO, ou '' si None/vide.
 
     Après Campagne.objects.create(), Django peut retourner la valeur d'origine
@@ -50,8 +53,10 @@ def audit_to_proto(audit: ReleveAudit) -> pb.ReleveAudit:
         auteur_id=audit.auteur_id,
         auteur_username=audit.auteur_username,
         auteur_role=audit.auteur_role,
-        ancien_index=audit.ancien_index if audit.ancien_index is not None else 0.0,
-        nouvel_index=audit.nouvel_index if audit.nouvel_index is not None else 0.0,
+        # Frontière gRPC sortante : le proto transporte un double, la donnée
+        # interne est un Decimal (voir campagnes/models.py).
+        ancien_index=float(audit.ancien_index) if audit.ancien_index is not None else 0.0,
+        nouvel_index=float(audit.nouvel_index) if audit.nouvel_index is not None else 0.0,
         horodatage=_to_iso(audit.horodatage),
     )
 
@@ -65,9 +70,11 @@ def releve_to_proto(releve: Releve) -> pb.ReleveResponse:
     return pb.ReleveResponse(
         releve_id=str(releve.id),
         abonne_id=releve.abonne_id,
-        ancien_index=releve.ancien_index,
-        nouveau_index=releve.nouveau_index if releve.nouveau_index is not None else 0.0,
-        consommation=releve.consommation if releve.consommation is not None else 0.0,
+        # Frontière gRPC sortante : le proto transporte un double, la donnée
+        # interne est un Decimal (voir campagnes/models.py).
+        ancien_index=float(releve.ancien_index),
+        nouveau_index=float(releve.nouveau_index) if releve.nouveau_index is not None else 0.0,
+        consommation=float(releve.consommation) if releve.consommation is not None else 0.0,
         date_releve=_to_iso(releve.date_releve),
         observation=releve.observation,
         statut=releve.statut,
@@ -81,7 +88,7 @@ def releve_to_proto(releve: Releve) -> pb.ReleveResponse:
     )
 
 
-def agent_affecte_to_proto(agent: dict) -> pb.AgentAffecte:
+def agent_affecte_to_proto(agent: AgentAffecteDict) -> pb.AgentAffecte:
     """Convertit un dict d'agent affecté (voir CampagneService.list_agents_campagne)
     en message protobuf AgentAffecte."""
     return pb.AgentAffecte(

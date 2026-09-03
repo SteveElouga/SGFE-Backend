@@ -1,8 +1,10 @@
 """Tests du serveur gRPC du Campagne Service."""
 
 import sys
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import grpc
@@ -170,7 +172,7 @@ class TestCloturerCampagneRPC(TestCase):
         "campagnes.grpc_server.FacturationServiceClient.notifier_campagne_cloturee",
         return_value=True,
     )
-    def test_cloturer_succes(self, mock_notif) -> None:
+    def test_cloturer_succes(self, mock_notif: MagicMock) -> None:
         request = pb.CampagneIdRequest(campagne_id=str(self.campagne.id))
         response = self.servicer.CloturerCampagne(request, _mock_context())
         self.assertEqual(response.statut, StatutCampagne.CLOTUREE)
@@ -178,7 +180,7 @@ class TestCloturerCampagneRPC(TestCase):
 
     @patch("campagnes.grpc_server.publish_reporting_event")
     @patch("campagnes.grpc_server.FacturationServiceClient.notifier_campagne_cloturee", return_value=True)
-    def test_cloturer_publie_stats_reporting(self, mock_notif, mock_pub) -> None:
+    def test_cloturer_publie_stats_reporting(self, mock_notif: MagicMock, mock_pub: MagicMock) -> None:
         request = pb.CampagneIdRequest(campagne_id=str(self.campagne.id))
         self.servicer.CloturerCampagne(request, _mock_context())
 
@@ -265,7 +267,7 @@ class TestAjouterAbonnesCampagneRPC(TestCase):
 
     def test_ajouter_ignore_les_doublons(self) -> None:
         cid = str(self.campagne.id)
-        self.svc.ajouter_abonne_campagne(cid, "ab-1", ancien_index=0.0)  # déjà inscrit
+        self.svc.ajouter_abonne_campagne(cid, "ab-1", ancien_index=Decimal("0"))  # déjà inscrit
         req = pb.AjouterAbonnesCampagneRequest(campagne_id=cid, abonne_ids=["ab-1", "ab-2"])
         resp = self.servicer.AjouterAbonnesCampagne(req, _mock_context())
         self.assertEqual(resp.nb_ajoutes, 1)  # ab-2 seulement
@@ -329,7 +331,7 @@ class TestListRelevesTourneeRPC(TestCase):
             camp=1,
         )
 
-    def _tournee(self, agent_id: str) -> set:
+    def _tournee(self, agent_id: str) -> set[str]:
         req = pb.ListRelevesTourneeRequest(campagne_id=str(self.campagne.id), agent_id=agent_id)
         resp = self.servicer.ListRelevesTournee(req, _mock_context())
         return {r.abonne_id for r in resp.releves}
@@ -356,7 +358,7 @@ class TestSaisirIndexRPC(TestCase):
         svc = CampagneService()
         campagne = svc.creer_campagne("C1", 1, 2026, created_by="user-A")
         svc.demarrer_campagne(str(campagne.id))
-        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", ancien_index=100.0)
+        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", ancien_index=Decimal("100"))
         self.campagne = campagne
 
     def test_saisir_index_succes(self) -> None:
@@ -414,7 +416,7 @@ class TestCorrigerReleveRPC(TestCase):
         svc = CampagneService()
         campagne = svc.creer_campagne("C1", 1, 2026, created_by="user-A")
         svc.demarrer_campagne(str(campagne.id))
-        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", ancien_index=100.0)
+        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", ancien_index=Decimal("100"))
         # Saisie initiale (par un agent) avant toute correction.
         self.servicer.SaisirIndex(
             pb.SaisirIndexRequest(
@@ -429,7 +431,7 @@ class TestCorrigerReleveRPC(TestCase):
         )
         self.campagne = campagne
 
-    def _corriger_request(self, **kw) -> pb.CorrigerReleveRequest:
+    def _corriger_request(self, **kw: Any) -> pb.CorrigerReleveRequest:
         defaults = dict(
             campagne_id=str(self.campagne.id),
             abonne_id="abonne-001",
@@ -553,8 +555,8 @@ class TestGetProgressionRPC(TestCase):
         svc = CampagneService()
         campagne = svc.creer_campagne("C1", 1, 2026, created_by="user-A")
         svc.demarrer_campagne(str(campagne.id))
-        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", 100.0)
-        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-002", 200.0)
+        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", Decimal("100"))
+        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-002", Decimal("200"))
         self.campagne = campagne
 
     def test_progression_2_a_relever(self) -> None:
@@ -577,7 +579,7 @@ class TestGetResumeClotureRPC(TestCase):
         # 2 relevés, 1 estimé, 1 restant (A_RELEVER)
         statuts = [StatutReleve.RELEVE, StatutReleve.RELEVE, StatutReleve.ESTIME, StatutReleve.A_RELEVER]
         for i, s in enumerate(statuts):
-            r = svc.ajouter_abonne_campagne(str(campagne.id), f"abonne-{i:03d}", 0.0)
+            r = svc.ajouter_abonne_campagne(str(campagne.id), f"abonne-{i:03d}", Decimal("0"))
             r.statut = s
             r.save()
         self.campagne = campagne
@@ -598,7 +600,7 @@ class TestMarquerNonReleveRPC(TestCase):
         svc = CampagneService()
         campagne = svc.creer_campagne("C1", 1, 2026, created_by="user-A")
         svc.demarrer_campagne(str(campagne.id))
-        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", 100.0)
+        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", Decimal("100"))
         self.campagne = campagne
 
     def test_marquer_non_releve_succes(self) -> None:
@@ -646,10 +648,10 @@ class TestGetReleveRPC(TestCase):
         svc = CampagneService()
         campagne = svc.creer_campagne("C1", 1, 2026, created_by="user-A")
         svc.demarrer_campagne(str(campagne.id))
-        releve = svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", 100.0)
+        releve = svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", Decimal("100"))
         from campagnes.services import ReleveService
 
-        ReleveService().saisir_index(str(releve.id), nouveau_index=150.0, agent_id="agent-001")
+        ReleveService().saisir_index(str(releve.id), nouveau_index=Decimal("150"), agent_id="agent-001")
         self.releve_id = str(releve.id)
 
     def test_get_releve_succes(self) -> None:
@@ -671,8 +673,8 @@ class TestListRelevesRPC(TestCase):
         svc = CampagneService()
         campagne = svc.creer_campagne("C1", 1, 2026, created_by="user-A")
         svc.demarrer_campagne(str(campagne.id))
-        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", 100.0)
-        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-002", 200.0)
+        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", Decimal("100"))
+        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-002", Decimal("200"))
         self.campagne = campagne
 
     def test_list_releves_retourne_tous(self) -> None:
@@ -692,7 +694,7 @@ class TestGetDernierIndexRPC(TestCase):
         svc = CampagneService()
         campagne = svc.creer_campagne("C1", 1, 2026, created_by="user-A")
         svc.demarrer_campagne(str(campagne.id))
-        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", 100.0)
+        svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", Decimal("100"))
         self.campagne = campagne
         self.svc = svc
 
@@ -724,8 +726,8 @@ class TestGetDernierIndexRPC(TestCase):
         from campagnes.services import ReleveService
 
         ReleveService().saisir_index(
-            str(self.svc.ajouter_abonne_campagne(str(self.campagne.id), "abonne-002", 50.0).id),
-            nouveau_index=120.0,
+            str(self.svc.ajouter_abonne_campagne(str(self.campagne.id), "abonne-002", Decimal("50")).id),
+            nouveau_index=Decimal("120"),
             agent_id="agent-001",
         )
         request = pb.AbonneIdRequest(abonne_id="abonne-002")
@@ -742,7 +744,7 @@ class TestAffecterZonesRPC(TestCase):
         svc.demarrer_campagne(str(campagne.id))
         self.campagne = campagne
 
-    def _affecter(self, agent_id: str, zones: list[tuple[str, int]]):
+    def _affecter(self, agent_id: str, zones: list[tuple[str, int]]) -> pb.ListAgentsCampagneResponse:
         request = pb.AffecterZonesRequest(
             campagne_id=str(self.campagne.id),
             agent_id=agent_id,

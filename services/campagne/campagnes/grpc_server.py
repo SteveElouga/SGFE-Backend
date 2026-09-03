@@ -2,6 +2,7 @@
 
 import logging
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 import grpc
@@ -32,7 +33,11 @@ from campagnes.services import CampagneService, ReleveService
 logger = logging.getLogger(__name__)
 
 
-class CampagneServicer(pb_grpc.CampagneServiceServicer):
+class CampagneServicer(pb_grpc.CampagneServiceServicer):  # type: ignore[misc]
+    # ^ CampagneServiceServicer vient du stub généré campagne_service_pb2_grpc,
+    # exclu de la vérification mypy (voir mypy.ini) — mypy le voit donc comme
+    # `Any`, ce qui rend toute sous-classe de lui structurellement "misc" ; rien
+    # à corriger côté code métier ici.
     """Implémentation de tous les RPCs du CampagneService.
 
     Le mapping exception -> code gRPC (ObjectDoesNotExist->NOT_FOUND,
@@ -167,7 +172,10 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
             nom_campagne=stats["nom_campagne"],
             total_abonnes=stats["total_abonnes"],
             nb_releves=stats["nb_releves"],
-            consommation_totale=stats["consommation_totale"],
+            # Frontière événementielle (Redis/JSON, voir event_publisher.py) :
+            # json.dumps ne sait pas sérialiser un Decimal, même motif que
+            # delta_montant=float(...) côté facturation/services.py.
+            consommation_totale=float(stats["consommation_totale"]),
         )
         return campagne_to_proto(campagne)
 
@@ -280,7 +288,10 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
                     raise
         releve = self._releve_svc.saisir_index(
             releve_id=str(releve.id),
-            nouveau_index=request.nouveau_index,
+            # Frontière gRPC : le proto transporte un double, converti en
+            # Decimal via str() pour éviter le bruit binaire du float (même
+            # motif que les montants d'argent, voir paiements/services.py).
+            nouveau_index=Decimal(str(request.nouveau_index)),
             agent_id=request.agent_id,
             observation=request.observation,
             auteur_username=request.auteur_username,
@@ -309,7 +320,7 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
             raise ObjectDoesNotExist(f"Relevé introuvable pour l'abonné {request.abonne_id} dans la campagne.")
         releve = self._releve_svc.corriger_releve(
             releve_id=str(releve.id),
-            nouveau_index=request.nouveau_index,
+            nouveau_index=Decimal(str(request.nouveau_index)),
             auteur_id=request.auteur_id,
             auteur_username=request.auteur_username,
             auteur_role=request.auteur_role,
@@ -383,7 +394,8 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
         valeur, est_initial = self._get_dernier_index(request.abonne_id)
         return pb.DernierIndexResponse(
             abonne_id=request.abonne_id,
-            dernier_index=valeur,
+            # Frontière gRPC sortante : le proto transporte un double.
+            dernier_index=float(valeur),
             est_index_initial=est_initial,
         )
 
@@ -391,12 +403,12 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
     # Helpers privés
     # ------------------------------------------------------------------ #
 
-    def _get_dernier_index_value(self, abonne_id: str) -> float:
+    def _get_dernier_index_value(self, abonne_id: str) -> Decimal:
         """Valeur seule de `_get_dernier_index` — pour les appelants qui n'ont
         pas besoin de savoir si elle vient d'un relevé ou d'un repli."""
         return self._get_dernier_index(abonne_id)[0]
 
-    def _get_dernier_index(self, abonne_id: str) -> tuple[float, bool]:
+    def _get_dernier_index(self, abonne_id: str) -> tuple[Decimal, bool]:
         """Retourne (dernier nouveau_index pour un abonné, est-ce un repli).
 
         Sans relevé, l'index initial de son compteur actif sert de repli
@@ -425,13 +437,16 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):
             .first()
         )
         if dernier is not None:
-            return float(dernier), False
+            # Déjà un Decimal (valeur lue depuis le DecimalField via l'ORM).
+            return dernier, False
 
         try:
-            return float(self._abonne_client.get_abonne(abonne_id).compteur.index_initial), True
+            # Frontière gRPC entrante : le proto transporte un double.
+            index_initial = self._abonne_client.get_abonne(abonne_id).compteur.index_initial
+            return Decimal(str(index_initial)), True
         except grpc.RpcError:
             logger.warning("Index initial introuvable pour l'abonné %s — repli sur 0.0", abonne_id)
-            return 0.0, True
+            return Decimal("0"), True
 
 
 def serve() -> None:

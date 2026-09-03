@@ -1,5 +1,6 @@
 """Tests unitaires du Campagne Service — logique métier."""
 
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -8,7 +9,7 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.test import TestCase
 
 from campagnes.grpc_clients import AbonneServiceClient
-from campagnes.models import Campagne, StatutCampagne, StatutReleve
+from campagnes.models import Campagne, Releve, StatutCampagne, StatutReleve
 from campagnes.repositories import CampagneAgentRepository, CampagneRepository
 from campagnes.services import CampagneService, ReleveService
 
@@ -169,7 +170,7 @@ class TestCampagneService(TestCase):
             StatutReleve.A_RELEVER,
         ]
         for i, s in enumerate(statuts):
-            r = self.svc.ajouter_abonne_campagne(str(c.id), f"abonne-{i:03d}", ancien_index=0.0)
+            r = self.svc.ajouter_abonne_campagne(str(c.id), f"abonne-{i:03d}", ancien_index=Decimal("0"))
             r.statut = s
             r.save()
 
@@ -193,27 +194,27 @@ class TestCampagneService(TestCase):
 
     def test_ajouter_abonne_campagne_succes(self) -> None:
         c = self._creer_campagne(StatutCampagne.EN_COURS)
-        releve = self.svc.ajouter_abonne_campagne(str(c.id), "abonne-001", ancien_index=100.0)
+        releve = self.svc.ajouter_abonne_campagne(str(c.id), "abonne-001", ancien_index=Decimal("100"))
         self.assertEqual(releve.statut, StatutReleve.A_RELEVER)
         self.assertEqual(releve.ancien_index, 100.0)
 
     def test_ajouter_abonne_campagne_cloturee_leve_erreur(self) -> None:
         c = self._creer_campagne(StatutCampagne.CLOTUREE)
         with self.assertRaises(ValidationError):
-            self.svc.ajouter_abonne_campagne(str(c.id), "abonne-001", ancien_index=0.0)
+            self.svc.ajouter_abonne_campagne(str(c.id), "abonne-001", ancien_index=Decimal("0"))
 
     def test_ajouter_abonne_en_double_leve_erreur(self) -> None:
         c = self._creer_campagne(StatutCampagne.EN_COURS)
-        self.svc.ajouter_abonne_campagne(str(c.id), "abonne-001", ancien_index=0.0)
+        self.svc.ajouter_abonne_campagne(str(c.id), "abonne-001", ancien_index=Decimal("0"))
         with self.assertRaises(ValidationError):
-            self.svc.ajouter_abonne_campagne(str(c.id), "abonne-001", ancien_index=0.0)
+            self.svc.ajouter_abonne_campagne(str(c.id), "abonne-001", ancien_index=Decimal("0"))
 
     def test_ajouter_abonne_suspendu_leve_erreur(self) -> None:
         """Régression ANO-003 : un abonné non ACTIF ne peut pas être ajouté à une campagne."""
         c = self._creer_campagne(StatutCampagne.EN_COURS)
         with patch.object(AbonneServiceClient, "get_abonne", return_value=SimpleNamespace(statut="SUSPENDU")):
             with self.assertRaises(ValidationError):
-                self.svc.ajouter_abonne_campagne(str(c.id), "abonne-suspendu", ancien_index=0.0)
+                self.svc.ajouter_abonne_campagne(str(c.id), "abonne-suspendu", ancien_index=Decimal("0"))
 
     def test_ajouter_abonne_service_indisponible_leve_erreur(self) -> None:
         """Régression ANO-003 : la vérification est bloquante, pas dégradée — si
@@ -224,7 +225,7 @@ class TestCampagneService(TestCase):
         c = self._creer_campagne(StatutCampagne.EN_COURS)
         with patch.object(AbonneServiceClient, "get_abonne", side_effect=grpc.RpcError("indisponible")):
             with self.assertRaises(ValidationError):
-                self.svc.ajouter_abonne_campagne(str(c.id), "abonne-001", ancien_index=0.0)
+                self.svc.ajouter_abonne_campagne(str(c.id), "abonne-001", ancien_index=Decimal("0"))
 
 
 class TestReleveService(TestCase):
@@ -241,7 +242,7 @@ class TestReleveService(TestCase):
         CampagneRepository().update_statut(campagne, StatutCampagne.EN_COURS)
         self.campagne = campagne
 
-        releve = self.campagne_svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", ancien_index=100.0)
+        releve = self.campagne_svc.ajouter_abonne_campagne(str(campagne.id), "abonne-001", ancien_index=Decimal("100"))
         self.releve = releve
 
     # --- saisir index ---
@@ -249,7 +250,7 @@ class TestReleveService(TestCase):
     def test_saisir_index_succes(self) -> None:
         releve = self.svc.saisir_index(
             str(self.releve.id),
-            nouveau_index=150.0,
+            nouveau_index=Decimal("150"),
             agent_id="agent-001",
         )
         self.assertEqual(releve.statut, StatutReleve.RELEVE)
@@ -258,24 +259,24 @@ class TestReleveService(TestCase):
 
     def test_saisir_index_inferieur_a_ancien_leve_erreur(self) -> None:
         with self.assertRaises(ValidationError):
-            self.svc.saisir_index(str(self.releve.id), nouveau_index=50.0, agent_id="agent-001")
+            self.svc.saisir_index(str(self.releve.id), nouveau_index=Decimal("50"), agent_id="agent-001")
 
     def test_saisir_index_deja_releve_leve_erreur(self) -> None:
-        self.svc.saisir_index(str(self.releve.id), nouveau_index=150.0, agent_id="agent-001")
+        self.svc.saisir_index(str(self.releve.id), nouveau_index=Decimal("150"), agent_id="agent-001")
         with self.assertRaises(ValidationError):
-            self.svc.saisir_index(str(self.releve.id), nouveau_index=200.0, agent_id="agent-001")
+            self.svc.saisir_index(str(self.releve.id), nouveau_index=Decimal("200"), agent_id="agent-001")
 
     def test_saisir_index_campagne_non_en_cours_leve_erreur(self) -> None:
         from campagnes.repositories import CampagneRepository
 
         CampagneRepository().update_statut(self.campagne, StatutCampagne.CLOTUREE)
         with self.assertRaises(ValidationError):
-            self.svc.saisir_index(str(self.releve.id), nouveau_index=150.0, agent_id="agent-001")
+            self.svc.saisir_index(str(self.releve.id), nouveau_index=Decimal("150"), agent_id="agent-001")
 
     def test_saisir_index_cree_audit_saisie(self) -> None:
         releve = self.svc.saisir_index(
             str(self.releve.id),
-            nouveau_index=150.0,
+            nouveau_index=Decimal("150"),
             agent_id="agent-001",
             auteur_username="bob",
             auteur_role="AGENT",
@@ -292,10 +293,10 @@ class TestReleveService(TestCase):
     # --- corriger relevé ---
 
     def test_corriger_releve_succes_et_audit(self) -> None:
-        self.svc.saisir_index(str(self.releve.id), nouveau_index=150.0, agent_id="agent-001")
+        self.svc.saisir_index(str(self.releve.id), nouveau_index=Decimal("150"), agent_id="agent-001")
         releve = self.svc.corriger_releve(
             str(self.releve.id),
-            nouveau_index=180.0,
+            nouveau_index=Decimal("180"),
             auteur_id="admin-001",
             auteur_username="alice",
             auteur_role="ADMIN",
@@ -313,28 +314,28 @@ class TestReleveService(TestCase):
         self.assertEqual(correction.nouvel_index, 180.0)
 
     def test_corriger_releve_autorise_apres_cloture(self) -> None:
-        self.svc.saisir_index(str(self.releve.id), nouveau_index=150.0, agent_id="agent-001")
+        self.svc.saisir_index(str(self.releve.id), nouveau_index=Decimal("150"), agent_id="agent-001")
         CampagneRepository().update_statut(self.campagne, StatutCampagne.CLOTUREE)
-        releve = self.svc.corriger_releve(str(self.releve.id), nouveau_index=175.0, auteur_id="admin-001")
+        releve = self.svc.corriger_releve(str(self.releve.id), nouveau_index=Decimal("175"), auteur_id="admin-001")
         self.assertEqual(releve.nouveau_index, 175.0)
 
     def test_corriger_releve_non_saisi_leve_erreur(self) -> None:
         # Le relevé est encore A_RELEVER : rien à corriger.
         with self.assertRaises(ValidationError):
-            self.svc.corriger_releve(str(self.releve.id), nouveau_index=150.0, auteur_id="admin-001")
+            self.svc.corriger_releve(str(self.releve.id), nouveau_index=Decimal("150"), auteur_id="admin-001")
 
     def test_corriger_releve_inferieur_a_ancien_leve_erreur(self) -> None:
-        self.svc.saisir_index(str(self.releve.id), nouveau_index=150.0, agent_id="agent-001")
+        self.svc.saisir_index(str(self.releve.id), nouveau_index=Decimal("150"), agent_id="agent-001")
         with self.assertRaises(ValidationError):
-            self.svc.corriger_releve(str(self.releve.id), nouveau_index=50.0, auteur_id="admin-001")
+            self.svc.corriger_releve(str(self.releve.id), nouveau_index=Decimal("50"), auteur_id="admin-001")
 
     def test_corriger_releve_audit_conserve_la_valeur_remplacee(self) -> None:
         """L'audit CORRECTION trace la valeur relevée AVANT correction (l'index
         remplacé), et non l'index compteur de base — sinon le journal est
         trompeur et la valeur remplacée est perdue."""
         # ancien_index (compteur) = 100 ; saisie initiale = 150 ; correction = 180.
-        self.svc.saisir_index(str(self.releve.id), nouveau_index=150.0, agent_id="agent-001")
-        releve = self.svc.corriger_releve(str(self.releve.id), nouveau_index=180.0, auteur_id="admin-001")
+        self.svc.saisir_index(str(self.releve.id), nouveau_index=Decimal("150"), agent_id="agent-001")
+        releve = self.svc.corriger_releve(str(self.releve.id), nouveau_index=Decimal("180"), auteur_id="admin-001")
         correction = releve.audits.all()[1]
         self.assertEqual(correction.action, "CORRECTION")
         self.assertEqual(correction.ancien_index, 150.0)  # la valeur remplacée, pas 100
@@ -360,7 +361,7 @@ class TestReleveService(TestCase):
             self.svc.marquer_non_releve(str(self.releve.id), statut="RELEVE")
 
     def test_marquer_releve_deja_saisi_leve_erreur(self) -> None:
-        self.svc.saisir_index(str(self.releve.id), nouveau_index=150.0, agent_id="agent-001")
+        self.svc.saisir_index(str(self.releve.id), nouveau_index=Decimal("150"), agent_id="agent-001")
         with self.assertRaises(ValidationError):
             self.svc.marquer_non_releve(str(self.releve.id), statut=StatutReleve.NON_RELEVE)
 
@@ -380,7 +381,7 @@ class TestReleveService(TestCase):
             self.svc.get_releve("00000000-0000-0000-0000-000000000000")
 
     def test_list_releves_par_campagne(self) -> None:
-        self.campagne_svc.ajouter_abonne_campagne(str(self.campagne.id), "abonne-002", 200.0)
+        self.campagne_svc.ajouter_abonne_campagne(str(self.campagne.id), "abonne-002", Decimal("200"))
         releves = self.svc.list_releves(str(self.campagne.id))
         self.assertEqual(len(releves), 2)
 
@@ -498,7 +499,7 @@ class TestAffectationZone(TestCase):
         CampagneRepository().update_statut(campagne, StatutCampagne.EN_COURS)
         self.campagne = campagne
 
-    def _ajouter(self, abonne_id: str, quartier: str, camp: int, ancien_index: float = 0.0):
+    def _ajouter(self, abonne_id: str, quartier: str, camp: int, ancien_index: Decimal = Decimal("0")) -> Releve:
         with patch.object(
             AbonneServiceClient,
             "get_abonne",
@@ -514,51 +515,55 @@ class TestAffectationZone(TestCase):
     def test_agent_ne_peut_pas_saisir_hors_de_ses_zones(self) -> None:
         """Cloisonnement en écriture : un AGENT ne peut saisir un relevé hors de
         ses zones affectées (symétrique du filtrage de tournée)."""
-        r_hors = self._ajouter("ab-hors", "Centre", 1, ancien_index=10.0)
+        r_hors = self._ajouter("ab-hors", "Centre", 1, ancien_index=Decimal("10"))
         self.svc.affecter_zones(str(self.campagne.id), "agent-1", [("Plateau", 3)])
         with self.assertRaises(ValidationError):
-            self.releve_svc.saisir_index(str(r_hors.id), nouveau_index=20.0, agent_id="agent-1", auteur_role="AGENT")
+            self.releve_svc.saisir_index(
+                str(r_hors.id), nouveau_index=Decimal("20"), agent_id="agent-1", auteur_role="AGENT"
+            )
 
     def test_agent_peut_saisir_dans_sa_zone(self) -> None:
-        r_dans = self._ajouter("ab-dans", "Plateau", 3, ancien_index=10.0)
+        r_dans = self._ajouter("ab-dans", "Plateau", 3, ancien_index=Decimal("10"))
         self.svc.affecter_zones(str(self.campagne.id), "agent-1", [("Plateau", 3)])
         releve = self.releve_svc.saisir_index(
-            str(r_dans.id), nouveau_index=20.0, agent_id="agent-1", auteur_role="AGENT"
+            str(r_dans.id), nouveau_index=Decimal("20"), agent_id="agent-1", auteur_role="AGENT"
         )
         self.assertEqual(releve.statut, StatutReleve.RELEVE)
 
     def test_agent_sans_zone_couvre_toute_la_campagne(self) -> None:
         """Un agent affecté globalement mais sans zone n'est pas restreint."""
-        r = self._ajouter("ab-x", "Centre", 1, ancien_index=10.0)
-        releve = self.releve_svc.saisir_index(str(r.id), nouveau_index=20.0, agent_id="agent-1", auteur_role="AGENT")
+        r = self._ajouter("ab-x", "Centre", 1, ancien_index=Decimal("10"))
+        releve = self.releve_svc.saisir_index(
+            str(r.id), nouveau_index=Decimal("20"), agent_id="agent-1", auteur_role="AGENT"
+        )
         self.assertEqual(releve.statut, StatutReleve.RELEVE)
 
     def test_admin_non_restreint_par_les_zones(self) -> None:
         """ADMIN/SUPERVISEUR ne sont jamais restreints au périmètre de zones."""
-        r_hors = self._ajouter("ab-hors2", "Centre", 1, ancien_index=10.0)
+        r_hors = self._ajouter("ab-hors2", "Centre", 1, ancien_index=Decimal("10"))
         self.svc.affecter_zones(str(self.campagne.id), "agent-1", [("Plateau", 3)])
         releve = self.releve_svc.saisir_index(
-            str(r_hors.id), nouveau_index=20.0, agent_id="agent-1", auteur_role="ADMIN"
+            str(r_hors.id), nouveau_index=Decimal("20"), agent_id="agent-1", auteur_role="ADMIN"
         )
         self.assertEqual(releve.statut, StatutReleve.RELEVE)
 
     def test_agent_ne_peut_pas_marquer_non_releve_hors_zone(self) -> None:
         """Cloisonnement en écriture aussi pour marquer_non_releve (#4) : un AGENT
         avec des zones ne peut pas marquer ESTIME/NON_RELEVE hors de son périmètre."""
-        r_hors = self._ajouter("ab-hors3", "Centre", 1, ancien_index=10.0)
+        r_hors = self._ajouter("ab-hors3", "Centre", 1, ancien_index=Decimal("10"))
         self.svc.affecter_zones(str(self.campagne.id), "agent-1", [("Plateau", 3)])
         with self.assertRaises(ValidationError):
             self.releve_svc.marquer_non_releve(str(r_hors.id), statut=StatutReleve.ESTIME, agent_id="agent-1")
 
     def test_marquer_non_releve_dans_zone_ok(self) -> None:
-        r_dans = self._ajouter("ab-dans2", "Plateau", 3, ancien_index=10.0)
+        r_dans = self._ajouter("ab-dans2", "Plateau", 3, ancien_index=Decimal("10"))
         self.svc.affecter_zones(str(self.campagne.id), "agent-1", [("Plateau", 3)])
         releve = self.releve_svc.marquer_non_releve(str(r_dans.id), statut=StatutReleve.ESTIME, agent_id="agent-1")
         self.assertEqual(releve.statut, StatutReleve.ESTIME)
 
     def test_auteur_sans_zone_peut_marquer_partout(self) -> None:
         """Auteur sans zone affectée (ADMIN/agent global) non restreint pour marquer."""
-        r_hors = self._ajouter("ab-hors4", "Centre", 1, ancien_index=10.0)
+        r_hors = self._ajouter("ab-hors4", "Centre", 1, ancien_index=Decimal("10"))
         self.svc.affecter_zones(str(self.campagne.id), "agent-1", [("Plateau", 3)])
         releve = self.releve_svc.marquer_non_releve(str(r_hors.id), statut=StatutReleve.NON_RELEVE, agent_id="admin-x")
         self.assertEqual(releve.statut, StatutReleve.NON_RELEVE)
@@ -580,9 +585,9 @@ class TestAffectationZone(TestCase):
 
     def test_list_agents_campagne_stats(self) -> None:
         # 2 abonnés Plateau·3, 1 relevé saisi par agent-1.
-        r1 = self._ajouter("ab-1", "Plateau", 3, ancien_index=100.0)
-        self._ajouter("ab-2", "Plateau", 3, ancien_index=50.0)
-        self.releve_svc.saisir_index(str(r1.id), nouveau_index=150.0, agent_id="agent-1")
+        r1 = self._ajouter("ab-1", "Plateau", 3, ancien_index=Decimal("100"))
+        self._ajouter("ab-2", "Plateau", 3, ancien_index=Decimal("50"))
+        self.releve_svc.saisir_index(str(r1.id), nouveau_index=Decimal("150"), agent_id="agent-1")
         self.svc.affecter_zones(str(self.campagne.id), "agent-1", [("Plateau", 3)])
 
         agent = next(a for a in self.svc.list_agents_campagne(str(self.campagne.id)) if a["agent_id"] == "agent-1")

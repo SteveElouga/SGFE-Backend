@@ -1,7 +1,7 @@
 from parametres.models import ConfigParam, InfosSociete
 
 
-def infos_to_response(infos: InfosSociete) -> dict:
+def infos_to_response(infos: InfosSociete) -> dict[str, str]:
     """Convertit un objet InfosSociete en dict compatible avec InfosSocieteResponse (proto)."""
     return {
         "nom": infos.nom,
@@ -12,7 +12,7 @@ def infos_to_response(infos: InfosSociete) -> dict:
     }
 
 
-def config_to_response(param: ConfigParam) -> dict:
+def config_to_response(param: ConfigParam) -> dict[str, str]:
     """Convertit un ConfigParam en dict compatible avec ConfigResponse (proto)."""
     return {
         "cle": param.cle,

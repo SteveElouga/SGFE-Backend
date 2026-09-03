@@ -3,6 +3,7 @@
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 import grpc
 from django.conf import settings
@@ -37,8 +38,11 @@ class AbonneServiceClient:
         except grpc.FutureTimeoutError:
             return False
 
-    def get_abonne(self, abonne_id: str):
+    def get_abonne(self, abonne_id: str) -> Any:
         """Récupère les informations d'un abonné depuis Abonné Service.
+
+        Type de retour `Any` assumé : message protobuf `AbonneResponse` (stub
+        généré exclu de la vérification mypy, voir `abonne_service_pb2`).
 
         Returns:
             AbonneResponse protobuf (contient notamment `statut`).
