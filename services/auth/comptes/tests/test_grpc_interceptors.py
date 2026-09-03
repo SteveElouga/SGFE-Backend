@@ -1,3 +1,8 @@
+"""Tests de l'ErrorHandlingInterceptor du Auth Service (mapping exception -> code gRPC)."""
+
+from typing import Any
+from unittest.mock import MagicMock
+
 import grpc
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError
@@ -9,97 +14,86 @@ from comptes.services import AuthenticationError
 from comptes.whatsapp_client import WhatsAppDeliveryError
 
 
-class FakeHandler:
-    def __init__(self, behavior):
-        self.unary_unary = behavior
-        self.request_deserializer = None
-        self.response_serializer = None
+def _wrapped_behavior(exc: Exception) -> Any:
+    """Construit un vrai `RpcMethodHandler` (via le helper grpc officiel) dont le
+    comportement lève `exc`, le fait passer par l'intercepteur, et renvoie le
+    `unary_unary` enveloppé — prêt à être appelé avec (request, context)."""
+    interceptor = ErrorHandlingInterceptor()
 
-
-class AbortCalled(Exception):
-    def __init__(self, code, details):
-        self.code = code
-        self.details = details
-        super().__init__(details)
-
-
-class FakeContext:
-    def abort(self, code, details):
-        raise AbortCalled(code, details)
-
-
-def continuation_raising(exc: Exception):
-    def behavior(request, context):
+    def behavior(request: Any, context: grpc.ServicerContext) -> Any:
         raise exc
 
-    return lambda handler_call_details: FakeHandler(behavior)
+    handler: grpc.RpcMethodHandler[Any, Any] = grpc.unary_unary_rpc_method_handler(behavior)
+    continuation = MagicMock(return_value=handler)
+    wrapped = interceptor.intercept_service(continuation, MagicMock(method="/Auth/X"))
+    assert wrapped is not None
+    return wrapped.unary_unary
 
 
 class ErrorHandlingInterceptorTests(SimpleTestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.interceptor = ErrorHandlingInterceptor()
-        self.context = FakeContext()
+        self.context = MagicMock(spec=grpc.ServicerContext)
 
-    def _wrapped_behavior(self, exc: Exception):
-        handler = self.interceptor.intercept_service(continuation_raising(exc), handler_call_details=None)
-        return handler.unary_unary
-
-    def test_authentication_error_maps_to_unauthenticated(self):
-        behavior = self._wrapped_behavior(AuthenticationError("Identifiants invalides"))
-        with self.assertRaises(AbortCalled) as cm:
+    def test_authentication_error_maps_to_unauthenticated(self) -> None:
+        behavior = _wrapped_behavior(AuthenticationError("Identifiants invalides"))
+        with self.assertRaises(AuthenticationError):
             behavior(request=None, context=self.context)
-        self.assertEqual(cm.exception.code, grpc.StatusCode.UNAUTHENTICATED)
-        self.assertEqual(cm.exception.details, "Identifiants invalides")
+        self.context.abort.assert_called_once_with(grpc.StatusCode.UNAUTHENTICATED, "Identifiants invalides")
 
-    def test_object_does_not_exist_maps_to_not_found(self):
-        behavior = self._wrapped_behavior(ObjectDoesNotExist("Utilisateur introuvable"))
-        with self.assertRaises(AbortCalled) as cm:
+    def test_object_does_not_exist_maps_to_not_found(self) -> None:
+        behavior = _wrapped_behavior(ObjectDoesNotExist("Utilisateur introuvable"))
+        with self.assertRaises(ObjectDoesNotExist):
             behavior(request=None, context=self.context)
-        self.assertEqual(cm.exception.code, grpc.StatusCode.NOT_FOUND)
+        self.assertEqual(self.context.abort.call_args[0][0], grpc.StatusCode.NOT_FOUND)
 
-    def test_value_error_maps_to_invalid_argument(self):
-        behavior = self._wrapped_behavior(ValueError("Numéro de téléphone invalide"))
-        with self.assertRaises(AbortCalled) as cm:
+    def test_value_error_maps_to_invalid_argument(self) -> None:
+        behavior = _wrapped_behavior(ValueError("Numéro de téléphone invalide"))
+        with self.assertRaises(ValueError):
             behavior(request=None, context=self.context)
-        self.assertEqual(cm.exception.code, grpc.StatusCode.INVALID_ARGUMENT)
-        self.assertEqual(cm.exception.details, "Numéro de téléphone invalide")
+        self.context.abort.assert_called_once_with(grpc.StatusCode.INVALID_ARGUMENT, "Numéro de téléphone invalide")
 
-    def test_integrity_error_maps_to_already_exists_with_generic_message(self):
-        behavior = self._wrapped_behavior(IntegrityError("duplicate key value violates unique constraint"))
-        with self.assertRaises(AbortCalled) as cm:
+    def test_integrity_error_maps_to_already_exists_with_generic_message(self) -> None:
+        behavior = _wrapped_behavior(IntegrityError("duplicate key value violates unique constraint"))
+        with self.assertRaises(IntegrityError):
             behavior(request=None, context=self.context)
-        self.assertEqual(cm.exception.code, grpc.StatusCode.ALREADY_EXISTS)
-        self.assertEqual(cm.exception.details, "Cette ressource existe déjà")
+        self.context.abort.assert_called_once_with(grpc.StatusCode.ALREADY_EXISTS, "Cette ressource existe déjà")
 
-    def test_email_delivery_error_maps_to_unavailable_with_generic_message(self):
-        behavior = self._wrapped_behavior(EmailDeliveryError("Brevo a renvoyé 500: ..."))
-        with self.assertRaises(AbortCalled) as cm:
+    def test_email_delivery_error_maps_to_unavailable_with_generic_message(self) -> None:
+        behavior = _wrapped_behavior(EmailDeliveryError("Brevo a renvoyé 500: ..."))
+        with self.assertRaises(EmailDeliveryError):
             behavior(request=None, context=self.context)
-        self.assertEqual(cm.exception.code, grpc.StatusCode.UNAVAILABLE)
-        self.assertEqual(cm.exception.details, "Échec de l'envoi de l'e-mail, réessayez plus tard")
+        self.context.abort.assert_called_once_with(
+            grpc.StatusCode.UNAVAILABLE, "Échec de l'envoi de l'e-mail, réessayez plus tard"
+        )
 
-    def test_whatsapp_delivery_error_maps_to_unavailable_with_generic_message(self):
-        behavior = self._wrapped_behavior(WhatsAppDeliveryError("Service WhatsApp inaccessible"))
-        with self.assertRaises(AbortCalled) as cm:
+    def test_whatsapp_delivery_error_maps_to_unavailable_with_generic_message(self) -> None:
+        behavior = _wrapped_behavior(WhatsAppDeliveryError("Service WhatsApp inaccessible"))
+        with self.assertRaises(WhatsAppDeliveryError):
             behavior(request=None, context=self.context)
-        self.assertEqual(cm.exception.code, grpc.StatusCode.UNAVAILABLE)
-        self.assertEqual(cm.exception.details, "Échec de l'envoi WhatsApp, réessayez plus tard")
+        self.context.abort.assert_called_once_with(
+            grpc.StatusCode.UNAVAILABLE, "Échec de l'envoi WhatsApp, réessayez plus tard"
+        )
 
-    def test_unknown_exception_propagates_unchanged(self):
+    def test_unknown_exception_propagates_unchanged(self) -> None:
         # RuntimeError n'est pas dans le mapping → remonte sans modification.
-        behavior = self._wrapped_behavior(RuntimeError("boom"))
+        behavior = _wrapped_behavior(RuntimeError("boom"))
         with self.assertRaises(RuntimeError):
             behavior(request=None, context=self.context)
+        self.context.abort.assert_not_called()
 
-    def test_successful_call_passes_through(self):
-        handler = self.interceptor.intercept_service(
-            lambda handler_call_details: FakeHandler(lambda request, context: "ok"),
-            handler_call_details=None,
-        )
-        self.assertEqual(handler.unary_unary(request=None, context=self.context), "ok")
+    def test_successful_call_passes_through(self) -> None:
+        handler: grpc.RpcMethodHandler[Any, Any] = grpc.unary_unary_rpc_method_handler(lambda request, context: "ok")
+        wrapped = self.interceptor.intercept_service(MagicMock(return_value=handler), MagicMock(method="/Auth/X"))
+        assert wrapped is not None and wrapped.unary_unary is not None
+        self.assertEqual(wrapped.unary_unary(None, self.context), "ok")
 
-    def test_non_unary_unary_handler_passes_through(self):
-        handler = self.interceptor.intercept_service(
-            lambda handler_call_details: FakeHandler(None), handler_call_details=None
+    def test_non_unary_unary_handler_passes_through(self) -> None:
+        # Un handler de streaming (unary_stream) n'a pas de `unary_unary` :
+        # l'intercepteur doit le laisser passer inchangé.
+        handler: grpc.RpcMethodHandler[Any, Any] = grpc.unary_stream_rpc_method_handler(
+            lambda request, context: iter(())
         )
-        self.assertIsNone(handler.unary_unary)
+        wrapped = self.interceptor.intercept_service(MagicMock(return_value=handler), MagicMock(method="/Auth/X"))
+        assert wrapped is not None
+        self.assertIsNone(wrapped.unary_unary)

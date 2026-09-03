@@ -5,7 +5,7 @@ from comptes.serializers import user_to_payload, user_to_response
 
 
 class SerializerTests(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.user = User.objects.create_user(
             username="agent2",
             email="agent2@example.com",
@@ -14,7 +14,7 @@ class SerializerTests(TestCase):
             phone_number="+237690000010",
         )
 
-    def test_user_to_payload(self):
+    def test_user_to_payload(self) -> None:
         payload = user_to_payload(self.user)
         self.assertEqual(
             payload,
@@ -28,7 +28,7 @@ class SerializerTests(TestCase):
             },
         )
 
-    def test_user_to_response(self):
+    def test_user_to_response(self) -> None:
         response = user_to_response(self.user)
         self.assertEqual(response["user_id"], str(self.user.id))
         self.assertEqual(response["username"], "agent2")

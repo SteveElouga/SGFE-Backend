@@ -22,6 +22,8 @@ def publish_user_event(user_id: str, event_type: str = "USER_UPDATED") -> None:
         r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=1)
         payload = json.dumps({"event_type": event_type, "user_id": user_id})
         r.publish(CHANNEL, payload)
-        r.close()
+        r.close()  # type: ignore[no-untyped-call]
+        # ^ redis-py n'expose pas de stubs typés pour Redis.close() dans cette
+        # version — la lib elle-même est hors du périmètre mypy de ce service.
     except Exception as exc:
         logger.warning("publish_user_event ignoré (Redis indisponible) : %s", exc)

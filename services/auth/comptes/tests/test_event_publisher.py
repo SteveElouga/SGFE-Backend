@@ -15,7 +15,7 @@ def _fake_redis_module(client: MagicMock) -> SimpleNamespace:
 
 
 class PublishUserEventTests(SimpleTestCase):
-    def test_publie_le_bon_payload_sur_le_bon_canal(self):
+    def test_publie_le_bon_payload_sur_le_bon_canal(self) -> None:
         client = MagicMock()
         with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
             publish_user_event("u-1", "USER_CREATED")
@@ -25,7 +25,7 @@ class PublishUserEventTests(SimpleTestCase):
         self.assertEqual(json.loads(payload), {"event_type": "USER_CREATED", "user_id": "u-1"})
         client.close.assert_called_once()
 
-    def test_best_effort_sur_echec_redis(self):
+    def test_best_effort_sur_echec_redis(self) -> None:
         client = MagicMock()
         client.publish.side_effect = RuntimeError("redis down")
         with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):

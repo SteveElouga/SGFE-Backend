@@ -1,3 +1,6 @@
+from datetime import datetime
+from uuid import UUID
+
 from django.db.models import Q
 
 from comptes.models import PasswordSetupToken, PhoneOtpToken, RevokedToken, User
@@ -25,7 +28,7 @@ class UserRepository:
     def list_all(self) -> list[User]:
         return list(User.objects.all().order_by("-created_at"))
 
-    def count_active_admins(self, exclude_id: str | None = None) -> int:
+    def count_active_admins(self, exclude_id: str | UUID | None = None) -> int:
         """Compte les administrateurs actifs, en excluant éventuellement un utilisateur."""
         qs = User.objects.filter(role="ADMIN", is_active=True)
         if exclude_id is not None:
@@ -54,14 +57,14 @@ class RevokedTokenRepository:
     def is_revoked(self, token_jti: str) -> bool:
         return RevokedToken.objects.filter(token_jti=token_jti).exists()
 
-    def revoke(self, token_jti: str, expires_at) -> RevokedToken:
+    def revoke(self, token_jti: str, expires_at: datetime) -> RevokedToken:
         return RevokedToken.objects.create(token_jti=token_jti, expires_at=expires_at)
 
 
 class PasswordSetupTokenRepository:
     """Accès base de données pour les tokens d'activation/réinitialisation par e-mail (ADMIN)."""
 
-    def create(self, user: User, expires_at) -> PasswordSetupToken:
+    def create(self, user: User, expires_at: datetime) -> PasswordSetupToken:
         return PasswordSetupToken.objects.create(user=user, expires_at=expires_at)
 
     def get_valid(self, token: str) -> PasswordSetupToken:
@@ -71,13 +74,13 @@ class PasswordSetupTokenRepository:
 class PhoneOtpTokenRepository:
     """Accès base de données pour les OTP WhatsApp."""
 
-    def create(self, user: User, raw_otp: str, expires_at) -> PhoneOtpToken:
+    def create(self, user: User, raw_otp: str, expires_at: datetime) -> PhoneOtpToken:
         otp_token = PhoneOtpToken(user=user, expires_at=expires_at)
         otp_token.set_otp(raw_otp)
         otp_token.save()
         return otp_token
 
-    def get_latest_valid(self, user: User) -> PhoneOtpToken:
+    def get_latest_valid(self, user: User) -> PhoneOtpToken | None:
         """Retourne le dernier OTP valide pour cet utilisateur."""
         return PhoneOtpToken.objects.filter(user=user, used_at__isnull=True).order_by("-created_at").first()
 

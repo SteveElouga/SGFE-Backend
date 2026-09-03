@@ -7,14 +7,16 @@ from comptes.email_client import BrevoEmailClient, EmailDeliveryError
 
 
 class BrevoEmailClientTests(SimpleTestCase):
-    def setUp(self):
-        self.client = BrevoEmailClient()
+    def setUp(self) -> None:
+        self.brevo_client = BrevoEmailClient()
 
     @patch("comptes.email_client.requests.post")
-    def test_send_success_calls_brevo_api(self, mock_post):
+    def test_send_success_calls_brevo_api(self, mock_post: Mock) -> None:
         mock_post.return_value = Mock(status_code=201)
 
-        self.client.send(to_email="user@example.com", to_name="User", subject="Sujet", html_content="<p>Contenu</p>")
+        self.brevo_client.send(
+            to_email="user@example.com", to_name="User", subject="Sujet", html_content="<p>Contenu</p>"
+        )
 
         mock_post.assert_called_once()
         _, kwargs = mock_post.call_args
@@ -23,8 +25,8 @@ class BrevoEmailClientTests(SimpleTestCase):
         self.assertEqual(kwargs["json"]["subject"], "Sujet")
 
     @patch("comptes.email_client.requests.post")
-    def test_send_failure_raises_email_delivery_error(self, mock_post):
+    def test_send_failure_raises_email_delivery_error(self, mock_post: Mock) -> None:
         mock_post.return_value = Mock(status_code=400, text="Bad Request")
 
         with self.assertRaises(EmailDeliveryError):
-            self.client.send(to_email="user@example.com", to_name="User", subject="Sujet", html_content="<p/>")
+            self.brevo_client.send(to_email="user@example.com", to_name="User", subject="Sujet", html_content="<p/>")
