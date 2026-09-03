@@ -2132,9 +2132,9 @@ fermeture de la connexion WebSocket.
   problème — il faut que le frontend et la Gateway soient vus comme la
   **même origine** par le navigateur.
 - **En développement local :** Angular CLI doit proxyfier `/graphql` vers
-  `http://localhost:8080` via `proxy.conf.json` (voir `CLAUDE.md`), plutôt
+  `https://localhost:8443` via `proxy.conf.json` (voir `CLAUDE.md`), plutôt
   que d'appeler la Gateway depuis une origine différente (`localhost:4200`
-  → `localhost:8080` = deux origines distinctes pour le navigateur).
+  → `localhost:8443` = deux origines distinctes pour le navigateur).
 - **En production :** nginx (déjà en place devant la Gateway, voir §7) sert
   le build Angular **et** proxyfie `/graphql` sous le même domaine — exactement
   le même principe qu'en dev, à l'échelle de l'infra.

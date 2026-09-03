@@ -66,10 +66,13 @@ une facture générée en M-2) et **pay-4 annulé** (doit être exclu de l'encai
 ## Tester (curl)
 
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:8080/graphql -H 'Content-Type: application/json' \
+# -k : le nginx local sert un certificat auto-signé de dev (voir CLAUDE.md
+# racine, § Frontend — proxy vers la Gateway) ; -L n'est pas nécessaire ici,
+# le port HTTPS publié est appelé directement.
+TOKEN=$(curl -sk -X POST https://localhost:8443/graphql -H 'Content-Type: application/json' \
   -d '{"query":"mutation{login(identifier:\"demo_superviseur\",password:\"Demo1234!\"){accessToken}}"}' \
   | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["login"]["accessToken"])')
-curl -s -X POST http://localhost:8080/graphql -H "Authorization: Bearer $TOKEN" \
+curl -sk -X POST https://localhost:8443/graphql -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"query":"query{statsParMois(nbMois:3){mois encaisse facture consommation nbPaiements nbFactures}}"}' \
   | python3 -m json.tool
