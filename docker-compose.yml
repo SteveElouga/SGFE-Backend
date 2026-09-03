@@ -188,6 +188,24 @@ services:
         limits:
           memory: 512M
           cpus: "1"
+    # Ces 8 services n'exposent que du gRPC, pas de HTTP. `grpc_health.v1`
+    # (grpc_health_probe côté client, HealthServicer côté serveur) n'est
+    # implémenté par aucun service de ce dépôt (vérifié : aucune occurrence de
+    # `grpc_health`/`HealthServicer` en dehors de ce commentaire) — sonder au
+    # niveau protocole demanderait d'ajouter un binaire externe à chaque image
+    # et un servicer côté serveur, hors de portée ici. Une connexion TCP nue
+    # sur le port gRPC est donc une sonde de liveness honnête (le process
+    # écoute) mais pas de readiness applicative (elle ne prouve pas qu'un
+    # appel gRPC aboutit) — c'est la même sonde que le HEALTHCHECK déjà présent
+    # dans le Dockerfile de chaque service ; on la redéclare ici avec un
+    # interval/timeout/retries plus courts (alignés sur les sondes Postgres
+    # ci-dessus) pour que `depends_on: condition: service_healthy` réagisse
+    # vite au démarrage plutôt que de subir les 30s par défaut de l'image.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import socket; socket.create_connection((\"localhost\", 50051), timeout=2)' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   # --- Preuve de concept de réplication PostgreSQL (primaire + réplique) ---
   # Base choisie comme représentative des 8 (voir postgres/replication/README.md
@@ -297,11 +315,11 @@ services:
       redis:
         condition: service_healthy
       campagne-service:
-        condition: service_started
+        condition: service_healthy
       config-service:
-        condition: service_started
+        condition: service_healthy
       abonne-service:
-        condition: service_started
+        condition: service_healthy
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
@@ -340,6 +358,12 @@ services:
         limits:
           memory: 512M
           cpus: "1"
+    # Sonde TCP minimale — voir le commentaire détaillé sur auth-service ci-dessus.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import socket; socket.create_connection((\"localhost\", 50054), timeout=2)' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   paiement-postgres:
     image: postgres:16-alpine
@@ -369,13 +393,13 @@ services:
       redis:
         condition: service_healthy
       facturation-service:
-        condition: service_started
+        condition: service_healthy
       notification-service:
-        condition: service_started
+        condition: service_healthy
       abonne-service:
-        condition: service_started
+        condition: service_healthy
       config-service:
-        condition: service_started
+        condition: service_healthy
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
@@ -410,6 +434,12 @@ services:
         limits:
           memory: 512M
           cpus: "1"
+    # Sonde TCP minimale — voir le commentaire détaillé sur auth-service ci-dessus.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import socket; socket.create_connection((\"localhost\", 50055), timeout=2)' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   notification-postgres:
     image: postgres:16-alpine
@@ -439,11 +469,11 @@ services:
       redis:
         condition: service_healthy
       facturation-service:
-        condition: service_started
+        condition: service_healthy
       abonne-service:
-        condition: service_started
+        condition: service_healthy
       config-service:
-        condition: service_started
+        condition: service_healthy
       whatsapp-service:
         condition: service_started
     environment:
@@ -484,6 +514,12 @@ services:
         limits:
           memory: 512M
           cpus: "1"
+    # Sonde TCP minimale — voir le commentaire détaillé sur auth-service ci-dessus.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import socket; socket.create_connection((\"localhost\", 50056), timeout=2)' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   abonne-service:
     build: ./services/abonne
@@ -519,6 +555,12 @@ services:
         limits:
           memory: 512M
           cpus: "1"
+    # Sonde TCP minimale — voir le commentaire détaillé sur auth-service ci-dessus.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import socket; socket.create_connection((\"localhost\", 50052), timeout=2)' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   campagne-service:
     build: ./services/campagne
@@ -559,6 +601,12 @@ services:
         limits:
           memory: 512M
           cpus: "1"
+    # Sonde TCP minimale — voir le commentaire détaillé sur auth-service ci-dessus.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import socket; socket.create_connection((\"localhost\", 50053), timeout=2)' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   config-postgres:
     image: postgres:16-alpine
@@ -610,6 +658,12 @@ services:
         limits:
           memory: 512M
           cpus: "1"
+    # Sonde TCP minimale — voir le commentaire détaillé sur auth-service ci-dessus.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import socket; socket.create_connection((\"localhost\", 50058), timeout=2)' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   reporting-postgres:
     image: postgres:16-alpine
@@ -639,9 +693,9 @@ services:
       redis:
         condition: service_healthy
       facturation-service:
-        condition: service_started
+        condition: service_healthy
       paiement-service:
-        condition: service_started
+        condition: service_healthy
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
@@ -670,19 +724,34 @@ services:
         limits:
           memory: 512M
           cpus: "1"
+    # Sonde TCP minimale — voir le commentaire détaillé sur auth-service ci-dessus.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import socket; socket.create_connection((\"localhost\", 50057), timeout=2)' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   gateway:
     build: ./gateway
     depends_on:
-      - auth-service
-      - abonne-service
-      - campagne-service
-      - facturation-service
-      - paiement-service
-      - notification-service
-      - config-service
-      - reporting-service
-      - redis
+      auth-service:
+        condition: service_healthy
+      abonne-service:
+        condition: service_healthy
+      campagne-service:
+        condition: service_healthy
+      facturation-service:
+        condition: service_healthy
+      paiement-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+      config-service:
+        condition: service_healthy
+      reporting-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-placeholder-do-not-use-in-production}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:-grpc-dev-placeholder-do-not-use-in-production}
