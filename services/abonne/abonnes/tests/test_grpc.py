@@ -53,6 +53,41 @@ class AbonneServiceServicerTests(TestCase):
         response = self.servicer.ListAbonnes(pb.ListAbonnesRequest(), self.context)
         self.assertEqual(len(response.abonnes), 2)
 
+    def test_list_abonnes_sans_pagination_total_egale_la_liste_rendue(self):
+        # Non-régression : `limit`/`offset` omis (champs proto3 `optional` non
+        # définis) doit préserver le comportement historique — tout est rendu.
+        self._create()
+        self._create(numero_compteur=2)
+        self._create(numero_compteur=3)
+        response = self.servicer.ListAbonnes(pb.ListAbonnesRequest(), self.context)
+        self.assertEqual(len(response.abonnes), 3)
+        self.assertEqual(response.total, 3)
+
+    def test_list_abonnes_avec_pagination_tronque_et_decale(self):
+        for i in range(1, 6):
+            self._create(numero_compteur=i)
+        response = self.servicer.ListAbonnes(pb.ListAbonnesRequest(limit=2, offset=1), self.context)
+        self.assertEqual([a.numero_abonne for a in response.abonnes], ["AB-0002", "AB-0003"])
+        # Le total porte sur l'ensemble filtré, pas sur la seule page rendue.
+        self.assertEqual(response.total, 5)
+
+    def test_list_abonnes_pagination_hors_limites_renvoie_liste_vide_pas_une_erreur(self):
+        self._create()
+        response = self.servicer.ListAbonnes(pb.ListAbonnesRequest(limit=10, offset=100), self.context)
+        self.assertEqual(len(response.abonnes), 0)
+        self.assertEqual(response.total, 1)
+
+    def test_list_abonnes_filtre_statut_et_pagination_combines(self):
+        # La pagination doit porter sur le résultat FILTRÉ par statut, pas sur
+        # la table brute.
+        self._create(numero_compteur=1)
+        suspendu = self._create(numero_compteur=2)
+        self._create(numero_compteur=3)
+        self.servicer.SuspendreAbonne(pb.AbonneIdRequest(abonne_id=suspendu.abonne_id), self.context)
+        response = self.servicer.ListAbonnes(pb.ListAbonnesRequest(statut="ACTIF", limit=1, offset=0), self.context)
+        self.assertEqual(len(response.abonnes), 1)
+        self.assertEqual(response.total, 2)
+
     def test_list_abonnes_actifs_excludes_suspended(self):
         created = self._create()
         self.servicer.SuspendreAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)

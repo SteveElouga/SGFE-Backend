@@ -5,11 +5,29 @@ class AbonneRepository:
     def get_by_id(self, abonne_id: str) -> Abonne:
         return Abonne.objects.get(id=abonne_id)
 
-    def list_all(self, statut: str | None = None) -> list[Abonne]:
+    def _filtres(self, statut: str | None = None):
+        """Queryset filtré, partagé par `list_all` et `count_all` — le
+        comptage et la page rendue portent ainsi toujours sur les mêmes
+        critères, jamais sur la table entière."""
         qs = Abonne.objects.all()
         if statut:
             qs = qs.filter(statut=statut)
-        return list(qs.order_by("numero_abonne"))
+        return qs
+
+    def list_all(self, statut: str | None = None, limit: int | None = None, offset: int | None = None) -> list[Abonne]:
+        """Abonnés filtrés, triés par numéro. `limit`/`offset` optionnels :
+        omis (`None`), la liste complète est retournée — comportement
+        historique préservé à l'identique."""
+        qs = self._filtres(statut).order_by("numero_abonne")
+        if limit is not None or offset is not None:
+            start = offset or 0
+            qs = qs[start : start + limit] if limit is not None else qs[start:]
+        return list(qs)
+
+    def count_all(self, statut: str | None = None) -> int:
+        """Nombre total d'abonnés correspondant au filtre, indépendamment de
+        toute pagination."""
+        return self._filtres(statut).count()
 
     def list_actifs(self) -> list[Abonne]:
         return list(Abonne.objects.filter(statut=StatutAbonne.ACTIF).order_by("numero_abonne"))
