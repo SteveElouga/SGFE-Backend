@@ -672,7 +672,12 @@ services:
     volumes:
       - ./backups:/backups
       - ./scripts/backup-databases.sh:/backup.sh:ro
-    entrypoint: ["/bin/sh", "-c", "while true; do sh /backup.sh || true; sleep 86400; done"]
+    # `apk add openssl` : postgres:16-alpine embarque libssl3/libcrypto3 (dépendance
+    # de postgres lui-même) mais PAS le binaire CLI `openssl` — vérifié empiriquement
+    # (`which openssl` échoue sur l'image nue). Sans ce paquet, backup-databases.sh
+    # échouerait au moment de chiffrer chaque dump. Installé une fois au démarrage,
+    # avant la boucle quotidienne.
+    entrypoint: ["/bin/sh", "-c", "apk add --no-cache openssl && while true; do sh /backup.sh || true; sleep 86400; done"]
     restart: unless-stopped
     deploy:
       resources:

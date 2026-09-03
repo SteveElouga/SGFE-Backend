@@ -632,6 +632,14 @@ C'est le seul point de ce document où la panne est **totale et irréversible**.
 
 **Parade :** expédition vers `s3://sgfe-backups` (versionnement + cycle de vie), snapshots EBS quotidiens, même chemin pour `facturation_pdfs`. RDS avec PITR est l'option supérieure mais payante — arbitrage en [`INFRASTRUCTURE_AWS.md`](./INFRASTRUCTURE_AWS.md) §5.
 
+> Les dumps sont désormais chiffrés (AES-256-CBC/PBKDF2, passphrase
+> `BACKUP_ENCRYPTION_KEY` — voir `DEPLOYMENT.md` §Sauvegardes et
+> `scripts/backup-databases.sh`). Ça répond à un risque différent —
+> confidentialité d'un dump exfiltré ou d'un volume mal détruit — et ne change
+> rien à la parade ci-dessus : chiffré ou non, le dump reste sur le même disque
+> que la base, donc toujours perdu avec elle. L'expédition hors machine reste à
+> faire.
+
 ---
 
 ## Annexe — ce qui a été mesuré

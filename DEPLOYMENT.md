@@ -134,7 +134,25 @@ Le compose de développement pose `http://localhost:4200`. L'overlay de producti
 
 ## Sauvegardes
 
-Le service `db-backup` fait un `pg_dump` quotidien gzip des **8 bases** (rétention 7 j) dans `./backups/`. Restauration : voir l'en-tête de `scripts/backup-databases.sh`. À la migration Azure : bascule vers les backups managés (Flexible Server + PITR).
+Le service `db-backup` fait un `pg_dump` quotidien gzip **chiffré** (AES-256-CBC, PBKDF2) des **8 bases** (rétention 7 j) dans `./backups/`, sous forme de fichiers `<db>_<horodatage>.sql.gz.enc`. La passphrase vient de `BACKUP_ENCRYPTION_KEY` (voir `.env.example`) — sans elle, le script échoue avant le premier `pg_dump` plutôt que d'écrire une sauvegarde en clair.
+
+Restauration (déchiffrement puis restauration classique) :
+
+```bash
+openssl enc -d -aes-256-cbc -pbkdf2 -salt \
+    -pass env:BACKUP_ENCRYPTION_KEY \
+    -in backups/<db>_<horodatage>.sql.gz.enc \
+  | gunzip -c \
+  | PGPASSWORD=... psql -h <db>-postgres -U <db>_user -d <db>
+```
+
+Voir aussi `scripts/test-restore.sh`, qui automatise ce parcours (déchiffrement
++ restauration + vérification) sur un conteneur Postgres jetable — c'est le
+« restore drill » du registre d'anomalies, à rejouer périodiquement pour
+prouver que les sauvegardes sont effectivement restaurables, pas seulement
+produites.
+
+À la migration Azure : bascule vers les backups managés (Flexible Server + PITR).
 
 ## Limites de ressources
 
