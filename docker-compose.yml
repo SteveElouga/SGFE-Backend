@@ -539,6 +539,15 @@ services:
       ABONNE_DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
       ABONNE_GRPC_PORT: "50052"
       REDIS_URL: "redis://redis:6379/0"
+      # Clients gRPC sortants — export RGPD uniquement (abonnes/export.py).
+      CAMPAGNE_GRPC_HOST: campagne-service
+      CAMPAGNE_GRPC_PORT: "50053"
+      FACTURATION_GRPC_HOST: facturation-service
+      FACTURATION_GRPC_PORT: "50054"
+      PAIEMENT_GRPC_HOST: paiement-service
+      PAIEMENT_GRPC_PORT: "50055"
+      NOTIFICATION_GRPC_HOST: notification-service
+      NOTIFICATION_GRPC_PORT: "50056"
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key

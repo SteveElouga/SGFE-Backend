@@ -10,6 +10,20 @@ service AbonneService {
   rpc SuspendreAbonne (AbonneIdRequest) returns (AbonneResponse);
   rpc ReactiverAbonne (AbonneIdRequest) returns (AbonneResponse);
   rpc ResilierAbonne (AbonneIdRequest) returns (AbonneResponse);
+  // RGPD — droit à l'effacement. N'anonymise QUE l'identité nominative côté
+  // Abonné Service (nom, prénom, téléphone WhatsApp, adresse) ; refuse si
+  // l'abonné n'est pas déjà RESILIE. Ne touche à aucune autre donnée
+  // (compteur, historique, factures/paiements — hors périmètre de ce
+  // service). Idempotent : ré-appeler sur un abonné déjà anonymisé
+  // réapplique les mêmes valeurs sans erreur.
+  rpc AnonymiserAbonne (AbonneIdRequest) returns (AbonneResponse);
+  // RGPD — droit à la portabilité. Agrège, pour un abonné, ses données
+  // propres (déchiffrées) et celles des autres services (compteurs,
+  // relevés, factures, paiements, envois WhatsApp) via gRPC, en un export
+  // JSON structuré. Dégradation gracieuse par section : un service
+  // injoignable ne fait pas échouer l'export dans son ensemble, sa section
+  // documente juste l'indisponibilité (voir abonnes/export.py).
+  rpc ExporterDonneesAbonne (AbonneIdRequest) returns (ExportDonneesAbonneResponse);
   rpc GetCompteur (AbonneIdRequest) returns (CompteurResponse);
   rpc UpdateCompteur (UpdateCompteurRequest) returns (CompteurResponse);
   rpc RemplacerCompteur (RemplacerCompteurRequest) returns (CompteurResponse);
@@ -128,4 +142,15 @@ message HistoriqueCompteurResponse {
 
 message ListHistoriqueResponse {
   repeated HistoriqueCompteurResponse historique = 1;
+}
+
+// Export RGPD synchrone : un abonné et son historique restent d'un volume
+// borné (quelques dizaines à centaines de lignes tout compris), largement
+// sous la limite par défaut d'un message gRPC (4 Mo) — pas besoin d'un
+// mécanisme de référence/job asynchrone pour ce cas d'usage (voir
+// abonnes/export.py pour le détail du choix).
+message ExportDonneesAbonneResponse {
+  // JSON structuré (UTF-8) — voir abonnes/export.py::exporter_donnees_abonne
+  // pour le schéma exact des sections.
+  string json_export = 1;
 }
