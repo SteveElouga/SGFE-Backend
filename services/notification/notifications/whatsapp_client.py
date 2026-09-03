@@ -11,6 +11,8 @@ dans les deux copies.
 import requests
 from django.conf import settings
 
+from notifications.rate_limiter import throttle_whatsapp_send
+
 
 class WhatsAppDeliveryError(Exception):
     """L'envoi du message WhatsApp a échoué (service indisponible ou erreur réseau)."""
@@ -29,6 +31,10 @@ class WhatsAppWebClient:
 
         Lève WhatsAppDeliveryError si l'envoi échoue.
         """
+        # Limite de débit globale (voir rate_limiter.py) : protège le compte
+        # WhatsApp Web partagé, quel que soit le déclencheur (envoi immédiat
+        # ou lot de diffusion).
+        throttle_whatsapp_send()
         try:
             response = requests.post(
                 f"{settings.WHATSAPP_SERVICE_URL}/send",
@@ -70,6 +76,7 @@ class WhatsAppWebClient:
         import base64
 
         pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
+        throttle_whatsapp_send()
         try:
             response = requests.post(
                 f"{settings.WHATSAPP_SERVICE_URL}/send-with-pdf",

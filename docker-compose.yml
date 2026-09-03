@@ -374,6 +374,10 @@ services:
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key
+      # Délai minimum (s) entre deux envois WhatsApp consécutifs, tous
+      # déclencheurs confondus — protège le compte WhatsApp Web partagé
+      # d'un risque de bannissement en cas de pic (voir rate_limiter.py).
+      WHATSAPP_RATE_LIMIT_MIN_INTERVAL_SECONDS: ${WHATSAPP_RATE_LIMIT_MIN_INTERVAL_SECONDS:-3.0}
     volumes:
       - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && python manage.py grpc_server"

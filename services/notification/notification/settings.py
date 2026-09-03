@@ -132,3 +132,12 @@ DEFAULT_TOKEN_VALIDITE_JOURS = env.int("DEFAULT_TOKEN_VALIDITE_JOURS", default=2
 
 # --- Redis (notification de progression des diffusions à la gateway) ---
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
+
+# --- Limite de débit globale des envois WhatsApp (voir rate_limiter.py) ---
+# Délai minimum (secondes) entre deux envois WhatsApp consécutifs, tous
+# déclencheurs confondus (diffusion en lot ET envois individuels immédiats).
+# Défaut aligné sur le rythme déjà choisi pour la diffusion en lot (5
+# messages/15s ≈ 1 message/3s, voir schedulers.py) : cette limite ne fait
+# donc que généraliser un rythme déjà jugé sûr à TOUS les envois, pas
+# seulement à la diffusion en masse. Mettre à 0 désactive le throttling.
+WHATSAPP_RATE_LIMIT_MIN_INTERVAL_SECONDS = env.float("WHATSAPP_RATE_LIMIT_MIN_INTERVAL_SECONDS", default=3.0)
