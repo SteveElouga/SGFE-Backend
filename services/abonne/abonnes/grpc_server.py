@@ -16,11 +16,16 @@ from abonnes.event_publisher import publish_abonne_event
 from abonnes.export import ExportService
 from abonnes.grpc_interceptors import ErrorHandlingInterceptor
 from abonnes.grpc_auth import AuthServerInterceptor, ouvrir_port_grpc
+from abonnes.models import Abonne
 from abonnes.serializers import abonne_to_response, compteur_to_response, historique_to_response
 from abonnes.services import AbonneService, CompteurService
 
 
-class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
+class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):  # type: ignore[misc]
+    # ^ AbonneServiceServicer vient du stub généré abonne_service_pb2_grpc,
+    # exclu de la vérification mypy (voir mypy.ini) — mypy le voit donc comme
+    # `Any`, ce qui rend toute sous-classe de lui structurellement "misc" ;
+    # rien à corriger côté code métier ici.
     """Les exceptions (ValidationError, ObjectDoesNotExist, IntegrityError)
     ne sont pas interceptées ici : ErrorHandlingInterceptor s'en charge de
     façon centralisée (voir grpc_interceptors.py).
@@ -33,23 +38,24 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
         # — sûr même si les services externes qu'il consomme sont éteints.
         self.export_service = ExportService()
 
-    def _response(self, abonne) -> pb.AbonneResponse:
+    def _response(self, abonne: Abonne) -> pb.AbonneResponse:
         try:
             compteur = self.compteur_service.get_compteur_actif(str(abonne.id))
         except ObjectDoesNotExist:
             compteur = None
         data = abonne_to_response(abonne, compteur)
-        compteur_data = data.pop("compteur")
+        compteur_data = data["compteur"]
+        autres = {k: v for k, v in data.items() if k != "compteur"}
         return pb.AbonneResponse(
-            **data,
+            **autres,
             compteur=pb.CompteurResponse(**compteur_data) if compteur_data else None,
         )
 
-    def GetAbonne(self, request, context):
+    def GetAbonne(self, request: pb.AbonneIdRequest, context: grpc.ServicerContext) -> pb.AbonneResponse:
         abonne = self.abonne_service.get_abonne(request.abonne_id)
         return self._response(abonne)
 
-    def ListAbonnes(self, request, context):
+    def ListAbonnes(self, request: pb.ListAbonnesRequest, context: grpc.ServicerContext) -> pb.ListAbonnesResponse:
         limit = request.limit if request.HasField("limit") else None
         offset = request.offset if request.HasField("offset") else None
         statut = request.statut or None
@@ -57,11 +63,11 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
         total = self.abonne_service.count_abonnes(statut)
         return pb.ListAbonnesResponse(abonnes=[self._response(a) for a in abonnes], total=total)
 
-    def ListAbonnesActifs(self, request, context):
+    def ListAbonnesActifs(self, request: pb.EmptyRequest, context: grpc.ServicerContext) -> pb.ListAbonnesResponse:
         abonnes = self.abonne_service.list_abonnes_actifs()
         return pb.ListAbonnesResponse(abonnes=[self._response(a) for a in abonnes], total=len(abonnes))
 
-    def CreateAbonne(self, request, context):
+    def CreateAbonne(self, request: pb.CreateAbonneRequest, context: grpc.ServicerContext) -> pb.AbonneResponse:
         abonne = self.abonne_service.create_abonne(
             nom=request.nom,
             prenom=request.prenom,
@@ -77,7 +83,7 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
         publish_abonne_event(str(abonne.id), "ABONNE_CREATED")
         return self._response(abonne)
 
-    def UpdateAbonne(self, request, context):
+    def UpdateAbonne(self, request: pb.UpdateAbonneRequest, context: grpc.ServicerContext) -> pb.AbonneResponse:
         abonne = self.abonne_service.update_abonne(
             abonne_id=request.abonne_id,
             nom=request.nom,
@@ -88,35 +94,37 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
         publish_abonne_event(str(abonne.id))
         return self._response(abonne)
 
-    def SuspendreAbonne(self, request, context):
+    def SuspendreAbonne(self, request: pb.AbonneIdRequest, context: grpc.ServicerContext) -> pb.AbonneResponse:
         abonne = self.abonne_service.suspendre_abonne(request.abonne_id)
         publish_abonne_event(str(abonne.id))
         return self._response(abonne)
 
-    def ReactiverAbonne(self, request, context):
+    def ReactiverAbonne(self, request: pb.AbonneIdRequest, context: grpc.ServicerContext) -> pb.AbonneResponse:
         abonne = self.abonne_service.reactiver_abonne(request.abonne_id)
         publish_abonne_event(str(abonne.id))
         return self._response(abonne)
 
-    def ResilierAbonne(self, request, context):
+    def ResilierAbonne(self, request: pb.AbonneIdRequest, context: grpc.ServicerContext) -> pb.AbonneResponse:
         abonne = self.abonne_service.resilier_abonne(request.abonne_id)
         publish_abonne_event(str(abonne.id))
         return self._response(abonne)
 
-    def AnonymiserAbonne(self, request, context):
+    def AnonymiserAbonne(self, request: pb.AbonneIdRequest, context: grpc.ServicerContext) -> pb.AbonneResponse:
         abonne = self.abonne_service.anonymiser_abonne(request.abonne_id)
         publish_abonne_event(str(abonne.id))
         return self._response(abonne)
 
-    def ExporterDonneesAbonne(self, request, context):
+    def ExporterDonneesAbonne(
+        self, request: pb.AbonneIdRequest, context: grpc.ServicerContext
+    ) -> pb.ExportDonneesAbonneResponse:
         json_export = json.dumps(self.export_service.exporter(request.abonne_id), ensure_ascii=False, indent=2)
         return pb.ExportDonneesAbonneResponse(json_export=json_export)
 
-    def GetCompteur(self, request, context):
+    def GetCompteur(self, request: pb.AbonneIdRequest, context: grpc.ServicerContext) -> pb.CompteurResponse:
         compteur = self.compteur_service.get_compteur_actif(request.abonne_id)
         return pb.CompteurResponse(**compteur_to_response(compteur))
 
-    def UpdateCompteur(self, request, context):
+    def UpdateCompteur(self, request: pb.UpdateCompteurRequest, context: grpc.ServicerContext) -> pb.CompteurResponse:
         compteur = self.compteur_service.update_compteur(
             abonne_id=request.abonne_id,
             quartier=request.quartier if request.HasField("quartier") else None,
@@ -128,7 +136,9 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
         publish_abonne_event(request.abonne_id)
         return pb.CompteurResponse(**compteur_to_response(compteur))
 
-    def GetHistoriqueCompteur(self, request, context):
+    def GetHistoriqueCompteur(
+        self, request: pb.AbonneIdRequest, context: grpc.ServicerContext
+    ) -> pb.ListHistoriqueResponse:
         historique = self.compteur_service.get_historique(request.abonne_id)
         items = []
         for h in historique:
@@ -146,7 +156,9 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
             )
         return pb.ListHistoriqueResponse(historique=items)
 
-    def RemplacerCompteur(self, request, context):
+    def RemplacerCompteur(
+        self, request: pb.RemplacerCompteurRequest, context: grpc.ServicerContext
+    ) -> pb.CompteurResponse:
         compteur = self.compteur_service.remplacer_compteur(
             abonne_id=request.abonne_id,
             index_fermeture=request.index_fermeture,
@@ -161,7 +173,7 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):
         publish_abonne_event(request.abonne_id)
         return pb.CompteurResponse(**compteur_to_response(compteur))
 
-    def ListZones(self, request, context):
+    def ListZones(self, request: pb.EmptyRequest, context: grpc.ServicerContext) -> pb.ListZonesResponse:
         zones = self.compteur_service.list_zones()
         return pb.ListZonesResponse(
             zones=[pb.ZoneStat(quartier=z["quartier"], camp=z["camp"], nb_abonnes=z["nb_abonnes"]) for z in zones]

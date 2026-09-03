@@ -1,3 +1,6 @@
+from django.db.models import QuerySet
+
+from abonnes.dtos import ZoneStatDict
 from abonnes.models import Abonne, Compteur, HistoriqueCompteur, StatutAbonne, StatutCompteur
 
 
@@ -5,7 +8,7 @@ class AbonneRepository:
     def get_by_id(self, abonne_id: str) -> Abonne:
         return Abonne.objects.get(id=abonne_id)
 
-    def _filtres(self, statut: str | None = None):
+    def _filtres(self, statut: str | None = None) -> QuerySet[Abonne]:
         """Queryset filtré, partagé par `list_all` et `count_all` — le
         comptage et la page rendue portent ainsi toujours sur les mêmes
         critères, jamais sur la table entière."""
@@ -79,7 +82,7 @@ class CompteurRepository:
         compteur.save()
         return compteur
 
-    def list_zones(self) -> list[dict]:
+    def list_zones(self) -> list[ZoneStatDict]:
         """Zones de relevé distinctes (quartier, camp) avec le nombre d'abonnés
         actifs — un abonné actif = un compteur ACTIF rattaché à un abonné ACTIF."""
         from django.db.models import Count

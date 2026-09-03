@@ -20,6 +20,6 @@ def publish_abonne_event(abonne_id: str, event_type: str = "ABONNE_UPDATED") -> 
         r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=1)
         payload = json.dumps({"event_type": event_type, "abonne_id": abonne_id})
         r.publish(CHANNEL, payload)
-        r.close()
+        r.close()  # type: ignore[no-untyped-call]  # redis-py : Redis.close() n'est pas annoté
     except Exception as exc:
         logger.warning("publish_abonne_event ignoré (Redis indisponible) : %s", exc)

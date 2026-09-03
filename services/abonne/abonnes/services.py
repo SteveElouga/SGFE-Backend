@@ -1,6 +1,7 @@
 from django.db import transaction
 
-from abonnes.models import Abonne, Compteur, StatutAbonne, StatutCompteur
+from abonnes.dtos import ZoneStatDict
+from abonnes.models import Abonne, Compteur, HistoriqueCompteur, StatutAbonne, StatutCompteur
 from abonnes.repositories import AbonneRepository, CompteurRepository, HistoriqueCompteurRepository
 from abonnes.validators import ValidationError, validate_telephone_whatsapp
 
@@ -201,10 +202,10 @@ class CompteurService:
             compteur.position = position
         return self.compteurs.save(compteur)
 
-    def get_historique(self, abonne_id: str) -> list:
+    def get_historique(self, abonne_id: str) -> list[HistoriqueCompteur]:
         return self.historique.list_by_abonne(abonne_id)
 
-    def list_zones(self) -> list[dict]:
+    def list_zones(self) -> list[ZoneStatDict]:
         """Zones de relevé (quartier, camp) et nombre d'abonnés actifs par zone."""
         return self.compteurs.list_zones()
 
