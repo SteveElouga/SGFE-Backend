@@ -27,7 +27,7 @@ Le token ne doit **jamais** être mis en query-string (il finirait dans les logs
 ## 2. Les 4 endpoints
 
 Base URL = **chemin relatif** (`/rapports/...`), même origine que `/graphql`
-(proxy en dev, nginx en prod — voir §5). Ne jamais coder en dur `http://localhost:8080`.
+(proxy en dev, nginx en prod — voir §5). Ne jamais coder en dur `https://localhost:8443`.
 
 | # | Export | Méthode + route | Format | Query |
 |---|---|---|---|---|
@@ -104,10 +104,10 @@ Ces routes REST doivent être proxifiées comme `/graphql`. Ajoutez-les dans
 
 ```jsonc
 {
-  "/graphql":        { "target": "http://localhost:8080", "secure": false, "changeOrigin": true },
-  "/rapports":       { "target": "http://localhost:8080", "secure": false, "changeOrigin": true },
-  "/bilan-impayes":  { "target": "http://localhost:8080", "secure": false, "changeOrigin": true },
-  "/factures":       { "target": "http://localhost:8080", "secure": false, "changeOrigin": true }
+  "/graphql":        { "target": "https://localhost:8443", "secure": false, "changeOrigin": true },
+  "/rapports":       { "target": "https://localhost:8443", "secure": false, "changeOrigin": true },
+  "/bilan-impayes":  { "target": "https://localhost:8443", "secure": false, "changeOrigin": true },
+  "/factures":       { "target": "https://localhost:8443", "secure": false, "changeOrigin": true }
 }
 ```
 

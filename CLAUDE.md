@@ -311,8 +311,12 @@ docker compose ps --format json
 # Logs d'un service
 docker compose logs -f gateway --tail=50
 
-# Point d'entrée : seul nginx est publié
-open http://localhost:8080/graphql
+# Point d'entrée : seul nginx est publié — HTTPS uniquement, :80 redirige
+# vers :443 sans préserver de port personnalisé dans la redirection, donc
+# ouvrir directement le port HTTPS publié (certificat auto-signé de dev à
+# générer une fois, voir ci-dessous — le navigateur avertira, c'est normal)
+./scripts/generate-nginx-cert.sh   # une seule fois, avant le premier up
+open https://localhost:8443/graphql
 ```
 
 Pour la production sur AWS, voir `docs/INFRASTRUCTURE_AWS.md` (dimensionnement,
@@ -361,16 +365,17 @@ le cookie de toute façon, et ça affaiblirait sa protection CSRF pour rien
 (voir `docs/ARCHITECTURE.md` §11.1).
 
 En développement local, faire proxyfier `/graphql` par le serveur de dev
-Angular plutôt que d'appeler `http://localhost:8080` directement depuis
+Angular plutôt que d'appeler `https://localhost:8443` directement depuis
 `http://localhost:4200` :
 
 ```jsonc
 // frontend/proxy.conf.json
 {
   "/graphql": {
-    "target": "http://localhost:8080",
+    "target": "https://localhost:8443",
     "secure": false,
-    "changeOrigin": true
+    "changeOrigin": true,
+    "ws": true
   }
 }
 ```
@@ -387,11 +392,21 @@ ng serve --proxy-config proxy.conf.json
 ```
 
 Le client GraphQL (Apollo) doit appeler `/graphql` en **chemin relatif**
-(pas `http://localhost:8080/graphql`) et envoyer les credentials :
+(pas `https://localhost:8443/graphql`) et envoyer les credentials :
 
 ```ts
 new HttpLink({ uri: '/graphql', withCredentials: true })
 ```
+
+> ⚠️ **Corrigé le 3 septembre 2026.** Cette section ciblait encore
+> `http://localhost:8080` après le durcissement TLS de nginx (voir
+> `docs/RUNBOOK.md` §2.1.d) : `location / { return 301
+> https://$host$request_uri; }` redirige tout `:80` vers `:443` **sans
+> port explicite** dans `$host` — donc ni un navigateur ni le proxy du
+> serveur de dev Angular n'atteignaient plus la Gateway via `8080`. Cible
+> désormais le port HTTPS réellement publié (`8443`), avec le certificat
+> auto-signé de dev (`./scripts/generate-nginx-cert.sh`, prérequis avant
+> le premier `docker compose up` — voir plus haut).
 
 > ⚠️ **Corrigé le 31 août 2026.** Ce paragraphe affirmait que le nginx de ce
 > dépôt « sert le build Angular ». Il ne l'a jamais servi : `nginx/default.conf`
