@@ -307,9 +307,22 @@ class RecuPaiementPdfViewTests(SimpleTestCase):
             response = self.client.get(self._URL, **_AUTH)
         self.assertEqual(response.status_code, 400)
 
+    def _paiement(self, paiement_id="pay-1", abonne_id="ab-1", montant=10750.0):
+        return Mock(paiement_id=paiement_id, abonne_id=abonne_id, montant=montant)
+
     def test_comptable_recupere_le_pdf(self):
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="COMPTABLE")),
+            patch.object(
+                paiement_client,
+                "list_paiements",
+                return_value=Mock(paiements=[self._paiement()]),
+            ),
+            patch.object(
+                paiement_client,
+                "get_dette_abonne",
+                return_value=Mock(total_du=10500.0),
+            ) as mock_dette,
             patch.object(
                 facturation_client,
                 "generer_recu_paiement_pdf",
@@ -320,16 +333,16 @@ class RecuPaiementPdfViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/pdf")
         self.assertEqual(b"".join(response.streaming_content), b"%PDF recu")
-        mock_gen.assert_called_once_with("pay-1", "fac-1")
+        # Le montant du versement et la dette totale de l'abonné doivent être
+        # transmis — sans eux, Facturation retombe sur les défauts protobuf à 0
+        # et le reçu annonce inconditionnellement « plus rien n'est dû ».
+        mock_dette.assert_called_once_with("ab-1")
+        mock_gen.assert_called_once_with("pay-1", "fac-1", montant_versement=10750.0, solde_restant_total=10500.0)
 
     def test_paiement_introuvable_retourne_404(self):
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
-            patch.object(
-                facturation_client,
-                "generer_recu_paiement_pdf",
-                side_effect=_FakeRpcError(grpc.StatusCode.NOT_FOUND),
-            ),
+            patch.object(paiement_client, "list_paiements", return_value=Mock(paiements=[])),
         ):
             response = self.client.get(self._URL, self._FID, **_AUTH)
         self.assertEqual(response.status_code, 404)
@@ -338,9 +351,31 @@ class RecuPaiementPdfViewTests(SimpleTestCase):
         with (
             patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
             patch.object(
+                paiement_client,
+                "list_paiements",
+                return_value=Mock(paiements=[self._paiement()]),
+            ),
+            patch.object(
+                paiement_client,
+                "get_dette_abonne",
+                return_value=Mock(total_du=10500.0),
+            ),
+            patch.object(
                 facturation_client,
                 "generer_recu_paiement_pdf",
                 side_effect=_FakeRpcError(grpc.StatusCode.INTERNAL),
+            ),
+        ):
+            response = self.client.get(self._URL, self._FID, **_AUTH)
+        self.assertEqual(response.status_code, 503)
+
+    def test_service_paiement_indisponible_retourne_503(self):
+        with (
+            patch.object(auth_client, "validate_token", return_value=make_user(role="ADMIN")),
+            patch.object(
+                paiement_client,
+                "list_paiements",
+                side_effect=_FakeRpcError(grpc.StatusCode.UNAVAILABLE),
             ),
         ):
             response = self.client.get(self._URL, self._FID, **_AUTH)

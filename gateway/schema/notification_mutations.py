@@ -71,11 +71,16 @@ def _envoyer_recu_paiement(paiement_id: str, facture_id: str, abonne_id: str):  
     # Le solde du jour, non celui de l'époque : le PDF joint est régénéré et lit
     # la même source. Deux chiffres différents sur un même message, c'est le
     # défaut qui a déjà été corrigé sur la génération des factures.
+    #
+    # `GetDetteAbonne`, pas `GetSolde` : ce dernier ne rend que le reste dû sur
+    # CETTE facture. Un abonné qui vient de la solder intégralement, mais doit
+    # encore sur une AUTRE, se voyait donc dire « plus rien n'est dû » — cette
+    # dette réelle n'apparaissant nulle part dans son propre solde de facture.
     try:
-        solde_restant = paiement_client.get_solde(facture_id).solde_restant
+        solde_restant = paiement_client.get_dette_abonne(abonne_id).total_du
     except grpc.RpcError:
-        logger.warning("GetSolde injoignable à l'envoi d'un reçu", extra={"paiement_id": paiement_id})
-        raise ValueError("Le solde de cette facture est indisponible : le reçu n'est pas envoyé.") from None
+        logger.warning("GetDetteAbonne injoignable à l'envoi d'un reçu", extra={"paiement_id": paiement_id})
+        raise ValueError("Le solde de cet abonné est indisponible : le reçu n'est pas envoyé.") from None
 
     return notification_client.envoyer_recu(
         paiement_id=paiement_id,

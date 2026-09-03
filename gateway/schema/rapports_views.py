@@ -309,8 +309,36 @@ def recu_paiement_pdf(request: HttpRequest, paiement_id: str) -> FileResponse | 
     if not facture_id:
         return JsonResponse({"erreur": "Paramètre facture_id requis."}, status=400)
 
+    # `montant_versement` et `solde_restant_total` ne sont pas déductibles côté
+    # Facturation (ce service ne connaît pas les paiements) : sans eux, le
+    # gabarit retombait sur les défauts protobuf à 0 et affichait
+    # inconditionnellement « Votre compte est à jour, plus rien n'est dû »,
+    # quelle que soit la dette réelle de l'abonné. Même dérive que l'ancien
+    # `solde.get("solde_restant") or 0` documentée plus bas dans ce service :
+    # un zéro par défaut se lit comme un zéro réel.
     try:
-        pdf_resp = facturation_client.generer_recu_paiement_pdf(paiement_id, facture_id)
+        paiements = paiement_client.list_paiements(facture_id=facture_id).paiements
+    except grpc.RpcError as exc:
+        logger.error("ListPaiements gRPC error", extra={"paiement_id": paiement_id, "error": str(exc)})
+        return JsonResponse({"erreur": "Reçu indisponible."}, status=503)
+
+    versement = next((p for p in paiements if p.paiement_id == paiement_id), None)
+    if versement is None:
+        return JsonResponse({"erreur": "Paiement introuvable."}, status=404)
+
+    try:
+        solde_restant_total = paiement_client.get_dette_abonne(versement.abonne_id).total_du
+    except grpc.RpcError as exc:
+        logger.error("GetDetteAbonne gRPC error", extra={"paiement_id": paiement_id, "error": str(exc)})
+        return JsonResponse({"erreur": "Reçu indisponible."}, status=503)
+
+    try:
+        pdf_resp = facturation_client.generer_recu_paiement_pdf(
+            paiement_id,
+            facture_id,
+            montant_versement=versement.montant,
+            solde_restant_total=solde_restant_total,
+        )
     except grpc.RpcError as exc:
         if exc.code() == grpc.StatusCode.NOT_FOUND:
             return JsonResponse({"erreur": "Paiement introuvable."}, status=404)
