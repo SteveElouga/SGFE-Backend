@@ -125,3 +125,6 @@ FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:4321") if DEBUG els
 
 # --- Token d'accès abonné ---
 DEFAULT_TOKEN_VALIDITE_JOURS = env.int("DEFAULT_TOKEN_VALIDITE_JOURS", default=20)
+
+# --- Redis (notification de progression des diffusions à la gateway) ---
+REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")

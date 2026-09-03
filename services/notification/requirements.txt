@@ -2,6 +2,8 @@
 # indépendamment, notamment en Docker — pas de fichier de dépendances partagé).
 
 Django==5.2.17
+APScheduler==3.10.4
+redis[hiredis]==5.2.1
 grpcio==1.81.1
 grpcio-tools==1.81.1
 protobuf==6.33.6

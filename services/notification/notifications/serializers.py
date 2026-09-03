@@ -5,7 +5,7 @@ from pathlib import Path
 
 from django.conf import settings
 
-from notifications.models import Envoi, TokenAcces
+from notifications.models import Diffusion, Envoi, TokenAcces
 
 # Import tardif des stubs générés
 _proto_path = str(Path(settings.BASE_DIR) / "proto")
@@ -38,6 +38,26 @@ def envoi_to_proto(envoi: Envoi) -> pb.EnvoiResponse:
         type_envoi=envoi.type_envoi or "",
         abonne_id=envoi.abonne_id or "",
         paiement_id=envoi.paiement_id or "",
+    )
+
+
+def diffusion_to_proto(diffusion: Diffusion, compteurs: tuple[int, int, int]) -> pb.DiffusionResponse:
+    """Convertit une Diffusion en message protobuf DiffusionResponse.
+
+    `compteurs` (nb_total, nb_envoyes, nb_echecs) est calculé par
+    l'appelant via `DiffusionRepository.compter` — jamais stocké sur le
+    modèle, pour ne jamais afficher un chiffre qui a dérivé de l'état réel.
+    """
+    nb_total, nb_envoyes, nb_echecs = compteurs
+    return pb.DiffusionResponse(
+        diffusion_id=str(diffusion.id),
+        message=diffusion.message,
+        statut=diffusion.statut,
+        nb_total=nb_total,
+        nb_envoyes=nb_envoyes,
+        nb_echecs=nb_echecs,
+        created_by=diffusion.created_by or "",
+        created_at=diffusion.created_at.isoformat() if diffusion.created_at else "",
     )
 
 

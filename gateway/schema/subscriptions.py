@@ -22,6 +22,7 @@ from schema.grpc_clients import (
     facturation_client,
     notification_client,
 )
+from schema.communication_types import Diffusion, diffusion_from_grpc
 from schema.notification_types import WhatsAppQr, whatsapp_qr_from_grpc
 from schema.paiement_types import Paiement, paiement_from_event
 
@@ -471,4 +472,52 @@ class Subscription:
                     logger.warning("progression_updated: GetProgression(%s) échoué : %s", event_campagne_id, exc)
         finally:
             await pubsub.unsubscribe("progression:events")
+            await redis.aclose()
+
+    @strawberry.subscription
+    async def diffusion_progression_updated(
+        self,
+        info: Info,
+        diffusion_id: strawberry.ID | None = strawberry.UNSET,
+    ) -> AsyncGenerator[Diffusion, None]:
+        """Pousse la progression d'une diffusion à chaque lot traité par le job
+        de fond du Notification Service — ADMIN uniquement (même portée que la
+        query `diffusions`).
+
+        - diffusionId=ID → cette diffusion seulement.
+        - Sans filtre     → toutes les diffusions (l'écran de suivi global).
+        """
+        await asyncio.to_thread(require_role, info, "ADMIN")
+        filter_id = str(diffusion_id) if diffusion_id and diffusion_id is not strawberry.UNSET else None
+
+        from redis.asyncio import Redis
+
+        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        pubsub = redis.pubsub()
+        await pubsub.subscribe("diffusion:events")
+
+        try:
+            async for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+
+                try:
+                    data = json.loads(message["data"])
+                except (json.JSONDecodeError, TypeError):
+                    continue
+
+                event_diffusion_id: str = data.get("diffusion_id", "")
+                if not event_diffusion_id or (filter_id and event_diffusion_id != filter_id):
+                    continue
+
+                try:
+                    r = await asyncio.to_thread(notification_client.get_diffusion, event_diffusion_id)
+                    cree_par = await _resoudre_operateur(r.created_by)
+                    yield diffusion_from_grpc(r, cree_par=cree_par)
+                except Exception as exc:
+                    logger.warning(
+                        "diffusion_progression_updated: GetDiffusion(%s) échoué : %s", event_diffusion_id, exc
+                    )
+        finally:
+            await pubsub.unsubscribe("diffusion:events")
             await redis.aclose()

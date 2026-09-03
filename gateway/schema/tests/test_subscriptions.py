@@ -446,3 +446,81 @@ class SubscriptionProgressionUpdatedTests(IsolatedAsyncioTestCase):
         self.assertEqual(result.campagne_id, "c-1")
         self.assertEqual(result.nb_releves, 4)
         mock_verifier.assert_called_once()
+
+
+def _diffusion_response(**kwargs) -> MagicMock:
+    defaults = dict(
+        diffusion_id="diff-1",
+        message="Annonce",
+        statut="EN_COURS",
+        nb_total=8,
+        nb_envoyes=3,
+        nb_echecs=0,
+        created_by="user-001",
+        created_at="2026-09-03T10:00:00",
+    )
+    defaults.update(kwargs)
+    return MagicMock(**defaults)
+
+
+class SubscriptionDiffusionProgressionUpdatedTests(IsolatedAsyncioTestCase):
+    """diffusionProgressionUpdated — ADMIN uniquement, même portée que la
+    query `diffusions`. Régression : le nom d'utilisateur de l'opérateur doit
+    survivre aux mises à jour poussées, pas seulement au chargement initial."""
+
+    @patch("schema.subscriptions.require_role")
+    async def test_role_insuffisant_refuse(self, mock_require_role):
+        mock_require_role.side_effect = AuthError("Accès non autorisé", code="PERMISSION_DENIED")
+        agen = Subscription().diffusion_progression_updated(info=MagicMock())
+        with self.assertRaises(AuthError):
+            await agen.__anext__()
+
+    @patch("redis.asyncio.Redis")
+    @patch("schema.subscriptions.auth_client")
+    @patch("schema.subscriptions.notification_client")
+    @patch("schema.subscriptions.require_role")
+    async def test_admin_recoit_la_progression_avec_l_operateur_resolu(
+        self, mock_require_role, mock_notification_client, mock_auth_client, mock_redis_cls
+    ):
+        mock_require_role.return_value = MagicMock(role="ADMIN")
+
+        async def _listen():
+            yield {"type": "message", "data": '{"diffusion_id": "diff-1"}'}
+
+        _mock_redis(_listen, mock_redis_cls)
+
+        mock_notification_client.get_diffusion.return_value = _diffusion_response()
+        mock_auth_client.get_user.return_value = MagicMock(username="demo_admin")
+
+        agen = Subscription().diffusion_progression_updated(info=MagicMock())
+        result = await agen.__anext__()
+
+        self.assertEqual(result.diffusion_id, "diff-1")
+        self.assertEqual(result.nb_envoyes, 3)
+        # Régression : sans résolution ici, une mise à jour poussée remplaçait
+        # le nom d'utilisateur affiché au chargement par l'identifiant brut.
+        self.assertEqual(result.created_by, "demo_admin")
+
+    @patch("redis.asyncio.Redis")
+    @patch("schema.subscriptions.auth_client")
+    @patch("schema.subscriptions.notification_client")
+    @patch("schema.subscriptions.require_role")
+    async def test_filtre_par_diffusion_id_ignore_les_autres(
+        self, mock_require_role, mock_notification_client, mock_auth_client, mock_redis_cls
+    ):
+        mock_require_role.return_value = MagicMock(role="ADMIN")
+
+        async def _listen():
+            yield {"type": "message", "data": '{"diffusion_id": "autre-diffusion"}'}
+            yield {"type": "message", "data": '{"diffusion_id": "diff-1"}'}
+
+        _mock_redis(_listen, mock_redis_cls)
+
+        mock_notification_client.get_diffusion.return_value = _diffusion_response()
+        mock_auth_client.get_user.return_value = MagicMock(username="demo_admin")
+
+        agen = Subscription().diffusion_progression_updated(info=MagicMock(), diffusion_id="diff-1")
+        result = await agen.__anext__()
+
+        self.assertEqual(result.diffusion_id, "diff-1")
+        mock_notification_client.get_diffusion.assert_called_once_with("diff-1")
