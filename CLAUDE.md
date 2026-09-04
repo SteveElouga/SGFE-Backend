@@ -481,6 +481,8 @@ Ce qui reste à faire (points 58 à 60 du registre), chaque service devant :
 | SRS | `docs/SRS.md` | Exigences fonctionnelles, User Stories, Règles métier |
 | Architecture | `docs/ARCHITECTURE.md` | C4 Model, flux, modèles de données, .proto, GraphQL |
 | ADR | `docs/ADR.md` | 26 décisions architecturales documentées |
+| Conformité CI/CD | `docs/CONFORMITE_CICD.md` | OWASP CI/CD Top 10, SLSA, NIST SSDF, CIS, durcissement GitHub Actions — preuve `fichier:ligne` par critère |
+| Conformité OWASP/SOC 2 | `docs/CONFORMITE_SOC2_OWASP.md` | Diagnostic de préparation (pas une certification) — OWASP Top 10/API/ASVS, SOC 2 CC1-CC9 |
 
 ---
 
