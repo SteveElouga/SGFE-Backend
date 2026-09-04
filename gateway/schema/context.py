@@ -6,8 +6,16 @@ from django.conf import settings
 from django.http import HttpRequest, HttpResponse
 
 from schema.grpc_clients import auth_client
+from schema.identity_context import get_request_id, set_identity
 
 logger = logging.getLogger(__name__)
+
+# Journal de sécurité dédié (voir AUDIT_SGFE.md §J) : refus de rôle et échecs
+# de validation de jeton, en écriture seule (jamais mis à jour). Aucun service
+# concerné n'est identifiable ici (la gateway n'a pas de base de données et
+# l'échec précède tout appel métier) — c'est le cas prévu par la conception
+# pour retomber sur ce logger Python plutôt que sur le mécanisme `AuditLog`.
+security_logger = logging.getLogger("security")
 
 
 class AuthError(Exception):
@@ -98,12 +106,35 @@ def require_auth(info: strawberry.types.Info) -> Any:
     token = extract_token(info.context["request"]) or _token_from_connection_params(info)
     if not token:
         raise AuthError("Authentification requise", code="UNAUTHENTICATED")
-    return auth_client.validate_token(token)
+    try:
+        user_payload = auth_client.validate_token(token)
+    except Exception:
+        # Échec de validation de jeton (invalide, expiré, révoqué, auth-service
+        # injoignable...) : journal de sécurité, en écriture seule. L'exception
+        # d'origine (grpc.RpcError) est relevée telle quelle — GrpcErrorExtension
+        # la traduit déjà en GraphQLError pour le frontend.
+        security_logger.warning("Échec de validation de jeton", extra={"request_id": get_request_id()})
+        raise
+    # Pose l'identité de la requête courante — lue par `IdentityClientInterceptor`
+    # (grpc_clients.py) pour propager x-user-id/x-user-name/x-user-role sur
+    # chaque appel gRPC sortant émis pendant cette requête (voir AUDIT_SGFE.md §10.7).
+    set_identity(user_id=user_payload.user_id, username=user_payload.username, role=user_payload.role)
+    return user_payload
 
 
 def require_role(info: strawberry.types.Info, *roles: str) -> Any:
     """Valide le token ET vérifie que le rôle de l'utilisateur fait partie de `roles`."""
     user_payload = require_auth(info)
     if user_payload.role not in roles:
+        security_logger.warning(
+            "Accès refusé : rôle %s insuffisant (requis : %s)",
+            user_payload.role,
+            "/".join(roles),
+            extra={
+                "user_id": user_payload.user_id,
+                "username": user_payload.username,
+                "request_id": get_request_id(),
+            },
+        )
         raise AuthError("Accès non autorisé", code="PERMISSION_DENIED")
     return user_payload
