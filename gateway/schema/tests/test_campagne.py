@@ -16,6 +16,7 @@ import campagne_service_pb2 as campagne_pb  # noqa: E402
 
 from schema.campagne_mutations import CampagneMutations  # noqa: E402
 from schema.campagne_queries import CampagneQueries  # noqa: E402
+from schema.validators import InputValidationError  # noqa: E402
 
 
 def _campagne_response(**kwargs: object) -> campagne_pb.CampagneResponse:
@@ -343,6 +344,27 @@ class TestCampagneMutations(SimpleTestCase):
     @patch("schema.campagne_mutations.campagne_client")
     @patch("schema.campagne_mutations.require_auth")
     @patch("schema.campagne_mutations.require_role")
+    def test_saisir_index_negatif_rejete_sans_appel_grpc(
+        self, mock_role: MagicMock, mock_auth: MagicMock, mock_mut_client: MagicMock, mock_query_client: MagicMock
+    ) -> None:
+        """Item #10 (ASVS V2) : un index négatif est rejeté à la gateway,
+        avant tout appel gRPC vers le Campagne Service."""
+        from schema.campagne_types import SaisirIndexInput
+
+        mock_auth.return_value = MagicMock(role="AGENT", user_id="agent-001", username="bob")
+        mock_query_client.list_campagnes.return_value = MagicMock(campagnes=[MagicMock(campagne_id="camp-001")])
+        info = MagicMock()
+        input_data = SaisirIndexInput(campagne_id="camp-001", abonne_id="abonne-001", nouveau_index=-10.0)
+
+        with self.assertRaises(InputValidationError) as ctx:
+            CampagneMutations().saisir_index(info, input=input_data)
+        self.assertIn("nouveau_index doit être positif ou nul", str(ctx.exception))
+        mock_mut_client.saisir_index.assert_not_called()
+
+    @patch("schema.campagne_queries.campagne_client")
+    @patch("schema.campagne_mutations.campagne_client")
+    @patch("schema.campagne_mutations.require_auth")
+    @patch("schema.campagne_mutations.require_role")
     def test_marquer_non_releve(
         self, mock_role: MagicMock, mock_auth: MagicMock, mock_mut_client: MagicMock, mock_query_client: MagicMock
     ) -> None:
@@ -382,6 +404,48 @@ class TestCampagneMutations(SimpleTestCase):
             auteur_username="alice",
             auteur_role="ADMIN",
         )
+
+    @patch("schema.campagne_queries.campagne_client")
+    @patch("schema.campagne_mutations.campagne_client")
+    @patch("schema.campagne_mutations.require_auth")
+    @patch("schema.campagne_mutations.require_role")
+    def test_corriger_releve_index_negatif_rejete_sans_appel_grpc(
+        self, mock_role: MagicMock, mock_auth: MagicMock, mock_mut_client: MagicMock, mock_query_client: MagicMock
+    ) -> None:
+        """Item #10 (ASVS V2) : un index négatif est rejeté à la gateway,
+        avant tout appel gRPC vers le Campagne Service."""
+        from schema.campagne_types import CorrigerReleveInput
+
+        mock_auth.return_value = MagicMock(role="ADMIN", user_id="admin-001", username="alice")
+        mock_query_client.list_campagnes.return_value = MagicMock(campagnes=[MagicMock(campagne_id="camp-001")])
+        info = MagicMock()
+        input_data = CorrigerReleveInput(campagne_id="camp-001", abonne_id="abonne-001", nouveau_index=-1.0)
+
+        with self.assertRaises(InputValidationError) as ctx:
+            CampagneMutations().corriger_releve(info, input=input_data)
+        self.assertIn("nouveau_index doit être positif ou nul", str(ctx.exception))
+        mock_mut_client.corriger_releve.assert_not_called()
+
+    @patch("schema.campagne_mutations.campagne_client")
+    @patch("schema.campagne_mutations.require_auth")
+    @patch("schema.campagne_mutations.require_role")
+    def test_creer_campagne_date_planifiee_invalide_rejetee_sans_appel_grpc(
+        self, mock_role: MagicMock, mock_auth: MagicMock, mock_client: MagicMock
+    ) -> None:
+        """Item #10 (ASVS V2) : une date mal formée est rejetée à la gateway,
+        avant tout appel gRPC vers le Campagne Service."""
+        from schema.campagne_types import CreateCampagneInput
+
+        mock_auth.return_value = MagicMock(role="ADMIN", user_id="user-001")
+        info = MagicMock()
+        input_data = CreateCampagneInput(
+            nom="Campagne Juillet", periode_mois=7, periode_annee=2026, date_planifiee="pas-une-date"
+        )
+
+        with self.assertRaises(InputValidationError) as ctx:
+            CampagneMutations().creer_campagne(info, input=input_data)
+        self.assertIn("date_planifiee invalide", str(ctx.exception))
+        mock_client.create_campagne.assert_not_called()
 
 
 class TestReleveMapping(SimpleTestCase):

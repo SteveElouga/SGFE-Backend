@@ -7,6 +7,7 @@ from django.test import SimpleTestCase
 
 from schema.extensions import GrpcErrorExtension
 from schema.tests.test_auth import FakeRpcError
+from schema.validators import InputValidationError
 
 
 class GrpcErrorExtensionTests(SimpleTestCase):
@@ -47,3 +48,22 @@ class GrpcErrorExtensionTests(SimpleTestCase):
 
         with self.assertRaisesMessage(Exception, "Erreur du service distant"):
             self.extension.resolve(_next, root=None, info=MagicMock())
+
+    def test_input_validation_error_translated_with_invalid_argument_code(self) -> None:
+        """Item #10 (ASVS V2) : une `InputValidationError` levée par un
+        validateur (schema/validators.py) est traduite en `GraphQLError` avec
+        le même code que celui d'un `INVALID_ARGUMENT` gRPC — voir
+        `InputValidationError.code`."""
+
+        def _next(root: Any, info: Any) -> Any:
+            raise InputValidationError("nouveau_index doit être positif ou nul (reçu : -1.0)")
+
+        with self.assertRaisesMessage(Exception, "nouveau_index doit être positif ou nul"):
+            self.extension.resolve(_next, root=None, info=MagicMock())
+
+    def test_async_input_validation_error_translated(self) -> None:
+        async def _next(root: Any, info: Any) -> Any:
+            raise InputValidationError("telephone_whatsapp invalide")
+
+        with self.assertRaisesMessage(Exception, "telephone_whatsapp invalide"):
+            asyncio.run(self.extension.resolve(_next, root=None, info=MagicMock()))  # type: ignore[arg-type]

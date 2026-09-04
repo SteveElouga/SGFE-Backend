@@ -12,6 +12,7 @@ from schema.abonne_types import (
 )
 from schema.context import require_role
 from schema.grpc_clients import abonne_client
+from schema.validators import valider_date_iso, valider_index, valider_telephone_whatsapp
 
 
 @strawberry.type
@@ -19,6 +20,11 @@ class AbonneMutations:
     @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def create_abonne(self, info: strawberry.types.Info, input: CreateAbonneInput) -> Abonne:
         require_role(info, "ADMIN")
+        # Validation de format, avant tout appel gRPC (item #10, ASVS V2) —
+        # voir schema/validators.py.
+        valider_telephone_whatsapp(input.telephone_whatsapp)
+        valider_index(input.index_initial, "index_initial")
+        valider_date_iso(input.date_pose, "date_pose")
         response = abonne_client.create_abonne(
             nom=input.nom,
             prenom=input.prenom,
@@ -36,6 +42,9 @@ class AbonneMutations:
     @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def update_abonne(self, info: strawberry.types.Info, id: strawberry.ID, input: UpdateAbonneInput) -> Abonne:
         require_role(info, "ADMIN")
+        # Champ optionnel : validé seulement s'il est fourni.
+        if input.telephone_whatsapp:
+            valider_telephone_whatsapp(input.telephone_whatsapp)
         response = abonne_client.update_abonne(
             str(id),
             nom=input.nom or "",
