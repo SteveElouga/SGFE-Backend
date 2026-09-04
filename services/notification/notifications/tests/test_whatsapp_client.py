@@ -1,7 +1,7 @@
 from unittest.mock import Mock, patch
 
 import requests
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 
 from notifications.whatsapp_client import WhatsAppDeliveryError, WhatsAppWebClient
 
@@ -115,3 +115,53 @@ class WhatsAppWebClientTests(SimpleTestCase):
         mock_get.return_value = Mock(status_code=502, json=Mock(side_effect=ValueError("not json")))
         with self.assertRaises(WhatsAppDeliveryError):
             self.wa_client.get_qr()
+
+    # ── WHATSAPP_DISABLE_SEND_FOR_TESTS ──────────────────────────────────────
+    #
+    # Garde-fou de test : voir la docstring de notifications/whatsapp_client.py.
+    # Réservé aux environnements de test — jamais activé en production.
+
+    @override_settings(WHATSAPP_DISABLE_SEND_FOR_TESTS=True)
+    @patch("notifications.whatsapp_client.throttle_whatsapp_send")
+    @patch("notifications.whatsapp_client.requests.post")
+    def test_send_desactive_ne_contacte_pas_le_service_reel(self, mock_post: Mock, mock_throttle: Mock) -> None:
+        """Activé : aucun appel réseau, aucun throttle, succès simulé."""
+        self.wa_client.send("+237690000000", "Bonjour")
+        mock_post.assert_not_called()
+        mock_throttle.assert_not_called()
+
+    @override_settings(WHATSAPP_DISABLE_SEND_FOR_TESTS=True)
+    def test_send_desactive_journalise_le_message_explicite(self) -> None:
+        with self.assertLogs("notifications.whatsapp_client", level="WARNING") as logs:
+            self.wa_client.send("+237690000000", "Bonjour")
+        self.assertTrue(
+            any(
+                "[TEST] envoi WhatsApp simulé, désactivé par WHATSAPP_DISABLE_SEND_FOR_TESTS" in message
+                for message in logs.output
+            )
+        )
+
+    @override_settings(WHATSAPP_DISABLE_SEND_FOR_TESTS=True)
+    @patch("notifications.whatsapp_client.throttle_whatsapp_send")
+    @patch("notifications.whatsapp_client.requests.post")
+    def test_send_with_pdf_desactive_ne_contacte_pas_le_service_reel(
+        self, mock_post: Mock, mock_throttle: Mock
+    ) -> None:
+        self.wa_client.send_with_pdf("+237690000000", "Bonjour", b"%PDF-1.4", "recu.pdf")
+        mock_post.assert_not_called()
+        mock_throttle.assert_not_called()
+
+    @override_settings(WHATSAPP_DISABLE_SEND_FOR_TESTS=False)
+    @patch("notifications.whatsapp_client.requests.post")
+    def test_send_absente_tente_toujours_l_appel_reel(self, mock_post: Mock) -> None:
+        """Désactivée (valeur par défaut) : comportement inchangé, appel réel tenté."""
+        mock_post.return_value = Mock(status_code=200, json=Mock(return_value={"success": True}))
+        self.wa_client.send("+237690000000", "Bonjour")
+        mock_post.assert_called_once()
+
+    @override_settings(WHATSAPP_DISABLE_SEND_FOR_TESTS=False)
+    @patch("notifications.whatsapp_client.requests.post")
+    def test_send_with_pdf_absente_tente_toujours_l_appel_reel(self, mock_post: Mock) -> None:
+        mock_post.return_value = Mock(status_code=200, json=Mock(return_value={"success": True}))
+        self.wa_client.send_with_pdf("+237690000000", "Bonjour", b"%PDF-1.4", "recu.pdf")
+        mock_post.assert_called_once()
