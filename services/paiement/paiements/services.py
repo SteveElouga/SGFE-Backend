@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
@@ -19,6 +19,7 @@ from .models import (
     ModePaiement,
     MouvementAvoir,
     Paiement,
+    SessionPaiementEnLigne,
     SoldeFacture,
     StatutSolde,
     SuiviImpaye,
@@ -28,11 +29,17 @@ from .repositories import (
     AvoirAbonneRepository,
     MouvementAvoirRepository,
     PaiementRepository,
+    SessionPaiementRepository,
     SoldeFactureRepository,
     SuiviImpayeRepository,
 )
 
 logger = logging.getLogger(__name__)
+
+# Durée de validité d'une session de paiement en ligne (mock) — au-delà, la
+# confirmation la marque EXPIREE plutôt que d'encaisser un versement tardif
+# sur un montant qui a pu ne plus correspondre à la dette réelle de l'abonné.
+DUREE_VALIDITE_SESSION_PAIEMENT = timedelta(minutes=30)
 
 
 def _borne_ou_none(valeur: str, nom: str) -> date | None:
@@ -59,6 +66,7 @@ class PaiementService:
         self._suivi_repo = SuiviImpayeRepository()
         self._avoir_repo = AvoirAbonneRepository()
         self._mouvement_repo = MouvementAvoirRepository()
+        self._session_repo = SessionPaiementRepository()
 
     def initialiser_solde(
         self,
@@ -434,6 +442,54 @@ class PaiementService:
                 self._porter_en_avoir(abonne_id, restant, versement_id)
 
         return crees, restant
+
+    # ── Paiement en ligne (sandbox/mock) — espace abonné public ────────────
+    #
+    # Relance de la décision §10.2 de l'audit, qui l'avait écartée. Le
+    # `facture_id` de la session est purement informatif : l'encaissement à
+    # la confirmation impute du plus ancien au plus récent sur TOUT l'abonné
+    # (`enregistrer_paiement_abonne`, comme le geste courant du comptoir),
+    # jamais spécifiquement sur cette facture — voir `SessionPaiementEnLigne`.
+
+    def creer_session_paiement_en_ligne(
+        self,
+        facture_id: str,
+        montant: float,
+        abonne_id: str,
+        token_espace: str,
+    ) -> SessionPaiementEnLigne:
+        """Ouvre une session de paiement en ligne (mock), valable 30 minutes.
+
+        `abonne_id` doit être résolu par l'appelant depuis `token_espace`
+        (jamais transmis tel quel par le client) — voir
+        `PaiementServicer.CreerSessionPaiementEnLigne`.
+        """
+        if not facture_id:
+            raise ValidationError("L'identifiant de la facture est obligatoire.")
+        montant_d = Decimal(str(montant))
+        if montant_d <= 0:
+            raise ValidationError("Le montant du paiement doit être supérieur à zéro.")
+
+        expire_a = timezone.now() + DUREE_VALIDITE_SESSION_PAIEMENT
+        return self._session_repo.create(
+            facture_id=facture_id,
+            abonne_id=abonne_id,
+            montant=montant_d,
+            token_espace=token_espace,
+            expire_a=expire_a,
+        )
+
+    def get_session_paiement(self, session_id: str) -> SessionPaiementEnLigne:
+        """Session de paiement en ligne par id — lève ObjectDoesNotExist si introuvable."""
+        return self._session_repo.get_by_id(session_id)
+
+    def marquer_session_statut(self, session: SessionPaiementEnLigne, statut: str) -> SessionPaiementEnLigne:
+        """Fait transitionner une session de paiement en ligne vers un état terminal."""
+        return self._session_repo.marquer_statut(session, statut)
+
+    def session_expiree(self, session: SessionPaiementEnLigne) -> bool:
+        """`True` si la fenêtre de 30 minutes de la session est dépassée."""
+        return timezone.now() >= session.expire_a
 
     def imputations_du_versement(self, versement_id: "uuid.UUID | str") -> list[tuple[Paiement, SoldeFacture]]:
         """Les écritures d'un versement, chacune avec le solde de la facture qu'elle a touchée.

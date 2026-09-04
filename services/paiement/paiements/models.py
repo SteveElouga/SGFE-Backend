@@ -195,6 +195,66 @@ class MouvementAvoir(models.Model):
         return f"Mouvement avoir {self.type_mouvement} {self.montant} — abonné {self.abonne_id}"
 
 
+class StatutSessionPaiement(models.TextChoices):
+    EN_ATTENTE = "EN_ATTENTE", "En attente"
+    CONFIRMEE = "CONFIRMEE", "Confirmée"
+    ECHOUEE = "ECHOUEE", "Échouée"
+    EXPIREE = "EXPIREE", "Expirée"
+
+
+class SessionPaiementEnLigne(models.Model):
+    """Session de paiement en ligne ouverte depuis l'espace abonné public.
+
+    Paiement en ligne — relance de la décision §10.2 de l'audit, qui l'avait
+    écarté. Implémenté ici en mode **sandbox/mock exclusivement** : aucune
+    vraie passerelle n'est branchée (voir `passerelle_paiement.py`).
+
+    `id` sert un DOUBLE usage, volontairement : c'est le `session_id` rendu au
+    frontend, ET il devient tel quel `reference_transaction` sur le `Paiement`
+    créé à la confirmation (voir `PaiementServicer.ConfirmerSessionPaiementEnLigne`).
+    La `UniqueConstraint` déjà posée sur ce champ (`Paiement.Meta`) protège donc
+    gratuitement contre une double confirmation — inutile d'inventer un
+    deuxième mécanisme d'idempotence.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Référence vers Facturation Service (pas de FK inter-service) — purement
+    # informative : l'encaissement à la confirmation impute du plus ancien au
+    # plus récent sur TOUT l'abonné (comme `enregistrer_paiement_abonne`), pas
+    # spécifiquement sur cette facture. Aucun IDOR possible en la falsifiant :
+    # elle ne pilote jamais ce qui est réellement payé.
+    facture_id = models.CharField(max_length=36)
+    # Résolu depuis `token_espace` (jamais transmis tel quel par l'appelant) —
+    # voir `PaiementServicer.CreerSessionPaiementEnLigne`.
+    abonne_id = models.CharField(max_length=36)
+    montant = models.DecimalField(max_digits=12, decimal_places=2)
+    statut = models.CharField(
+        max_length=10,
+        choices=StatutSessionPaiement.choices,
+        default=StatutSessionPaiement.EN_ATTENTE,
+    )
+    # Token de l'espace abonné qui a créé la session — anti-IDOR : la
+    # confirmation exige la présentation de ce MÊME token, sinon la session
+    # est traitée comme introuvable (401/404, comme le reste de l'espace
+    # abonné — voir ANO-002 sur `espace_abonne_pdf`).
+    token_espace = models.CharField(max_length=36)
+    created_at = models.DateTimeField(auto_now_add=True)
+    # Calculée à la création : `created_at` + 30 minutes (voir
+    # `PaiementService.creer_session_paiement_en_ligne`). Une session de
+    # paiement en ligne ne doit pas rester valide indéfiniment si l'abonné
+    # abandonne le parcours de paiement.
+    expire_a = models.DateTimeField()
+
+    class Meta:
+        db_table = "sessions_paiement_en_ligne"
+        indexes = [
+            models.Index(fields=["abonne_id"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"Session paiement {self.id} — {self.statut} ({self.montant})"
+
+
 class SuiviImpaye(models.Model):
     """Suivi des étapes de relance pour une facture impayée."""
 

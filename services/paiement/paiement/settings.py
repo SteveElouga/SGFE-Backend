@@ -97,6 +97,15 @@ REPORTING_GRPC_PORT = env.int("REPORTING_GRPC_PORT", default=50057)
 # ne protège rien.
 INTERNAL_GRPC_KEY = env("INTERNAL_GRPC_KEY", default="")
 
+# --- Frontend (URL de redirection du paiement en ligne — mock) ---
+# En dev, l'URL est connue d'avance (port fixe du `ng serve` de ce dépôt) :
+# aucune configuration à fournir. En production, elle dépend du domaine réel
+# de déploiement et ne peut pas être devinée — un défaut silencieux sur
+# localhost renverrait l'abonné vers une URL de paiement morte.
+# `env(...)` sans `default` lève `ImproperlyConfigured` si la variable
+# manque : le service refuse de démarrer plutôt que d'envoyer un lien mort.
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:4321") if DEBUG else env("FRONTEND_URL")
+
 
 # --- JWT (validation interne) ---
 JWT_ALGORITHM = env("JWT_ALGORITHM", default="HS256")

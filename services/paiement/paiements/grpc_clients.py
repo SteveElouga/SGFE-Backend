@@ -7,7 +7,7 @@ from typing import Callable, cast
 
 import grpc
 from django.conf import settings
-from paiements.dtos import DelaisImpayesDict
+from paiements.dtos import DelaisImpayesDict, TokenValideDict
 from paiements.grpc_auth import canal_authentifie
 
 logger = logging.getLogger(__name__)
@@ -70,6 +70,21 @@ class NotificationServiceClient:
 
         self._stub = pb_grpc.NotificationServiceStub(self._channel)
         self._pb = pb
+
+    def valider_token(self, token: str) -> TokenValideDict:
+        """
+        Valide un token d'espace abonné auprès de Notification Service.
+
+        Utilisé par `CreerSessionPaiementEnLigne` pour résoudre l'abonné
+        propriétaire d'une session de paiement en ligne à partir du SEUL
+        token présenté — jamais d'un `abonne_id` transmis tel quel par
+        l'appelant (même défense anti-IDOR que côté gateway, voir
+        `gateway/schema/espace_abonne.py`). Pas de dégradation gracieuse ici :
+        une erreur gRPC doit remonter, la création de session ne peut pas
+        continuer sans savoir qui paie.
+        """
+        reponse = self._stub.ValiderToken(self._pb.ValiderTokenRequest(token=token))
+        return {"is_valid": bool(reponse.is_valid), "abonne_id": str(reponse.abonne_id)}
 
     def notifier_admins(self, evenement: str, detail: str, entite_id: str = "") -> None:
         """

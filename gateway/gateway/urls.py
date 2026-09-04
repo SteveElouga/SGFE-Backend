@@ -3,7 +3,13 @@ from django.urls import path
 from django.views.decorators.csrf import csrf_exempt
 from strawberry.django.views import AsyncGraphQLView
 
-from schema.espace_abonne import espace_abonne, espace_abonne_csv, espace_abonne_pdf
+from schema.espace_abonne import (
+    espace_abonne,
+    espace_abonne_csv,
+    espace_abonne_paiement_confirmer,
+    espace_abonne_paiement_creer,
+    espace_abonne_pdf,
+)
 from schema.facturation_views import bilan_impayes_pdf, facture_pdf
 from schema.rapports_views import factures_csv, paiements_csv, recu_paiement_pdf, synthese_pdf
 from schema.schema import schema
@@ -37,4 +43,13 @@ urlpatterns = [
     # pas de slash, donc `factures.csv` ne peut pas être pris pour un token.
     path("espace-abonne/<str:token>/factures.csv", espace_abonne_csv, name="espace_abonne_csv"),
     path("espace-abonne/<str:token>/facture/<str:facture_id>/pdf/", espace_abonne_pdf, name="espace_abonne_pdf"),
+    # Paiement en ligne (sandbox/mock exclusivement — §10.2 levée, pas de vrai
+    # fournisseur branché). Déclarées après la route JSON pour la même raison
+    # que `factures.csv` ci-dessus : `<str:token>` ne capture pas de slash.
+    path("espace-abonne/<str:token>/paiement/", espace_abonne_paiement_creer, name="espace_abonne_paiement_creer"),
+    path(
+        "espace-abonne/<str:token>/paiement/<str:session_id>/confirmer/",
+        espace_abonne_paiement_confirmer,
+        name="espace_abonne_paiement_confirmer",
+    ),
 ]

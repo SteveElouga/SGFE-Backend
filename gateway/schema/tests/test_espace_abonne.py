@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,22 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 import facturation_service_pb2 as facturation_pb  # noqa: E402
 
 from schema.grpc_clients import facturation_client, notification_client, paiement_client  # noqa: E402
+
+
+class _FakeRpcError(grpc.RpcError):
+    """RpcError exposant `.code()` comme les vraies erreurs gRPC (`_InactiveRpcError`).
+
+    Une `grpc.RpcError` nue n'a pas de `.code()` ; les vues de paiement en
+    ligne en ont besoin pour distinguer INVALID_ARGUMENT/NOT_FOUND du reste
+    (503) — voir `test_facturation_views.py`, même besoin.
+    """
+
+    def __init__(self, code: grpc.StatusCode) -> None:
+        super().__init__()
+        self._code = code
+
+    def code(self) -> grpc.StatusCode:
+        return self._code
 
 
 def make_token_response(
@@ -244,3 +261,153 @@ class EspaceAbonneCsvTests(SimpleTestCase):
         response = self._csv(make_facture_consommation(), make_facture_consommation("f2", "FACT-2026-08-0003"))
         lignes = response.content.decode("utf-8-sig").strip().splitlines()
         self.assertEqual(len(lignes), 3)  # en-tête + 2
+
+
+def make_session_paiement_response(
+    session_id: str = "session-1",
+    url_redirection: str = "http://localhost:4321/espace/token-valide/paiement/session-1/confirmer",
+    expire_a: str = "2026-09-04T12:30:00+00:00",
+    statut: str = "EN_ATTENTE",
+) -> Mock:
+    return Mock(session_id=session_id, url_redirection=url_redirection, expire_a=expire_a, statut=statut)
+
+
+class EspaceAbonnePaiementCreerTests(SimpleTestCase):
+    """Paiement en ligne — mode sandbox/mock exclusivement (décision §10.2 levée).
+
+    POST /espace-abonne/<token>/paiement/ — body `{facture_id, montant}` →
+    `{session_id, url_redirection, expire_a}`.
+    """
+
+    _URL = "/espace-abonne/token-valide/paiement/"
+
+    def _post(self, body: dict[str, Any] | None) -> Any:
+        data = b"" if body is None else json.dumps(body).encode()
+        return self.client.post(self._URL, data=data, content_type="application/json")
+
+    def test_token_invalide_retourne_401(self) -> None:
+        with patch.object(notification_client, "valider_token", return_value=make_token_response(is_valid=False)):
+            response = self._post({"facture_id": "facture-1", "montant": 5000})
+        self.assertEqual(response.status_code, 401)
+
+    def test_session_creee_retourne_le_contrat_exact(self) -> None:
+        with (
+            patch.object(notification_client, "valider_token", return_value=make_token_response()),
+            patch.object(
+                paiement_client, "creer_session_paiement", return_value=make_session_paiement_response()
+            ) as mock_creer,
+        ):
+            response = self._post({"facture_id": "facture-1", "montant": 5000})
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(set(data.keys()), {"session_id", "url_redirection", "expire_a"})
+        self.assertEqual(data["session_id"], "session-1")
+        self.assertEqual(
+            data["url_redirection"], "http://localhost:4321/espace/token-valide/paiement/session-1/confirmer"
+        )
+        mock_creer.assert_called_once_with(facture_id="facture-1", montant=5000.0, token_espace="token-valide")
+
+    def test_corps_json_invalide_retourne_400(self) -> None:
+        with patch.object(notification_client, "valider_token", return_value=make_token_response()):
+            response = self.client.post(self._URL, data=b"pas-du-json", content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_champ_manquant_retourne_400(self) -> None:
+        with patch.object(notification_client, "valider_token", return_value=make_token_response()):
+            response = self._post({"facture_id": "facture-1"})
+        self.assertEqual(response.status_code, 400)
+
+    def test_montant_invalide_cote_service_retourne_400(self) -> None:
+        with (
+            patch.object(notification_client, "valider_token", return_value=make_token_response()),
+            patch.object(
+                paiement_client,
+                "creer_session_paiement",
+                side_effect=_FakeRpcError(grpc.StatusCode.INVALID_ARGUMENT),
+            ),
+        ):
+            response = self._post({"facture_id": "facture-1", "montant": 0})
+        self.assertEqual(response.status_code, 400)
+
+    def test_service_indisponible_retourne_503(self) -> None:
+        with (
+            patch.object(notification_client, "valider_token", return_value=make_token_response()),
+            patch.object(
+                paiement_client, "creer_session_paiement", side_effect=_FakeRpcError(grpc.StatusCode.INTERNAL)
+            ),
+        ):
+            response = self._post({"facture_id": "facture-1", "montant": 5000})
+        self.assertEqual(response.status_code, 503)
+
+    def test_get_non_autorise(self) -> None:
+        response = self.client.get(self._URL)
+        self.assertEqual(response.status_code, 405)
+
+
+class EspaceAbonnePaiementConfirmerTests(SimpleTestCase):
+    """POST /espace-abonne/<token>/paiement/<session_id>/confirmer/ → `{statut}`."""
+
+    _URL = "/espace-abonne/token-valide/paiement/session-1/confirmer/"
+
+    def test_token_invalide_retourne_401(self) -> None:
+        with patch.object(notification_client, "valider_token", return_value=make_token_response(is_valid=False)):
+            response = self.client.post(self._URL)
+        self.assertEqual(response.status_code, 401)
+
+    def test_confirmation_reussie_retourne_le_statut(self) -> None:
+        with (
+            patch.object(notification_client, "valider_token", return_value=make_token_response()),
+            patch.object(
+                paiement_client,
+                "confirmer_session_paiement",
+                return_value=make_session_paiement_response(statut="CONFIRMEE"),
+            ) as mock_confirmer,
+        ):
+            response = self.client.post(self._URL)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"statut": "CONFIRMEE"})
+        mock_confirmer.assert_called_once_with(session_id="session-1", token_espace="token-valide")
+
+    def test_statut_echouee_reste_une_reponse_200(self) -> None:
+        """ECHOUEE/EXPIREE sont des issues normales du parcours, pas des erreurs HTTP."""
+        with (
+            patch.object(notification_client, "valider_token", return_value=make_token_response()),
+            patch.object(
+                paiement_client,
+                "confirmer_session_paiement",
+                return_value=make_session_paiement_response(statut="EXPIREE"),
+            ),
+        ):
+            response = self.client.post(self._URL)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"statut": "EXPIREE"})
+
+    def test_session_introuvable_ou_token_different_retourne_404(self) -> None:
+        """Anti-IDOR : un token différent de celui de la session est traité
+        comme une session introuvable, jamais distingué (voir ANO-002)."""
+        with (
+            patch.object(notification_client, "valider_token", return_value=make_token_response()),
+            patch.object(
+                paiement_client,
+                "confirmer_session_paiement",
+                side_effect=_FakeRpcError(grpc.StatusCode.NOT_FOUND),
+            ),
+        ):
+            response = self.client.post(self._URL)
+        self.assertEqual(response.status_code, 404)
+
+    def test_service_indisponible_retourne_503(self) -> None:
+        with (
+            patch.object(notification_client, "valider_token", return_value=make_token_response()),
+            patch.object(
+                paiement_client, "confirmer_session_paiement", side_effect=_FakeRpcError(grpc.StatusCode.INTERNAL)
+            ),
+        ):
+            response = self.client.post(self._URL)
+        self.assertEqual(response.status_code, 503)
+
+    def test_get_non_autorise(self) -> None:
+        response = self.client.get(self._URL)
+        self.assertEqual(response.status_code, 405)
