@@ -1,9 +1,11 @@
 """Vue publique de l'espace abonné — EF-NOTIF-003.
 
 Accessible sans authentification via le token partagé dans le lien WhatsApp.
-Route JSON : GET /espace-abonne/<token>/
-Route PDF  : GET /espace-abonne/<token>/facture/<facture_id>/pdf/
-Route CSV  : GET /espace-abonne/<token>/factures.csv
+Route JSON       : GET  /espace-abonne/<token>/
+Route PDF        : GET  /espace-abonne/<token>/facture/<facture_id>/pdf/
+Route CSV        : GET  /espace-abonne/<token>/factures.csv
+Paiement en ligne : POST /espace-abonne/<token>/paiement/
+                    POST /espace-abonne/<token>/paiement/<session_id>/confirmer/
 
 EF-NOTIF-003 demande « toutes les factures (avec statut), historique de
 consommation, statut des paiements » et « boutons d'export : PDF et CSV ».
@@ -13,13 +15,22 @@ consommation, statut des paiements » et « boutons d'export : PDF et CSV ».
   Il ne pouvait donc pas vérifier sa facture. Les champs étaient dans
   `FactureResponse` depuis toujours ; personne ne les recopiait.
 * l'**export CSV** — seules la vue JSON et le PDF d'une facture existaient.
+
+Le **paiement en ligne** relance la décision §10.2 de l'audit, qui l'avait
+écartée (« consultation seule, paiement en ligne reporté »). Implémenté en
+mode **sandbox/mock exclusivement** — voir
+`services/paiement/paiements/passerelle_paiement.py` : aucune vraie
+passerelle n'est branchée, la décision §10.2 est levée mais PAS remplacée par
+un vrai paiement en production.
 """
 
+import json
 import logging
 
 import grpc
 from django.http import FileResponse, HttpRequest, HttpResponse, JsonResponse
-from django.views.decorators.http import require_GET
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_GET, require_POST
 
 from schema.csv_export import csv_response
 from schema.dtos import DonneesAbonneDict, FactureEspaceDict
@@ -258,3 +269,71 @@ def espace_abonne_pdf(request: HttpRequest, token: str, facture_id: str) -> File
         as_attachment=False,
         filename=f"facture-{facture_id}.pdf",
     )
+
+
+@csrf_exempt
+@require_POST
+def espace_abonne_paiement_creer(request: HttpRequest, token: str) -> JsonResponse:
+    """Ouvre une session de paiement en ligne (mock) — POST /espace-abonne/<token>/paiement/.
+
+    Body JSON `{facture_id, montant}` → `{session_id, url_redirection, expire_a}`.
+
+    **Mode sandbox/mock exclusivement** (voir `passerelle_paiement.py`
+    côté Paiement Service) : `url_redirection` pointe vers le mock de
+    confirmation du frontend, jamais vers un vrai fournisseur.
+    """
+    token_resp = notification_client.valider_token(token)
+    if not token_resp.is_valid:
+        return _token_response_invalide()
+
+    try:
+        payload = json.loads(request.body)
+        facture_id = str(payload["facture_id"])
+        montant = float(payload["montant"])
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        return JsonResponse({"erreur": "Requête invalide : facture_id et montant sont obligatoires."}, status=400)
+
+    try:
+        session_resp = paiement_client.creer_session_paiement(
+            facture_id=facture_id, montant=montant, token_espace=token
+        )
+    except grpc.RpcError as exc:
+        if exc.code() == grpc.StatusCode.INVALID_ARGUMENT:
+            return JsonResponse({"erreur": "Montant invalide."}, status=400)
+        logger.error("CreerSessionPaiementEnLigne gRPC error", extra={"facture_id": facture_id, "error": str(exc)})
+        return JsonResponse({"erreur": "Impossible de créer la session de paiement."}, status=503)
+
+    return JsonResponse(
+        {
+            "session_id": session_resp.session_id,
+            "url_redirection": session_resp.url_redirection,
+            "expire_a": session_resp.expire_a,
+        }
+    )
+
+
+@csrf_exempt
+@require_POST
+def espace_abonne_paiement_confirmer(request: HttpRequest, token: str, session_id: str) -> JsonResponse:
+    """Confirme une session de paiement en ligne (mock).
+
+    POST /espace-abonne/<token>/paiement/<session_id>/confirmer/ → `{statut}`
+    (`"CONFIRMEE"` | `"ECHOUEE"` | `"EXPIREE"`).
+
+    Anti-IDOR : le token doit être EXACTEMENT celui qui a créé la session,
+    sinon 404 — comme le reste de l'espace abonné (voir `espace_abonne_pdf`,
+    ANO-002). Un token invalide/expiré renvoie 401, avant même d'appeler le RPC.
+    """
+    token_resp = notification_client.valider_token(token)
+    if not token_resp.is_valid:
+        return _token_response_invalide()
+
+    try:
+        session_resp = paiement_client.confirmer_session_paiement(session_id=session_id, token_espace=token)
+    except grpc.RpcError as exc:
+        if exc.code() == grpc.StatusCode.NOT_FOUND:
+            return JsonResponse({"erreur": "Session de paiement introuvable."}, status=404)
+        logger.error("ConfirmerSessionPaiementEnLigne gRPC error", extra={"session_id": session_id, "error": str(exc)})
+        return JsonResponse({"erreur": "Confirmation indisponible."}, status=503)
+
+    return JsonResponse({"statut": session_resp.statut})

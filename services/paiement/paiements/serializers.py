@@ -12,7 +12,7 @@ import paiement_service_pb2 as pb
 from django.db.models import Sum
 from decimal import Decimal
 
-from paiements.models import ModePaiement, MouvementAvoir, Paiement, SoldeFacture, SuiviImpaye
+from paiements.models import ModePaiement, MouvementAvoir, Paiement, SessionPaiementEnLigne, SoldeFacture, SuiviImpaye
 
 
 def paiement_to_proto(p: Paiement) -> pb.PaiementResponse:
@@ -67,6 +67,21 @@ def suivi_to_proto(s: SuiviImpaye) -> pb.SuiviImpayeResponse:
         date_depassement=s.date_depassement.isoformat() if s.date_depassement else "",
         etape_actuelle=s.etape_actuelle,
         resolu_le=s.resolu_le.isoformat() if s.resolu_le else "",
+    )
+
+
+def session_paiement_to_proto(session: SessionPaiementEnLigne, url_redirection: str = "") -> pb.SessionPaiementResponse:
+    """Convertit une SessionPaiementEnLigne en message protobuf SessionPaiementResponse.
+
+    `url_redirection` n'est renseignée qu'à la création (voir
+    `PaiementServicer.CreerSessionPaiementEnLigne`) — la confirmation ne
+    l'expose pas au contrat REST, qui ne lit que `statut` à cette étape.
+    """
+    return pb.SessionPaiementResponse(
+        session_id=str(session.id),
+        url_redirection=url_redirection,
+        expire_a=session.expire_a.isoformat() if session.expire_a else "",
+        statut=session.statut,
     )
 
 

@@ -3,10 +3,13 @@
 import logging
 import sys
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import grpc
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
+from django.utils import timezone
 
 # Assure que le dossier proto/ est dans sys.path avant les imports générés
 sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
@@ -18,9 +21,21 @@ from paiements.event_publisher import publish_paiement_event, publish_reporting_
 from paiements.grpc_clients import FacturationServiceClient, NotificationServiceClient
 from paiements.grpc_interceptors import ErrorHandlingInterceptor, IdentityInterceptor
 from paiements.grpc_auth import AuthServerInterceptor, ouvrir_port_grpc
-from paiements.models import Paiement, SoldeFacture, StatutSolde
-from paiements.serializers import avoir_to_proto, paiement_to_proto, solde_to_proto, suivi_to_proto
+from paiements.models import ModePaiement, Paiement, SoldeFacture, StatutSessionPaiement, StatutSolde
+from paiements.passerelle_paiement import MockPasserellePaiementClient, PasserellePaiementClient
+from paiements.serializers import (
+    avoir_to_proto,
+    paiement_to_proto,
+    session_paiement_to_proto,
+    solde_to_proto,
+    suivi_to_proto,
+)
 from paiements.services import PaiementService
+
+# Identifiant explicite d'un encaissement déclenché par le mock de paiement en
+# ligne, jamais par un agent humain — distinct de tout `enregistre_par`
+# alimenté ailleurs par un id utilisateur Auth Service.
+SYSTEME_PAIEMENT_EN_LIGNE = "SYSTEME_PAIEMENT_EN_LIGNE"
 
 logger = logging.getLogger(__name__)
 
@@ -454,6 +469,46 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):  # type: ignore[misc]
             plus_ancienne_echeance=plus_ancienne.isoformat() if plus_ancienne else "",
         )
 
+    def _encaisser_pour_abonne(
+        self,
+        abonne_id: str,
+        montant: float,
+        date_paiement: date,
+        mode_paiement: str,
+        reference_transaction: str,
+        enregistre_par: str,
+    ) -> tuple[list[Paiement], Decimal]:
+        """Encaisse un versement pour un abonné et en propage TOUTES les conséquences.
+
+        Factorise ce que `EnregistrerPaiementAbonne` (le comptoir) et
+        `ConfirmerSessionPaiementEnLigne` (le paiement en ligne, sandbox/mock)
+        ont en commun : la même règle d'imputation
+        (`enregistrer_paiement_abonne`, du plus ancien au plus récent), suivie
+        des mêmes effets aval (`_propager_versement`). Ne PAS dupliquer cet
+        appel ailleurs — c'est tout l'intérêt de `_propager_versement`, voir
+        sa docstring.
+        """
+        paiements, excedent = self._svc.enregistrer_paiement_abonne(
+            abonne_id=abonne_id,
+            montant=montant,
+            date_paiement=date_paiement,
+            mode_paiement=mode_paiement,
+            reference_transaction=reference_transaction,
+            enregistre_par=enregistre_par,
+        )
+
+        # `paiements` peut être vide : un abonné qui ne doit rien et qui verse
+        # quand même voit tout son versement partir en avoir, sans écriture
+        # d'imputation. Il n'y a alors rien à propager — mais l'avoir est bien
+        # crédité par la couche métier.
+        if paiements:
+            self._propager_versement(
+                self._svc.imputations_du_versement(paiements[0].versement_id),
+                montant_recu=montant,
+            )
+
+        return paiements, excedent
+
     def EnregistrerPaiementAbonne(
         self,
         request: pb.EnregistrerPaiementAbonneRequest,
@@ -466,7 +521,7 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):  # type: ignore[misc]
         facture, ni réactivation de l'abonné suspendu, ni reçu, ni pause des
         relances, ni statistiques. Voir `_propager_versement`.
         """
-        paiements, excedent = self._svc.enregistrer_paiement_abonne(
+        paiements, excedent = self._encaisser_pour_abonne(
             abonne_id=request.abonne_id,
             montant=request.montant,
             date_paiement=date.fromisoformat(request.date_paiement),
@@ -475,20 +530,88 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):  # type: ignore[misc]
             enregistre_par=request.enregistre_par,
         )
 
-        # `paiements` peut être vide : un abonné qui ne doit rien et qui verse
-        # quand même voit tout son versement partir en avoir, sans écriture
-        # d'imputation. Il n'y a alors rien à propager — mais l'avoir est bien
-        # crédité par la couche métier.
-        if paiements:
-            self._propager_versement(
-                self._svc.imputations_du_versement(paiements[0].versement_id),
-                montant_recu=request.montant,
-            )
-
         return pb.PaiementAbonneResponse(
             paiements=[paiement_to_proto(p) for p in paiements],
             excedent_en_avoir=float(excedent),
         )
+
+    def CreerSessionPaiementEnLigne(
+        self,
+        request: pb.CreerSessionPaiementRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.SessionPaiementResponse:
+        """Ouvre une session de paiement en ligne (mock) pour l'espace abonné public.
+
+        **Mode sandbox/mock exclusivement** — voir `passerelle_paiement.py`.
+        Aucune vraie passerelle n'est contactée : `url_redirection` pointe
+        vers le mock de confirmation côté frontend.
+
+        `token_espace` est revalidé ICI, indépendamment de la gateway :
+        l'abonné propriétaire de la session est celui du token, jamais un
+        champ transmis par l'appelant — même défense anti-IDOR qu'ANO-002
+        pour le reste de l'espace abonné.
+        """
+        token_resp = self._notification_client.valider_token(request.token_espace)
+        if not token_resp["is_valid"]:
+            raise ObjectDoesNotExist("Token de l'espace abonné invalide ou expiré.")
+
+        session = self._svc.creer_session_paiement_en_ligne(
+            facture_id=request.facture_id,
+            montant=request.montant,
+            abonne_id=token_resp["abonne_id"],
+            token_espace=request.token_espace,
+        )
+
+        passerelle: PasserellePaiementClient = MockPasserellePaiementClient(request.token_espace)
+        url_redirection = passerelle.creer_session(Decimal(str(request.montant)), str(session.id))
+
+        return session_paiement_to_proto(session, url_redirection)
+
+    def ConfirmerSessionPaiementEnLigne(
+        self,
+        request: pb.ConfirmerSessionPaiementRequest,
+        context: grpc.ServicerContext,
+    ) -> pb.SessionPaiementResponse:
+        """Confirme une session de paiement en ligne (mock) et encaisse le versement.
+
+        Anti-IDOR : exige EXACTEMENT le token qui a créé la session (voir
+        `SessionPaiementEnLigne.token_espace`) — un token par ailleurs valide
+        mais différent est traité comme si la session n'existait pas.
+
+        Idempotent : une session déjà tranchée (CONFIRMEE, ECHOUEE ou
+        EXPIREE) renvoie son état actuel sans rejouer l'encaissement ni la
+        passerelle — la contrainte d'unicité sur `reference_transaction`
+        protège de toute façon `enregistrer_paiement_abonne` d'un doublon,
+        mais rejouer aurait aussi renvoyé un second reçu/une seconde
+        notification pour rien.
+        """
+        session = self._svc.get_session_paiement(request.session_id)
+        if session.token_espace != request.token_espace:
+            raise ObjectDoesNotExist("Session de paiement introuvable.")
+
+        if session.statut != StatutSessionPaiement.EN_ATTENTE:
+            return session_paiement_to_proto(session)
+
+        if self._svc.session_expiree(session):
+            session = self._svc.marquer_session_statut(session, StatutSessionPaiement.EXPIREE)
+            return session_paiement_to_proto(session)
+
+        passerelle: PasserellePaiementClient = MockPasserellePaiementClient(session.token_espace)
+        if not passerelle.confirmer(str(session.id)):
+            session = self._svc.marquer_session_statut(session, StatutSessionPaiement.ECHOUEE)
+            return session_paiement_to_proto(session)
+
+        self._encaisser_pour_abonne(
+            abonne_id=session.abonne_id,
+            montant=float(session.montant),
+            date_paiement=timezone.now().date(),
+            mode_paiement=ModePaiement.MOBILE_MONEY,
+            reference_transaction=str(session.id),
+            enregistre_par=SYSTEME_PAIEMENT_EN_LIGNE,
+        )
+
+        session = self._svc.marquer_session_statut(session, StatutSessionPaiement.CONFIRMEE)
+        return session_paiement_to_proto(session)
 
 
 def serve() -> None:

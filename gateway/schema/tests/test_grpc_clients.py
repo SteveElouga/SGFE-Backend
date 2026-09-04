@@ -181,3 +181,17 @@ class PaiementServiceClientTests(SimpleTestCase):
         self.assertEqual(total, 15)
         request = self.grpc_client._stub.ListPaiements.call_args[0][0]
         self.assertEqual((request.limit, request.offset), (0, 0))
+
+    def test_creer_session_paiement(self) -> None:
+        """Paiement en ligne (mock) — voir `passerelle_paiement.py`."""
+        self.grpc_client.creer_session_paiement(facture_id="facture-1", montant=5000.0, token_espace="token-1")
+        request = self.grpc_client._stub.CreerSessionPaiementEnLigne.call_args[0][0]
+        self.assertEqual(
+            (request.facture_id, request.montant, request.token_espace),
+            ("facture-1", 5000.0, "token-1"),
+        )
+
+    def test_confirmer_session_paiement(self) -> None:
+        self.grpc_client.confirmer_session_paiement(session_id="session-1", token_espace="token-1")
+        request = self.grpc_client._stub.ConfirmerSessionPaiementEnLigne.call_args[0][0]
+        self.assertEqual((request.session_id, request.token_espace), ("session-1", "token-1"))

@@ -592,6 +592,31 @@ class PaiementServiceClient:
     def get_avoir_abonne(self, abonne_id: str) -> paiement_pb.AvoirResponse:
         return self._stub.GetAvoirAbonne(paiement_pb.AbonneIdRequest(abonne_id=abonne_id))
 
+    def creer_session_paiement(
+        self, facture_id: str, montant: float, token_espace: str
+    ) -> paiement_pb.SessionPaiementResponse:
+        """Ouvre une session de paiement en ligne (mock, espace abonné public).
+
+        Voir `services/paiement/paiements/passerelle_paiement.py` — mode
+        sandbox/mock exclusivement, aucune vraie passerelle branchée.
+        """
+        return self._stub.CreerSessionPaiementEnLigne(
+            paiement_pb.CreerSessionPaiementRequest(
+                facture_id=facture_id,
+                montant=montant,
+                token_espace=token_espace,
+            )
+        )
+
+    def confirmer_session_paiement(self, session_id: str, token_espace: str) -> paiement_pb.SessionPaiementResponse:
+        """Confirme une session de paiement en ligne (mock, espace abonné public)."""
+        return self._stub.ConfirmerSessionPaiementEnLigne(
+            paiement_pb.ConfirmerSessionPaiementRequest(
+                session_id=session_id,
+                token_espace=token_espace,
+            )
+        )
+
 
 class NotificationServiceClient:
     """Client gRPC vers notification-service:50056 (voir proto/notification_service.proto)."""
