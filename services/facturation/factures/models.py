@@ -1,6 +1,7 @@
 """Modèles PostgreSQL du Facturation Service (docs/ARCHITECTURE.md §8.4)."""
 
 import uuid
+from typing import Any
 
 from django.db import models
 
@@ -121,6 +122,76 @@ class Facture(models.Model):
 
     def __str__(self) -> str:
         return f"{self.numero_facture} — {self.montant} FCFA ({self.statut})"
+
+
+class TypeEvenementOutbox(models.TextChoices):
+    """Types d'événements portés par l'outbox transactionnelle (voir OutboxEvent).
+
+    Un seul type existe à ce jour — la propagation du solde à la génération
+    d'une facture. Le champ reste un simple ``CharField`` (pas une contrainte
+    de choix en base) pour qu'un futur type d'événement outbox n'exige pas de
+    migration supplémentaire.
+    """
+
+    FACTURE_GENEREE = "FACTURE_GENEREE", "Facture générée"
+
+
+class StatutOutboxEvent(models.TextChoices):
+    """États du cycle de vie d'un `OutboxEvent`."""
+
+    EN_ATTENTE = "EN_ATTENTE", "En attente"
+    ENVOYE = "ENVOYE", "Envoyé"
+    # Terminal : le plafond de tentatives du relais est atteint sans succès —
+    # nécessite une intervention manuelle (voir factures/schedulers.py).
+    ECHEC = "ECHEC", "Échec définitif"
+
+
+class OutboxEvent(models.Model):
+    """Événement du pattern *transactional outbox* — facturation → paiement.
+
+    Écrit dans LA MÊME transaction Django que la `Facture` qu'il relaie (voir
+    `FactureService._ecrire_evenement_outbox_facture_generee`, appelée à
+    l'intérieur du même `transaction.atomic()` que `FactureRepository.create`
+    dans `generer_factures` / `regenerer_facture` / `creer_regularisation`) :
+    soit les deux écritures committent ensemble, soit aucune ne committe. Un
+    crash entre la création de la facture et l'appel gRPC à Paiement Service
+    ne peut donc plus produire de facture « orpheline » (sans `SoldeFacture`)
+    — l'événement survit en base et sera rejoué par le relais planifié
+    (`factures/schedulers.py::outbox_relay_job`) jusqu'à ce qu'il réussisse.
+
+    `InitialiserSolde` (Paiement Service) est idempotent par `facture_id` :
+    un relais qui rejoue un événement déjà traité (redémarrage entre l'appel
+    gRPC et la mise à jour du statut, par exemple) ne duplique jamais le
+    solde.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    type_evenement = models.CharField(max_length=50, choices=TypeEvenementOutbox.choices)
+    # Tout ce dont Paiement Service a besoin pour (ré)initialiser le solde,
+    # plus prix_m3 conservé à titre d'audit (traçabilité complète de la
+    # facture d'origine, même si InitialiserSolde ne le consomme pas) — voir
+    # `FactureService._ecrire_evenement_outbox_facture_generee`.
+    payload: "models.JSONField[dict[str, Any], dict[str, Any]]" = models.JSONField()
+    statut = models.CharField(
+        max_length=10,
+        choices=StatutOutboxEvent.choices,
+        default=StatutOutboxEvent.EN_ATTENTE,
+    )
+    tentatives = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    envoye_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "outbox_events"
+        ordering = ["created_at"]
+        indexes = [
+            # Le relais (`outbox_relay_job`) scanne les événements EN_ATTENTE
+            # à chaque passage — même usage que `Facture.statut` ci-dessus.
+            models.Index(fields=["statut"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"OutboxEvent {self.type_evenement} ({self.statut}) — {self.id}"
 
 
 class AuditLog(models.Model):
