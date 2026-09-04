@@ -70,8 +70,8 @@
 >
 > **Décompte final (96 items, §8 — le total est passé de 94 à 96 : les deux
 > incidents/régressions découverts et corrigés ce jour comptent comme des
-> items propres)** : **75 faits (78 %)** · **5 partiels** · **7 incertains/non
-> revérifiés** · **9 non faits**. Détail dans le tableau de décompte en fin
+> items propres)** : **74 faits (77 %)** · **7 partiels** · **7 incertains/non
+> revérifiés** · **8 non faits**. Détail dans le tableau de décompte en fin
 > de §8, refait à neuf. *(Chiffres recalculés le 04/09 : le transactional
 > outbox facturation → paiement, §F, est passé de « non fait » à « fait »
 > — PR #191 — un seul item a changé de colonne, indépendamment de la piste
@@ -126,6 +126,42 @@
 > Seuls les 4 items de §J ont changé de statut par rapport à la 3e passe (3
 > passent à 🟡 partiel, 1 — rétention/horodatage — passe à ✅ fait) ; rien
 > d'autre n'a été retouché dans cette revue.
+
+> ⚠️ **5e revue de fraîcheur — 4 septembre 2026 (soir) : deux audits indépendants
+> publiés, deux écarts réels trouvés et corrigés dans cette checklist.**
+> `docs/CONFORMITE_CICD.md` confronte les deux CI (backend + frontend) à
+> l'OWASP CI/CD Top 10, SLSA v1.2, NIST SSDF, CIS Supply Chain et au guide de
+> durcissement GitHub Actions ; `docs/CONFORMITE_SOC2_OWASP.md` confronte le
+> code applicatif à OWASP Top 10:2021, API Security Top 10:2023, ASVS 5.0.0 et
+> SOC 2 (CC1-CC9) — **diagnostics de préparation, explicitement pas des
+> certifications**, chaque verdict sourcé `fichier:ligne` ou sortie d'API
+> GitHub, méthode et sources détaillées dans les deux documents.
+>
+> Deux items déjà cochés **✅ Fait** se sont révélés seulement **🟡 Partiel** à
+> la vérification croisée — exactement le type d'écart que cette discipline de
+> revue existe pour attraper :
+> - **§8·A** — l'externalisation des secrets (PR #169) remplace bien les
+>   littéraux en dur par `${VAR:-...}`, mais les valeurs de repli sont de
+>   **vrais secrets exploitables** (`PII_ENCRYPTION_KEY` = une vraie clé
+>   Fernet, `docker-compose.yml:557`) qui neutralisent en pratique le
+>   fail-fast Python de l'item voisin.
+> - **§8·K** — Trivy sur l'image frontend (PR #143) scanne une image **jamais
+>   déployée** (`push: false`) ; l'image réellement livrée par `cd-canary.yml`/
+>   `cd-staging.yml` n'est scannée nulle part. Même défaut de fond côté
+>   backend (OWASP CICD-SEC-9) : `publish-*` ne dépend pas de `docker-build-*`.
+>
+> Écart supplémentaire, sans item dédié à ce jour : **zéro revue humaine
+> obligatoire pour fusionner** sur `develop` (backend, `required_approving_
+> review_count: 0`, vérifié par API) et **aucune protection de branche du
+> tout** sur `main` (backend) ni sur `develop`/`main` (frontend) — nuance
+> réelle : projet mono-développeur, une revue à 2 personnes n'est pas
+> actionnable sans un second compte humain (voir §2.1 CICD-SEC-1 du rapport
+> pour la recommandation adaptée à ce contexte).
+>
+> **Décompte mis à jour (96 items, §8, recompté par script)** : **74 faits (77
+> %)** · **7 partiels** · **7 incertains/non revérifiés** · **8 non faits**.
+> Deux items passent de ✅ fait à 🟡 partiel (§8·A, §8·K) ; aucun autre statut
+> retouché dans cette revue.
 >
 > **La collecte de preuves SOC 2 démarre formellement à partir d'aujourd'hui**
 > pour le périmètre livré (identité + audit paiement/facturation + sécurité
@@ -473,7 +509,7 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 
 - [ ] Révoquer et régénérer la **clé API Brevo** (`services/auth/.env:31`) et le mot de passe admin `Admin1234!` (`.env:43`). *(S)* — **❓ Incertain.** Aucune PR ne mentionne explicitement une rotation de la clé Brevo ; le fail-fast sur les secrets (item suivant) empêche une valeur par défaut vide mais ne prouve pas la rotation d'une clé déjà exposée. À confirmer hors code (rotation manuelle côté fournisseur).
 - [x] Vérifier que les `.env` n'ont **jamais** été committés, purge si besoin. *(S)* — **✅ Fait, vérifié le 03/09.** `git log --all --diff-filter=A -- "**/.env" ".env"` renvoie 0 résultat dans les deux dépôts — aucun `.env` n'a jamais été ajouté à l'historique. Aucune purge nécessaire. PR #110 (22/07) ajoute en plus un hook pre-commit anti-commit de `.env` pour l'avenir.
-- [x] Externaliser **tous** les secrets vers un coffre et retirer les valeurs en dur de `docker-compose.yml`. *(M)* — **✅ Fait côté code, PR #169 (fusionnée 03/09).** `ansible/roles/secrets` complété avec l'inventaire réel des secrets (bug de chemin des clés RS256 corrigé au passage) ; **`docker-compose.yml` interpole désormais `${DJANGO_SECRET_KEY:-...}`/`${POSTGRES_PASSWORD:-...}`** au lieu de les coder en dur (valeurs de repli identiques en local, vérifié avec/sans surcharge via `docker compose config`) — le provisioning a maintenant un effet réel sur tous les services, plus seulement `db-backup`. Aucun identifiant AWS disponible dans cet environnement pour un provisioning réel ; IaC validée syntaxiquement seulement.
+- [ ] 🟡 Externaliser **tous** les secrets vers un coffre et retirer les valeurs en dur de `docker-compose.yml`. *(M)* — **Repassé en partiel le 04/09/2026 — écart réel trouvé par `docs/CONFORMITE_SOC2_OWASP.md`.** PR #169 avait bien remplacé les littéraux en dur par `${VAR:-...}` et le provisioning Ansible a un effet réel sur tous les services — mais **les valeurs de repli (`:-...`) elles-mêmes sont de vrais secrets exploitables, pas des placeholders qui casseraient au démarrage** : `docker-compose.yml:557`, `PII_ENCRYPTION_KEY: ${PII_ENCRYPTION_KEY:-<clé Fernet réelle>}` — un déploiement qui oublie de repositionner cette variable chiffre silencieusement les PII avec une clé que quiconque lit le dépôt public connaît déjà. Même motif, gravité moindre, sur `DJANGO_SECRET_KEY`, `INTERNAL_GRPC_KEY`, `POSTGRES_PASSWORD`, `WHATSAPP_INTERNAL_API_KEY`. Conséquence directe sur l'item suivant : le fail-fast Python (§8·A, item « valeurs par défaut… échec au démarrage ») est réel et testé, mais **ne se déclenche jamais tant que `docker-compose.yml` fournit systématiquement une valeur de repli** — les deux mécanismes se neutralisent l'un l'autre en pratique. Correctif : retirer les valeurs de repli des secrets de *sécurité* (garder celles, sans risque, des identifiants purement structurels comme les noms de base) ou les cantonner à un fichier explicitement dev-only jamais chargé en production.
 - [x] Supprimer toutes les **valeurs par défaut** de secrets dans les `settings.py` ; **échec au démarrage** si absents. *(S)* — **✅ Fait — PR #99 (2026-07-20).** `gateway/gateway/settings.py:12` et `services/auth/auth/settings.py:15` lèvent une exception si `DJANGO_SECRET_KEY`/`INTERNAL_GRPC_KEY` sont absents (confirmé en direct dans cette session : `CleInterneManquante`).
 - [x] `DEBUG=False` par défaut partout. *(S)* — **✅ Fait — PR #99.** Vérifié sur gateway + 3 services (`env.bool("DJANGO_DEBUG", default=False)`).
 - [x] Migrer le JWT en **RS256 asymétrique**. *(M)* — **✅ Fait — PR #100 (2026-07-20).** `services/auth/auth/settings.py:166` `"ALGORITHM": "RS256"`, paire de clés asymétrique.
@@ -547,6 +583,8 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 - [x] `/health` whatsapp renvoie **503** si déconnecté. *(S)* — **✅ Fait — PR #101** (même PR que le fail-closed §B).
 - [ ] **Règles d'alerte** + routage on‑call. *(M)* — **Non fait**, dépend des items d'observabilité ci-dessus.
 
+> 📄 **Confirmé indépendamment le 04/09/2026** par `docs/CONFORMITE_SOC2_OWASP.md` (§3.1 A09, §3.3 V16, §3.4 CC4/CC7) et `docs/CONFORMITE_CICD.md` (§2.1 CICD-SEC-10) : recherche exhaustive `TracerProvider`/`prometheus_client`/`LOGGING` sur les 9 `settings.py` → 0 résultat sur `develop`. Les deux rapports qualifient ce point de **blocage le plus sérieux pour un futur audit SOC 2 Type II** — un Type II exige des preuves accumulées sur une période d'observation, impossible sans télémétrie.
+
 **J. Piste d'audit & conformité SOC 2**
 
 - [ ] 🟡 **Journal d'audit métier immuable**. *(M)* — **Partiel, 04/09/2026.** Conception §10.7 implémentée telle quelle : étape 1 (propagation d'identité) livrée sur les **9 composants** — `IdentityInterceptor` serveur (métadonnées `x-user-id`/`x-user-name`/`x-user-role`/`x-request-id` → `get_caller()`, ContextVar) sur les 8 services, `IdentityClientInterceptor` côté gateway (`schema/grpc_clients.py`) posant ces métadonnées depuis l'identité authentifiée (`schema/identity_context.py`, `require_auth`) ; comportement anonyme inchangé (aucune métadonnée sans identité). Étape 2 (`AuditLog` + écriture sur mutation) livrée **seulement pour PAIEMENT et FACTURATION**, comme priorisé par la conception : modèle `AuditLog` (UUID, action, objet_type, objet_id, acteur_id/nom/role, horodatage `auto_now_add`, detail) append-only, écrit **dans la même transaction Django** que le changement métier — paiement (`enregistrer_paiement`, `annuler_paiement`, `enregistrer_paiement_abonne`, `crediter_avoir_manuel`, `annuler_solde`) et facturation (`generer_factures`, `annuler_facture`, `regenerer_facture`, `creer_regularisation`, `update_tarif`). Étape 3 (immuabilité base) : migration `RunPython` REVOKE UPDATE/DELETE sur `audit_log` pour le rôle applicatif Postgres de chaque service, réversible (GRANT), vérifiée en direct sur un Postgres jetable — **limite honnête constatée empiriquement** : dans la configuration actuelle (`docker-compose.yml`), le rôle applicatif est aussi **propriétaire** de la table (il l'a créée via `migrate`), et PostgreSQL fait primer la propriété sur l'ACL — un `UPDATE`/`DELETE` par ce rôle **reste possible malgré le REVOKE** (vérifié : `UPDATE`/`DELETE` réussissent toujours pour le propriétaire ; testé aussi avec un rôle non-propriétaire distinct, où le même REVOKE bloque bien `UPDATE`/`DELETE` — `permission denied`). Un durcissement réel exigerait un rôle Postgres dédié aux migrations, distinct du rôle d'exécution applicative — non fait, changement d'architecture plus large. **Explicitement hors périmètre de cette PR, à faire ensuite** : campagne (fusion de `ReleveAudit` existant), abonné, auth, config — dans cet ordre, une PR par service, comme prévu par la conception §10.7.
@@ -554,13 +592,15 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 - [x] Politique de **rétention des logs** + horodatage fiable. *(S)* — **✅ Fait, 04/09/2026.** Bloc `LOGGING` ajouté aux `settings.py` des **9 composants** (gateway + 8 services) : formatter horodatage ISO 8601 explicite en UTC (`logging.Formatter.converter = time.gmtime`, cohérent avec `TIME_ZONE = "UTC"` déjà en vigueur), rétention configurable via `LOG_RETENTION_DAYS` (défaut 30 jours, `TimedRotatingFileHandler` un fichier par jour). Désactivé en mode `TESTING` (pas d'écriture disque à chaque `manage.py test`, comme le reste du dépôt). Corrélation `x-request-id` (posée par l'étape 1) utilisée ponctuellement dans les logs de sécurité de la gateway ci-dessus — **volontairement pas** généralisée à un filtre de log global sur les 9 composants (risque d'ordre d'import pour un gain marginal ; un vrai `trace_id` cross-service reste l'item observabilité séparé §I, non entamé).
 - [ ] 🟡 **Démarrer la collecte de preuves SOC 2**. *(continu)* — **Débute formellement aujourd'hui, 04/09/2026** : J1 et J2 sont désormais livrés au moins partiellement (paiement + facturation auditées, sécurité gateway journalisée), ce qui rend la période d'observation SOC 2 Type II significative à partir de cette date pour ce périmètre précis — pas encore pour les 4 services restants ni pour l'observabilité (§I, toujours à zéro).
 
+> 📄 **Nuancé le 04/09/2026** par `docs/CONFORMITE_SOC2_OWASP.md` (§3.4 CC7, avertissement de portée en tête de document — diagnostic de préparation, **pas une certification**) : confirme le travail ci-dessus (PR #193) mais rappelle qu'il ne couvre que 2 services sur 8, que l'immuabilité base n'est pas effective dans la configuration actuelle (limite déjà documentée ci-dessus), et qu'il exclut explicitement l'observabilité — **CC7 reste le critère qui ferait échouer un audit Type II aujourd'hui**. Le même rapport relève aussi (§3.1 A01, §3.3 V8) qu'aucun service gRPC interne ne revalide le rôle utilisateur : la gateway reste l'unique point de décision RBAC (aveu explicite en commentaire, `services/auth/comptes/services.py:193`) — une défense en profondeur à ajouter côté services les plus sensibles, en s'appuyant sur l'identité désormais propagée par cette même PR.
+
 **K. Tests (fiabilité)**
 
 - [x] Tests frontend prioritaires : file offline terrain, refresh+retry, gardes de rôle, interceptor JWT. *(M)* — **✅ Fait — PR #142 (fusionnée 31/08).** 40 nouveaux tests (241→281, 29→34 fichiers) couvrant les 4 parcours. Deux constats de conception documentés par des tests plutôt que corrigés (hors périmètre) : la file hors-ligne synchronise en LIFO pas FIFO ; le refresh REST (contrairement au refresh GraphQL) ne mutualise pas les requêtes concurrentes. Aucun vrai bug trouvé.
 - [ ] 🔗 Vrais **tests e2e Playwright**. *(M)* — **🟡 Partiel, étendu mais toujours incomplet.** PR #143 (fusionnée 31/08) ajoute un spec saisie-index (gaté `E2E_LIVE_BACKEND=1`, skip propre en CI). Le spec paiement est écrit mais en `test.skip()` **permanent** : vérifié dans le code backend que l'enregistrement d'un paiement déclenche un envoi WhatsApp réel et inconditionnel (`_propager_versement`), sans possibilité de l'éviter côté UI — jamais exécuté contre un backend réel, à raison.
 - [x] Lancer **Vitest** en CI. *(S)* — **✅ Fait.** `.github/workflows/ci.yml` : `npx ng test --no-watch`.
 - [x] Job CI backend sur **PostgreSQL**. *(S)* — **✅ Fait — PR #169 (fusionnée 03/09).** `postgres:16-alpine` ajouté aux 8 jobs `test-*` concernés, SQLite gardé en défaut local. Vérifié réellement (pas que le YAML) : suite `config` (31/31) exécutée contre un Postgres 16 jetable.
-- [x] **Trivy** sur l'image frontend. *(S)* — **✅ Fait — PR #143 (fusionnée 31/08).** Étape ajoutée sur le modèle du backend, exécutée réellement en local (Trivy 0.72.0). **Découverte** : 2 CRITICAL + 35 HIGH dans les paquets Alpine de `nginx:1.27-alpine` (image de base non reconstruite depuis avril 2025, pas le code applicatif) — fera échouer la CI dès son premier run tant que le tag n'est pas bumpé.
+- [ ] 🟡 **Trivy** sur l'image frontend. *(S)* — **Repassé en partiel le 04/09/2026 — écart réel trouvé par `docs/CONFORMITE_CICD.md`.** PR #143 a bien ajouté l'étape (exécutée réellement en local, Trivy 0.72.0, découverte de 2 CRITICAL + 35 HIGH dans `nginx:1.27-alpine`) — mais **l'image scannée par ce job n'est jamais celle réellement déployée** : `ci.yml:100-145` construit avec `push: false`, une image jetable jamais poussée nulle part ; les workflows qui construisent l'image réellement livrée (`cd-canary.yml:50-58`, `cd-staging.yml:48-56`) n'ont **aucune** étape Trivy avant leur `push: true`. L'image servie aux utilisateurs n'est donc jamais scannée, à aucun stade — même écart de fond côté **backend** (OWASP CICD-SEC-9) : `publish-*` (`ci.yml:676` et 9 jobs identiques) ne dépend pas de `docker-build-*`, deux builds distincts de la même source. Correctif : ajouter Trivy directement dans `cd-canary.yml`/`cd-staging.yml` avant le `push` (frontend) ; faire dépendre chaque `publish-*` de son `docker-build-*` (backend).
 - [ ] **Test de charge / performance**. *(M)* — **🟡 Partiel, point de départ seulement.** PR #143 ajoute `loadtest/basic.js` (k6, 2-3 requêtes GraphQL de lecture) — explicitement documenté comme non représentatif d'un vrai test de charge de production, faute d'environnement de staging à ce jour. Cible mise à jour le 03/09 (PR #146) : `https://localhost:8443` + `--insecure-skip-tls-verify` après le durcissement TLS de nginx.
 - [ ] **Test de pénétration** avant go‑live. *(M)* — **Non fait.**
 
@@ -628,9 +668,9 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 
 | Porte | Condition | Items requis | Statut |
 |---|---|---|---|
-| 🚦 **Go production (technique)** | Aucun secret exposé, périmètre gRPC verrouillé, système déployable + sauvegardé, bugs bloquants corrigés | **Tous les P0** + F, I (min. `/metrics` + healthchecks + logs) + K (e2e smoke vert) | 🟡 **Toujours bloqué sur un seul point.** P0 à 26/27 (seul reste : rotation Brevo, hors code) — mTLS vérifié en direct, healthchecks complets sur les 9 composants. **I (observabilité, hors healthchecks) reste à zéro, jamais entamé** — bloque toujours cette porte à elle seule, `/metrics`/`TracerProvider`/logs structurés absents. |
+| 🚦 **Go production (technique)** | Aucun secret exposé, périmètre gRPC verrouillé, système déployable + sauvegardé, bugs bloquants corrigés | **Tous les P0** + F, I (min. `/metrics` + healthchecks + logs) + K (e2e smoke vert) | 🟡 **Bloqué sur deux points, pas un seul.** P0 à 25/27 (rotation Brevo toujours ❓ hors code ; **écart réel trouvé le 04/09** — les valeurs de repli de `docker-compose.yml` neutralisent le fail-fast des secrets de sécurité, voir §8·A) — mTLS vérifié en direct, healthchecks complets sur les 9 composants. **I (observabilité, hors healthchecks) reste à zéro, jamais entamé** — confirmé indépendamment par `docs/CONFORMITE_SOC2_OWASP.md`/`docs/CONFORMITE_CICD.md` le 04/09 — bloque toujours cette porte à elle seule, `/metrics`/`TracerProvider`/logs structurés absents. |
 | 🔗 **Complètement aligné** | Front ⇄ back sans écart de contrat ni dérive | Tous les items **🔗** : D, E‑proxy, H, K‑e2e, L‑codegen/typeEnvoi/index, Q‑doc | ✅ **Quasi complet.** L‑index (Decimal) fait (PR #171) ; le proxy de dev local re-fonctionne après la régression TLS (PR #180/#146) ; seul K‑e2e reste partiel (paiement volontairement jamais exécuté, à raison). |
-| 🛡️ **Prêt pour l'audit SOC 2 Type II** | Contrôles en place **et** preuves accumulées sur la période d'observation | P0 (sécurité) + J (audit trail) + I (monitoring) + K (pentest) + rate limiting (C) | ⛔ **Toujours loin, mais J est entamé.** mTLS + PII + TLS + RGPD traités. **J** (04/09) : identité propagée sur les 9 composants + `AuditLog` immuable pour paiement/facturation seulement (campagne/abonné/auth/config restants) + rétention/horodatage fiable sur les 9 composants + logger sécurité gateway partiel — 🟡 partiel, pas à zéro. **I (observabilité) reste à zéro, jamais entamé**, K‑pentest non fait — ce sont les vrais blocages restants. |
+| 🛡️ **Prêt pour l'audit SOC 2 Type II** | Contrôles en place **et** preuves accumulées sur la période d'observation | P0 (sécurité) + J (audit trail) + I (monitoring) + K (pentest) + rate limiting (C) | ⛔ **Toujours loin, mais J est entamé.** mTLS + PII + TLS + RGPD traités. **J** (04/09) : identité propagée sur les 9 composants + `AuditLog` immuable pour paiement/facturation seulement (campagne/abonné/auth/config restants) + rétention/horodatage fiable sur les 9 composants + logger sécurité gateway partiel — 🟡 partiel, pas à zéro. **I (observabilité) reste à zéro, jamais entamé**, K‑pentest non fait — ce sont les vrais blocages restants. **Diagnostic indépendant complet le 04/09** : `docs/CONFORMITE_SOC2_OWASP.md` (CC1-CC9 + OWASP Top 10/API/ASVS) confirme ce même verdict sans surprise — CC7/CC4 (surveillance) est le seul critère qui ferait échouer un Type II sans ambiguïté ; explicitement un diagnostic de préparation, pas une certification. |
 | 💰 **Complet fonctionnellement** | Cycle correctif financier + portail abonné opérationnels | G + H + M (pagination) | ✅ **Complet, des deux côtés.** G et H déjà faits ; **M (pagination) fait serveur (PR #172) ET UI (PR #145)** — `abonnes-list`/`factures-list` consomment réellement `limit`/`offset`, `paiements-list` non migrée par choix documenté. |
 
 ### Décompte — mis à jour le 4 septembre 2026 (piste d'audit §J entamée, partiellement)
@@ -641,13 +681,13 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 
 | Priorité | Total | ✅ Fait | 🟡 Partiel | ❓ Incertain / non revérifié | Non fait | Effort dominant (origine) |
 |---|:---:|:---:|:---:|:---:|:---:|---|
-| 🔴 P0 | 27 | 26 | 0 | 1 | 0 | S/M (+ 2 L : mTLS fait — PR #168, déploiement fait) |
-| 🟠 P1 | 33 | 22 | 5 | 0 | 6 | M (+ 2 L : paiement en ligne fait (sandbox) — PR #192, outbox fait — PR #191, périmètre facturation→paiement uniquement ; avoir/rectification fait) |
+| 🔴 P0 | 27 | 25 | 1 | 1 | 0 | S/M (+ 2 L : mTLS fait — PR #168, déploiement fait) |
+| 🟠 P1 | 33 | 21 | 6 | 0 | 6 | M (+ 2 L : paiement en ligne fait (sandbox) — PR #192, outbox fait — PR #191, périmètre facturation→paiement uniquement ; avoir/rectification fait) |
 | 🟡 P2 | 21 | 20 | 0 | 0 | 1 | S/M (+ 1 L : réplication PostgreSQL, fait en PoC — PR #173) |
 | 🟢 P3 | 15 | 8 | 0 | 6 | 1 | M/L |
-| **Total** | **96** | **76 (79 %)** | **5 (5 %)** | **7 (7 %)** | **8 (8 %)** | — |
+| **Total** | **96** | **74 (77 %)** | **7 (7 %)** | **7 (7 %)** | **8 (8 %)** | — |
 
-> **Mise à jour du 4 septembre 2026** : quatre chantiers distincts livrés le même jour. **Retry automatique des notifications en échec** (§8·O, PR #190) porte le total à 73 (P3 : 7→8 faits, 2→1 non fait). **Piste d'audit §J entamée** (identité propagée + `AuditLog` paiement/facturation + rétention/horodatage + logger sécurité gateway, voir ci-dessus) déplace 3 items de non-fait à partiel dans P1, sans changer le total de faits. **Transactional outbox** (§F, PR #191, périmètre facturation→paiement uniquement) et **paiement en ligne** (§8·H, PR #192, sandbox/mock exclusivement) portent chacun un item de P1 de non-fait à fait, portant le total à **76**.
+> **Mise à jour du 4 septembre 2026** : quatre chantiers distincts livrés le même jour, puis deux écarts trouvés à la vérification croisée. **Retry automatique des notifications en échec** (§8·O, PR #190) porte le total à 73 (P3 : 7→8 faits, 2→1 non fait). **Piste d'audit §J entamée** (identité propagée + `AuditLog` paiement/facturation + rétention/horodatage + logger sécurité gateway, voir ci-dessus) déplace 3 items de non-fait à partiel dans P1, sans changer le total de faits. **Transactional outbox** (§F, PR #191, périmètre facturation→paiement uniquement) et **paiement en ligne** (§8·H, PR #192, sandbox/mock exclusivement) portent chacun un item de P1 de non-fait à fait, portant le total à 76. Puis, à la lecture de `docs/CONFORMITE_CICD.md` et `docs/CONFORMITE_SOC2_OWASP.md` (5e revue de fraîcheur ci-dessus) : **externalisation des secrets** (§8·A, P0) et **Trivy frontend** (§8·K, P1) repassent chacun de fait à partiel — valeurs de repli de secrets réels dans `docker-compose.yml` d'un côté, image scannée jamais déployée de l'autre — ramenant le total à **74**.
 >
 > **Progression de la journée du 3 septembre** : 0→37→48→50→64→**70** items faits au fil de la journée. Le total est passé de 94 à **96** items (2 ajouts : un bug réel de redélivraison Redis Streams découvert et corrigé en rédigeant le runbook — PR #177 — et la régression du proxy de dev local causée par le durcissement TLS — PR #180/#146). Trois nouveaux items complétés depuis la 2e passe, en plus des PR alors ouvertes désormais fusionnées : **RGPD export/anonymisation** (PR #179), **plan de reprise d'activité** (PR #178, avec un vrai écart opérationnel trouvé et depuis corrigé le 04/09 — sauvegardes désormais envoyées vers le bucket S3 provisionné), et **consommation de la pagination côté UI** (PR #145 frontend, en plus du serveur déjà fait).
 >
