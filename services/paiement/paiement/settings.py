@@ -1,6 +1,8 @@
 """Configuration Django du Paiement Service."""
 
+import logging
 import sys
+import time
 from pathlib import Path
 
 import environ
@@ -108,3 +110,58 @@ DEFAULT_DELAI_AVERTISSEMENT = 7  # Jours après date limite pour avertissement
 DEFAULT_DELAI_SUSPENSION = 10  # Jours après date limite pour suspension
 DEFAULT_SUSPENSION_AUTO = True  # Activer la suspension automatique
 DEFAULT_SUSPENSION_RELANCES = 5  # Jours de suspension des relances après paiement partiel
+
+
+# --- Journalisation (voir AUDIT_SGFE.md §J : rétention + horodatage fiable) ---
+#
+# Horodatage UTC explicite : `logging.Formatter.converter` est basculé sur
+# `time.gmtime` pour tout le processus (cohérent avec `TIME_ZONE = "UTC"`
+# déjà en vigueur) — des journaux de plusieurs conteneurs qui ne s'accordent
+# pas sur l'heure ne sont pas exploitables comme preuve. Rétention
+# configurable via `LOG_RETENTION_DAYS` (défaut 30 jours) :
+# `TimedRotatingFileHandler` tourne un fichier par jour et purge au-delà.
+#
+# Hors périmètre ici (item observabilité séparé, non entamé — voir
+# AUDIT_SGFE.md §I) : un vrai `trace_id` de corrélation cross-service.
+logging.Formatter.converter = time.gmtime
+
+LOG_RETENTION_DAYS = env.int("LOG_RETENTION_DAYS", default=30)
+LOG_DIR = Path(env("LOG_DIR", default=str(BASE_DIR / "logs")))
+
+_LOGGING_HANDLERS: list[str] = ["console"]
+_LOGGING_HANDLER_CONFIG: dict[str, dict[str, object]] = {
+    "console": {
+        "class": "logging.StreamHandler",
+        "formatter": "iso8601",
+    },
+}
+# Pas de fichier pendant les tests : évite d'écrire sur disque à chaque
+# `manage.py test`, comme le reste du dépôt qui bascule sur SQLite/tmpdir en
+# mode TESTING plutôt que de toucher un état persistant.
+if not TESTING:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    _LOGGING_HANDLERS.append("file")
+    _LOGGING_HANDLER_CONFIG["file"] = {
+        "class": "logging.handlers.TimedRotatingFileHandler",
+        "filename": str(LOG_DIR / "paiement.log"),
+        "when": "midnight",
+        "utc": True,
+        "backupCount": LOG_RETENTION_DAYS,
+        "formatter": "iso8601",
+    }
+
+LOGGING: dict[str, object] = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "iso8601": {
+            "format": "%(asctime)s.%(msecs)03dZ %(levelname)s %(name)s %(message)s",
+            "datefmt": "%Y-%m-%dT%H:%M:%S",
+        },
+    },
+    "handlers": _LOGGING_HANDLER_CONFIG,
+    "root": {
+        "handlers": _LOGGING_HANDLERS,
+        "level": env("DJANGO_LOG_LEVEL", default="INFO"),
+    },
+}

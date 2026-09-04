@@ -33,7 +33,7 @@ _setup_proto_path()
 import notification_service_pb2 as pb  # noqa: E402
 import notification_service_pb2_grpc as pb_grpc  # noqa: E402
 
-from notifications.grpc_interceptors import ErrorHandlingInterceptor  # noqa: E402
+from notifications.grpc_interceptors import ErrorHandlingInterceptor, IdentityInterceptor  # noqa: E402
 from notifications.grpc_auth import AuthServerInterceptor, ouvrir_port_grpc  # noqa: E402
 from notifications.serializers import diffusion_to_proto, envoi_to_proto, token_to_valider_response  # noqa: E402
 from notifications.services import DiffusionService, EnvoiService, TokenService, notifier_admins  # noqa: E402
@@ -216,7 +216,11 @@ def serve() -> None:
     """Démarre le serveur gRPC du Notification Service."""
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=10),
-        interceptors=[AuthServerInterceptor(settings.INTERNAL_GRPC_KEY), ErrorHandlingInterceptor()],
+        interceptors=[
+            AuthServerInterceptor(settings.INTERNAL_GRPC_KEY),
+            ErrorHandlingInterceptor(),
+            IdentityInterceptor(),
+        ],
     )
     pb_grpc.add_NotificationServiceServicer_to_server(NotificationServiceServicer(), server)
     ouvrir_port_grpc(server, settings.NOTIFICATION_GRPC_PORT)

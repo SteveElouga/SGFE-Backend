@@ -1,10 +1,16 @@
 """Configuration Django de l'API Gateway — pas de base de données."""
 
+import logging
+import sys
+import time
 from pathlib import Path
 
 import environ
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+# Comme les 8 microservices (voir leur settings.py) : évite d'écrire des
+# fichiers de log sur disque à chaque `manage.py test`.
+TESTING = "test" in sys.argv
 
 env = environ.Env()
 environ.Env.read_env(BASE_DIR / ".env")
@@ -19,6 +25,11 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # En tête de chaîne, avant toute authentification et tout resolver
+    # GraphQL — voir `schema.identity_context.reset_identity` pour le
+    # rationale (isolation de l'identité entre deux requêtes qui
+    # réutiliseraient le même thread/contexte).
+    "schema.identity_context.ResetIdentityMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -108,3 +119,57 @@ REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 REFRESH_TOKEN_COOKIE_NAME = "refresh_token"
 REFRESH_TOKEN_COOKIE_MAX_AGE = env.int("JWT_REFRESH_TOKEN_EXPIRE_DAYS", default=7) * 86400
 REFRESH_TOKEN_COOKIE_SECURE = env.bool("COOKIE_SECURE", default=not DEBUG)
+
+# --- Journalisation (voir AUDIT_SGFE.md §J : rétention + horodatage fiable) ---
+#
+# Horodatage UTC explicite : `logging.Formatter.converter` est basculé sur
+# `time.gmtime` pour tout le processus (cohérent avec `TIME_ZONE = "UTC"`
+# déjà en vigueur) — des journaux de plusieurs conteneurs qui ne s'accordent
+# pas sur l'heure ne sont pas exploitables comme preuve. Rétention
+# configurable via `LOG_RETENTION_DAYS` (défaut 30 jours) :
+# `TimedRotatingFileHandler` tourne un fichier par jour et purge au-delà.
+# Porte aussi le logger dédié `security` (voir `schema/context.py`).
+#
+# Hors périmètre ici (item observabilité séparé, non entamé — voir
+# AUDIT_SGFE.md §I) : un vrai `trace_id` de corrélation cross-service.
+logging.Formatter.converter = time.gmtime
+
+LOG_RETENTION_DAYS = env.int("LOG_RETENTION_DAYS", default=30)
+LOG_DIR = Path(env("LOG_DIR", default=str(BASE_DIR / "logs")))
+
+_LOGGING_HANDLERS: list[str] = ["console"]
+_LOGGING_HANDLER_CONFIG: dict[str, dict[str, object]] = {
+    "console": {
+        "class": "logging.StreamHandler",
+        "formatter": "iso8601",
+    },
+}
+# Pas de fichier pendant les tests : évite d'écrire sur disque à chaque
+# `manage.py test`, comme les 8 microservices.
+if not TESTING:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    _LOGGING_HANDLERS.append("file")
+    _LOGGING_HANDLER_CONFIG["file"] = {
+        "class": "logging.handlers.TimedRotatingFileHandler",
+        "filename": str(LOG_DIR / "gateway.log"),
+        "when": "midnight",
+        "utc": True,
+        "backupCount": LOG_RETENTION_DAYS,
+        "formatter": "iso8601",
+    }
+
+LOGGING: dict[str, object] = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "iso8601": {
+            "format": "%(asctime)s.%(msecs)03dZ %(levelname)s %(name)s %(message)s",
+            "datefmt": "%Y-%m-%dT%H:%M:%S",
+        },
+    },
+    "handlers": _LOGGING_HANDLER_CONFIG,
+    "root": {
+        "handlers": _LOGGING_HANDLERS,
+        "level": env("DJANGO_LOG_LEVEL", default="INFO"),
+    },
+}

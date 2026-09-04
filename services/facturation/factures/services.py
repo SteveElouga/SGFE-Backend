@@ -12,6 +12,7 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from .audit import enregistrer_audit
 from .event_publisher import publish_reporting_event
 from .exceptions import PreconditionError
 from .models import Facture, NatureFacture, StatutFacture, Tarif
@@ -90,7 +91,14 @@ class TarifService:
             raise ValidationError("Le prix du m³ doit être strictement positif.")
         with transaction.atomic():
             self._repo.deactivate_all()
-            return self._repo.create(prix_m3=prix_m3, date_effet=date_effet)
+            tarif = self._repo.create(prix_m3=prix_m3, date_effet=date_effet)
+            enregistrer_audit(
+                action="TARIF_MODIFIE",
+                objet_type="Tarif",
+                objet_id=str(tarif.id),
+                detail=f"prix_m3={prix_m3} — effet={date_effet.isoformat()}",
+            )
+            return tarif
 
 
 class FactureService:
@@ -212,6 +220,12 @@ class FactureService:
                             date_limite_paiement=date_limite,
                             numero_facture=numero,
                             numero_mobile_money=numero_mobile_money,
+                        )
+                        enregistrer_audit(
+                            action="FACTURE_GENEREE",
+                            objet_type="Facture",
+                            objet_id=str(facture.id),
+                            detail=f"numero={numero} — campagne={campagne_id} — montant={montant}",
                         )
                     break
                 except IntegrityError:
@@ -500,7 +514,14 @@ class FactureService:
         facture.motif_annulation = motif.strip()
         facture.date_annulation = timezone.now()
         facture.annulee_par = annule_par or ""
-        facture.save(update_fields=["statut", "motif_annulation", "date_annulation", "annulee_par"])
+        with transaction.atomic():
+            facture.save(update_fields=["statut", "motif_annulation", "date_annulation", "annulee_par"])
+            enregistrer_audit(
+                action="FACTURE_ANNULEE",
+                objet_type="Facture",
+                objet_id=str(facture.id),
+                detail=f"numero={facture.numero_facture} — motif={motif.strip()!r}",
+            )
         logger.info(
             "Facture annulée",
             extra={"facture_id": facture_id, "numero": facture.numero_facture, "par": annule_par},
@@ -611,6 +632,12 @@ class FactureService:
                         numero_mobile_money=ancienne.numero_mobile_money,
                         remplace_id=str(ancienne.id),
                     )
+                    enregistrer_audit(
+                        action="FACTURE_REGENEREE",
+                        objet_type="Facture",
+                        objet_id=str(nouvelle.id),
+                        detail=f"numero={numero} — remplace={annulee.numero_facture} — motif={motif!r}",
+                    )
                 break
             except IntegrityError:
                 if tentative == _MAX_NUMERO_RETRIES - 1:
@@ -709,6 +736,12 @@ class FactureService:
                         numero_facture=numero,
                         nature=NatureFacture.REGULARISATION,
                         motif=motif.strip(),
+                    )
+                    enregistrer_audit(
+                        action="REGULARISATION_CREEE",
+                        objet_type="Facture",
+                        objet_id=str(facture.id),
+                        detail=f"numero={numero} — abonné={abonne_id} — montant={montant_d} — motif={motif.strip()!r}",
                     )
                 break
             except IntegrityError:

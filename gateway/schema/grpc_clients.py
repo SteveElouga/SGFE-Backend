@@ -1,9 +1,13 @@
 import sys
+from collections import namedtuple
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import grpc
 from django.conf import settings
 from schema.grpc_auth import canal_authentifie
+from schema.identity_context import get_identity, get_request_id
 
 sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 
@@ -25,12 +29,77 @@ import reporting_service_pb2 as reporting_pb
 import reporting_service_pb2_grpc as reporting_pb_grpc
 
 
+class _DetailsAppel(
+    namedtuple("_DetailsAppel", ("method", "timeout", "metadata", "credentials")),
+    grpc.ClientCallDetails,
+):
+    """`ClientCallDetails` est une interface, pas une classe instanciable.
+
+    Même motif que `_DetailsAppel` de `grpc_auth.py` (reconstruire le tuple
+    est le moyen documenté d'enrichir la métadonnée d'un appel sortant) —
+    dupliqué ici plutôt qu'importé pour ne pas toucher au fichier synchronisé
+    entre les neuf composants (voir l'en-tête de `grpc_auth.py`).
+    """
+
+
+class IdentityClientInterceptor(grpc.UnaryUnaryClientInterceptor):
+    """Propage l'identité de la requête gateway courante vers chaque appel gRPC sortant.
+
+    Lit `get_identity()` (posé par `require_auth`, voir `context.py`) : si une
+    identité est présente, ajoute les métadonnées `x-user-id`/`x-user-name`/
+    `x-user-role` + `x-request-id` (identifiant de corrélation de la requête).
+    Appel anonyme (login, refresh, espace abonné public, OTP...) — identité
+    absente : **aucune métadonnée ajoutée**, comportement inchangé.
+
+    Posé une fois à la création du canal (voir `_canal_avec_identite`), il
+    couvre tous les appels qui y transitent — présents et futurs, comme
+    `AuthClientInterceptor` (grpc_auth.py) dont il complète le rôle : ce
+    dernier authentifie l'appelant applicatif (« la gateway parle bien »),
+    celui-ci documente le « qui » humain derrière cet appel.
+    """
+
+    def intercept_unary_unary(
+        self,
+        continuation: Callable[[grpc.ClientCallDetails, Any], Any],
+        client_call_details: grpc.ClientCallDetails,
+        request: Any,
+    ) -> Any:
+        identity = get_identity()
+        if identity is None:
+            return continuation(client_call_details, request)
+
+        metadata = list(client_call_details.metadata or ())
+        metadata.append(("x-user-id", identity.user_id))
+        metadata.append(("x-user-name", identity.username))
+        metadata.append(("x-user-role", identity.role))
+        metadata.append(("x-request-id", get_request_id()))
+        return continuation(
+            _DetailsAppel(
+                client_call_details.method,
+                client_call_details.timeout,
+                metadata,
+                client_call_details.credentials,
+            ),
+            request,
+        )
+
+
+def _canal_avec_identite(adresse: str) -> grpc.Channel:
+    """Ouvre un canal authentifié (voir `grpc_auth.canal_authentifie`) et
+    l'enveloppe en plus de `IdentityClientInterceptor`, pour que chaque appel
+    sortant porte l'identité de la requête gateway courante."""
+    return grpc.intercept_channel(
+        canal_authentifie(adresse, settings.INTERNAL_GRPC_KEY),
+        IdentityClientInterceptor(),
+    )
+
+
 class AuthServiceClient:
     """Client gRPC vers auth-service:50051 (voir proto/auth_service.proto)."""
 
     def __init__(self) -> None:
         address = f"{settings.AUTH_GRPC_HOST}:{settings.AUTH_GRPC_PORT}"
-        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
+        self._channel = _canal_avec_identite(address)
         self._stub = auth_pb_grpc.AuthServiceStub(self._channel)
 
     def login(self, identifier: str, password: str) -> auth_pb.TokenResponse:
@@ -94,7 +163,7 @@ class AbonneServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.ABONNE_GRPC_HOST}:{settings.ABONNE_GRPC_PORT}"
-        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
+        self._channel = _canal_avec_identite(address)
         self._stub = abonne_pb_grpc.AbonneServiceStub(self._channel)
 
     def get_abonne(self, abonne_id: str) -> abonne_pb.AbonneResponse:
@@ -165,7 +234,7 @@ class ConfigServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.CONFIG_GRPC_HOST}:{settings.CONFIG_GRPC_PORT}"
-        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
+        self._channel = _canal_avec_identite(address)
         self._stub = config_pb_grpc.ConfigServiceStub(self._channel)
 
     def get_infos_societe(self) -> config_pb.InfosSocieteResponse:
@@ -189,7 +258,7 @@ class CampagneServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.CAMPAGNE_GRPC_HOST}:{settings.CAMPAGNE_GRPC_PORT}"
-        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
+        self._channel = _canal_avec_identite(address)
         self._stub = campagne_pb_grpc.CampagneServiceStub(self._channel)
 
     def create_campagne(self, **kwargs: Any) -> campagne_pb.CampagneResponse:
@@ -256,7 +325,7 @@ class FacturationServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.FACTURATION_GRPC_HOST}:{settings.FACTURATION_GRPC_PORT}"
-        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
+        self._channel = _canal_avec_identite(address)
         self._stub = facturation_pb_grpc.FacturationServiceStub(self._channel)
 
     def get_tarif_actuel(self) -> facturation_pb.TarifResponse:
@@ -391,7 +460,7 @@ class PaiementServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.PAIEMENT_GRPC_HOST}:{settings.PAIEMENT_GRPC_PORT}"
-        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
+        self._channel = _canal_avec_identite(address)
         self._stub = paiement_pb_grpc.PaiementServiceStub(self._channel)
 
     def get_solde(self, facture_id: str) -> paiement_pb.SoldeResponse:
@@ -529,7 +598,7 @@ class NotificationServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.NOTIFICATION_GRPC_HOST}:{settings.NOTIFICATION_GRPC_PORT}"
-        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
+        self._channel = _canal_avec_identite(address)
         self._stub = notification_pb_grpc.NotificationServiceStub(self._channel)
 
     def envoyer_facture(self, facture_id: str, abonne_id: str) -> notification_pb.EnvoiResponse:
@@ -627,7 +696,7 @@ class ReportingServiceClient:
 
     def __init__(self) -> None:
         address = f"{settings.REPORTING_GRPC_HOST}:{settings.REPORTING_GRPC_PORT}"
-        self._channel = canal_authentifie(address, settings.INTERNAL_GRPC_KEY)
+        self._channel = _canal_avec_identite(address)
         self._stub = reporting_pb_grpc.ReportingServiceStub(self._channel)
 
     def get_dashboard(self) -> reporting_pb.DashboardResponse:
