@@ -17,7 +17,7 @@ import facturation_service_pb2_grpc as pb_grpc
 
 from .event_publisher import publish_facture_event, publish_tarif_event
 from .grpc_clients import CampagneServiceClient, ConfigServiceClient
-from .grpc_interceptors import ErrorHandlingInterceptor
+from .grpc_interceptors import ErrorHandlingInterceptor, IdentityInterceptor
 from .grpc_auth import AuthServerInterceptor, ouvrir_port_grpc
 from .serializers import facture_to_proto, tarif_to_proto
 from .services import (
@@ -285,7 +285,11 @@ def serve() -> None:
     """Démarre le serveur gRPC du Facturation Service."""
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=_GRPC_MAX_WORKERS),
-        interceptors=[AuthServerInterceptor(settings.INTERNAL_GRPC_KEY), ErrorHandlingInterceptor()],
+        interceptors=[
+            AuthServerInterceptor(settings.INTERNAL_GRPC_KEY),
+            ErrorHandlingInterceptor(),
+            IdentityInterceptor(),
+        ],
     )
     pb_grpc.add_FacturationServiceServicer_to_server(FacturationServicer(), server)
     port = settings.FACTURATION_GRPC_PORT
