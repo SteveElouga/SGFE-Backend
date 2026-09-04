@@ -143,13 +143,24 @@ jobs:
   lint-workflows:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      # `github-pr-check` (ci-dessous) poste un Check Run natif — c'est le
+      # seul reporter réellement documenté par cette action (`reporter:
+      # local` n'existe pas : testé en CI réelle, échoue avec "reviewdog:
+      # diff command is empty"). `checks: write` élevé uniquement sur ce
+      # job, pas au niveau du workflow.
+      checks: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: actionlint (rhysd/actionlint via reviewdog)
         uses: reviewdog/action-actionlint@d290e336d5a743810aef4404f757dc862276d2ae # v1.73.4
         with:
           fail_level: error
-          reporter: local
+          reporter: github-pr-check
+          # `nofilter` : signale tout le fichier, pas seulement les lignes
+          # changées.
+          filter_mode: nofilter
 
   test-auth:
     needs: changes
