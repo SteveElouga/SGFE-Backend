@@ -5,6 +5,7 @@ from datetime import date
 from django.db.models import Count, Q
 
 from notifications.models import (
+    MAX_TENTATIVES_AUTO,
     Diffusion,
     DiffusionEnvoi,
     Envoi,
@@ -57,6 +58,21 @@ class EnvoiRepository:
         """Persiste les modifications d'un envoi."""
         envoi.save()
         return envoi
+
+    def list_echecs_a_retenter(self, limite: int) -> list[Envoi]:
+        """Lot d'envois en ECHEC sous le plafond de tentatives automatiques
+        (`MAX_TENTATIVES_AUTO`), les plus anciens d'abord — pour qu'un échec
+        ancien ne soit pas indéfiniment dépassé par des échecs plus récents.
+
+        Le filtre `tentatives__lt` est le cap dur du retry automatique : un
+        envoi qui a atteint le plafond n'est plus jamais sélectionné ici, quel
+        que soit le nombre de passages du job.
+        """
+        return list(
+            Envoi.objects.filter(statut=StatutEnvoi.ECHEC, tentatives__lt=MAX_TENTATIVES_AUTO).order_by("created_at")[
+                :limite
+            ]
+        )
 
 
 class DiffusionRepository:

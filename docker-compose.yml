@@ -506,6 +506,13 @@ services:
       # déclencheurs confondus — protège le compte WhatsApp Web partagé
       # d'un risque de bannissement en cas de pic (voir rate_limiter.py).
       WHATSAPP_RATE_LIMIT_MIN_INTERVAL_SECONDS: ${WHATSAPP_RATE_LIMIT_MIN_INTERVAL_SECONDS:-3.0}
+      # Garde-fou de TEST UNIQUEMENT (voir notifications/whatsapp_client.py) :
+      # volontairement absent ici, donc désactivé par défaut. Pour une stack
+      # de test locale qui doit éviter tout envoi WhatsApp réel, poser
+      # `WHATSAPP_DISABLE_SEND_FOR_TESTS: "1"` ci-dessus sur une copie/branche
+      # de test — jamais dans cette configuration de base — ou lancer
+      # ponctuellement `docker compose run -e WHATSAPP_DISABLE_SEND_FOR_TESTS=1
+      # notification-service <commande>`.
     volumes:
       - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && python manage.py grpc_server"

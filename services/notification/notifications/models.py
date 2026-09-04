@@ -16,6 +16,15 @@ class StatutEnvoi(models.TextChoices):
     ECHEC = "ECHEC", "Échec"
 
 
+# Plafond de tentatives automatiques du retry WhatsApp (`schedulers.py::
+# retry_envois_echec_job`). Au-delà, plus aucune retentative automatique —
+# seule une action manuelle (renvoi depuis l'écran de suivi) peut relancer
+# l'envoi. Valeur alignée sur `MAX_DELIVERY_ATTEMPTS` (reporting/stats/
+# event_consumer.py) : même idée de plafond de redélivrance, sur un autre
+# mécanisme (Redis Streams côté reporting, retry applicatif ici).
+MAX_TENTATIVES_AUTO = 5
+
+
 class TypeEnvoi(models.TextChoices):
     FACTURE = "FACTURE", "Facture"
     RELANCE_1 = "RELANCE_1", "Relance étape 1"
@@ -57,6 +66,18 @@ class Envoi(models.Model):
     telnyx_message_id = models.CharField(max_length=100, blank=True, default="")
     erreur = models.TextField(blank=True, default="")
     tentatives = models.IntegerField(default=0)
+    # Texte exact tenté au dernier envoi (premier essai ou retry) — permet au
+    # retry automatique de rejouer EXACTEMENT le même message, sans recalculer
+    # le message métier : celui-ci peut référencer des données qui ont changé
+    # depuis (montant recalculé après un nouveau versement, solde différent…).
+    dernier_message = models.TextField(blank=True, default="")
+    # Un PDF doit-il être rejoint au prochain retry ? Le PDF lui-même n'est PAS
+    # stocké en base (poids potentiellement important) — il est régénéré via
+    # le client facturation au moment du retry (voir
+    # `EnvoiService._regenerer_pdf_retry`).
+    avec_pdf = models.BooleanField(default=False)
+    # Nom du fichier PDF à joindre au retry — vide si avec_pdf est False.
+    pdf_filename = models.CharField(max_length=255, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

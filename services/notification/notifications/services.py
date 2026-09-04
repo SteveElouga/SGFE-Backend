@@ -31,7 +31,15 @@ from notifications.message_builder import (
     build_message_annulation_paiement,
     build_message_retablissement,
 )
-from notifications.models import Diffusion, Envoi, StatutDiffusionEnvoi, StatutEnvoi, TokenAcces, TypeEnvoi
+from notifications.models import (
+    MAX_TENTATIVES_AUTO,
+    Diffusion,
+    Envoi,
+    StatutDiffusionEnvoi,
+    StatutEnvoi,
+    TokenAcces,
+    TypeEnvoi,
+)
 from notifications.repositories import DiffusionRepository, EnvoiRepository, TokenAccesRepository
 from notifications.whatsapp_client import WhatsAppDeliveryError, whatsapp_client
 
@@ -518,7 +526,15 @@ class EnvoiService:
 
         Si pdf_bytes est fourni, envoie le PDF en pièce jointe via /send-with-pdf.
         En cas de WhatsAppDeliveryError, l'envoi est marqué ECHEC (dégradation gracieuse).
+
+        Renseigne systématiquement `dernier_message`/`avec_pdf`/`pdf_filename`
+        AVANT la tentative — premier essai ou retry automatique
+        (`retry_envois_echec_job`) : c'est ce texte, figé, qui sera rejoué à
+        l'identique en cas d'échec, plutôt que de recalculer le message métier.
         """
+        envoi.dernier_message = message
+        envoi.avec_pdf = bool(pdf_bytes)
+        envoi.pdf_filename = pdf_filename if pdf_bytes else ""
         envoi.tentatives += 1
         try:
             if pdf_bytes:
@@ -587,6 +603,77 @@ class EnvoiService:
             logger.warning("Notification admin de l'échec amont impossible", exc_info=True)
         return envoi
 
+    def _regenerer_pdf_retry(self, envoi: Envoi) -> tuple[bytes, str]:
+        """Régénère le PDF à joindre à un retry, via le client facturation
+        existant — jamais stocké en base (voir `Envoi.avec_pdf`).
+
+        Pour un reçu (`TypeEnvoi.RECU`), appelle `generer_recu_paiement_pdf`
+        sans `montant_versement`/`solde_restant_total` : Facturation Service
+        retrouve le montant réel du versement via `paiement_id` (source de
+        vérité), ces deux paramètres ne servant qu'à l'imputation affichée —
+        exactement le chemin déjà emprunté par une régénération manuelle
+        depuis le back-office (voir `factures/services.py::generer_recu_pdf`).
+
+        Dégrade comme au premier envoi : un PDF introuvable ne bloque pas le
+        retry, le message texte part seul (les deux méthodes du client
+        rendent déjà `(b"", "")` en cas d'échec).
+        """
+        if envoi.type_envoi == TypeEnvoi.RECU:
+            return facturation_client.generer_recu_paiement_pdf(envoi.paiement_id, envoi.facture_id)
+        return facturation_client.get_facture_pdf(envoi.facture_id)
+
+    def retenter_echecs(self, taille_lot: int) -> list[Envoi]:
+        """Retente un lot d'envois WhatsApp en ECHEC sous le plafond de
+        tentatives automatiques (voir `MAX_TENTATIVES_AUTO`).
+
+        Rejoue le dernier message tenté (`Envoi.dernier_message`) à
+        l'identique, jamais recalculé — voir `_tenter_envoi`. Régénère le PDF
+        au besoin (`Envoi.avec_pdf`), jamais stocké en base.
+
+        Le plafond est un cap dur : le filtre du repository
+        (`tentatives < MAX_TENTATIVES_AUTO`) garantit qu'un envoi qui l'a déjà
+        atteint n'est plus jamais sélectionné, donc plus jamais retenté ici.
+        Quand une tentative fait franchir ce seuil pour la première fois (elle
+        échoue encore et `tentatives` atteint le plafond), on logue un message
+        distinct d'abandon définitif et on notifie les admins via un
+        événement dédié (`ABANDON_RETRY_WHATSAPP`) — jamais un doublon de la
+        notification `ECHEC_WHATSAPP` déjà envoyée par `_tenter_envoi`.
+
+        Appelée uniquement par `retry_envois_echec_job` (schedulers.py) —
+        jamais par un RPC : le rythme des retries est celui du job de fond.
+        """
+        lot = self._envois.list_echecs_a_retenter(taille_lot)
+        for envoi in lot:
+            pdf_bytes, pdf_filename_regenere = (b"", "")
+            if envoi.avec_pdf:
+                pdf_bytes, pdf_filename_regenere = self._regenerer_pdf_retry(envoi)
+            self._tenter_envoi(
+                envoi,
+                envoi.telephone,
+                envoi.dernier_message,
+                pdf_bytes=pdf_bytes,
+                pdf_filename=envoi.pdf_filename or pdf_filename_regenere,
+            )
+            if envoi.statut == StatutEnvoi.ECHEC and envoi.tentatives >= MAX_TENTATIVES_AUTO:
+                logger.warning(
+                    "Abandon définitif après %d tentatives automatiques",
+                    MAX_TENTATIVES_AUTO,
+                    extra={
+                        "envoi_id": str(envoi.id),
+                        "facture_id": envoi.facture_id,
+                        "type_envoi": envoi.type_envoi,
+                    },
+                )
+                notifier_admins(
+                    evenement="ABANDON_RETRY_WHATSAPP",
+                    detail=(
+                        f"Abandon définitif de l'envoi WhatsApp {envoi.id} (facture {envoi.facture_id}) "
+                        f"après {MAX_TENTATIVES_AUTO} tentatives automatiques : {envoi.erreur}"
+                    ),
+                    entite_id=envoi.facture_id,
+                )
+        return lot
+
 
 def notifier_admins(evenement: str, detail: str, entite_id: str = "") -> None:
     """Envoie un email de notification aux administrateurs via Brevo.
@@ -603,6 +690,7 @@ def notifier_admins(evenement: str, detail: str, entite_id: str = "") -> None:
         "CAMPAGNE_PLANIFIEE": "[SGFE] Campagne planifiée",
         "SUSPENSION": "[SGFE] Suspension d'abonné",
         "ECHEC_WHATSAPP": "[SGFE] Échec envoi WhatsApp",
+        "ABANDON_RETRY_WHATSAPP": "[SGFE] Abandon définitif d'un envoi WhatsApp",
     }
     sujet = _SUJETS.get(evenement, f"[SGFE] Événement : {evenement}")
     corps = f"Événement : {evenement}\nEntité : {entite_id or 'N/A'}\n\n{detail}"

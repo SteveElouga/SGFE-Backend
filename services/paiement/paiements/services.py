@@ -9,6 +9,7 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from .audit import enregistrer_audit
 from .grpc_clients import (
     AbonneServiceClient,
     ConfigServiceClient,
@@ -172,6 +173,17 @@ class PaiementService:
                     "Versements d'une facture annulée portés à l'avoir",
                     extra={"facture_id": facture_id, "montant": str(deja_verse), "motif": motif},
                 )
+
+            enregistrer_audit(
+                action="SOLDE_FACTURE_ANNULE",
+                objet_type="SoldeFacture",
+                objet_id=facture_id,
+                detail=(
+                    f"motif={motif!r} — {deja_verse} porté à l'avoir de l'abonné {solde.abonne_id}"
+                    if deja_verse > 0
+                    else f"motif={motif!r} — aucun versement à reporter"
+                ),
+            )
         return solde, deja_verse
 
     def crediter_avoir_manuel(self, abonne_id: str, montant: float, motif: str, cree_par: str) -> AvoirAbonne:
@@ -189,6 +201,12 @@ class PaiementService:
             avoir = self._avoir_repo.crediter(abonne_id, montant_d)
             self._mouvement_repo.create(
                 abonne_id, montant_d, TypeMouvementAvoir.RECTIFICATION, motif=motif.strip(), cree_par=cree_par
+            )
+            enregistrer_audit(
+                action="AVOIR_CREDITE",
+                objet_type="AvoirAbonne",
+                objet_id=abonne_id,
+                detail=f"montant={montant_d} — motif={motif.strip()!r}",
             )
         return avoir
 
@@ -301,6 +319,13 @@ class PaiementService:
                 # l'appelant — et sérialisé par le serveur gRPC — annoncerait un
                 # excédent nul alors que la base en porte un.
                 paiement.refresh_from_db()
+
+            enregistrer_audit(
+                action="PAIEMENT_ENREGISTRE",
+                objet_type="Paiement",
+                objet_id=str(versement_id),
+                detail=f"facture={facture_id} — montant={montant_d} — mode={mode_paiement}",
+            )
 
         return paiement, solde
 
@@ -440,6 +465,16 @@ class PaiementService:
 
             if restant > 0:
                 self._porter_en_avoir(abonne_id, restant, versement_id)
+
+            enregistrer_audit(
+                action="PAIEMENT_ENREGISTRE",
+                objet_type="Paiement",
+                objet_id=str(versement_id),
+                detail=(
+                    f"abonné={abonne_id} — montant={montant_d} — mode={mode_paiement} — "
+                    f"{len(crees)} facture(s) imputée(s)"
+                ),
+            )
 
         return crees, restant
 
@@ -584,6 +619,13 @@ class PaiementService:
                     solde_demande = solde
 
             paiement = self._paiement_repo.get_by_id(paiement_id)
+
+            enregistrer_audit(
+                action="PAIEMENT_ANNULE",
+                objet_type="Paiement",
+                objet_id=str(demande.versement_id),
+                detail=f"paiement={paiement_id} — motif={motif!r}",
+            )
 
         # `demande` (annule=False, vérifié plus haut) fait partie de `ecritures`
         # (même versement_id) donc de `actives` : la boucle ci-dessus lui
