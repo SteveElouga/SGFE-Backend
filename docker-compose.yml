@@ -497,6 +497,10 @@ services:
       CONFIG_GRPC_PORT: "50058"
       WHATSAPP_SERVICE_URL: http://whatsapp-service:3000
       WHATSAPP_INTERNAL_API_KEY: ${WHATSAPP_INTERNAL_API_KEY:?WHATSAPP_INTERNAL_API_KEY requis (authentification interne whatsapp-service — voir .env.example)}
+      # Chiffrement du champ `telephone` (Envoi/DiffusionEnvoi) — voir
+      # PR #201. Même clé partagée que abonne-service (un seul secret pour
+      # tous les champs PII du système, pas un par service).
+      PII_ENCRYPTION_KEY: ${PII_ENCRYPTION_KEY:?PII_ENCRYPTION_KEY requis (clé Fernet de chiffrement des données personnelles — voir .env.example)}
       FRONTEND_URL: http://localhost:4321
       REDIS_URL: "redis://redis:6379/0"
       GRPC_TLS_CA: /app/certs/ca.crt
