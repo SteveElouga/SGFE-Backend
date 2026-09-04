@@ -9,7 +9,7 @@ from typing import Any
 
 from django.test import TestCase
 
-from notifications.models import Envoi, StatutEnvoi, TokenAcces, TypeEnvoi
+from notifications.models import MAX_TENTATIVES_AUTO, Envoi, StatutEnvoi, TokenAcces, TypeEnvoi
 
 
 class TestEnvoiModel(TestCase):
@@ -38,6 +38,9 @@ class TestEnvoiModel(TestCase):
         self.assertEqual(envoi.telnyx_message_id, "")
         self.assertIsNone(envoi.date_envoi)
         self.assertIsNotNone(envoi.created_at)
+        self.assertEqual(envoi.dernier_message, "")
+        self.assertFalse(envoi.avec_pdf)
+        self.assertEqual(envoi.pdf_filename, "")
 
     def test_creation_envoi_type_facture(self) -> None:
         """Un Envoi de type FACTURE doit conserver son type_envoi."""
@@ -79,6 +82,25 @@ class TestEnvoiModel(TestCase):
         envoi = self._create_envoi(type_envoi=TypeEnvoi.FACTURE)
         self.assertIn("FACTURE", str(envoi))
         self.assertIn("EN_ATTENTE", str(envoi))
+
+    def test_dernier_message_et_avec_pdf_persistes(self) -> None:
+        """`dernier_message`/`avec_pdf`/`pdf_filename` doivent être persistés
+        tels quels — c'est ce que rejoue le retry automatique."""
+        envoi = self._create_envoi(
+            dernier_message="Votre facture de 7500 FCFA est disponible.",
+            avec_pdf=True,
+            pdf_filename="facture-123.pdf",
+        )
+
+        envoi.refresh_from_db()
+        self.assertEqual(envoi.dernier_message, "Votre facture de 7500 FCFA est disponible.")
+        self.assertTrue(envoi.avec_pdf)
+        self.assertEqual(envoi.pdf_filename, "facture-123.pdf")
+
+    def test_max_tentatives_auto_est_cinq(self) -> None:
+        """Le plafond de retentatives automatiques est figé à 5 — le même
+        ordre de grandeur que MAX_DELIVERY_ATTEMPTS côté reporting."""
+        self.assertEqual(MAX_TENTATIVES_AUTO, 5)
 
 
 class TestTokenAccesModel(TestCase):

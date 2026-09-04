@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 import reporting_service_pb2 as pb
 import reporting_service_pb2_grpc as pb_grpc
 
-from stats.grpc_interceptors import ErrorHandlingInterceptor
+from stats.grpc_interceptors import ErrorHandlingInterceptor, IdentityInterceptor
 from stats.grpc_auth import AuthServerInterceptor, ouvrir_port_grpc
 from stats.services import AgregateurDashboard, Dashboard
 from stats.serializers import (
@@ -114,7 +114,11 @@ class ReportingServiceServicer(pb_grpc.ReportingServiceServicer):  # type: ignor
 def serve() -> None:
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=10),
-        interceptors=[AuthServerInterceptor(settings.INTERNAL_GRPC_KEY), ErrorHandlingInterceptor()],
+        interceptors=[
+            AuthServerInterceptor(settings.INTERNAL_GRPC_KEY),
+            ErrorHandlingInterceptor(),
+            IdentityInterceptor(),
+        ],
     )
     pb_grpc.add_ReportingServiceServicer_to_server(ReportingServiceServicer(), server)
     ouvrir_port_grpc(server, settings.REPORTING_GRPC_PORT)
