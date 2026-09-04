@@ -1,8 +1,16 @@
 #!/usr/bin/env sh
 # Sauvegarde des 8 bases PostgreSQL du SGFE : pg_dump gzip chiffré horodaté +
-# rétention. Prévu pour tourner dans un conteneur postgres:16-alpine sur le
-# réseau interne du compose (service `db-backup`) ; peut aussi se lancer à la
-# main. Nécessite `openssl` (déjà présent dans l'image postgres:16-alpine).
+# rétention + copie hors-site optionnelle. Prévu pour tourner dans un
+# conteneur postgres:16-alpine sur le réseau interne du compose (service
+# `db-backup`) ; peut aussi se lancer à la main. Nécessite `openssl` (déjà
+# présent dans l'image postgres:16-alpine) et, si AWS_BACKUP_BUCKET est
+# défini, le CLI `aws` (voir docker-compose.prod.yml).
+#
+# AWS_BACKUP_BUCKET : nom du bucket S3 provisionné par ansible/01-infra.yml
+# (sortie "Bucket" en fin de run) — à reporter dans /opt/sgfe/.env en
+# production. Vide en dev/CI : aucune copie hors-site tentée, comportement
+# inchangé. Sans lui, un dump local survit tant que le disque de l'instance
+# EC2 survit — voir l'écart documenté dans docs/PLAN_REPRISE_ACTIVITE.md.
 #
 # Chaque dump est chiffré symétriquement (AES-256-CBC, KDF PBKDF2, sel) avec
 # la passphrase BACKUP_ENCRYPTION_KEY avant d'être écrit sur disque — le
@@ -56,6 +64,22 @@ for entry in $DATABASES; do
     else
         echo "[backup] FAIL $db" >&2
         rm -f "$out"; rc=1
+        continue
+    fi
+
+    # Copie hors-site : sans ça, le dump local ci-dessus meurt avec l'instance
+    # EC2 en cas de perte totale — voir docs/PLAN_REPRISE_ACTIVITE.md. Vide en
+    # dev/CI (pas de bucket) : upload silencieusement sauté, comportement
+    # inchangé. AWS_BACKUP_BUCKET n'exige aucune clé d'accès explicite : le
+    # rôle d'instance EC2 (politique-instance.json.j2, IMDS) fournit déjà les
+    # identifiants au CLI aws.
+    if [ -n "${AWS_BACKUP_BUCKET:-}" ]; then
+        if aws s3 cp "$out" "s3://${AWS_BACKUP_BUCKET}/$(basename "$out")" >/dev/null; then
+            echo "[backup] S3   $db -> s3://${AWS_BACKUP_BUCKET}/$(basename "$out")"
+        else
+            echo "[backup] S3 FAIL $db (dump local conservé, non synchronisé)" >&2
+            rc=1
+        fi
     fi
 done
 

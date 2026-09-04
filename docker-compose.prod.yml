@@ -77,8 +77,19 @@ services:
       # qu'en dev (nginx/certs), default.conf ne distingue pas les deux.
       - ${LETSENCRYPT_CERT_DIR:?LETSENCRYPT_CERT_DIR manquant — nginx ne trouverait aucun certificat TLS}:/etc/nginx/certs:ro
       - ${CERTBOT_WEBROOT_DIR:-/var/www/sgfe-certbot}:/var/www/certbot:ro
+  # Copie hors-site des sauvegardes : sans AWS_BACKUP_BUCKET, un dump local
+  # meurt avec l'instance EC2 en cas de perte totale — écart documenté dans
+  # docs/PLAN_REPRISE_ACTIVITE.md, corrigé ici. Obligatoire en prod (`:?`),
+  # comme BACKUP_ENCRYPTION_KEY dans le compose de base — un déploiement qui
+  # démarre sans protection hors-site doit échouer bruyamment, pas
+  # silencieusement. Entrypoint réécrit en entier (pas de merge de liste en
+  # Compose) pour ajouter `aws-cli` à côté d'`openssl` (packagé dans le dépôt
+  # community d'Alpine — pas d'étape supplémentaire).
   db-backup:
     <<: *prod
+    environment:
+      AWS_BACKUP_BUCKET: ${AWS_BACKUP_BUCKET:?AWS_BACKUP_BUCKET manquant — voir la sortie "Bucket" d'ansible/01-infra.yml}
+    entrypoint: ["/bin/sh", "-c", "apk add --no-cache openssl aws-cli && while true; do sh /backup.sh || true; sleep 86400; done"]
 
   # --- WhatsApp : Chromium (puppeteer) → plus de mémoire ---
   whatsapp-service:
