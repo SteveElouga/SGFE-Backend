@@ -9,6 +9,8 @@ import uuid
 
 from django.db import models
 
+from notifications.fields import EncryptedCharField
+
 
 class StatutEnvoi(models.TextChoices):
     EN_ATTENTE = "EN_ATTENTE", "En attente"
@@ -55,7 +57,10 @@ class Envoi(models.Model):
     # retombait sur `renvoyer_facture`, et l'abonné recevait une facture à la
     # place de son reçu.
     paiement_id = models.CharField(max_length=36, blank=True, default="")
-    telephone = models.CharField(max_length=20)
+    # PII chiffrée au repos (voir notifications/fields.py) — transparent pour
+    # le reste du code : cet attribut reste une `str` en clair en Python,
+    # seule la colonne en base contient un token Fernet.
+    telephone = EncryptedCharField(max_length=20)
     statut = models.CharField(
         max_length=20,
         choices=StatutEnvoi.choices,
@@ -142,7 +147,10 @@ class DiffusionEnvoi(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     diffusion = models.ForeignKey(Diffusion, on_delete=models.CASCADE, related_name="envois")
     abonne_id = models.CharField(max_length=36)
-    telephone = models.CharField(max_length=20)
+    # PII chiffrée au repos (voir notifications/fields.py) — transparent pour
+    # le reste du code : cet attribut reste une `str` en clair en Python,
+    # seule la colonne en base contient un token Fernet.
+    telephone = EncryptedCharField(max_length=20)
     statut = models.CharField(
         max_length=20,
         choices=StatutDiffusionEnvoi.choices,
