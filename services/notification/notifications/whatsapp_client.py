@@ -6,12 +6,53 @@ un projet Django strictement indépendant (voir CLAUDE.md racine), donc
 pas de package partagé. Tout correctif apporté ici (ex. gestion d'un
 nouveau code d'erreur du service Node) doit être répliqué manuellement
 dans les deux copies.
+
+── Garde-fou de test : WHATSAPP_DISABLE_SEND_FOR_TESTS ─────────────────────
+
+`settings.WHATSAPP_DISABLE_SEND_FOR_TESTS` (variable d'environnement
+`WHATSAPP_DISABLE_SEND_FOR_TESTS`, `"1"`/`"true"`) fait court-circuiter
+`send()` et `send_with_pdf()` : aucun appel réseau vers `whatsapp-service`
+n'est effectué, un succès est simulé immédiatement, et un log explicite
+est émis (`"[TEST] envoi WhatsApp simulé, désactivé par
+WHATSAPP_DISABLE_SEND_FOR_TESTS"`).
+
+⚠️  RÉSERVÉ AUX ENVIRONNEMENTS DE TEST — JAMAIS EN PRODUCTION.
+Le `whatsapp-service` de ce projet tourne avec un compte WhatsApp Web
+RÉELLEMENT connecté (pas un bac à sable) : sans ce garde-fou, tout appel à
+`send`/`send_with_pdf` part vers le numéro réel d'un abonné. Ce flag existe
+uniquement pour permettre à des tests automatisés (notamment les tests e2e
+Playwright du frontend qui enregistrent un paiement, lequel déclenche un
+envoi de reçu automatique côté `paiement-service`) de s'exécuter contre une
+stack backend vivante sans provoquer cet envoi.
+
+La variable n'est **jamais** positionnée par défaut : elle est absente du
+`docker-compose.yml` de base, donc le comportement de production ou de
+développement normal reste totalement inchangé tant que personne ne la pose
+explicitement.
+
+Pour l'activer sur une stack de test locale, deux façons équivalentes :
+
+  1. Dans `docker-compose.yml`, ajouter sous les `environment:` du service
+     `notification-service` :
+       WHATSAPP_DISABLE_SEND_FOR_TESTS: "1"
+     (à ne faire que sur une copie/branche de test — ne jamais committer
+     cette ligne dans la configuration de base du dépôt) ;
+
+  2. Ponctuellement, sans modifier le fichier :
+       docker compose run -e WHATSAPP_DISABLE_SEND_FOR_TESTS=1 \\
+         notification-service <commande>
+     ou, en relançant le service déjà défini dans le compose :
+       WHATSAPP_DISABLE_SEND_FOR_TESTS=1 docker compose up -d notification-service
 """
+
+import logging
 
 import requests
 from django.conf import settings
 
 from notifications.rate_limiter import throttle_whatsapp_send
+
+logger = logging.getLogger(__name__)
 
 
 class WhatsAppDeliveryError(Exception):
@@ -29,8 +70,17 @@ class WhatsAppWebClient:
     def send(self, to_phone: str, message: str) -> None:
         """Envoie un message WhatsApp texte via le service Node.js.
 
-        Lève WhatsAppDeliveryError si l'envoi échoue.
+        Lève WhatsAppDeliveryError si l'envoi échoue. Simulé (aucun appel
+        réseau) si `settings.WHATSAPP_DISABLE_SEND_FOR_TESTS` est activée —
+        voir la docstring du module.
         """
+        if settings.WHATSAPP_DISABLE_SEND_FOR_TESTS:
+            logger.warning(
+                "[TEST] envoi WhatsApp simulé, désactivé par WHATSAPP_DISABLE_SEND_FOR_TESTS",
+                extra={"to": to_phone},
+            )
+            return
+
         # Limite de débit globale (voir rate_limiter.py) : protège le compte
         # WhatsApp Web partagé, quel que soit le déclencheur (envoi immédiat
         # ou lot de diffusion).
@@ -71,8 +121,20 @@ class WhatsAppWebClient:
     def send_with_pdf(self, to_phone: str, message: str, pdf_bytes: bytes, filename: str) -> None:
         """Envoie un PDF en pièce jointe WhatsApp avec un message en légende.
 
-        Lève WhatsAppDeliveryError si l'envoi échoue.
+        Lève WhatsAppDeliveryError si l'envoi échoue. Simulé (aucun appel
+        réseau) si `settings.WHATSAPP_DISABLE_SEND_FOR_TESTS` est activée —
+        voir la docstring du module.
         """
+        if settings.WHATSAPP_DISABLE_SEND_FOR_TESTS:
+            # `filename` est un attribut réservé de `LogRecord` (le nom du
+            # fichier source de l'appel) — le réutiliser dans `extra` lève
+            # `KeyError` à l'émission du log. D'où `pdf_filename`.
+            logger.warning(
+                "[TEST] envoi WhatsApp simulé, désactivé par WHATSAPP_DISABLE_SEND_FOR_TESTS",
+                extra={"to": to_phone, "pdf_filename": filename},
+            )
+            return
+
         import base64
 
         pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
