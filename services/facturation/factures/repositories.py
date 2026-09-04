@@ -2,10 +2,12 @@
 
 import datetime
 from decimal import Decimal
+from typing import Any
 
 from django.db.models import Q, QuerySet
+from django.utils import timezone
 
-from .models import Facture, NatureFacture, StatutFacture, Tarif
+from .models import Facture, NatureFacture, OutboxEvent, StatutFacture, StatutOutboxEvent, Tarif
 
 
 class TarifRepository:
@@ -189,3 +191,52 @@ class FactureRepository:
         """
         recentes = list(Facture.objects.filter(abonne_id=abonne_id).order_by("-date_releve")[:limit])
         return list(reversed(recentes))
+
+
+class OutboxEventRepository:
+    """Accès base de données pour les événements de l'outbox transactionnelle.
+
+    Volontairement sans logique métier (pas de décision "faut-il réessayer ?"
+    ici) — c'est `factures.services.OutboxRelayService` qui l'orchestre ; ce
+    dépôt ne fait que lire/écrire la table `outbox_events`.
+    """
+
+    def create(self, type_evenement: str, payload: dict[str, Any]) -> OutboxEvent:
+        """Crée un événement EN_ATTENTE.
+
+        À appeler DANS la même transaction (`transaction.atomic()`) que
+        l'écriture métier qu'il relaie : c'est cette atomicité qui garantit
+        qu'aucune facture ne peut exister sans son événement outbox associé
+        (voir `OutboxEvent` dans models.py).
+        """
+        return OutboxEvent.objects.create(type_evenement=type_evenement, payload=payload)
+
+    def list_en_attente(self, limit: int = 100) -> list[OutboxEvent]:
+        """Les `limit` événements EN_ATTENTE les plus anciens (ordre FIFO).
+
+        Le tri par `created_at` croissant garantit qu'une facture ancienne
+        bloquée n'est jamais doublée par des événements plus récents lors
+        d'un relais par lots successifs.
+        """
+        return list(OutboxEvent.objects.filter(statut=StatutOutboxEvent.EN_ATTENTE).order_by("created_at")[:limit])
+
+    def marquer_envoye(self, event: OutboxEvent) -> OutboxEvent:
+        """Marque un événement comme livré avec succès à Paiement Service."""
+        event.statut = StatutOutboxEvent.ENVOYE
+        event.envoye_at = timezone.now()
+        event.save(update_fields=["statut", "envoye_at"])
+        return event
+
+    def enregistrer_echec(self, event: OutboxEvent, max_tentatives: int) -> OutboxEvent:
+        """Incrémente le compteur de tentatives après un échec de livraison.
+
+        Reste EN_ATTENTE tant que `max_tentatives` n'est pas atteint — le
+        relais le retentera au prochain passage. Au-delà, passe en ECHEC
+        définitif (terminal) : c'est à l'appelant de journaliser l'alerte
+        correspondante, ce dépôt ne fait qu'écrire l'état.
+        """
+        event.tentatives = event.tentatives + 1
+        if event.tentatives >= max_tentatives:
+            event.statut = StatutOutboxEvent.ECHEC
+        event.save(update_fields=["tentatives", "statut"])
+        return event

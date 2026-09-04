@@ -70,9 +70,12 @@
 >
 > **Décompte final (96 items, §8 — le total est passé de 94 à 96 : les deux
 > incidents/régressions découverts et corrigés ce jour comptent comme des
-> items propres)** : **74 faits (77 %)** · **5 partiels** · **7 incertains/non
-> revérifiés** · **10 non faits**. Détail dans le tableau de décompte en fin
-> de §8, refait à neuf.
+> items propres)** : **75 faits (78 %)** · **5 partiels** · **7 incertains/non
+> revérifiés** · **9 non faits**. Détail dans le tableau de décompte en fin
+> de §8, refait à neuf. *(Chiffres recalculés le 04/09 : le transactional
+> outbox facturation → paiement, §F, est passé de « non fait » à « fait »
+> — PR #191 — un seul item a changé de colonne, indépendamment de la piste
+> d'audit §J ci-dessous.)*
 >
 > **Mise à jour du 4 septembre** : la piste d'audit (§J) n'est plus à zéro —
 > identité propagée sur les 9 composants, `AuditLog` immuable pour
@@ -512,8 +515,8 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 
 **F. Robustesse distribuée**
 
-- [ ] **Transactional outbox**. *(L)* — **Non fait**, mais l'alternative recommandée par l'audit lui-même a été choisie et livrée (item suivant).
-- [x] Alternative : **création paresseuse** du `SoldeFacture` + **commande de réconciliation**. *(M)* — **✅ Fait — PR #115/#116 (2026-07-22).** "solde idempotent + commande reconcilier_soldes (factures orphelines)".
+- [x] **Transactional outbox**. *(L)* — **✅ Fait — PR #191 (2026-09-04), périmètre strict facturation → paiement (`SoldeFacture`).** Nouvelle table `outbox_events` (Facturation Service, `factures/models.py::OutboxEvent`) : l'événement `FACTURE_GENEREE` est écrit **dans la même transaction Django** que la `Facture` (`generer_factures`, `regenerer_facture`, `creer_regularisation`) — un rollback annule les deux écritures ensemble, testé explicitement (exception forcée après l'écriture outbox, avant le commit, sur les deux chemins génération et régularisation). L'appel `InitialiserSolde` synchrone existant est conservé en best-effort immédiat (latence perçue + avoir imputé sur le PDF généré juste après, voir commentaire dans `services.py`), mais n'est plus la seule voie : un relais planifié (`factures/schedulers.py::outbox_relay_job`, `IntervalTrigger` 10s, verrou `pg_try_advisory_lock` clé `4210005` — dédiée, sans collision avec les autres crons du dépôt, voir `CLAUDE.md` racine) rejoue les événements `EN_ATTENTE` jusqu'à succès ou jusqu'à 5 tentatives (`MAX_TENTATIVES_OUTBOX`), au-delà desquelles l'événement passe en `ECHEC` définitif et une alerte est journalisée plutôt que de boucler indéfiniment — même plafond que la redélivrance Redis Streams du Reporting Service (item suivant de cette même section). `InitialiserSolde` (Paiement Service) était déjà idempotent par `facture_id` (`get_if_exists` avant création, testé — `test_initialiser_solde_idempotent`) : un relais qui rejoue un événement déjà traité, y compris après un redémarrage entre l'appel gRPC et la mise à jour du statut outbox, ne duplique jamais le solde — prouvé par un test dédié qui remet un événement `ENVOYE` à `EN_ATTENTE` puis relance le relais. **Strictement limité au flux facture → solde** : clôture campagne, suspension abonné, clé d'idempotence `EnregistrerPaiement`, synchro de statut facture et dead-letter Redis Streams (items suivants de cette même section) sont des garde-fous indépendants, non touchés. `services/facturation` : 195→222 tests (27 nouveaux, dédiés), mypy `--strict` vert sur `factures/`.
+- [x] Ex-alternative : **création paresseuse** du `SoldeFacture` + **commande de réconciliation**. *(M)* — **✅ Fait — PR #115/#116 (2026-07-22)** ; **supplantée par l'outbox ci-dessus (item précédent), pas retirée.** "Création paresseuse" décrivait en réalité l'idempotence de `InitialiserSolde` elle-même (`get_if_exists`, jamais un chemin de création différé à un premier paiement) — conservée telle quelle, l'outbox en dépend directement pour que le relais puisse rejouer un événement sans jamais dupliquer. La commande `reconcilier_soldes` (dans `services/facturation/factures/management/commands/` — pas côté paiement, contrairement à une description antérieure) est **conservée en filet de tout dernier recours, jamais planifiée automatiquement** : choix documenté explicitement dans son propre docstring plutôt qu'une suppression à l'aveugle sur un flux financier critique.
 - [x] **Clé d'idempotence** sur `EnregistrerPaiement`. *(M)* — **✅ Fait — PR #114 (2026-07-22).**
 - [x] Rendre la **synchro de statut facture** rejouable + **recalcul périodique** reporting. *(M)* — **✅ Fait — PR #170 (fusionnée 03/09).** Job `CronTrigger` nocturne (verrou `pg_advisory_lock`, clé dédiée `4210004`) qui recalcule `StatsFacturation`/`StatsPaiements` depuis Facturation/Paiement en plus du consumer Redis Streams déjà idempotent. `services/reporting` : 34→46 tests.
 - [x] **Robustesse clôture → facturation** : retry/file + régénération manuelle. *(M)* — **✅ Fait — PR #170.** `Campagne.facturation_en_attente` posé si l'appel échoue à la clôture ; job horaire (`pg_advisory_lock`, clé `4210003`) rejoue le même appel `notifier_campagne_cloturee` sans dupliquer la logique de génération. Bug corrigé au passage : la valeur de retour de cet appel n'était jusque-là jamais lue. `services/campagne` : 117→136 tests.
@@ -639,12 +642,12 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 | Priorité | Total | ✅ Fait | 🟡 Partiel | ❓ Incertain / non revérifié | Non fait | Effort dominant (origine) |
 |---|:---:|:---:|:---:|:---:|:---:|---|
 | 🔴 P0 | 27 | 26 | 0 | 1 | 0 | S/M (+ 2 L : mTLS fait — PR #168, déploiement fait) |
-| 🟠 P1 | 33 | 21 | 5 | 0 | 7 | M (+ 2 L : paiement en ligne fait (sandbox) — PR #192, outbox non fait par choix, avoir/rectification fait) |
+| 🟠 P1 | 33 | 22 | 5 | 0 | 6 | M (+ 2 L : paiement en ligne fait (sandbox) — PR #192, outbox fait — PR #191, périmètre facturation→paiement uniquement ; avoir/rectification fait) |
 | 🟡 P2 | 21 | 20 | 0 | 0 | 1 | S/M (+ 1 L : réplication PostgreSQL, fait en PoC — PR #173) |
 | 🟢 P3 | 15 | 8 | 0 | 6 | 1 | M/L |
-| **Total** | **96** | **75 (78 %)** | **5 (5 %)** | **7 (7 %)** | **9 (9 %)** | — |
+| **Total** | **96** | **76 (79 %)** | **5 (5 %)** | **7 (7 %)** | **8 (8 %)** | — |
 
-> **Mise à jour du 4 septembre 2026** : trois chantiers distincts livrés le même jour. **Retry automatique des notifications en échec** (§8·O, PR #190) porte le total à 73 (P3 : 7→8 faits, 2→1 non fait). **Piste d'audit §J entamée** (identité propagée + `AuditLog` paiement/facturation + rétention/horodatage + logger sécurité gateway, voir ci-dessus) déplace 3 items de non-fait à partiel dans P1, sans changer le total de faits. **Paiement en ligne** (§8·H, PR #192, sandbox/mock exclusivement) porte ensuite le total à **75** (P1 : 1 item passé de non-fait à fait).
+> **Mise à jour du 4 septembre 2026** : quatre chantiers distincts livrés le même jour. **Retry automatique des notifications en échec** (§8·O, PR #190) porte le total à 73 (P3 : 7→8 faits, 2→1 non fait). **Piste d'audit §J entamée** (identité propagée + `AuditLog` paiement/facturation + rétention/horodatage + logger sécurité gateway, voir ci-dessus) déplace 3 items de non-fait à partiel dans P1, sans changer le total de faits. **Transactional outbox** (§F, PR #191, périmètre facturation→paiement uniquement) et **paiement en ligne** (§8·H, PR #192, sandbox/mock exclusivement) portent chacun un item de P1 de non-fait à fait, portant le total à **76**.
 >
 > **Progression de la journée du 3 septembre** : 0→37→48→50→64→**70** items faits au fil de la journée. Le total est passé de 94 à **96** items (2 ajouts : un bug réel de redélivraison Redis Streams découvert et corrigé en rédigeant le runbook — PR #177 — et la régression du proxy de dev local causée par le durcissement TLS — PR #180/#146). Trois nouveaux items complétés depuis la 2e passe, en plus des PR alors ouvertes désormais fusionnées : **RGPD export/anonymisation** (PR #179), **plan de reprise d'activité** (PR #178, avec un vrai écart opérationnel trouvé et depuis corrigé le 04/09 — sauvegardes désormais envoyées vers le bucket S3 provisionné), et **consommation de la pagination côté UI** (PR #145 frontend, en plus du serveur déjà fait).
 >
