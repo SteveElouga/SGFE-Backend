@@ -1,3 +1,4 @@
+import logging
 import sys
 from concurrent import futures
 from pathlib import Path
@@ -11,10 +12,58 @@ import auth_service_pb2 as pb
 import auth_service_pb2_grpc as pb_grpc
 
 from comptes.event_publisher import publish_user_event
-from comptes.grpc_interceptors import ErrorHandlingInterceptor, IdentityInterceptor
+from comptes.grpc_interceptors import ErrorHandlingInterceptor, IdentityInterceptor, get_caller
 from comptes.grpc_auth import AuthServerInterceptor, ouvrir_port_grpc
 from comptes.serializers import user_to_payload, user_to_response
 from comptes.services import AuthService, PasswordSetupService, PhoneOtpService, UserAdminService
+
+logger = logging.getLogger(__name__)
+
+# Défense en profondeur (OWASP A01/API5, ASVS V8, SOC2 CC6) — voir
+# docs/CONFORMITE_SOC2_OWASP.md §3.1/§3.3/§3.4 et le plan de remédiation
+# item #3. La gateway reste l'unique point de DÉCISION RBAC
+# (`services/auth/comptes/services.py:193`) : ce module ne fait que
+# journaliser un avertissement quand l'identité propagée par
+# `IdentityInterceptor` (PR #193, `get_caller()`) porte un rôle qui n'aurait
+# pas dû franchir la gateway pour la désactivation d'un compte — sans jamais
+# bloquer l'appel.
+#
+# Ensemble aligné sur le tableau "Rôles et permissions" du CLAUDE.md racine
+# ("Gérer les utilisateurs" -> ADMIN uniquement) et sur
+# `gateway/schema/auth_mutations.py` (`require_role(info, "ADMIN")`), qui
+# applique déjà cette règle côté gateway.
+_ROLES_AUTORISES_DEACTIVATE: frozenset[str] = frozenset({"ADMIN"})
+
+
+def _revalider_role_deactivate(action: str) -> None:
+    """Filet de sécurité : journalise un avertissement si l'identité propagée
+    par la gateway ne correspond pas au rôle attendu pour `action`.
+
+    Ne BLOQUE jamais l'appel — c'est un compromis assumé, pas un oubli.
+    L'identité n'est pas propagée par tous les chemins d'appel légitimes
+    aujourd'hui (ex. certains appels service-à-service internes n'ont pas
+    d'identité utilisateur humaine) ; bloquer romprait ces appels sans gain
+    réel puisque la gateway a déjà tranché en amont. Voir
+    `docs/CONFORMITE_SOC2_OWASP.md` §3.1 A01 pour le constat d'origine.
+    """
+    caller = get_caller()
+    if caller.is_anonyme:
+        logger.warning(
+            "Défense en profondeur — %s appelé sans identité propagée : revalidation de "
+            "rôle impossible (appel direct hors gateway, ou appel service-à-service "
+            "légitime sans identité utilisateur).",
+            action,
+        )
+        return
+    if caller.role not in _ROLES_AUTORISES_DEACTIVATE:
+        logger.warning(
+            "Défense en profondeur — %s appelé par %s (role=%s), hors de l'ensemble "
+            "autorisé %s : la gateway aurait dû bloquer cet appel.",
+            action,
+            caller.username or caller.user_id,
+            caller.role,
+            sorted(_ROLES_AUTORISES_DEACTIVATE),
+        )
 
 
 class AuthServiceServicer(pb_grpc.AuthServiceServicer):  # type: ignore[misc]
@@ -74,6 +123,7 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):  # type: ignore[misc]
         return pb.UserResponse(**user_to_response(user))
 
     def DeactivateUser(self, request: pb.DeactivateUserRequest, context: grpc.ServicerContext) -> pb.UserResponse:
+        _revalider_role_deactivate("DeactivateUser")
         user = self.user_admin_service.deactivate_user(request.user_id, caller_id=request.caller_id)
         publish_user_event(str(user.id), "USER_UPDATED")
         return pb.UserResponse(**user_to_response(user))

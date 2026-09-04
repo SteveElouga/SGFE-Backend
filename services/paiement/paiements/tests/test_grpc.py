@@ -762,3 +762,113 @@ class TestGetSuiviImpayeRPC(TestCase):
         request = pb.FactureIdRequest(facture_id="facture-sans-suivi")
         with self.assertRaises(ObjectDoesNotExist):
             self.servicer.GetSuiviImpaye(request, _mock_context())
+
+
+class TestRevalidationRoleDefenseProfondeur(TestCase):
+    """Défense en profondeur (voir docs/CONFORMITE_SOC2_OWASP.md §3.1 A01,
+    plan de remédiation item #3) : `EnregistrerPaiement`, `AnnulerPaiement`
+    et `EnregistrerPaiementAbonne` revalident le rôle de l'appelant à partir
+    de l'identité propagée par la gateway (`get_caller()`), en plus du RBAC
+    déjà appliqué côté gateway.
+
+    Le compromis assumé (documenté sur `_revalider_role_paiement`) : ce
+    filet ne bloque JAMAIS l'appel, même avec un mauvais rôle ou une
+    identité absente — il se contente de journaliser un avertissement. Ces
+    tests vérifient donc la présence du log, pas un rejet de l'appel.
+    """
+
+    def setUp(self) -> None:
+        with (
+            patch("paiements.grpc_server.FacturationServiceClient"),
+            patch("paiements.grpc_server.NotificationServiceClient"),
+        ):
+            self.servicer = PaiementServicer()
+        _creer_solde("facture-role", "abonne-role", 300.00)
+
+    def _poser_identite(self, role: str) -> None:
+        from paiements.grpc_interceptors import CallerIdentity, caller_identity
+
+        jeton = caller_identity.set(CallerIdentity(user_id="u-1", username="testeur", role=role))
+        self.addCleanup(caller_identity.reset, jeton)
+
+    def _requete_paiement(self) -> pb.EnregistrerPaiementRequest:
+        return pb.EnregistrerPaiementRequest(
+            facture_id="facture-role",
+            abonne_id="abonne-role",
+            montant=100.00,
+            date_paiement="2026-06-20",
+            mode_paiement="ESPECES",
+            reference_transaction="",
+            enregistre_par="user-001",
+        )
+
+    @patch("paiements.grpc_server.logger")
+    def test_enregistrer_paiement_role_autorise_passe_sans_avertissement_de_role(self, mock_logger: MagicMock) -> None:
+        self._poser_identite("COMPTABLE")
+        response = self.servicer.EnregistrerPaiement(self._requete_paiement(), _mock_context())
+        self.assertTrue(response.paiement_id)
+        for appel in mock_logger.warning.call_args_list:
+            self.assertNotIn("hors de l'ensemble autorisé", appel.args[0])
+
+    def test_enregistrer_paiement_role_non_autorise_journalise_un_avertissement_mais_passe(self) -> None:
+        self._poser_identite("AGENT")
+        with self.assertLogs("paiements.grpc_server", level="WARNING") as journaux:
+            response = self.servicer.EnregistrerPaiement(self._requete_paiement(), _mock_context())
+        self.assertTrue(response.paiement_id)  # jamais bloqué (voir docstring de la classe)
+        trace = "\n".join(journaux.output)
+        self.assertIn("EnregistrerPaiement", trace)
+        self.assertIn("hors de l'ensemble autorisé", trace)
+        self.assertIn("AGENT", trace)
+
+    def test_enregistrer_paiement_sans_identite_reste_retrocompatible(self) -> None:
+        """Aucune identité propagée (appel hors gateway, ou service-à-service
+        légitime) : le comportement reste EXACTEMENT celui d'avant ce
+        correctif — aucune exception, la réponse est renvoyée normalement."""
+        response = self.servicer.EnregistrerPaiement(self._requete_paiement(), _mock_context())
+        self.assertTrue(response.paiement_id)
+
+    def test_annuler_paiement_role_non_autorise_journalise_un_avertissement_mais_passe(self) -> None:
+        enreg = self.servicer.EnregistrerPaiement(self._requete_paiement(), _mock_context())
+        self._poser_identite("SUPERVISEUR")
+        with self.assertLogs("paiements.grpc_server", level="WARNING") as journaux:
+            response = self.servicer.AnnulerPaiement(
+                pb.AnnulerPaiementRequest(paiement_id=enreg.paiement_id, motif="erreur", annule_par="admin-1"),
+                _mock_context(),
+            )
+        self.assertTrue(response.annule)
+        trace = "\n".join(journaux.output)
+        self.assertIn("AnnulerPaiement", trace)
+        self.assertIn("hors de l'ensemble autorisé", trace)
+
+    def test_enregistrer_paiement_abonne_role_non_autorise_journalise_un_avertissement_mais_passe(self) -> None:
+        self._poser_identite("AGENT")
+        with self.assertLogs("paiements.grpc_server", level="WARNING") as journaux:
+            response = self.servicer.EnregistrerPaiementAbonne(
+                pb.EnregistrerPaiementAbonneRequest(
+                    abonne_id="abonne-role",
+                    montant=100.00,
+                    date_paiement="2026-06-20",
+                    mode_paiement="ESPECES",
+                    reference_transaction="",
+                    enregistre_par="user-001",
+                ),
+                _mock_context(),
+            )
+        self.assertEqual(len(response.paiements), 1)
+        trace = "\n".join(journaux.output)
+        self.assertIn("EnregistrerPaiementAbonne", trace)
+        self.assertIn("hors de l'ensemble autorisé", trace)
+
+    def test_enregistrer_paiement_abonne_sans_identite_reste_retrocompatible(self) -> None:
+        response = self.servicer.EnregistrerPaiementAbonne(
+            pb.EnregistrerPaiementAbonneRequest(
+                abonne_id="abonne-role",
+                montant=100.00,
+                date_paiement="2026-06-20",
+                mode_paiement="ESPECES",
+                reference_transaction="",
+                enregistre_par="user-001",
+            ),
+            _mock_context(),
+        )
+        self.assertEqual(len(response.paiements), 1)

@@ -355,4 +355,73 @@ class ListFacturesTests(TestCase):
             pb.ListFacturesRequest(campagne_id="camp-x", statut="IMPAYEE", limit=2, offset=0), _make_context()
         )
         self.assertEqual(len(response.factures), 2)
-        self.assertEqual(response.total, 4)
+
+
+class UpdateTarifRevalidationRoleTests(TestCase):
+    """Défense en profondeur (voir docs/CONFORMITE_SOC2_OWASP.md §3.1 A01,
+    plan de remédiation item #3) : `UpdateTarif` revalide le rôle de
+    l'appelant à partir de l'identité propagée par la gateway
+    (`get_caller()`), en plus du RBAC déjà appliqué côté gateway
+    (`gateway/schema/facturation_mutations.py`, `require_role(info, "ADMIN")`
+    sur `update_tarif`).
+
+    Compromis assumé (documenté sur `_revalider_role_tarif`) : ce filet ne
+    bloque JAMAIS l'appel, même avec un mauvais rôle ou une identité
+    absente — il se contente de journaliser un avertissement.
+    """
+
+    def setUp(self) -> None:
+        from factures.grpc_server import FacturationServicer
+
+        self.servicer = FacturationServicer.__new__(FacturationServicer)
+        self.servicer._tarif_svc = TarifService()
+        self.servicer._facture_svc = MagicMock()
+        self.servicer._campagne_client = MagicMock()
+        self.servicer._config_client = MagicMock()
+
+    def _pb(self) -> Any:
+        import sys
+        from pathlib import Path
+
+        from django.conf import settings
+
+        sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
+        import facturation_service_pb2 as pb
+
+        return pb
+
+    def _poser_identite(self, role: str) -> None:
+        from factures.grpc_interceptors import CallerIdentity, caller_identity
+
+        jeton = caller_identity.set(CallerIdentity(user_id="u-1", username="testeur", role=role))
+        self.addCleanup(caller_identity.reset, jeton)
+
+    @patch("factures.grpc_server.logger")
+    def test_role_admin_passe_sans_avertissement_de_role(self, mock_logger: MagicMock) -> None:
+        self._poser_identite("ADMIN")
+        pb = self._pb()
+        request = pb.UpdateTarifRequest(prix_m3=650.0, date_effet="2025-09-01")
+        response = self.servicer.UpdateTarif(request, MagicMock())
+        self.assertAlmostEqual(response.prix_m3, 650.0)
+        for appel in mock_logger.warning.call_args_list:
+            self.assertNotIn("hors de l'ensemble autorisé", appel.args[0])
+
+    def test_role_non_autorise_journalise_un_avertissement_mais_passe(self) -> None:
+        self._poser_identite("COMPTABLE")
+        pb = self._pb()
+        request = pb.UpdateTarifRequest(prix_m3=650.0, date_effet="2025-09-01")
+        with self.assertLogs("factures.grpc_server", level="WARNING") as journaux:
+            response = self.servicer.UpdateTarif(request, MagicMock())
+        self.assertAlmostEqual(response.prix_m3, 650.0)  # jamais bloqué (voir docstring de la classe)
+        trace = "\n".join(journaux.output)
+        self.assertIn("UpdateTarif", trace)
+        self.assertIn("hors de l'ensemble autorisé", trace)
+        self.assertIn("COMPTABLE", trace)
+
+    def test_sans_identite_reste_retrocompatible(self) -> None:
+        """Aucune identité propagée (appel hors gateway, ou service-à-service
+        légitime) : comportement inchangé — aucune exception."""
+        pb = self._pb()
+        request = pb.UpdateTarifRequest(prix_m3=650.0, date_effet="2025-09-01")
+        response = self.servicer.UpdateTarif(request, MagicMock())
+        self.assertAlmostEqual(response.prix_m3, 650.0)

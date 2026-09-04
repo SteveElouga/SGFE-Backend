@@ -19,7 +19,7 @@ import paiement_service_pb2_grpc as pb_grpc
 
 from paiements.event_publisher import publish_paiement_event, publish_reporting_event
 from paiements.grpc_clients import FacturationServiceClient, NotificationServiceClient
-from paiements.grpc_interceptors import ErrorHandlingInterceptor, IdentityInterceptor
+from paiements.grpc_interceptors import ErrorHandlingInterceptor, IdentityInterceptor, get_caller
 from paiements.grpc_auth import AuthServerInterceptor, ouvrir_port_grpc
 from paiements.models import ModePaiement, Paiement, SoldeFacture, StatutSessionPaiement, StatutSolde
 from paiements.passerelle_paiement import MockPasserellePaiementClient, PasserellePaiementClient
@@ -38,6 +38,51 @@ from paiements.services import PaiementService
 SYSTEME_PAIEMENT_EN_LIGNE = "SYSTEME_PAIEMENT_EN_LIGNE"
 
 logger = logging.getLogger(__name__)
+
+# Défense en profondeur (OWASP A01/API5, ASVS V8, SOC2 CC6) — voir
+# docs/CONFORMITE_SOC2_OWASP.md §3.1/§3.3/§3.4 et le plan de remédiation
+# item #3. La gateway reste l'unique point de DÉCISION RBAC
+# (`services/auth/comptes/services.py:193`) : ce module ne fait que
+# journaliser un avertissement quand l'identité propagée par
+# `IdentityInterceptor` (PR #193, `get_caller()`) porte un rôle qui n'aurait
+# pas dû franchir la gateway pour ces actions — sans jamais bloquer l'appel.
+#
+# Ensemble aligné sur le tableau "Rôles et permissions" du CLAUDE.md racine
+# ("Enregistrer un paiement" -> ADMIN, COMPTABLE) et sur
+# `gateway/schema/paiement_mutations.py` (`require_role(info, "ADMIN",
+# "COMPTABLE")`), qui applique déjà cette règle côté gateway.
+_ROLES_AUTORISES_PAIEMENT: frozenset[str] = frozenset({"ADMIN", "COMPTABLE"})
+
+
+def _revalider_role_paiement(action: str) -> None:
+    """Filet de sécurité : journalise un avertissement si l'identité propagée
+    par la gateway ne correspond pas au rôle attendu pour `action`.
+
+    Ne BLOQUE jamais l'appel — c'est un compromis assumé, pas un oubli.
+    L'identité n'est pas propagée par tous les chemins d'appel légitimes
+    aujourd'hui (ex. certains appels service-à-service internes n'ont pas
+    d'identité utilisateur humaine) ; bloquer romprait ces appels sans gain
+    réel puisque la gateway a déjà tranché en amont. Voir
+    `docs/CONFORMITE_SOC2_OWASP.md` §3.1 A01 pour le constat d'origine.
+    """
+    caller = get_caller()
+    if caller.is_anonyme:
+        logger.warning(
+            "Défense en profondeur — %s appelé sans identité propagée : revalidation de "
+            "rôle impossible (appel direct hors gateway, ou appel service-à-service "
+            "légitime sans identité utilisateur).",
+            action,
+        )
+        return
+    if caller.role not in _ROLES_AUTORISES_PAIEMENT:
+        logger.warning(
+            "Défense en profondeur — %s appelé par %s (role=%s), hors de l'ensemble "
+            "autorisé %s : la gateway aurait dû bloquer cet appel.",
+            action,
+            caller.username or caller.user_id,
+            caller.role,
+            sorted(_ROLES_AUTORISES_PAIEMENT),
+        )
 
 
 class PaiementServicer(pb_grpc.PaiementServiceServicer):  # type: ignore[misc]
@@ -227,6 +272,7 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):  # type: ignore[misc]
         context: grpc.ServicerContext,
     ) -> pb.PaiementResponse:
         """Enregistre un versement et met à jour le solde de la facture."""
+        _revalider_role_paiement("EnregistrerPaiement")
         date_paiement = date.fromisoformat(request.date_paiement)
         paiement, solde = self._svc.enregistrer_paiement(
             facture_id=request.facture_id,
@@ -254,6 +300,7 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):  # type: ignore[misc]
         context: grpc.ServicerContext,
     ) -> pb.PaiementResponse:
         """Annule un paiement enregistré par erreur et rétablit le solde de la facture."""
+        _revalider_role_paiement("AnnulerPaiement")
         paiement, solde = self._svc.annuler_paiement(
             paiement_id=request.paiement_id,
             motif=request.motif,
@@ -521,6 +568,7 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):  # type: ignore[misc]
         facture, ni réactivation de l'abonné suspendu, ni reçu, ni pause des
         relances, ni statistiques. Voir `_propager_versement`.
         """
+        _revalider_role_paiement("EnregistrerPaiementAbonne")
         paiements, excedent = self._encaisser_pour_abonne(
             abonne_id=request.abonne_id,
             montant=request.montant,
