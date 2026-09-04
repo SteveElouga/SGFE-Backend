@@ -13,17 +13,23 @@ jobs:
     runs-on: ubuntu-latest
     name: Bump de version et changelog (commitizen)
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+      # Épinglée sur le dernier tag de release stable (0.27.1) et non plus sur
+      # `@master` : une référence de branche mutable qui tournait ici avec
+      # contents:write était le point le plus dangereux relevé par l'audit
+      # CI/CD (docs/CONFORMITE_CICD.md, CICD-SEC-3) — n'importe quel push futur
+      # sur `master` de ce dépôt tiers se serait exécuté directement avec ce
+      # niveau de permission.
       - id: cz
-        uses: commitizen-tools/commitizen-action@master
+        uses: commitizen-tools/commitizen-action@338bbd841b75aaee6bf5340e1fa12f6ab58ff9ff # 0.27.1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Créer la release GitHub
         if: steps.cz.outputs.version != ''
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: v${{ steps.cz.outputs.version }}
           generate_release_notes: true
