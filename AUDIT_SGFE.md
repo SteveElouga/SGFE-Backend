@@ -552,7 +552,7 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 - [ ] **Pénalités de retard**. *(M)* — **❓ Non revérifié dans cette passe.**
 - [ ] **Estimation automatique** des compteurs non relevés. *(M)* — **❓ Non revérifié dans cette passe.**
 - [ ] **Multi‑agence / multi‑tenant**. *(L)* — **❓ Non revérifié dans cette passe.**
-- [ ] **Retry automatique** des notifications en échec. *(S)* — **Toujours non fait** (0 occurrence de `retry` dans `services/notification/notifications/*.py`).
+- [x] **Retry automatique** des notifications en échec. *(S)* — **✅ Fait — [PR #190](https://github.com/SteveElouga/SGFE-Backend/pull/190).** Job `retry_envois_echec_job` (`services/notification/notifications/schedulers.py`, `IntervalTrigger(minutes=15)`, verrou `pg_advisory_lock` dédié `4210005`) retente les `Envoi` en `ECHEC` sous un plafond `MAX_TENTATIVES_AUTO=5` (même idée que `MAX_DELIVERY_ATTEMPTS` côté reporting), en rejouant le `dernier_message` figé au moment de la tentative d'origine — jamais recalculé, pour ne pas annoncer un montant qui a pu changer depuis — et en régénérant le PDF au besoin (`avec_pdf`/`pdf_filename`, jamais stockés en base) via le client facturation existant. Au-delà du plafond, abandon définitif logué distinctement et notifié aux admins via un événement dédié (`ABANDON_RETRY_WHATSAPP`), sans dupliquer la notification d'échec déjà envoyée par `_tenter_envoi`. `services/notification` : 147→168 tests.
 
 **P. Conformité données & légal**
 
@@ -589,10 +589,12 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 | 🔴 P0 | 27 | 26 | 0 | 1 | 0 | S/M (+ 2 L : mTLS fait — PR #168, déploiement fait) |
 | 🟠 P1 | 33 | 19 | 2 | 0 | 12 | M (+ 2 L : outbox non fait par choix, avoir/rectification fait) |
 | 🟡 P2 | 21 | 20 | 0 | 0 | 1 | S/M (+ 1 L : réplication PostgreSQL, fait en PoC — PR #173) |
-| 🟢 P3 | 15 | 7 | 0 | 6 | 2 | M/L |
-| **Total** | **96** | **72 (75 %)** | **2 (2 %)** | **7 (7 %)** | **15 (16 %)** | — |
+| 🟢 P3 | 15 | 8 | 0 | 6 | 1 | M/L |
+| **Total** | **96** | **73 (76 %)** | **2 (2 %)** | **7 (7 %)** | **14 (15 %)** | — |
 
-> **Progression de la journée** : 0→37→48→50→64→**70** items faits au fil du 3 septembre 2026. Le total est passé de 94 à **96** items (2 ajouts : un bug réel de redélivraison Redis Streams découvert et corrigé en rédigeant le runbook — PR #177 — et la régression du proxy de dev local causée par le durcissement TLS — PR #180/#146). Trois nouveaux items complétés depuis la 2e passe, en plus des PR alors ouvertes désormais fusionnées : **RGPD export/anonymisation** (PR #179), **plan de reprise d'activité** (PR #178, avec un vrai écart opérationnel trouvé et depuis corrigé le 04/09 — sauvegardes désormais envoyées vers le bucket S3 provisionné), et **consommation de la pagination côté UI** (PR #145 frontend, en plus du serveur déjà fait).
+> **Mise à jour du 4 septembre 2026** : **Retry automatique des notifications en échec** (§8·O) livré — PR #190. Le total d'items faits passe de 72 à **73** (P3 : 7→8 faits, 2→1 non fait).
+>
+> **Progression de la journée du 3 septembre** : 0→37→48→50→64→**70** items faits au fil de la journée. Le total est passé de 94 à **96** items (2 ajouts : un bug réel de redélivraison Redis Streams découvert et corrigé en rédigeant le runbook — PR #177 — et la régression du proxy de dev local causée par le durcissement TLS — PR #180/#146). Trois nouveaux items complétés depuis la 2e passe, en plus des PR alors ouvertes désormais fusionnées : **RGPD export/anonymisation** (PR #179), **plan de reprise d'activité** (PR #178, avec un vrai écart opérationnel trouvé et depuis corrigé le 04/09 — sauvegardes désormais envoyées vers le bucket S3 provisionné), et **consommation de la pagination côté UI** (PR #145 frontend, en plus du serveur déjà fait).
 >
 > **`mypy --strict`** (P2, `§L`) a nettement progressé sans être fini : **6 des 9 composants backend à 0 erreur** (auth, abonne, reporting, notification, paiement, gateway — PR #181), **3 restants en cours** (campagne, config, facturation) sur une branche non encore fusionnée à la rédaction de cette ligne. Câblage CI volontairement différé tant que les 9 ne sont pas tous propres.
 >
