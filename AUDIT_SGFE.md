@@ -70,7 +70,7 @@
 >
 > **Décompte final (96 items, §8 — le total est passé de 94 à 96 : les deux
 > incidents/régressions découverts et corrigés ce jour comptent comme des
-> items propres)** : **70 faits (73 %)** · **4 partiels** · **7 incertains/non
+> items propres)** : **71 faits (74 %)** · **3 partiels** · **7 incertains/non
 > revérifiés** · **15 non faits**. Détail dans le tableau de décompte en fin
 > de §8, refait à neuf.
 >
@@ -517,7 +517,7 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 
 - [x] Activer **`strict` TypeScript** + `strictTemplates`. *(S)* — **✅ Fait, et au-delà.** `tsconfig.json` : `strict:true` + `noImplicitOverride`, `noPropertyAccessFromIndexSignature`, `noImplicitReturns` ; `strictTemplates`/`strictInjectionParameters`/`strictInputAccessModifiers` côté Angular. PR de la refonte du 27/08.
 - [x] 🔗 Introduire **graphql‑codegen**. *(M)* — **✅ Fait.** `generated.ts`, `verify:codegen`, discipline de partage de fragments documentée dans `CLAUDE.md` avec des exemples de bugs passés que le codegen empêche désormais.
-- [ ] **`mypy --strict`** en CI backend. *(S)* — **🟡 Partiel, en bonne voie — PR #181 (fusionnée 03/09) + suite en cours.** `mypy.ini` par service + `requirements-dev.txt` ; **6 des 9 composants à 0 erreur `mypy --strict`, tests inchangés** : `auth` (120), `abonne` (107), `reporting` (50), `notification` (147), `paiement` (199), `gateway` (277). `campagne`/`config`/`facturation` restent (chantier en cours, non fusionné à la rédaction de cette ligne — `campagne` ~17 erreurs, `config` ~89, `facturation` ~326 mesurées le 03/09). Câblage CI (`.github/workflows/ci.yml`) volontairement pas fait tant que les 9 composants ne sont pas tous propres — sinon la CI casserait sur les 3 restants.
+- [x] **`mypy --strict`** en CI backend. *(S)* — **✅ Fait — PR #181 + #183 + #184 (fusionnées 03-04/09).** `mypy.ini` par service + `requirements-dev.txt` ; **les 9 composants à 0 erreur `mypy --strict`, tests inchangés** : `auth` (120), `abonne` (107), `campagne` (136), `config` (45), `facturation` (195), `notification` (147), `paiement` (199), `reporting` (50), `gateway` (277). **Incident de parcours révélateur** : le câblage CI initial (#181/#183) n'avait en réalité **jamais tourné pour 6 des 9 jobs** — le path-filter GitHub Actions les marquait `skipped` à chaque push sans que le `ci-status` global ne le signale, masquant un vrai bug sur `auth` (l'import Django par mypy, hors du mode `TESTING` de `manage.py test`, tentait de lire des clés JWT RS256 absentes du checkout CI). Trouvé et corrigé le 04/09 en forçant délibérément un run complet (nouvelle branche, diff large) ; les 9 jobs confirmés verts sur un run réel, pas seulement localement.
 - [x] 🔗 Uniformiser l'**index compteur** en `DecimalField`. *(S)* — **✅ Fait — PR #171 (fusionnée 03/09).** `campagne/models.py` : `FloatField` → `DecimalField(10,3)`, migration écrite, conversions gRPC alignées sur le motif déjà utilisé pour l'argent.
 - [x] Extraire une **lib partagée** `sgfe_common.grpc`. *(M)* — **✅ Fait — PR #174 (fusionnée 03/09).** Source canonique unique (`libs/sgfe_common/`) + script de synchronisation avec vérification de dérive par hash (pas un package Python installé — choix documenté : contexte de build Docker isolé par service, et un test dépendant du nom du logger). Zéro changement de comportement, 1131/1131 tests identiques avant/après.
 - [x] Découper les composants volumineux. *(M)* — **✅ Fait — PR #144 (fusionnée 03/09, frontend).** `campagne-detail`/`abonne-detail`/`facture-detail` éclatés en sous-composants cohésifs, zéro changement de comportement visible, poids CSS en baisse.
@@ -571,7 +571,7 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 
 ### Portes de sortie (Go / No‑Go) — statut au 3 septembre 2026 (3e passe, tout fusionné)
 
-> Mise à jour : les 10 PR de la 2e passe (backend #168-174, frontend #142-144) sont désormais **toutes fusionnées** dans `develop`, ainsi que 8 PR supplémentaires ouvertes le même jour (backend #175-181, frontend #145-146) — dead-letter Redis Streams, runbook, plan de reprise d'activité, RGPD, correctif du proxy de dev local, mypy strict (6/9), pagination UI.
+> Mise à jour : les 10 PR de la 2e passe (backend #168-174, frontend #142-144) sont désormais **toutes fusionnées** dans `develop`, ainsi que 9 PR supplémentaires ouvertes le même jour (backend #175-183, frontend #145-146) — dead-letter Redis Streams, runbook, plan de reprise d'activité, RGPD, correctif du proxy de dev local, mypy strict (9/9, CI câblée), pagination UI.
 
 | Porte | Condition | Items requis | Statut |
 |---|---|---|---|
@@ -588,15 +588,15 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 |---|:---:|:---:|:---:|:---:|:---:|---|
 | 🔴 P0 | 27 | 26 | 0 | 1 | 0 | S/M (+ 2 L : mTLS fait — PR #168, déploiement fait) |
 | 🟠 P1 | 33 | 19 | 2 | 0 | 12 | M (+ 2 L : outbox non fait par choix, avoir/rectification fait) |
-| 🟡 P2 | 21 | 18 | 2 | 0 | 1 | S/M (+ 1 L : réplication PostgreSQL, fait en PoC — PR #173) |
+| 🟡 P2 | 21 | 19 | 1 | 0 | 1 | S/M (+ 1 L : réplication PostgreSQL, fait en PoC — PR #173) |
 | 🟢 P3 | 15 | 7 | 0 | 6 | 2 | M/L |
-| **Total** | **96** | **70 (73 %)** | **4 (4 %)** | **7 (7 %)** | **15 (16 %)** | — |
+| **Total** | **96** | **71 (74 %)** | **3 (3 %)** | **7 (7 %)** | **15 (16 %)** | — |
 
 > **Progression de la journée** : 0→37→48→50→64→**70** items faits au fil du 3 septembre 2026. Le total est passé de 94 à **96** items (2 ajouts : un bug réel de redélivraison Redis Streams découvert et corrigé en rédigeant le runbook — PR #177 — et la régression du proxy de dev local causée par le durcissement TLS — PR #180/#146). Trois nouveaux items complétés depuis la 2e passe, en plus des PR alors ouvertes désormais fusionnées : **RGPD export/anonymisation** (PR #179), **plan de reprise d'activité** (PR #178, avec un vrai écart opérationnel signalé — sauvegardes jamais envoyées vers le bucket S3 provisionné), et **consommation de la pagination côté UI** (PR #145 frontend, en plus du serveur déjà fait).
 >
 > **`mypy --strict`** (P2, `§L`) a nettement progressé sans être fini : **6 des 9 composants backend à 0 erreur** (auth, abonne, reporting, notification, paiement, gateway — PR #181), **3 restants en cours** (campagne, config, facturation) sur une branche non encore fusionnée à la rédaction de cette ligne. Câblage CI volontairement différé tant que les 9 ne sont pas tous propres.
 >
-> **Ce qui reste, par choix explicite** : observabilité (§I) et piste d'audit (§J) — chantiers à part entière, jamais entamés. Tarification par tranches, pénalités de retard et estimation automatique des compteurs — **déclinés explicitement par l'utilisateur** le 3 septembre (staging iso-prod, CGU et multi-tenant classés « pas d'actualité », pas refusés). **Ce qui reste, P1 « critique »** : uniquement des items déjà hors périmètre pour une raison précise (voir liste détaillée dans la note de la 1ère passe, inchangée) ou dépendant de l'observabilité. **Ce qui reste, P2** : `mypy --strict` (🟡 partiel, 6/9), le code vestigial (🟡 partiel, inchangé), et l'environnement de staging iso-prod (non fait, explicitement pas d'actualité pour l'instant).
+> **Ce qui reste, par choix explicite** : observabilité (§I) et piste d'audit (§J) — chantiers à part entière, jamais entamés. Tarification par tranches, pénalités de retard et estimation automatique des compteurs — **déclinés explicitement par l'utilisateur** le 3 septembre (staging iso-prod, CGU et multi-tenant classés « pas d'actualité », pas refusés). **Ce qui reste, P1 « critique »** : uniquement des items déjà hors périmètre pour une raison précise (voir liste détaillée dans la note de la 1ère passe, inchangée) ou dépendant de l'observabilité. **Ce qui reste, P2** : le code vestigial (🟡 partiel, inchangé) et l'environnement de staging iso-prod (non fait, explicitement pas d'actualité pour l'instant). `mypy --strict` est désormais fait sur les 9 composants (PR #181 + #183), CI câblée.
 >
 > **Points d'attention restants** : Trivy (PR #143, fusionnée) a bien fait échouer la CI frontend comme prévu au premier run (`nginx:1.27-alpine`) — non re-vérifié si le tag a depuis été bumpé. **Nouveau point d'attention** : les 191 événements Redis Streams déjà bloqués sur la pile de développement partagée avant le correctif PR #177 n'ont pas été purgés — le correctif empêche la récidive, pas le rattrapage de l'état déjà accumulé.
 

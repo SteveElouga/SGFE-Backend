@@ -156,8 +156,10 @@ jobs:
       - run: pip install -r requirements.txt -r requirements-dev.txt ruff==0.15.20 coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
+      - name: Génère une paire de clés JWT RS256 éphémère (mypy importe settings.py hors du mode TESTING de manage.py test, qui génère la sienne en mémoire — sans ce fichier, l'import échoue en CI où keys/ n'existe pas)
+        run: ../../scripts/gen-jwt-keys.sh keys
       - name: Vérification des types (mypy --strict)
-        run: mypy --strict comptes/
+        run: mypy --strict --show-traceback comptes/
       - name: Audit des dépendances (pip-audit)
         run: pip-audit -r requirements.txt
       - name: Analyse statique de sécurité (bandit)
@@ -185,7 +187,7 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
       - name: Vérification des types (mypy --strict)
-        run: mypy --strict schema/
+        run: mypy --strict --show-traceback schema/
       - name: Audit des dépendances (pip-audit)
         run: pip-audit -r requirements.txt
       - name: Analyse statique de sécurité (bandit)
@@ -241,7 +243,7 @@ jobs:
       - name: Génère une clé Fernet éphémère (CI uniquement, jamais committée)
         run: echo "PII_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
       - name: Vérification des types (mypy --strict)
-        run: mypy --strict abonnes/
+        run: mypy --strict --show-traceback abonnes/
       - name: Tests + couverture
         run: |
           coverage run --source=abonnes manage.py test abonnes
@@ -287,7 +289,7 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
       - name: Vérification des types (mypy --strict)
-        run: mypy --strict campagnes/
+        run: mypy --strict --show-traceback campagnes/
       - name: Audit des dépendances (pip-audit)
         run: pip-audit -r requirements.txt
       - name: Analyse statique de sécurité (bandit)
@@ -337,7 +339,7 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
       - name: Vérification des types (mypy --strict)
-        run: mypy --strict factures/
+        run: mypy --strict --show-traceback factures/
       - name: Audit des dépendances (pip-audit)
         run: pip-audit -r requirements.txt
       - name: Analyse statique de sécurité (bandit)
@@ -387,7 +389,7 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
       - name: Vérification des types (mypy --strict)
-        run: mypy --strict paiements/
+        run: mypy --strict --show-traceback paiements/
       - name: Audit des dépendances (pip-audit)
         run: pip-audit -r requirements.txt
       - name: Analyse statique de sécurité (bandit)
@@ -437,7 +439,7 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
       - name: Vérification des types (mypy --strict)
-        run: mypy --strict notifications/
+        run: mypy --strict --show-traceback notifications/
       - name: Audit des dépendances (pip-audit)
         run: pip-audit -r requirements.txt
       - name: Analyse statique de sécurité (bandit)
@@ -487,7 +489,7 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
       - name: Vérification des types (mypy --strict)
-        run: mypy --strict parametres/
+        run: mypy --strict --show-traceback parametres/
       - name: Audit des dépendances (pip-audit)
         run: pip-audit -r requirements.txt
       - name: Analyse statique de sécurité (bandit)
@@ -537,7 +539,7 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
       - name: Vérification des types (mypy --strict)
-        run: mypy --strict stats/
+        run: mypy --strict --show-traceback stats/
       - name: Audit des dépendances (pip-audit)
         run: pip-audit -r requirements.txt
       - name: Analyse statique de sécurité (bandit)
