@@ -118,6 +118,13 @@ WHATSAPP_SERVICE_URL = env("WHATSAPP_SERVICE_URL", default="http://localhost:300
 # Clé partagée envoyée en en-tête X-Internal-Api-Key vers whatsapp-service.
 WHATSAPP_INTERNAL_API_KEY = env("WHATSAPP_INTERNAL_API_KEY", default="")
 
+# --- Garde-fou de test : désactivation de l'envoi WhatsApp réel ---
+# Voir la docstring de notifications/whatsapp_client.py pour l'usage complet
+# et les avertissements. JAMAIS positionnée par défaut ici, ni dans
+# docker-compose.yml : absente (le cas par défaut), le comportement de
+# production/développement normal est totalement inchangé.
+WHATSAPP_DISABLE_SEND_FOR_TESTS = env.bool("WHATSAPP_DISABLE_SEND_FOR_TESTS", default=False)
+
 # --- Frontend (pour les liens tokenisés) ---
 # En dev, l'URL est connue d'avance (port fixe du `ng serve` de ce dépot) :
 # aucune configuration à fournir. En production, elle dépend du domaine réel
