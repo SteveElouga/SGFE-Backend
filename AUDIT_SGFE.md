@@ -70,7 +70,7 @@
 >
 > **Décompte final (96 items, §8 — le total est passé de 94 à 96 : les deux
 > incidents/régressions découverts et corrigés ce jour comptent comme des
-> items propres)** : **71 faits (74 %)** · **3 partiels** · **7 incertains/non
+> items propres)** : **72 faits (75 %)** · **2 partiels** · **7 incertains/non
 > revérifiés** · **15 non faits**. Détail dans le tableau de décompte en fin
 > de §8, refait à neuf.
 >
@@ -524,7 +524,7 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 - [x] Accessibilité formulaires : `<label for>` explicites. *(S)* — **✅ Fait — PR #144.** Revue de tous les formulaires de saisie du dépôt : la quasi-totalité utilisait déjà `label[for]` ou le motif de label englobant (`app-auth-field`) — un seul vrai manque trouvé et corrigé (select Statut de `abonne-form`).
 - [x] 🔗 Brancher `progressionUpdated`. *(S)* — **✅ Fait.** `campagne-detail.component.ts:475,484`, motif repris à l'identique pour `diffusionProgressionUpdated` (nouvelle fonctionnalité de diffusion, 03/09).
 - [x] Ajouter `isSuperviseur` à `AuthService`. *(S)* — **✅ Fait.** `auth.service.ts:88`.
-- [ ] 🔗 Retirer le code vestigial. *(S)* — **🟡 Partiel, inchangé ce tour.** `typeEnvoi` réactivé côté frontend. Le resolver `dashboard` est désormais utilisé (Reporting Service livré) — n'est plus mort. `extensions.grpc_code` non retrouvé au grep, non confirmé formellement.
+- [x] 🔗 Retirer le code vestigial. *(S)* — **✅ Fait — dernier point corrigé le 04/09 (PR #152, frontend).** `typeEnvoi` réactivé côté frontend ; le resolver `dashboard` est désormais utilisé (Reporting Service livré) — n'est plus mort ; `extensions.grpc_code` (fallback jamais atteint, 0 occurrence côté gateway) retiré de `extractGqlError()`. 307/307 tests frontend inchangés.
 - [x] Nettoyer les artefacts `.coverage` du dépôt. *(S)* — **✅ Fait, 03/09 (soir).** Les 4 fichiers `.coverage` (gateway, reporting, auth, abonné) n'étaient pas trackés (déjà dans `.gitignore`) — supprimés localement, rien à committer.
 
 **M. Performance & montée en charge**
@@ -588,15 +588,15 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 |---|:---:|:---:|:---:|:---:|:---:|---|
 | 🔴 P0 | 27 | 26 | 0 | 1 | 0 | S/M (+ 2 L : mTLS fait — PR #168, déploiement fait) |
 | 🟠 P1 | 33 | 19 | 2 | 0 | 12 | M (+ 2 L : outbox non fait par choix, avoir/rectification fait) |
-| 🟡 P2 | 21 | 19 | 1 | 0 | 1 | S/M (+ 1 L : réplication PostgreSQL, fait en PoC — PR #173) |
+| 🟡 P2 | 21 | 20 | 0 | 0 | 1 | S/M (+ 1 L : réplication PostgreSQL, fait en PoC — PR #173) |
 | 🟢 P3 | 15 | 7 | 0 | 6 | 2 | M/L |
-| **Total** | **96** | **71 (74 %)** | **3 (3 %)** | **7 (7 %)** | **15 (16 %)** | — |
+| **Total** | **96** | **72 (75 %)** | **2 (2 %)** | **7 (7 %)** | **15 (16 %)** | — |
 
 > **Progression de la journée** : 0→37→48→50→64→**70** items faits au fil du 3 septembre 2026. Le total est passé de 94 à **96** items (2 ajouts : un bug réel de redélivraison Redis Streams découvert et corrigé en rédigeant le runbook — PR #177 — et la régression du proxy de dev local causée par le durcissement TLS — PR #180/#146). Trois nouveaux items complétés depuis la 2e passe, en plus des PR alors ouvertes désormais fusionnées : **RGPD export/anonymisation** (PR #179), **plan de reprise d'activité** (PR #178, avec un vrai écart opérationnel trouvé et depuis corrigé le 04/09 — sauvegardes désormais envoyées vers le bucket S3 provisionné), et **consommation de la pagination côté UI** (PR #145 frontend, en plus du serveur déjà fait).
 >
 > **`mypy --strict`** (P2, `§L`) a nettement progressé sans être fini : **6 des 9 composants backend à 0 erreur** (auth, abonne, reporting, notification, paiement, gateway — PR #181), **3 restants en cours** (campagne, config, facturation) sur une branche non encore fusionnée à la rédaction de cette ligne. Câblage CI volontairement différé tant que les 9 ne sont pas tous propres.
 >
-> **Ce qui reste, par choix explicite** : observabilité (§I) et piste d'audit (§J) — chantiers à part entière, jamais entamés. Tarification par tranches, pénalités de retard et estimation automatique des compteurs — **déclinés explicitement par l'utilisateur** le 3 septembre (staging iso-prod, CGU et multi-tenant classés « pas d'actualité », pas refusés). **Ce qui reste, P1 « critique »** : uniquement des items déjà hors périmètre pour une raison précise (voir liste détaillée dans la note de la 1ère passe, inchangée) ou dépendant de l'observabilité. **Ce qui reste, P2** : le code vestigial (🟡 partiel, inchangé) et l'environnement de staging iso-prod (non fait, explicitement pas d'actualité pour l'instant). `mypy --strict` est désormais fait sur les 9 composants (PR #181 + #183), CI câblée.
+> **Ce qui reste, par choix explicite** : observabilité (§I) et piste d'audit (§J) — chantiers à part entière, jamais entamés. Tarification par tranches, pénalités de retard et estimation automatique des compteurs — **déclinés explicitement par l'utilisateur** le 3 septembre (staging iso-prod, CGU et multi-tenant classés « pas d'actualité », pas refusés). **Ce qui reste, P1 « critique »** : uniquement des items déjà hors périmètre pour une raison précise (voir liste détaillée dans la note de la 1ère passe, inchangée) ou dépendant de l'observabilité. **Ce qui reste, P2** : uniquement l'environnement de staging iso-prod (non fait, explicitement pas d'actualité pour l'instant) — le code vestigial et `mypy --strict` (9/9, CI câblée) sont désormais faits.
 >
 > **Points d'attention restants** : Trivy (PR #143, fusionnée) a bien fait échouer la CI frontend comme prévu au premier run (`nginx:1.27-alpine`) — non re-vérifié si le tag a depuis été bumpé. Les 191 événements Redis Streams bloqués ont été purgés le 04/09 (voir §F) — plus un point d'attention.
 
