@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('factures', '0006_facture_factures_date_ge_1bed83_idx'),
+        ('factures', '0008_audit_log_immutable'),
     ]
 
     operations = [
