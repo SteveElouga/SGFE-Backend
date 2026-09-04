@@ -15,6 +15,7 @@ from comptes.repositories import (
     RevokedTokenRepository,
     UserRepository,
 )
+from comptes.throttle import verifier_throttle
 from comptes.validators import validate_phone_cameroon
 from comptes.whatsapp_client import whatsapp_client
 
@@ -343,6 +344,16 @@ class PasswordSetupService:
         )
 
     def request_password_reset(self, email: str) -> None:
+        """Déclenche l'envoi d'un lien de réinitialisation si l'e-mail correspond
+        à un compte ADMIN.
+
+        Throttlé à 1 demande / 60s par e-mail (avant toute autre vérification)
+        pour empêcher le bombing de la boîte mail d'un ADMIN — voir
+        `comptes.throttle`.
+        """
+        # Clé normalisée (espaces + casse) : deux variantes du même e-mail ne
+        # doivent pas contourner le cooldown.
+        verifier_throttle(f"password-reset-throttle:{email.strip().lower()}")
         # Ne jamais révéler si l'e-mail existe ou non : succès silencieux dans les deux cas.
         try:
             user = self.users.get_by_email(email)
@@ -409,8 +420,11 @@ class PhoneOtpService:
         """Point d'entrée public : résout l'utilisateur par téléphone et envoie un OTP.
 
         Succès silencieux si le numéro n'existe pas (ne révèle pas les comptes).
+        Throttlé à 1 demande / 60s par numéro (avant toute autre vérification)
+        pour empêcher le bombing WhatsApp — voir `comptes.throttle`.
         """
         phone = validate_phone_cameroon(phone_number)
+        verifier_throttle(f"otp-throttle:{phone}")
         try:
             user = self.users.get_by_phone(phone)
         except ObjectDoesNotExist:
