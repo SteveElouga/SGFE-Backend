@@ -30,7 +30,8 @@ env:
   # aléatoires en base64) — même factice, un littéral commité de cette forme
   # déclenche à raison le scanner de secrets (gitleaks) qui ne peut pas
   # distinguer "vraie clé" de "clé de test qui a la même forme". Générée à la
-  # volée dans le job test-abonne, seul consommateur (voir plus bas).
+  # volée dans chaque job qui en a besoin — test-abonne et test-notification
+  # (voir plus bas) — jamais partagée entre jobs.
   # Même raison, pour auth-service et notification-service : DJANGO_DEBUG
   # n'étant pas positionné ici, ces settings tournent en DEBUG=False, ce qui
   # exige FRONTEND_URL sans repli (le service refuse un défaut silencieux sur
@@ -499,6 +500,8 @@ jobs:
         run: pip-audit -r requirements.txt
       - name: Analyse statique de sécurité (bandit)
         run: bandit -r . --exclude ./proto,./notifications/migrations -ll
+      - name: Génère une clé Fernet éphémère (CI uniquement, jamais committée)
+        run: echo "PII_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
       - name: Tests + couverture
         run: |
           coverage run --source=notifications manage.py test notifications

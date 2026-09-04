@@ -114,6 +114,13 @@ CONFIG_GRPC_PORT = env.int("CONFIG_GRPC_PORT", default=50058)
 # ne protège rien.
 INTERNAL_GRPC_KEY = env("INTERNAL_GRPC_KEY", default="")
 
+# Chiffrement au repos de la PII transitant par ce service (numéro de
+# téléphone WhatsApp destinataire — voir notifications/fields.py). Même
+# pattern que INTERNAL_GRPC_KEY : pas de valeur par défaut silencieuse ici,
+# la vérification fail-fast a lieu au premier chiffrement/déchiffrement
+# (notifications/fields.py::_fernet).
+PII_ENCRYPTION_KEY = env("PII_ENCRYPTION_KEY", default="")
+
 
 # --- WhatsApp (whatsapp-web.js service) ---
 WHATSAPP_SERVICE_URL = env("WHATSAPP_SERVICE_URL", default="http://localhost:3000")
