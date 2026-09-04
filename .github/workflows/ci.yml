@@ -114,6 +114,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # Tourne toujours, indépendamment du path-filter ci-dessus : une dérive entre
+  # la source canonique (libs/sgfe_common/) et une seule des 9 copies ne
+  # toucherait qu'un seul dossier services/*, donc pas forcément celui qui a
+  # changé dans le commit qui introduit la dérive. Un job gardé par path-filter
+  # aurait laissé passer exactement l'incident du 04/09 (deux campagnes mypy
+  # ayant chacune corrigé la copie de leurs 3 services sans jamais reporter le
+  # correctif vers la source canonique — sync-grpc-lib.sh --check ne tournait
+  # nulle part en CI pour l'attraper).
+  check-grpc-lib-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Vérifie l'absence de dérive (sync-grpc-lib.sh --check)
+        run: ./scripts/sync-grpc-lib.sh --check
+
   test-auth:
     needs: changes
     if: needs.changes.outputs.auth == 'true'
@@ -642,7 +657,7 @@ jobs:
   # bloquerait indéfiniment toute PR qui ne les déclenche pas.
   ci-status:
     if: always()
-    needs: [secrets-scan, test-auth, test-gateway, test-abonne, test-campagne, test-facturation, test-paiement, test-notification, test-reporting, test-config]
+    needs: [secrets-scan, check-grpc-lib-drift, test-auth, test-gateway, test-abonne, test-campagne, test-facturation, test-paiement, test-notification, test-reporting, test-config]
     runs-on: ubuntu-latest
     steps:
       - name: Vérifie qu'aucun job requis n'a échoué

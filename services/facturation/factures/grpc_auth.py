@@ -125,18 +125,16 @@ class AuthServerInterceptor(grpc.ServerInterceptor):
         if methode in METHODES_PUBLIQUES:
             return continuation(handler_call_details)
 
-        # La métadonnée gRPC peut porter une valeur bytes (clés "-bin") — jamais
-        # le cas ici (METADATA_KEY n'a pas ce suffixe), mais compare_digest
-        # exige des types homogènes : on couvre les deux pour rester correct
-        # même si ça changeait.
-        fournie: str | bytes = ""
+        fournie = ""
         for cle, valeur in handler_call_details.invocation_metadata or ():
             if cle == METADATA_KEY:
-                fournie = valeur
+                # La métadonnée peut être `bytes` pour une clé "-bin" (grpc) ;
+                # METADATA_KEY n'en est pas une, mais le type de la lib reste
+                # une union — normalisé en str pour la comparaison ci-dessous.
+                fournie = valeur.decode() if isinstance(valeur, bytes) else valeur
                 break
 
-        fournie_bytes = fournie.encode() if isinstance(fournie, str) else fournie
-        if not hmac.compare_digest(fournie_bytes, self._cle):
+        if not hmac.compare_digest(fournie.encode(), self._cle):
             # Journalisé sans la valeur reçue : un secret erroné reste un
             # secret, et l'écrire dans les logs en ferait une fuite.
             logger.warning("Appel gRPC refusé — clé interne absente ou invalide : %s", methode)

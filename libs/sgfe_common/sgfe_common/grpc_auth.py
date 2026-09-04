@@ -53,6 +53,7 @@ import logging
 import os
 from collections import namedtuple
 from pathlib import Path
+from typing import Any, Callable
 
 import grpc
 
@@ -101,14 +102,18 @@ class AuthServerInterceptor(grpc.ServerInterceptor):
 
     def __init__(self, cle_attendue: str) -> None:
         self._cle = exiger_cle(cle_attendue, self.__class__.__name__).encode()
-        self._refus = grpc.unary_unary_rpc_method_handler(
+        self._refus: grpc.RpcMethodHandler[Any, Any] = grpc.unary_unary_rpc_method_handler(
             lambda requete, contexte: contexte.abort(
                 grpc.StatusCode.UNAUTHENTICATED,
                 "Appel interne non authentifié.",
             )
         )
 
-    def intercept_service(self, continuation, handler_call_details):
+    def intercept_service(
+        self,
+        continuation: Callable[[grpc.HandlerCallDetails], grpc.RpcMethodHandler[Any, Any] | None],
+        handler_call_details: grpc.HandlerCallDetails,
+    ) -> grpc.RpcMethodHandler[Any, Any] | None:
         methode = getattr(handler_call_details, "method", "") or ""
         if methode in METHODES_PUBLIQUES:
             return continuation(handler_call_details)
@@ -116,7 +121,10 @@ class AuthServerInterceptor(grpc.ServerInterceptor):
         fournie = ""
         for cle, valeur in handler_call_details.invocation_metadata or ():
             if cle == METADATA_KEY:
-                fournie = valeur
+                # La métadonnée peut être `bytes` pour une clé "-bin" (grpc) ;
+                # METADATA_KEY n'en est pas une, mais le type de la lib reste
+                # une union — normalisé en str pour la comparaison ci-dessous.
+                fournie = valeur.decode() if isinstance(valeur, bytes) else valeur
                 break
 
         if not hmac.compare_digest(fournie.encode(), self._cle):
@@ -154,7 +162,12 @@ class AuthClientInterceptor(grpc.UnaryUnaryClientInterceptor):
     def __init__(self, cle: str) -> None:
         self._cle = exiger_cle(cle, self.__class__.__name__)
 
-    def intercept_unary_unary(self, continuation, client_call_details, request):
+    def intercept_unary_unary(
+        self,
+        continuation: Callable[[grpc.ClientCallDetails, Any], Any],
+        client_call_details: grpc.ClientCallDetails,
+        request: Any,
+    ) -> Any:
         metadata = list(client_call_details.metadata or ())
         metadata.append((METADATA_KEY, self._cle))
         return continuation(
