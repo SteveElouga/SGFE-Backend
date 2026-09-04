@@ -19,6 +19,16 @@ class DelaisImpayesDict(TypedDict):
     suspension_relances: int
 
 
+class TokenValideDict(TypedDict):
+    """Résultat de `NotificationServiceClient.valider_token` — voir
+    `paiements/grpc_clients.py`. Un TypedDict plutôt que le message protobuf
+    brut : cohérent avec `DelaisImpayesDict` ci-dessus, et évite d'exposer un
+    type dont l'import est lazy (voir `_ensure_proto_in_syspath`)."""
+
+    is_valid: bool
+    abonne_id: str
+
+
 class PaiementEventSource(Protocol):
     """Forme structurelle attendue par `publish_paiement_event` (event_publisher.py).
 

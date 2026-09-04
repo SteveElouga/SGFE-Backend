@@ -27,6 +27,17 @@ service PaiementService {
   // Éteint le solde d'une facture annulée. Ce que l'abonné avait versé est
   // porté à son avoir : la facture disparaît, pas son argent.
   rpc AnnulerSolde (AnnulerSoldeRequest) returns (AnnulerSoldeResponse);
+
+  // Paiement en ligne dans l'espace abonné public — relance de la décision
+  // §10.2 de l'audit, qui l'avait écartée. **Mode sandbox/mock
+  // exclusivement** : aucune vraie passerelle de paiement n'est branchée
+  // (voir paiements/passerelle_paiement.py). Interface pluggable, prête à
+  // recevoir un vrai fournisseur (Mobile Money, agrégateur, etc.) sans
+  // changement de ce contrat.
+  rpc CreerSessionPaiementEnLigne (CreerSessionPaiementRequest) returns (SessionPaiementResponse);
+  // `token_espace` doit être EXACTEMENT celui qui a créé la session
+  // (anti-IDOR) — voir SessionPaiementEnLigne.token_espace.
+  rpc ConfirmerSessionPaiementEnLigne (ConfirmerSessionPaiementRequest) returns (SessionPaiementResponse);
 }
 
 message InitialiserSoldeRequest {
@@ -197,4 +208,28 @@ message AnnulerSoldeResponse {
   SoldeResponse solde = 1;
   // Montant reversé à l'avoir de l'abonné (0 si rien n'avait été payé).
   double montant_porte_en_avoir = 2;
+}
+
+message CreerSessionPaiementRequest {
+  string facture_id = 1;
+  double montant = 2;
+  // Token de l'espace abonné : revalidé ici (Notification Service) pour
+  // résoudre l'abonné propriétaire de la session — jamais un simple champ de
+  // confiance transmis par l'appelant.
+  string token_espace = 3;
+}
+
+message ConfirmerSessionPaiementRequest {
+  string session_id = 1;
+  // Doit être EXACTEMENT le token qui a créé la session (anti-IDOR).
+  string token_espace = 2;
+}
+
+message SessionPaiementResponse {
+  string session_id = 1;
+  // Renseignée seulement par CreerSessionPaiementEnLigne — vide sur la
+  // réponse de confirmation (le contrat REST n'y lit que `statut`).
+  string url_redirection = 2;
+  string expire_a = 3;
+  string statut = 4;  // EN_ATTENTE | CONFIRMEE | ECHOUEE | EXPIREE
 }
