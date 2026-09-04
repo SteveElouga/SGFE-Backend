@@ -43,6 +43,7 @@ jobs:
 
   changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       auth: ${{ steps.filter.outputs.auth }}
       gateway: ${{ steps.filter.outputs.gateway }}
@@ -107,6 +108,7 @@ jobs:
 
   secrets-scan:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -125,15 +127,47 @@ jobs:
   # nulle part en CI pour l'attraper).
   check-grpc-lib-drift:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Vérifie l'absence de dérive (sync-grpc-lib.sh --check)
         run: ./scripts/sync-grpc-lib.sh --check
 
+  # Scanner de mauvaise configuration des pipelines eux-mêmes (CIS 2.3.6,
+  # OWASP CICD-SEC-8) : actionlint (rhysd/actionlint) analyse tous les
+  # workflows .github/workflows/*.yml — syntaxe, expressions ${{ }} mal
+  # formées, `runs-on` invalide, jobs déclarés dans `needs` qui n'existent
+  # pas, incompatibilités de clés (ex. `timeout-minutes` sur un job qui
+  # appelle un workflow réutilisable — non détectable par un simple
+  # `yaml.safe_load`, qui ne valide que la syntaxe YAML, pas le schéma
+  # GitHub Actions). Tourne toujours, indépendamment du path-filter.
+  lint-workflows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # `github-pr-check` (ci-dessous) poste un Check Run natif — c'est le
+      # seul reporter réellement documenté par cette action (`reporter:
+      # local` n'existe pas : testé en CI réelle, échoue avec "reviewdog:
+      # diff command is empty"). `checks: write` élevé uniquement sur ce
+      # job, pas au niveau du workflow.
+      checks: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: actionlint (rhysd/actionlint via reviewdog)
+        uses: reviewdog/action-actionlint@d290e336d5a743810aef4404f757dc862276d2ae # v1.73.4
+        with:
+          fail_level: error
+          reporter: github-pr-check
+          # `nofilter` : signale tout le fichier, pas seulement les lignes
+          # changées.
+          filter_mode: nofilter
+
   test-auth:
     needs: changes
     if: needs.changes.outputs.auth == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: services/auth
@@ -189,6 +223,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.gateway == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: gateway
@@ -217,6 +252,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.abonne == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: services/abonne
@@ -269,6 +305,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.campagne == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: services/campagne
@@ -319,6 +356,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.facturation == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: services/facturation
@@ -369,6 +407,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.paiement == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: services/paiement
@@ -419,6 +458,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.notification == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: services/notification
@@ -471,6 +511,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.config == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: services/config
@@ -521,6 +562,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.reporting == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: services/reporting
@@ -660,7 +702,7 @@ jobs:
   # bloquerait indéfiniment toute PR qui ne les déclenche pas.
   ci-status:
     if: always()
-    needs: [secrets-scan, check-grpc-lib-drift, test-auth, test-gateway, test-abonne, test-campagne, test-facturation, test-paiement, test-notification, test-reporting, test-config]
+    needs: [secrets-scan, check-grpc-lib-drift, lint-workflows, test-auth, test-gateway, test-abonne, test-campagne, test-facturation, test-paiement, test-notification, test-reporting, test-config]
     runs-on: ubuntu-latest
     steps:
       - name: Vérifie qu'aucun job requis n'a échoué
@@ -676,7 +718,7 @@ jobs:
   # SBOM + attestation de provenance, et signe l'image en keyless via
   # l'identité OIDC de GitHub Actions (cosign, sigstore public good instance).
   publish-auth:
-    needs: [changes, test-auth, secrets-scan]
+    needs: [changes, test-auth, secrets-scan, docker-build-auth]
     if: needs.changes.outputs.auth == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -688,7 +730,7 @@ jobs:
       context: services/auth
 
   publish-config:
-    needs: [changes, test-config, secrets-scan]
+    needs: [changes, test-config, secrets-scan, docker-build-config]
     if: needs.changes.outputs.config == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -700,7 +742,7 @@ jobs:
       context: services/config
 
   publish-reporting:
-    needs: [changes, test-reporting, secrets-scan]
+    needs: [changes, test-reporting, secrets-scan, docker-build-reporting]
     if: needs.changes.outputs.reporting == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -712,7 +754,7 @@ jobs:
       context: services/reporting
 
   publish-gateway:
-    needs: [changes, test-gateway, secrets-scan]
+    needs: [changes, test-gateway, secrets-scan, docker-build-gateway]
     if: needs.changes.outputs.gateway == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -724,7 +766,7 @@ jobs:
       context: gateway
 
   publish-abonne:
-    needs: [changes, test-abonne, secrets-scan]
+    needs: [changes, test-abonne, secrets-scan, docker-build-abonne]
     if: needs.changes.outputs.abonne == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -736,7 +778,7 @@ jobs:
       context: services/abonne
 
   publish-facturation:
-    needs: [changes, test-facturation, secrets-scan]
+    needs: [changes, test-facturation, secrets-scan, docker-build-facturation]
     if: needs.changes.outputs.facturation == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -748,7 +790,7 @@ jobs:
       context: services/facturation
 
   publish-campagne:
-    needs: [changes, test-campagne, secrets-scan]
+    needs: [changes, test-campagne, secrets-scan, docker-build-campagne]
     if: needs.changes.outputs.campagne == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -760,7 +802,7 @@ jobs:
       context: services/campagne
 
   publish-paiement:
-    needs: [changes, test-paiement, secrets-scan]
+    needs: [changes, test-paiement, secrets-scan, docker-build-paiement]
     if: needs.changes.outputs.paiement == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -772,7 +814,7 @@ jobs:
       context: services/paiement
 
   publish-notification:
-    needs: [changes, test-notification, secrets-scan]
+    needs: [changes, test-notification, secrets-scan, docker-build-notification]
     if: needs.changes.outputs.notification == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -784,7 +826,7 @@ jobs:
       context: services/notification
 
   publish-nginx:
-    needs: [changes, secrets-scan]
+    needs: [changes, secrets-scan, docker-build-nginx]
     if: needs.changes.outputs.nginx == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -796,7 +838,7 @@ jobs:
       context: nginx
 
   publish-whatsapp:
-    needs: [changes, secrets-scan]
+    needs: [changes, secrets-scan, docker-build-whatsapp]
     if: needs.changes.outputs.whatsapp == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
