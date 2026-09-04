@@ -70,15 +70,60 @@
 >
 > **Décompte final (96 items, §8 — le total est passé de 94 à 96 : les deux
 > incidents/régressions découverts et corrigés ce jour comptent comme des
-> items propres)** : **72 faits (75 %)** · **2 partiels** · **7 incertains/non
-> revérifiés** · **15 non faits**. Détail dans le tableau de décompte en fin
-> de §8, refait à neuf.
+> items propres)** : **75 faits (78 %)** · **5 partiels** · **7 incertains/non
+> revérifiés** · **9 non faits**. Détail dans le tableau de décompte en fin
+> de §8, refait à neuf. *(Chiffres recalculés le 04/09 : le transactional
+> outbox facturation → paiement, §F, est passé de « non fait » à « fait »
+> — PR #191 — un seul item a changé de colonne, indépendamment de la piste
+> d'audit §J ci-dessous.)*
+>
+> **Mise à jour du 4 septembre** : la piste d'audit (§J) n'est plus à zéro —
+> identité propagée sur les 9 composants, `AuditLog` immuable pour
+> paiement/facturation (campagne/abonné/auth/config restants), rétention des
+> logs sur les 9 composants — voir le décompte détaillé en fin de §8.
 >
 > **Seul vrai blocage de production inchangé** : l'observabilité (§I, hors
-> healthchecks désormais complets) et la piste d'audit (§J) n'ont **jamais
-> été entamées** — chantiers à part entière, jamais planifiés dans aucune des
+> healthchecks désormais complets) n'a **jamais été entamée** — chantier à
+> part entière, jamais planifié dans aucune des
 > trois passes du 3 septembre. C'est le verrou SOC 2 et la porte « Go
 > production » restants, sans ambiguïté.
+
+> ⚠️ **4e revue de fraîcheur — 4 septembre 2026 : la piste d'audit (§J) est entamée, partiellement.**
+> Conception §10.7 implémentée telle quelle, en 3 étapes : (1) propagation
+> d'identité — `IdentityInterceptor` serveur sur les 8 services +
+> `IdentityClientInterceptor` côté gateway, métadonnées `x-user-id/name/role/
+> request-id`, comportement anonyme inchangé, zéro changement fonctionnel,
+> testé (propagation ContextVar vérifiée en sync ET en async/`asyncio.
+> to_thread`, y compris une limite documentée : les souscriptions GraphQL, qui
+> n'enchaînent que des lectures, ne propagent pas l'identité d'un
+> `to_thread` à l'autre — hors périmètre du journal d'audit, écritures
+> uniquement) ; (2) modèle `AuditLog` append-only écrit dans la même
+> transaction que le changement métier — **seulement pour PAIEMENT et
+> FACTURATION**, comme priorisé par la conception (campagne, abonné, auth,
+> config restent à faire, une PR par service) ; (3) migration REVOKE UPDATE/
+> DELETE sur `audit_log` pour le rôle applicatif Postgres, réversible,
+> vérifiée en direct — avec une **limite honnête découverte en la testant** :
+> le rôle applicatif étant aussi propriétaire de la table dans la
+> configuration actuelle (`docker-compose.yml`), PostgreSQL fait primer la
+> propriété sur l'ACL et le REVOKE ne bloque pas ce rôle précis (vérifié
+> empiriquement ; confirmé fonctionnel pour un rôle non-propriétaire distinct).
+> Rétention des logs + horodatage ISO 8601 UTC fiable livrés sur les **9
+> composants** (item séparé, effort S, désormais complet). Journalisation de
+> sécurité : logger dédié `security` côté gateway sur les refus de rôle et
+> échecs de validation de jeton — partiel, pas de report vers l'`AuditLog`
+> d'un service distant (aucun RPC pour ça, hors périmètre).
+>
+> **Décompte mis à jour (96 items, §8, recompté par script)** : **73 faits (76
+> %)** · **5 partiels** · **7 incertains/non revérifiés** · **11 non faits**.
+> Seuls les 4 items de §J ont changé de statut par rapport à la 3e passe (3
+> passent à 🟡 partiel, 1 — rétention/horodatage — passe à ✅ fait) ; rien
+> d'autre n'a été retouché dans cette revue.
+>
+> **La collecte de preuves SOC 2 démarre formellement à partir d'aujourd'hui**
+> pour le périmètre livré (identité + audit paiement/facturation + sécurité
+> gateway) — J1/J2 étant désormais au moins partiellement en place. Elle ne
+> couvre pas encore campagne/abonné/auth/config, ni l'observabilité (§I,
+> toujours à zéro, chantier séparé).
 
 ## 1. Synthèse exécutive
 
@@ -462,8 +507,8 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 
 **F. Robustesse distribuée**
 
-- [ ] **Transactional outbox**. *(L)* — **Non fait**, mais l'alternative recommandée par l'audit lui-même a été choisie et livrée (item suivant).
-- [x] Alternative : **création paresseuse** du `SoldeFacture` + **commande de réconciliation**. *(M)* — **✅ Fait — PR #115/#116 (2026-07-22).** "solde idempotent + commande reconcilier_soldes (factures orphelines)".
+- [x] **Transactional outbox**. *(L)* — **✅ Fait — PR #191 (2026-09-04), périmètre strict facturation → paiement (`SoldeFacture`).** Nouvelle table `outbox_events` (Facturation Service, `factures/models.py::OutboxEvent`) : l'événement `FACTURE_GENEREE` est écrit **dans la même transaction Django** que la `Facture` (`generer_factures`, `regenerer_facture`, `creer_regularisation`) — un rollback annule les deux écritures ensemble, testé explicitement (exception forcée après l'écriture outbox, avant le commit, sur les deux chemins génération et régularisation). L'appel `InitialiserSolde` synchrone existant est conservé en best-effort immédiat (latence perçue + avoir imputé sur le PDF généré juste après, voir commentaire dans `services.py`), mais n'est plus la seule voie : un relais planifié (`factures/schedulers.py::outbox_relay_job`, `IntervalTrigger` 10s, verrou `pg_try_advisory_lock` clé `4210005` — dédiée, sans collision avec les autres crons du dépôt, voir `CLAUDE.md` racine) rejoue les événements `EN_ATTENTE` jusqu'à succès ou jusqu'à 5 tentatives (`MAX_TENTATIVES_OUTBOX`), au-delà desquelles l'événement passe en `ECHEC` définitif et une alerte est journalisée plutôt que de boucler indéfiniment — même plafond que la redélivrance Redis Streams du Reporting Service (item suivant de cette même section). `InitialiserSolde` (Paiement Service) était déjà idempotent par `facture_id` (`get_if_exists` avant création, testé — `test_initialiser_solde_idempotent`) : un relais qui rejoue un événement déjà traité, y compris après un redémarrage entre l'appel gRPC et la mise à jour du statut outbox, ne duplique jamais le solde — prouvé par un test dédié qui remet un événement `ENVOYE` à `EN_ATTENTE` puis relance le relais. **Strictement limité au flux facture → solde** : clôture campagne, suspension abonné, clé d'idempotence `EnregistrerPaiement`, synchro de statut facture et dead-letter Redis Streams (items suivants de cette même section) sont des garde-fous indépendants, non touchés. `services/facturation` : 195→222 tests (27 nouveaux, dédiés), mypy `--strict` vert sur `factures/`.
+- [x] Ex-alternative : **création paresseuse** du `SoldeFacture` + **commande de réconciliation**. *(M)* — **✅ Fait — PR #115/#116 (2026-07-22)** ; **supplantée par l'outbox ci-dessus (item précédent), pas retirée.** "Création paresseuse" décrivait en réalité l'idempotence de `InitialiserSolde` elle-même (`get_if_exists`, jamais un chemin de création différé à un premier paiement) — conservée telle quelle, l'outbox en dépend directement pour que le relais puisse rejouer un événement sans jamais dupliquer. La commande `reconcilier_soldes` (dans `services/facturation/factures/management/commands/` — pas côté paiement, contrairement à une description antérieure) est **conservée en filet de tout dernier recours, jamais planifiée automatiquement** : choix documenté explicitement dans son propre docstring plutôt qu'une suppression à l'aveugle sur un flux financier critique.
 - [x] **Clé d'idempotence** sur `EnregistrerPaiement`. *(M)* — **✅ Fait — PR #114 (2026-07-22).**
 - [x] Rendre la **synchro de statut facture** rejouable + **recalcul périodique** reporting. *(M)* — **✅ Fait — PR #170 (fusionnée 03/09).** Job `CronTrigger` nocturne (verrou `pg_advisory_lock`, clé dédiée `4210004`) qui recalcule `StatsFacturation`/`StatsPaiements` depuis Facturation/Paiement en plus du consumer Redis Streams déjà idempotent. `services/reporting` : 34→46 tests.
 - [x] **Robustesse clôture → facturation** : retry/file + régénération manuelle. *(M)* — **✅ Fait — PR #170.** `Campagne.facturation_en_attente` posé si l'appel échoue à la clôture ; job horaire (`pg_advisory_lock`, clé `4210003`) rejoue le même appel `notifier_campagne_cloturee` sans dupliquer la logique de génération. Bug corrigé au passage : la valeur de retour de cet appel n'était jusque-là jamais lue. `services/campagne` : 117→136 tests.
@@ -496,10 +541,10 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 
 **J. Piste d'audit & conformité SOC 2**
 
-- [ ] **Journal d'audit métier immuable**. *(M)* — **Toujours non fait — à ne pas confondre avec une PR au titre trompeur.** PR #112 (22/07) ne livre qu'un **document de conception** (« docs(audit): conception identite -> journal d'audit immuable », intégré ci-dessous en §10.7). Recherche de code (`AuditLog`/`AuditEvent`/`JournalAudit`) : 0 résultat. C'est le type d'erreur qu'une vérification au seul titre de PR aurait manqué.
-- [ ] **Journalisation de sécurité** centralisée et inviolable. *(M)* — **Non fait**, dépend de l'item ci-dessus.
-- [ ] Politique de **rétention des logs** + horodatage fiable. *(S)* — **Non fait** (revérifié 03/09 : aucun bloc `LOGGING` personnalisé dans les `settings.py`).
-- [ ] **Démarrer la collecte de preuves tôt**. *(continu)* — Sans objet tant que J1/J2 ne sont pas livrés.
+- [ ] 🟡 **Journal d'audit métier immuable**. *(M)* — **Partiel, 04/09/2026.** Conception §10.7 implémentée telle quelle : étape 1 (propagation d'identité) livrée sur les **9 composants** — `IdentityInterceptor` serveur (métadonnées `x-user-id`/`x-user-name`/`x-user-role`/`x-request-id` → `get_caller()`, ContextVar) sur les 8 services, `IdentityClientInterceptor` côté gateway (`schema/grpc_clients.py`) posant ces métadonnées depuis l'identité authentifiée (`schema/identity_context.py`, `require_auth`) ; comportement anonyme inchangé (aucune métadonnée sans identité). Étape 2 (`AuditLog` + écriture sur mutation) livrée **seulement pour PAIEMENT et FACTURATION**, comme priorisé par la conception : modèle `AuditLog` (UUID, action, objet_type, objet_id, acteur_id/nom/role, horodatage `auto_now_add`, detail) append-only, écrit **dans la même transaction Django** que le changement métier — paiement (`enregistrer_paiement`, `annuler_paiement`, `enregistrer_paiement_abonne`, `crediter_avoir_manuel`, `annuler_solde`) et facturation (`generer_factures`, `annuler_facture`, `regenerer_facture`, `creer_regularisation`, `update_tarif`). Étape 3 (immuabilité base) : migration `RunPython` REVOKE UPDATE/DELETE sur `audit_log` pour le rôle applicatif Postgres de chaque service, réversible (GRANT), vérifiée en direct sur un Postgres jetable — **limite honnête constatée empiriquement** : dans la configuration actuelle (`docker-compose.yml`), le rôle applicatif est aussi **propriétaire** de la table (il l'a créée via `migrate`), et PostgreSQL fait primer la propriété sur l'ACL — un `UPDATE`/`DELETE` par ce rôle **reste possible malgré le REVOKE** (vérifié : `UPDATE`/`DELETE` réussissent toujours pour le propriétaire ; testé aussi avec un rôle non-propriétaire distinct, où le même REVOKE bloque bien `UPDATE`/`DELETE` — `permission denied`). Un durcissement réel exigerait un rôle Postgres dédié aux migrations, distinct du rôle d'exécution applicative — non fait, changement d'architecture plus large. **Explicitement hors périmètre de cette PR, à faire ensuite** : campagne (fusion de `ReleveAudit` existant), abonné, auth, config — dans cet ordre, une PR par service, comme prévu par la conception §10.7.
+- [ ] 🟡 **Journalisation de sécurité** centralisée et inviolable. *(M)* — **Partiel, 04/09/2026.** Logger Python dédié `security` câblé côté gateway (`schema/context.py`) : refus de `require_role` (rôle insuffisant) et échecs de validation de jeton (`require_auth`/`ValidateToken`) journalisés en écriture seule, avec `request_id` de corrélation, testés. Ce que dit la conception (« logger via `AuditLog` si un service concerné est impliqué, sinon un logger dédié ») n'a que sa branche « sinon » de livrée : aucun RPC n'existe pour que la gateway pousse un événement dans l'`AuditLog` d'un service distant, et une telle route n'a pas été ajoutée dans cette PR (créerait un couplage nouveau, hors périmètre « zéro changement fonctionnel » de l'étape 1). Pas de centralisation multi-composant (chaque service journalise localement, cohérent avec la rétention ci-dessous, mais sans agrégation SIEM) ; « inviolable » reste théorique (fichier local, pas de chaînage de hash).
+- [x] Politique de **rétention des logs** + horodatage fiable. *(S)* — **✅ Fait, 04/09/2026.** Bloc `LOGGING` ajouté aux `settings.py` des **9 composants** (gateway + 8 services) : formatter horodatage ISO 8601 explicite en UTC (`logging.Formatter.converter = time.gmtime`, cohérent avec `TIME_ZONE = "UTC"` déjà en vigueur), rétention configurable via `LOG_RETENTION_DAYS` (défaut 30 jours, `TimedRotatingFileHandler` un fichier par jour). Désactivé en mode `TESTING` (pas d'écriture disque à chaque `manage.py test`, comme le reste du dépôt). Corrélation `x-request-id` (posée par l'étape 1) utilisée ponctuellement dans les logs de sécurité de la gateway ci-dessus — **volontairement pas** généralisée à un filtre de log global sur les 9 composants (risque d'ordre d'import pour un gain marginal ; un vrai `trace_id` cross-service reste l'item observabilité séparé §I, non entamé).
+- [ ] 🟡 **Démarrer la collecte de preuves SOC 2**. *(continu)* — **Débute formellement aujourd'hui, 04/09/2026** : J1 et J2 sont désormais livrés au moins partiellement (paiement + facturation auditées, sécurité gateway journalisée), ce qui rend la période d'observation SOC 2 Type II significative à partir de cette date pour ce périmètre précis — pas encore pour les 4 services restants ni pour l'observabilité (§I, toujours à zéro).
 
 **K. Tests (fiabilité)**
 
@@ -577,28 +622,32 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 |---|---|---|---|
 | 🚦 **Go production (technique)** | Aucun secret exposé, périmètre gRPC verrouillé, système déployable + sauvegardé, bugs bloquants corrigés | **Tous les P0** + F, I (min. `/metrics` + healthchecks + logs) + K (e2e smoke vert) | 🟡 **Toujours bloqué sur un seul point.** P0 à 26/27 (seul reste : rotation Brevo, hors code) — mTLS vérifié en direct, healthchecks complets sur les 9 composants. **I (observabilité, hors healthchecks) reste à zéro, jamais entamé** — bloque toujours cette porte à elle seule, `/metrics`/`TracerProvider`/logs structurés absents. |
 | 🔗 **Complètement aligné** | Front ⇄ back sans écart de contrat ni dérive | Tous les items **🔗** : D, E‑proxy, H, K‑e2e, L‑codegen/typeEnvoi/index, Q‑doc | ✅ **Quasi complet.** L‑index (Decimal) fait (PR #171) ; le proxy de dev local re-fonctionne après la régression TLS (PR #180/#146) ; seul K‑e2e reste partiel (paiement volontairement jamais exécuté, à raison). |
-| 🛡️ **Prêt pour l'audit SOC 2 Type II** | Contrôles en place **et** preuves accumulées sur la période d'observation | P0 (sécurité) + J (audit trail) + I (monitoring) + K (pentest) + rate limiting (C) | ⛔ **Toujours loin, sans surprise.** mTLS + PII + TLS + RGPD traités, mais **J et I restent à zéro, jamais entamés**, K‑pentest non fait — ce sont les vrais blocages, inchangés depuis la 1ère passe du 3 septembre. |
+| 🛡️ **Prêt pour l'audit SOC 2 Type II** | Contrôles en place **et** preuves accumulées sur la période d'observation | P0 (sécurité) + J (audit trail) + I (monitoring) + K (pentest) + rate limiting (C) | ⛔ **Toujours loin, mais J est entamé.** mTLS + PII + TLS + RGPD traités. **J** (04/09) : identité propagée sur les 9 composants + `AuditLog` immuable pour paiement/facturation seulement (campagne/abonné/auth/config restants) + rétention/horodatage fiable sur les 9 composants + logger sécurité gateway partiel — 🟡 partiel, pas à zéro. **I (observabilité) reste à zéro, jamais entamé**, K‑pentest non fait — ce sont les vrais blocages restants. |
 | 💰 **Complet fonctionnellement** | Cycle correctif financier + portail abonné opérationnels | G + H + M (pagination) | ✅ **Complet, des deux côtés.** G et H déjà faits ; **M (pagination) fait serveur (PR #172) ET UI (PR #145)** — `abonnes-list`/`factures-list` consomment réellement `limit`/`offset`, `paiements-list` non migrée par choix documenté. |
 
-### Décompte — mis à jour le 3 septembre 2026 (3e passe, tout fusionné dans `develop`)
+### Décompte — mis à jour le 4 septembre 2026 (piste d'audit §J entamée, partiellement)
 
 > Contrairement aux deux passes précédentes de cette même journée (qui comptaient un item « ✅ Fait » dès le code écrit/testé/committé, PR ouverte ou non), **cette passe ne compte fait que ce qui est réellement fusionné dans `develop`** — la quasi-totalité des PR alors ouvertes (#142, #143, #168 à #174) l'ont été depuis, plus 8 PR supplémentaires ouvertes et fusionnées dans la foulée (#175 à #181 côté backend, #145/#146 côté frontend). Voir §8 pour le détail et les preuves, PR par PR.
+>
+> **Mise à jour du 4 septembre** : seuls les 4 items de §J ont changé de statut (voir la 4e revue de fraîcheur en tête de document et le détail §J ci-dessus) — recompté avec un script plutôt qu'à la main (compte exact des `- [x]`/`- [ ]`/🟡/❓ des 96 lignes de checklist de cette section).
 
 | Priorité | Total | ✅ Fait | 🟡 Partiel | ❓ Incertain / non revérifié | Non fait | Effort dominant (origine) |
 |---|:---:|:---:|:---:|:---:|:---:|---|
 | 🔴 P0 | 27 | 26 | 0 | 1 | 0 | S/M (+ 2 L : mTLS fait — PR #168, déploiement fait) |
-| 🟠 P1 | 33 | 19 | 2 | 0 | 12 | M (+ 2 L : outbox non fait par choix, avoir/rectification fait) |
+| 🟠 P1 | 33 | 21 | 5 | 0 | 7 | M (+ 2 L : outbox fait — PR #191, périmètre facturation→paiement uniquement ; avoir/rectification fait) |
 | 🟡 P2 | 21 | 20 | 0 | 0 | 1 | S/M (+ 1 L : réplication PostgreSQL, fait en PoC — PR #173) |
 | 🟢 P3 | 15 | 8 | 0 | 6 | 1 | M/L |
-| **Total** | **96** | **73 (76 %)** | **2 (2 %)** | **7 (7 %)** | **14 (15 %)** | — |
+| **Total** | **96** | **75 (78 %)** | **5 (5 %)** | **7 (7 %)** | **9 (9 %)** | — |
 
-> **Mise à jour du 4 septembre 2026** : **Retry automatique des notifications en échec** (§8·O) livré — PR #190. Le total d'items faits passe de 72 à **73** (P3 : 7→8 faits, 2→1 non fait).
+> **Mise à jour du 04/09** : l'item **transactional outbox** (§F) passe de « non fait » à « fait » — PR #191, voir le détail dans la ligne de checklist correspondante. Périmètre strictement limité au flux facturation → paiement (création du `SoldeFacture`) ; les autres mécanismes de robustesse déjà « faits » de cette même section (clé d'idempotence `EnregistrerPaiement`, synchro de statut facture rejouable, robustesse clôture→facturation, verrouillage des crons, dead-letter Redis Streams) ne sont pas concernés et restent inchangés. Combiné indépendamment aux 3 items de la piste d'audit §J passés en partiel (voir ci-dessus) : décompte recalculé sur les 96 lignes de checklist de §8, 75/96 faits (78 %), cohérent avec le tableau ci-dessus.
+
+> **Mise à jour du 4 septembre 2026** : trois chantiers distincts livrés le même jour. **Retry automatique des notifications en échec** (§8·O, PR #190) porte le total à 73 (P3 : 7→8 faits, 2→1 non fait). **Piste d'audit §J entamée** (identité propagée + `AuditLog` paiement/facturation + rétention/horodatage + logger sécurité gateway, voir ci-dessus) déplace 3 items de non-fait à partiel dans P1, sans changer le total de faits. **Transactional outbox** (§F, PR #191) porte ensuite le total à **75** (P1 : 1 item passé de non-fait à fait).
 >
 > **Progression de la journée du 3 septembre** : 0→37→48→50→64→**70** items faits au fil de la journée. Le total est passé de 94 à **96** items (2 ajouts : un bug réel de redélivraison Redis Streams découvert et corrigé en rédigeant le runbook — PR #177 — et la régression du proxy de dev local causée par le durcissement TLS — PR #180/#146). Trois nouveaux items complétés depuis la 2e passe, en plus des PR alors ouvertes désormais fusionnées : **RGPD export/anonymisation** (PR #179), **plan de reprise d'activité** (PR #178, avec un vrai écart opérationnel trouvé et depuis corrigé le 04/09 — sauvegardes désormais envoyées vers le bucket S3 provisionné), et **consommation de la pagination côté UI** (PR #145 frontend, en plus du serveur déjà fait).
 >
 > **`mypy --strict`** (P2, `§L`) a nettement progressé sans être fini : **6 des 9 composants backend à 0 erreur** (auth, abonne, reporting, notification, paiement, gateway — PR #181), **3 restants en cours** (campagne, config, facturation) sur une branche non encore fusionnée à la rédaction de cette ligne. Câblage CI volontairement différé tant que les 9 ne sont pas tous propres.
 >
-> **Ce qui reste, par choix explicite** : observabilité (§I) et piste d'audit (§J) — chantiers à part entière, jamais entamés. Tarification par tranches, pénalités de retard et estimation automatique des compteurs — **déclinés explicitement par l'utilisateur** le 3 septembre (staging iso-prod, CGU et multi-tenant classés « pas d'actualité », pas refusés). **Ce qui reste, P1 « critique »** : uniquement des items déjà hors périmètre pour une raison précise (voir liste détaillée dans la note de la 1ère passe, inchangée) ou dépendant de l'observabilité. **Ce qui reste, P2** : uniquement l'environnement de staging iso-prod (non fait, explicitement pas d'actualité pour l'instant) — le code vestigial et `mypy --strict` (9/9, CI câblée) sont désormais faits.
+> **Ce qui reste, 4 septembre** : piste d'audit (§J) entamée mais **incomplète** — `AuditLog` manque encore sur campagne/abonné/auth/config (une PR par service, dans cet ordre, prévu par la conception §10.7), la journalisation de sécurité ne couvre que la gateway, et le REVOKE niveau base a une limite documentée (rôle applicatif = propriétaire de la table dans la configuration actuelle). **Observabilité (§I)** reste le seul chantier à zéro, jamais entamé. Tarification par tranches, pénalités de retard et estimation automatique des compteurs — **déclinés explicitement par l'utilisateur** le 3 septembre (staging iso-prod, CGU et multi-tenant classés « pas d'actualité », pas refusés). **Ce qui reste, P2** : uniquement l'environnement de staging iso-prod (non fait, explicitement pas d'actualité pour l'instant).
 >
 > **Points d'attention restants** : Trivy (PR #143, fusionnée) a bien fait échouer la CI frontend comme prévu au premier run (`nginx:1.27-alpine`) — non re-vérifié si le tag a depuis été bumpé. Les 191 événements Redis Streams bloqués ont été purgés le 04/09 (voir §F) — plus un point d'attention.
 
@@ -708,6 +757,8 @@ Prêts à être implémentés immédiatement (petits correctifs à fort impact),
 ### 10.7 Conception — propagation d'identité → journal d'audit immuable (dernier P0)
 
 > **Statut (juillet 2026)** : les 7 quick wins §10.6 **et** tout le volet « P0 sans Azure » (isolation réseau, rate limiting, sauvegardes PostgreSQL, cible de déploiement, espace abonné, + access token court, retry‑401 REST, garde‑fou `.env`, nettoyage bcrypt) sont **livrés et mergés**. Le **dernier item P0** est ce couple **propagation d'identité → journal d'audit** (CC7.2/CC7.3 SOC 2, « qui a fait quoi »). Cette section fige la conception ; rien n'est encore implémenté.
+>
+> **Mise à jour — 4 septembre 2026 : étapes 1 à 3 implémentées TELLES QUE CONÇUES ci-dessous**, avec un périmètre volontairement restreint pour l'étape 2 (voir §8·J pour le détail précis et les limites honnêtes constatées, notamment sur le REVOKE niveau base). Étape 1 : les 9 composants. Étape 2 : paiement + facturation seulement — campagne (fusion `ReleveAudit`), abonné, auth, config restent à faire, dans cet ordre, une PR par service. Étape 4 (agrégation reporting + lecture GraphQL) : toujours non commencée, comme prévu (« plus tard »).
 
 **État des lieux (code réel).**
 
@@ -738,7 +789,7 @@ Prêts à être implémentés immédiatement (petits correctifs à fort impact),
 | 3 | **Immuabilité niveau base** (REVOKE) + option chaînage | Défense en profondeur |
 | 4 | **Agrégation reporting + API GraphQL de lecture (ADMIN)** | Confort de requête transverse — *plus tard* |
 
-**Étape 1 détaillée — fichiers & tests (à implémenter, non fait).**
+**Étape 1 détaillée — fichiers & tests (✅ implémentée le 4 septembre 2026, voir §8·J).**
 
 *Gateway :*
 - `gateway/schema/identity_context.py` **(nouveau)** — un `ContextVar` `current_identity` + `set_identity(user_id, username, role)` / `get_identity()`.

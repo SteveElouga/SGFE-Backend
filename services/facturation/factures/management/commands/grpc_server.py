@@ -10,6 +10,8 @@ class Command(BaseCommand):
 
     def handle(self, *args: Any, **options: Any) -> None:
         from factures.grpc_server import serve
+        from factures.schedulers import start_scheduler
 
+        start_scheduler()
         self.stdout.write("Serveur gRPC Facturation démarré.")
         serve()

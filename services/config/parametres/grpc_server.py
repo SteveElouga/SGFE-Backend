@@ -19,7 +19,7 @@ from parametres.cache import (
     set_cached_param,
 )
 from parametres.event_publisher import publish_config_event
-from parametres.grpc_interceptors import ErrorHandlingInterceptor
+from parametres.grpc_interceptors import ErrorHandlingInterceptor, IdentityInterceptor
 from parametres.grpc_auth import AuthServerInterceptor, ouvrir_port_grpc
 from parametres.serializers import config_to_response, infos_to_response
 from parametres.services import ConfigService, InfosSocieteService
@@ -89,7 +89,11 @@ class ConfigServiceServicer(pb_grpc.ConfigServiceServicer):  # type: ignore[misc
 def serve() -> None:
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=10),
-        interceptors=[AuthServerInterceptor(settings.INTERNAL_GRPC_KEY), ErrorHandlingInterceptor()],
+        interceptors=[
+            AuthServerInterceptor(settings.INTERNAL_GRPC_KEY),
+            ErrorHandlingInterceptor(),
+            IdentityInterceptor(),
+        ],
     )
     pb_grpc.add_ConfigServiceServicer_to_server(ConfigServiceServicer(), server)
     ouvrir_port_grpc(server, settings.CONFIG_GRPC_PORT)

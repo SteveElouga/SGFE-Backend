@@ -1,6 +1,7 @@
 """Modèles PostgreSQL du Facturation Service (docs/ARCHITECTURE.md §8.4)."""
 
 import uuid
+from typing import Any
 
 from django.db import models
 
@@ -121,3 +122,122 @@ class Facture(models.Model):
 
     def __str__(self) -> str:
         return f"{self.numero_facture} — {self.montant} FCFA ({self.statut})"
+
+
+class TypeEvenementOutbox(models.TextChoices):
+    """Types d'événements portés par l'outbox transactionnelle (voir OutboxEvent).
+
+    Un seul type existe à ce jour — la propagation du solde à la génération
+    d'une facture. Le champ reste un simple ``CharField`` (pas une contrainte
+    de choix en base) pour qu'un futur type d'événement outbox n'exige pas de
+    migration supplémentaire.
+    """
+
+    FACTURE_GENEREE = "FACTURE_GENEREE", "Facture générée"
+
+
+class StatutOutboxEvent(models.TextChoices):
+    """États du cycle de vie d'un `OutboxEvent`."""
+
+    EN_ATTENTE = "EN_ATTENTE", "En attente"
+    ENVOYE = "ENVOYE", "Envoyé"
+    # Terminal : le plafond de tentatives du relais est atteint sans succès —
+    # nécessite une intervention manuelle (voir factures/schedulers.py).
+    ECHEC = "ECHEC", "Échec définitif"
+
+
+class OutboxEvent(models.Model):
+    """Événement du pattern *transactional outbox* — facturation → paiement.
+
+    Écrit dans LA MÊME transaction Django que la `Facture` qu'il relaie (voir
+    `FactureService._ecrire_evenement_outbox_facture_generee`, appelée à
+    l'intérieur du même `transaction.atomic()` que `FactureRepository.create`
+    dans `generer_factures` / `regenerer_facture` / `creer_regularisation`) :
+    soit les deux écritures committent ensemble, soit aucune ne committe. Un
+    crash entre la création de la facture et l'appel gRPC à Paiement Service
+    ne peut donc plus produire de facture « orpheline » (sans `SoldeFacture`)
+    — l'événement survit en base et sera rejoué par le relais planifié
+    (`factures/schedulers.py::outbox_relay_job`) jusqu'à ce qu'il réussisse.
+
+    `InitialiserSolde` (Paiement Service) est idempotent par `facture_id` :
+    un relais qui rejoue un événement déjà traité (redémarrage entre l'appel
+    gRPC et la mise à jour du statut, par exemple) ne duplique jamais le
+    solde.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    type_evenement = models.CharField(max_length=50, choices=TypeEvenementOutbox.choices)
+    # Tout ce dont Paiement Service a besoin pour (ré)initialiser le solde,
+    # plus prix_m3 conservé à titre d'audit (traçabilité complète de la
+    # facture d'origine, même si InitialiserSolde ne le consomme pas) — voir
+    # `FactureService._ecrire_evenement_outbox_facture_generee`.
+    payload: "models.JSONField[dict[str, Any], dict[str, Any]]" = models.JSONField()
+    statut = models.CharField(
+        max_length=10,
+        choices=StatutOutboxEvent.choices,
+        default=StatutOutboxEvent.EN_ATTENTE,
+    )
+    tentatives = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    envoye_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "outbox_events"
+        ordering = ["created_at"]
+        indexes = [
+            # Le relais (`outbox_relay_job`) scanne les événements EN_ATTENTE
+            # à chaque passage — même usage que `Facture.statut` ci-dessus.
+            models.Index(fields=["statut"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"OutboxEvent {self.type_evenement} ({self.statut}) — {self.id}"
+
+
+class AuditLog(models.Model):
+    """Journal d'audit append-only des mutations du Facturation Service.
+
+    Voir AUDIT_SGFE.md §10.7 (« Conception — propagation d'identité → journal
+    d'audit immuable »). Une ligne par mutation métier, écrite par
+    `factures.audit.enregistrer_audit` DANS LA MÊME transaction Django que le
+    changement qu'elle documente — jamais un appel réseau séparé après coup.
+
+    Immuabilité :
+    - applicative : aucun code de ce dépôt ne fait d'UPDATE ni de DELETE sur
+      ce modèle (`enregistrer_audit` ne fait qu'un `create`) ;
+    - défense en profondeur, niveau base : la migration
+      `0007_audit_log_immutable` révoque UPDATE/DELETE sur cette table pour
+      le rôle applicatif Postgres.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Verbe métier de la mutation (ex. "FACTURE_GENEREE", "FACTURE_ANNULEE").
+    action = models.CharField(max_length=100)
+    # Type de l'objet métier concerné (ex. "Facture", "Tarif").
+    objet_type = models.CharField(max_length=100)
+    # Identifiant de l'objet métier concerné (UUID le plus souvent, en texte).
+    objet_id = models.CharField(max_length=100)
+    # Identité de l'appelant (voir `get_caller()`, grpc_interceptors.py) — vide
+    # si aucune identité n'a été propagée par la gateway (l'audit ne doit
+    # jamais faire échouer la mutation qu'il documente).
+    acteur_id = models.CharField(max_length=100, blank=True, default="")
+    acteur_nom = models.CharField(max_length=150, blank=True, default="")
+    acteur_role = models.CharField(max_length=50, blank=True, default="")
+    horodatage = models.DateTimeField(auto_now_add=True)
+    # Détail libre, lisible par un humain (montants, motif...) — pas de
+    # structure imposée : ce journal sert la preuve « qui a fait quoi
+    # quand », pas une reconstruction programmatique de l'état.
+    detail = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "audit_log"
+        indexes = [
+            models.Index(fields=["objet_type", "objet_id"]),
+            models.Index(fields=["horodatage"]),
+        ]
+        ordering = ["-horodatage"]
+
+    def __str__(self) -> str:
+        return (
+            f"[{self.horodatage}] {self.action} {self.objet_type}={self.objet_id} par {self.acteur_nom or '(inconnu)'}"
+        )
