@@ -422,6 +422,7 @@ services:
       REPORTING_GRPC_HOST: reporting-service
       REPORTING_GRPC_PORT: "50057"
       JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
+      FRONTEND_URL: http://localhost:4321
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key

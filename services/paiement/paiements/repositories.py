@@ -1,13 +1,21 @@
 """Accès base de données du Paiement Service."""
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import QuerySet, Sum
 
-from .models import AvoirAbonne, MouvementAvoir, Paiement, SoldeFacture, StatutSolde, SuiviImpaye
+from .models import (
+    AvoirAbonne,
+    MouvementAvoir,
+    Paiement,
+    SessionPaiementEnLigne,
+    SoldeFacture,
+    StatutSolde,
+    SuiviImpaye,
+)
 
 
 class PaiementRepository:
@@ -329,6 +337,43 @@ class SuiviImpayeRepository:
         """Persiste les modifications d'un suivi."""
         suivi.save()
         return suivi
+
+
+class SessionPaiementRepository:
+    """Accès base de données pour les sessions de paiement en ligne (mock)."""
+
+    def create(
+        self,
+        facture_id: str,
+        abonne_id: str,
+        montant: Decimal,
+        token_espace: str,
+        expire_a: datetime,
+    ) -> SessionPaiementEnLigne:
+        """Ouvre une nouvelle session de paiement en ligne, statut EN_ATTENTE."""
+        return SessionPaiementEnLigne.objects.create(
+            facture_id=facture_id,
+            abonne_id=abonne_id,
+            montant=montant,
+            token_espace=token_espace,
+            expire_a=expire_a,
+        )
+
+    def get_by_id(self, session_id: str) -> SessionPaiementEnLigne:
+        """Session par id — lève ObjectDoesNotExist si introuvable."""
+        try:
+            return SessionPaiementEnLigne.objects.get(pk=session_id)
+        except (SessionPaiementEnLigne.DoesNotExist, ValueError, TypeError):
+            # `ValueError`/`TypeError` : un `session_id` mal formé (pas un
+            # UUID) lève avant même la requête SQL — traité comme
+            # « introuvable », pas comme une erreur serveur.
+            raise ObjectDoesNotExist(f"Session de paiement introuvable : {session_id}")
+
+    def marquer_statut(self, session: SessionPaiementEnLigne, statut: str) -> SessionPaiementEnLigne:
+        """Change le statut d'une session (transition EN_ATTENTE -> état terminal)."""
+        session.statut = statut
+        session.save(update_fields=["statut"])
+        return session
 
 
 class AvoirAbonneRepository:

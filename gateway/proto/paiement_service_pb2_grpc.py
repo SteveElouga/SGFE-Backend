@@ -99,6 +99,16 @@ class PaiementServiceStub:
                 request_serializer=paiement__service__pb2.AnnulerSoldeRequest.SerializeToString,
                 response_deserializer=paiement__service__pb2.AnnulerSoldeResponse.FromString,
                 _registered_method=True)
+        self.CreerSessionPaiementEnLigne = channel.unary_unary(
+                '/paiement.PaiementService/CreerSessionPaiementEnLigne',
+                request_serializer=paiement__service__pb2.CreerSessionPaiementRequest.SerializeToString,
+                response_deserializer=paiement__service__pb2.SessionPaiementResponse.FromString,
+                _registered_method=True)
+        self.ConfirmerSessionPaiementEnLigne = channel.unary_unary(
+                '/paiement.PaiementService/ConfirmerSessionPaiementEnLigne',
+                request_serializer=paiement__service__pb2.ConfirmerSessionPaiementRequest.SerializeToString,
+                response_deserializer=paiement__service__pb2.SessionPaiementResponse.FromString,
+                _registered_method=True)
 
 
 class PaiementServiceServicer:
@@ -194,6 +204,26 @@ class PaiementServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CreerSessionPaiementEnLigne(self, request, context):
+        """Paiement en ligne dans l'espace abonné public — relance de la décision
+        §10.2 de l'audit, qui l'avait écartée. **Mode sandbox/mock
+        exclusivement** : aucune vraie passerelle de paiement n'est branchée
+        (voir paiements/passerelle_paiement.py). Interface pluggable, prête à
+        recevoir un vrai fournisseur (Mobile Money, agrégateur, etc.) sans
+        changement de ce contrat.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ConfirmerSessionPaiementEnLigne(self, request, context):
+        """`token_espace` doit être EXACTEMENT celui qui a créé la session
+        (anti-IDOR) — voir SessionPaiementEnLigne.token_espace.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_PaiementServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -261,6 +291,16 @@ def add_PaiementServiceServicer_to_server(servicer, server):
                     servicer.AnnulerSolde,
                     request_deserializer=paiement__service__pb2.AnnulerSoldeRequest.FromString,
                     response_serializer=paiement__service__pb2.AnnulerSoldeResponse.SerializeToString,
+            ),
+            'CreerSessionPaiementEnLigne': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreerSessionPaiementEnLigne,
+                    request_deserializer=paiement__service__pb2.CreerSessionPaiementRequest.FromString,
+                    response_serializer=paiement__service__pb2.SessionPaiementResponse.SerializeToString,
+            ),
+            'ConfirmerSessionPaiementEnLigne': grpc.unary_unary_rpc_method_handler(
+                    servicer.ConfirmerSessionPaiementEnLigne,
+                    request_deserializer=paiement__service__pb2.ConfirmerSessionPaiementRequest.FromString,
+                    response_serializer=paiement__service__pb2.SessionPaiementResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -614,6 +654,60 @@ class PaiementService:
             '/paiement.PaiementService/AnnulerSolde',
             paiement__service__pb2.AnnulerSoldeRequest.SerializeToString,
             paiement__service__pb2.AnnulerSoldeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreerSessionPaiementEnLigne(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/paiement.PaiementService/CreerSessionPaiementEnLigne',
+            paiement__service__pb2.CreerSessionPaiementRequest.SerializeToString,
+            paiement__service__pb2.SessionPaiementResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ConfirmerSessionPaiementEnLigne(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/paiement.PaiementService/ConfirmerSessionPaiementEnLigne',
+            paiement__service__pb2.ConfirmerSessionPaiementRequest.SerializeToString,
+            paiement__service__pb2.SessionPaiementResponse.FromString,
             options,
             channel_credentials,
             insecure,

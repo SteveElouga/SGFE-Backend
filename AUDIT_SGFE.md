@@ -87,6 +87,14 @@
 > part entière, jamais planifié dans aucune des
 > trois passes du 3 septembre. C'est le verrou SOC 2 et la porte « Go
 > production » restants, sans ambiguïté.
+>
+> **⚠️ Mise à jour du 4 septembre 2026.** **Paiement en ligne implémenté**
+> dans l'espace abonné (P1·H) — en **sandbox/mock exclusivement**, aucun vrai
+> fournisseur de paiement branché : décision §10.2 levée pour ce point
+> précis, pas remplacée par un vrai paiement en production. Combiné à la
+> piste d'audit ci-dessus, décompte revu à **75 faits (78 %)** · **5
+> partiels** · **7 incertains/non revérifiés** · **9 non faits**, sur les
+> mêmes 96 items. Détail dans le tableau de décompte en fin de §8.
 
 > ⚠️ **4e revue de fraîcheur — 4 septembre 2026 : la piste d'audit (§J) est entamée, partiellement.**
 > Conception §10.7 implémentée telle quelle, en 3 étapes : (1) propagation
@@ -527,7 +535,7 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 
 - [x] 🔗 Implémenter le composant **espace‑abonné**. *(M)* — **✅ Fait des deux côtés.** Backend : `gateway/schema/espace_abonne.py` (258 lignes), itéré 4 fois (PR #151, #164, #166). Frontend : `espace-abonne.component.ts` (334 lignes), états loading/ready/invalid/error, distingue dette échue/non échue — dépasse le périmètre minimal demandé, décrit comme « coquille vide » en juillet.
 - [x] 🔗 Ajouter la route `espace‑abonne` à `proxy.conf.json` + nginx prod. *(S)* — **✅ Fait.**
-- [ ] (Option) **Paiement en ligne** dans l'espace abonné. *(L)* — **Non fait, mais volontaire** : conforme à la décision §10.2 de cet audit lui-même (« consultation seule, paiement en ligne reporté »). Pas un écart.
+- [x] (Option) **Paiement en ligne** dans l'espace abonné. *(L)* — **✅ Fait — en mode SANDBOX/MOCK EXCLUSIVEMENT (04/09/2026).** Relance la décision §10.2 de cet audit lui-même (« consultation seule, paiement en ligne reporté »), **désormais levée pour ce point précis** — mais **AUCUN vrai fournisseur n'est branché** et cette implémentation n'est **PAS** un remplacement pour un paiement en production. Nouveau modèle `SessionPaiementEnLigne` (`services/paiement/paiements/models.py`) et interface pluggable `PasserellePaiementClient` (`services/paiement/paiements/passerelle_paiement.py`), avec pour seule implémentation existante `MockPasserellePaiementClient` — aucun identifiant de fournisseur réel n'a été créé ni n'était nécessaire. RPCs `CreerSessionPaiementEnLigne`/`ConfirmerSessionPaiementEnLigne` (`proto/paiement_service.proto`), réutilisant tels quels la `UniqueConstraint` sur `Paiement.reference_transaction` (anti double-confirmation) et la logique d'imputation déjà éprouvée d'`EnregistrerPaiementAbonne`. Contrat REST public : `POST /espace-abonne/<token>/paiement/` et `POST /espace-abonne/<token>/paiement/<session_id>/confirmer/` (`gateway/schema/espace_abonne.py`), anti-IDOR par token comme le reste de l'espace abonné. Le jour où un vrai fournisseur (Mobile Money, agrégateur) sera intégré, seule `MockPasserellePaiementClient` sera remplacée — aucun autre changement de code applicatif prévu par construction.
 
 **I. Observabilité (exploitation + SOC 2 CC7)**
 
@@ -634,14 +642,12 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 | Priorité | Total | ✅ Fait | 🟡 Partiel | ❓ Incertain / non revérifié | Non fait | Effort dominant (origine) |
 |---|:---:|:---:|:---:|:---:|:---:|---|
 | 🔴 P0 | 27 | 26 | 0 | 1 | 0 | S/M (+ 2 L : mTLS fait — PR #168, déploiement fait) |
-| 🟠 P1 | 33 | 21 | 5 | 0 | 7 | M (+ 2 L : outbox fait — PR #191, périmètre facturation→paiement uniquement ; avoir/rectification fait) |
+| 🟠 P1 | 33 | 22 | 5 | 0 | 6 | M (+ 2 L : paiement en ligne fait (sandbox) — PR #192, outbox fait — PR #191, périmètre facturation→paiement uniquement ; avoir/rectification fait) |
 | 🟡 P2 | 21 | 20 | 0 | 0 | 1 | S/M (+ 1 L : réplication PostgreSQL, fait en PoC — PR #173) |
 | 🟢 P3 | 15 | 8 | 0 | 6 | 1 | M/L |
-| **Total** | **96** | **75 (78 %)** | **5 (5 %)** | **7 (7 %)** | **9 (9 %)** | — |
+| **Total** | **96** | **76 (79 %)** | **5 (5 %)** | **7 (7 %)** | **8 (8 %)** | — |
 
-> **Mise à jour du 04/09** : l'item **transactional outbox** (§F) passe de « non fait » à « fait » — PR #191, voir le détail dans la ligne de checklist correspondante. Périmètre strictement limité au flux facturation → paiement (création du `SoldeFacture`) ; les autres mécanismes de robustesse déjà « faits » de cette même section (clé d'idempotence `EnregistrerPaiement`, synchro de statut facture rejouable, robustesse clôture→facturation, verrouillage des crons, dead-letter Redis Streams) ne sont pas concernés et restent inchangés. Combiné indépendamment aux 3 items de la piste d'audit §J passés en partiel (voir ci-dessus) : décompte recalculé sur les 96 lignes de checklist de §8, 75/96 faits (78 %), cohérent avec le tableau ci-dessus.
-
-> **Mise à jour du 4 septembre 2026** : trois chantiers distincts livrés le même jour. **Retry automatique des notifications en échec** (§8·O, PR #190) porte le total à 73 (P3 : 7→8 faits, 2→1 non fait). **Piste d'audit §J entamée** (identité propagée + `AuditLog` paiement/facturation + rétention/horodatage + logger sécurité gateway, voir ci-dessus) déplace 3 items de non-fait à partiel dans P1, sans changer le total de faits. **Transactional outbox** (§F, PR #191) porte ensuite le total à **75** (P1 : 1 item passé de non-fait à fait).
+> **Mise à jour du 4 septembre 2026** : quatre chantiers distincts livrés le même jour. **Retry automatique des notifications en échec** (§8·O, PR #190) porte le total à 73 (P3 : 7→8 faits, 2→1 non fait). **Piste d'audit §J entamée** (identité propagée + `AuditLog` paiement/facturation + rétention/horodatage + logger sécurité gateway, voir ci-dessus) déplace 3 items de non-fait à partiel dans P1, sans changer le total de faits. **Transactional outbox** (§F, PR #191, périmètre facturation→paiement uniquement) et **paiement en ligne** (§8·H, PR #192, sandbox/mock exclusivement) portent chacun un item de P1 de non-fait à fait, portant le total à **76**.
 >
 > **Progression de la journée du 3 septembre** : 0→37→48→50→64→**70** items faits au fil de la journée. Le total est passé de 94 à **96** items (2 ajouts : un bug réel de redélivraison Redis Streams découvert et corrigé en rédigeant le runbook — PR #177 — et la régression du proxy de dev local causée par le durcissement TLS — PR #180/#146). Trois nouveaux items complétés depuis la 2e passe, en plus des PR alors ouvertes désormais fusionnées : **RGPD export/anonymisation** (PR #179), **plan de reprise d'activité** (PR #178, avec un vrai écart opérationnel trouvé et depuis corrigé le 04/09 — sauvegardes désormais envoyées vers le bucket S3 provisionné), et **consommation de la pagination côté UI** (PR #145 frontend, en plus du serveur déjà fait).
 >
@@ -706,7 +712,7 @@ Cette section fige les décisions prises lors du cadrage. **Trois horizons de d�
 |---|---|
 | **F — Robustesse distribuée** | **Création paresseuse du solde + commande de réconciliation** (supprime vite la facture orpheline ; outbox = cible d'évolution) |
 | **G — Volet financier** | **Avoir comptable + annulation/remboursement de paiement + reçu PDF** |
-| **H — Espace abonné** | **Consultation seule** (facture/solde/historique par token + états invalide/expiré) ; paiement en ligne reporté |
+| **H — Espace abonné** | **Consultation seule** (facture/solde/historique par token + états invalide/expiré) ; paiement en ligne reporté — **décision levée le 04/09/2026** pour l'espace abonné, mais implémentée en **sandbox/mock exclusivement** (aucun vrai fournisseur branché, pas un remplacement pour la production) : voir §8·H |
 | **I — Observabilité** | **Instrumenter OpenTelemetry dès maintenant** (constant, réutilisable) → **① Local :** exporter vers Jaeger/Prometheus/Grafana en compose (ou console). **② Azure :** Application Insights + Azure Monitor. **③ k8s :** Container Insights + **Managed Prometheus/Grafana** |
 | **J — Piste d'audit** | **Table d'audit *append‑only*** (qui/quoi/quand) + **logs structurés `trace_id`** (dimensionnement selon objectif SOC 2 — *à confirmer*) |
 | **K — Tests** | **Parcours critiques d'abord** (file offline terrain, refresh de session, paiement), puis montée vers **~70 %** ; **e2e Playwright réels** en CI |
