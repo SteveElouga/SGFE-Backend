@@ -8,6 +8,7 @@ psycopg2-binary==2.9.9
 django-environ==0.11.2
 redis[hiredis]==5.2.1
 PyJWT==2.13.0
+APScheduler==3.10.4
 weasyprint==69.0
 opentelemetry-api==1.43.0
 opentelemetry-sdk==1.43.0

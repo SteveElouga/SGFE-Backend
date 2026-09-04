@@ -14,7 +14,15 @@ from django.utils import timezone
 
 from .event_publisher import publish_reporting_event
 from .exceptions import PreconditionError
-from .models import Facture, NatureFacture, StatutFacture, Tarif
+from .models import (
+    Facture,
+    NatureFacture,
+    OutboxEvent,
+    StatutFacture,
+    StatutOutboxEvent,
+    Tarif,
+    TypeEvenementOutbox,
+)
 from .pdf_generator import (
     PDF_TEMPLATE_VERSION,
     DonneesFacture,
@@ -23,7 +31,7 @@ from .pdf_generator import (
     generer_pdf,
     lire_pdf,
 )
-from .repositories import FactureRepository, TarifRepository
+from .repositories import FactureRepository, OutboxEventRepository, TarifRepository
 
 if TYPE_CHECKING:  # imports réservés au typage — non exécutés (évite la circularité)
     from .bilan_generator import LigneImpaye
@@ -42,6 +50,13 @@ logger = logging.getLogger(__name__)
 # d'un mois (aucune ligne à verrouiller), on réessaie alors avec un numéro
 # recalculé (l'autre transaction a committé le sien entre-temps) — cf. ANO-007.
 _MAX_NUMERO_RETRIES = 5
+
+# Plafond de tentatives du relais outbox (factures/schedulers.py) avant
+# abandon définitif d'un événement — même ordre de grandeur que
+# MAX_DELIVERY_ATTEMPTS (redélivrance Redis Streams, Reporting Service) :
+# au-delà, une alerte doit être journalisée plutôt que de rejouer
+# indéfiniment un événement dont Paiement Service ne veut manifestement pas.
+MAX_TENTATIVES_OUTBOX = 5
 
 
 def _date_ou_none(valeur: str, nom: str) -> datetime.date | None:
@@ -105,6 +120,7 @@ class FactureService:
     ) -> None:
         self._repo = FactureRepository()
         self._tarif_repo = TarifRepository()
+        self._outbox_repo = OutboxEventRepository()
         # Clients gRPC injectables (défaut = client réel) — permet des tests
         # isolés sans appel réseau. Import tardif : évite la circularité au
         # niveau module (grpc_clients importe des symboles de ce module).
@@ -121,6 +137,69 @@ class FactureService:
         self._notification_client = notification_client or NotificationServiceClient()
         self._abonne_client = abonne_client or AbonneServiceClient()
         self._campagne_client = campagne_client or CampagneServiceClient()
+
+    def _ecrire_evenement_outbox_facture_generee(
+        self,
+        facture: Facture,
+        abonne_id: str,
+        campagne_id: str,
+        date_limite_paiement: datetime.date,
+    ) -> OutboxEvent:
+        """Écrit l'événement outbox `FACTURE_GENEREE` pour `facture`.
+
+        À APPELER DANS LE MÊME `transaction.atomic()` que la création de
+        `facture` — c'est cette atomicité qui fait de l'outbox la voie
+        garantie vers Paiement Service (voir `OutboxEvent` dans models.py).
+        Le payload porte tout ce dont `PaiementServiceClient.initialiser_solde`
+        a besoin : le relais planifié (`factures/schedulers.py`) le rejoue tel
+        quel, sans jamais relire la facture en base.
+        """
+        return self._outbox_repo.create(
+            type_evenement=TypeEvenementOutbox.FACTURE_GENEREE,
+            payload={
+                "facture_id": str(facture.id),
+                "abonne_id": abonne_id,
+                "campagne_id": campagne_id,
+                "montant_total": float(facture.montant),
+                "prix_m3": float(facture.prix_m3),
+                "date_limite_paiement": date_limite_paiement.isoformat(),
+            },
+        )
+
+    def _initialiser_solde_et_marquer_outbox(
+        self,
+        outbox_event: OutboxEvent,
+        facture_id: str,
+        abonne_id: str,
+        campagne_id: str,
+        montant_total: float,
+        date_limite_paiement: str,
+    ) -> bool:
+        """Tentative immédiate (best-effort) d'initialisation du solde.
+
+        Purement une optimisation de latence — pour qu'un abonné qui règle sa
+        facture aussitôt reçue n'attende pas le prochain passage du relais —
+        et pour que le PDF généré juste après voie un solde déjà imputé de
+        son avoir (voir le commentaire dans `generer_factures`). En cas
+        d'échec, l'événement outbox écrit par
+        `_ecrire_evenement_outbox_facture_generee` reste EN_ATTENTE et sera
+        rejoué par `factures/schedulers.py::outbox_relay_job` : c'est
+        l'outbox, jamais cet appel, qui garantit la livraison.
+
+        `PaiementServiceClient.initialiser_solde` dégrade déjà gracieusement
+        (ne lève jamais, renvoie `False` en cas d'échec) — rien à intercepter
+        ici. Retourne ce même booléen, marque l'événement ENVOYE si `True`.
+        """
+        ok = self._paiement_client.initialiser_solde(
+            facture_id=facture_id,
+            abonne_id=abonne_id,
+            montant_total=montant_total,
+            date_limite_paiement=date_limite_paiement,
+            campagne_id=campagne_id,
+        )
+        if ok:
+            self._outbox_repo.marquer_envoye(outbox_event)
+        return ok
 
     def generer_factures(
         self,
@@ -213,6 +292,19 @@ class FactureService:
                             numero_facture=numero,
                             numero_mobile_money=numero_mobile_money,
                         )
+                        # Outbox transactionnelle : écrite DANS le même commit
+                        # que la facture (pattern transactional outbox — voir
+                        # OutboxEvent dans models.py). C'est elle, et non
+                        # l'appel best-effort ci-dessous, qui garantit que
+                        # Paiement Service reçoive un jour la demande de
+                        # création du solde, même si ce process crashe juste
+                        # après ce commit.
+                        outbox_event = self._ecrire_evenement_outbox_facture_generee(
+                            facture,
+                            abonne_id=releve.abonne_id,
+                            campagne_id=campagne_id,
+                            date_limite_paiement=date_limite,
+                        )
                     break
                 except IntegrityError:
                     if tentative == _MAX_NUMERO_RETRIES - 1:
@@ -222,13 +314,17 @@ class FactureService:
                         extra={"annee": annee, "mois": mois, "tentative": tentative + 1},
                     )
 
-            # Initialise le solde dans Paiement Service (dégradation gracieuse si KO)
-            self._paiement_client.initialiser_solde(
+            # Tentative immédiate best-effort (latence perçue + avoir imputé
+            # sur le PDF généré juste après) : l'outbox écrite ci-dessus reste
+            # la seule voie garantie, rejouée par le relais planifié si cet
+            # appel échoue (voir _initialiser_solde_et_marquer_outbox).
+            self._initialiser_solde_et_marquer_outbox(
+                outbox_event,
                 facture_id=str(facture.id),
                 abonne_id=releve.abonne_id,
+                campagne_id=campagne_id,
                 montant_total=float(facture.montant),
                 date_limite_paiement=date_limite.isoformat(),
-                campagne_id=campagne_id,
             )
 
             # ── Le PDF APRÈS le solde, et pas avant ─────────────────────────
@@ -593,6 +689,7 @@ class FactureService:
 
         campagne_nom = self._campagne_client.get_campagne_nom(ancienne.campagne_id)
         nouvelle = None
+        outbox_event = None
         for tentative in range(_MAX_NUMERO_RETRIES):
             try:
                 with transaction.atomic():
@@ -611,18 +708,28 @@ class FactureService:
                         numero_mobile_money=ancienne.numero_mobile_money,
                         remplace_id=str(ancienne.id),
                     )
+                    # Outbox transactionnelle — voir generer_factures.
+                    outbox_event = self._ecrire_evenement_outbox_facture_generee(
+                        nouvelle,
+                        abonne_id=nouvelle.abonne_id,
+                        campagne_id=nouvelle.campagne_id,
+                        date_limite_paiement=date_limite,
+                    )
                 break
             except IntegrityError:
                 if tentative == _MAX_NUMERO_RETRIES - 1:
                     raise
-        if nouvelle is None:  # pragma: no cover - la boucle sort par break ou raise
+        if nouvelle is None or outbox_event is None:  # pragma: no cover - la boucle sort par break ou raise
             raise RuntimeError("Numérotation de la facture régénérée impossible")
 
         annulee.remplacee_par_id = str(nouvelle.id)
         annulee.save(update_fields=["remplacee_par_id"])
 
-        # Le solde récupère au passage l'avoir né de l'annulation.
-        self._paiement_client.initialiser_solde(
+        # Le solde récupère au passage l'avoir né de l'annulation. Tentative
+        # immédiate best-effort ; l'outbox écrite ci-dessus est la voie
+        # garantie (voir _initialiser_solde_et_marquer_outbox).
+        self._initialiser_solde_et_marquer_outbox(
+            outbox_event,
             facture_id=str(nouvelle.id),
             abonne_id=nouvelle.abonne_id,
             campagne_id=nouvelle.campagne_id,
@@ -710,6 +817,13 @@ class FactureService:
                         nature=NatureFacture.REGULARISATION,
                         motif=motif.strip(),
                     )
+                    # Outbox transactionnelle — voir generer_factures.
+                    outbox_event = self._ecrire_evenement_outbox_facture_generee(
+                        facture,
+                        abonne_id=abonne_id,
+                        campagne_id="",
+                        date_limite_paiement=limite,
+                    )
                 break
             except IntegrityError:
                 if tentative == _MAX_NUMERO_RETRIES - 1:
@@ -718,8 +832,11 @@ class FactureService:
             raise RuntimeError("Numérotation de régularisation impossible")
 
         # Le solde doit exister pour que la dette apparaisse dans les impayés
-        # et entre dans l'escalade des relances comme n'importe quelle facture.
-        self._paiement_client.initialiser_solde(
+        # et entre dans l'escalade des relances comme n'importe quelle
+        # facture. Tentative immédiate best-effort ; l'outbox écrite
+        # ci-dessus est la voie garantie (voir _initialiser_solde_et_marquer_outbox).
+        self._initialiser_solde_et_marquer_outbox(
+            outbox_event,
             facture_id=str(facture.id),
             abonne_id=abonne_id,
             campagne_id="",
@@ -792,6 +909,82 @@ class FactureService:
             return lire_pdf(facture.pdf_path), f"{facture.numero_facture}.pdf"
 
         raise FileNotFoundError(f"Impossible de générer le PDF pour la facture {facture_id}.")
+
+
+class OutboxRelayService:
+    """Relais transactionnel outbox → Paiement Service (`SoldeFacture`).
+
+    Lit les événements `OutboxEvent` EN_ATTENTE (voir models.py) et rejoue
+    `InitialiserSolde` jusqu'à ce qu'il réussisse ou que le plafond de
+    tentatives soit atteint. Planifié par
+    `factures/schedulers.py::outbox_relay_job` — c'est ce relais qui rend la
+    synchronisation du solde réellement garantie : l'appel synchrone fait par
+    `FactureService` au moment de la génération n'est qu'une optimisation de
+    latence, jamais la seule voie (voir
+    `FactureService._initialiser_solde_et_marquer_outbox`).
+
+    `InitialiserSolde` est idempotent par `facture_id` côté Paiement Service
+    (`paiements/services.py::PaiementService.initialiser_solde` — un solde
+    déjà présent est renvoyé tel quel, jamais écrasé) : rejouer un événement
+    déjà traité, y compris après un redémarrage du relais entre l'appel gRPC
+    et la mise à jour du statut outbox, ne crée donc jamais de doublon.
+    """
+
+    def __init__(self, paiement_client: "PaiementServiceClient | None" = None) -> None:
+        from .grpc_clients import PaiementServiceClient
+
+        self._outbox_repo = OutboxEventRepository()
+        self._paiement_client = paiement_client or PaiementServiceClient()
+
+    def relayer_lot(self, limit: int = 100) -> tuple[int, int, int]:
+        """Traite un lot d'événements EN_ATTENTE (ordre FIFO).
+
+        Retourne `(envoyes, echoues_temporaires, abandonnes)`. `abandonnes`
+        compte les événements qui viennent d'atteindre
+        `MAX_TENTATIVES_OUTBOX` et de passer en ECHEC définitif — l'appelant
+        (`factures/schedulers.py`) journalise l'alerte correspondante à
+        partir de ce compte.
+        """
+        envoyes = 0
+        echoues = 0
+        abandonnes = 0
+        for event in self._outbox_repo.list_en_attente(limit=limit):
+            if event.type_evenement != TypeEvenementOutbox.FACTURE_GENEREE:
+                # Ne peut arriver qu'après l'ajout d'un futur type d'événement
+                # outbox sans mise à jour de ce relais — on ignore plutôt que
+                # de planter tout le lot.
+                logger.warning(
+                    "Type d'événement outbox inconnu du relais — ignoré",
+                    extra={"event_id": str(event.id), "type_evenement": event.type_evenement},
+                )
+                continue
+
+            payload = event.payload
+            ok = self._paiement_client.initialiser_solde(
+                facture_id=str(payload["facture_id"]),
+                abonne_id=str(payload["abonne_id"]),
+                montant_total=float(payload["montant_total"]),
+                date_limite_paiement=str(payload["date_limite_paiement"]),
+                campagne_id=str(payload.get("campagne_id", "")),
+            )
+
+            if ok:
+                self._outbox_repo.marquer_envoye(event)
+                envoyes += 1
+                continue
+
+            event = self._outbox_repo.enregistrer_echec(event, max_tentatives=MAX_TENTATIVES_OUTBOX)
+            if event.statut == StatutOutboxEvent.ECHEC:
+                abandonnes += 1
+                logger.error(
+                    "Événement outbox abandonné après %s tentatives — solde jamais confirmé, "
+                    "intervention manuelle requise (vérifier Paiement Service).",
+                    MAX_TENTATIVES_OUTBOX,
+                    extra={"event_id": str(event.id), "facture_id": payload.get("facture_id")},
+                )
+            else:
+                echoues += 1
+        return envoyes, echoues, abandonnes
 
 
 class _AbonneClientLecture(Protocol):

@@ -13,8 +13,10 @@ facture (appelée par Paiement Service).
 ```
 services/facturation/
 ├── facturation/     # Projet Django (settings, urls, wsgi)
-├── factures/        # App métier : Tarif, Facture
+├── factures/        # App métier : Tarif, Facture, OutboxEvent
 │   ├── management/commands/grpc_server.py
+│   ├── management/commands/reconcilier_soldes.py  # Filet de dernier recours, manuel (voir Outbox)
+│   ├── schedulers.py       # APScheduler — relais outbox toutes les 10s (IntervalTrigger)
 │   ├── pdf_generator.py    # Construit le contexte de rendu, WeasyPrint (import paresseux)
 │   ├── templates/facture_pdf.html  # Gabarit HTML/CSS "AquaBill" (rendu via render_to_string)
 │   └── grpc_clients.py     # → Abonné, Campagne (ListReleves, GetCampagne), Config Service
@@ -40,6 +42,18 @@ services/facturation/
   confiance aveugle aux données déjà validées par Campagne Service).
 - **`date_limite_paiement`** : `date_releve + delai_paiement_jours` (lu depuis Config Service, défaut 5).
 - **`UpdateStatutFacture`** : appelé par Paiement Service pour passer une facture en PARTIELLE ou PAYEE.
+- **Outbox transactionnelle (facturation → paiement, `SoldeFacture`)** : `generer_factures`,
+  `regenerer_facture` et `creer_regularisation` écrivent un `OutboxEvent` (`FACTURE_GENEREE`) DANS LA
+  MÊME transaction que la `Facture` — jamais de facture sans son événement, même en cas de crash.
+  Un appel `InitialiserSolde` synchrone best-effort suit immédiatement (latence perçue + avoir
+  imputé sur le PDF généré juste après), mais ce n'est plus la voie garantie : le scheduler
+  (`factures/schedulers.py::outbox_relay_job`, toutes les 10s, verrou `pg_try_advisory_lock`
+  clé `4210005`) rejoue les événements `EN_ATTENTE` jusqu'à succès ou jusqu'au plafond de
+  5 tentatives (`MAX_TENTATIVES_OUTBOX`), au-delà duquel l'événement passe en `ECHEC` et une
+  alerte est journalisée. `InitialiserSolde` est idempotent par `facture_id` côté Paiement Service
+  — un relais qui rejoue un événement déjà traité ne duplique jamais le solde. La commande
+  `reconcilier_soldes` reste disponible en filet de tout dernier recours (jamais planifiée
+  automatiquement) — voir son docstring pour le détail de ce choix.
 
 ## Démarrage local
 
