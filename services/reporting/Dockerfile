@@ -33,6 +33,14 @@ RUN apt-get update \
 
 RUN useradd --create-home --uid 1000 appuser
 
+# Logs applicatifs (rétention/horodatage, voir settings.py § LOGGING) :
+# WORKDIR /app reste root:root (voir commentaire ci-dessus), donc appuser
+# ne peut pas y créer de sous-dossier lui-même — sans ce dossier pré-créé,
+# LOG_DIR.mkdir() plante au démarrage (PermissionError), constaté en
+# conditions réelles (jamais sous manage.py test, où TESTING désactive ce
+# bloc).
+RUN mkdir -p /app/logs && chown appuser:appuser /app/logs
+
 COPY --from=builder /root/.local /home/appuser/.local
 COPY manage.py .
 COPY reporting/ reporting/
