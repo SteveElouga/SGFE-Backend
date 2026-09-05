@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('comptes', '0006_user_password_changed_at'),
+        ('comptes', '0008_audit_log_immutable'),
     ]
 
     operations = [
