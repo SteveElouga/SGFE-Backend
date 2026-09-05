@@ -61,6 +61,17 @@ class User(AbstractBaseUser, PermissionsMixin):
     phone_number = models.CharField(max_length=20, unique=True)
     role = models.CharField(max_length=20, choices=Role.choices)
     is_active = models.BooleanField(default=True)
+
+    # RGPD — instant de désactivation du compte (posé par
+    # UserAdminService.deactivate_user, effacé par reactivate_user). Point de
+    # départ de la purge automatique après 3 ans (comptes/schedulers.py) —
+    # durée de rétention validée explicitement par le porteur du projet. Nul
+    # pour un compte jamais désactivé, y compris un compte créé mais encore
+    # en attente de sa toute première activation (is_active=False dès la
+    # création : ce n'est pas une "désactivation" au sens RGPD du terme, la
+    # minuterie de purge ne doit donc pas s'appliquer à lui).
+    date_desactivation = models.DateTimeField(null=True, blank=True)
+
     failed_attempts = models.IntegerField(default=0)
     locked_until = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -92,6 +103,17 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self) -> str:
         return self.username
+
+
+# RGPD — préfixes explicites d'un compte anonymisé (voir
+# comptes/services.py::UserAdminService.anonymiser_utilisateur). Vivent ici
+# (pas dans services.py) pour rester importables par repositories.py sans
+# dépendance circulaire (repositories.py -> services.py existe déjà dans
+# l'autre sens). `username`/`phone_number` sont uniques en base : chaque
+# valeur anonymisée intègre l'identifiant de l'utilisateur pour rester
+# distincte d'un compte à l'autre (voir anonymiser_utilisateur pour le détail).
+PREFIXE_USERNAME_ANONYMISE = "utilisateur-anonymise-"
+PREFIXE_TELEPHONE_ANONYMISE = "+000"
 
 
 class RevokedToken(models.Model):

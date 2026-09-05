@@ -149,6 +149,24 @@ class AuthServiceServicerTests(TestCase):
         response = self.servicer.ReactivateUser(pb.UserIdRequest(user_id=str(self.user.id)), self.context)
         self.assertTrue(response.is_active)
 
+    def test_anonymiser_utilisateur_refuse_si_actif(self) -> None:
+        with self.assertRaises(ValueError):
+            self.servicer.AnonymiserUtilisateur(pb.UserIdRequest(user_id=str(self.user.id)), self.context)
+
+    def test_anonymiser_utilisateur_reussit_si_desactive(self) -> None:
+        self.servicer.DeactivateUser(pb.DeactivateUserRequest(user_id=str(self.user.id)), self.context)
+        response = self.servicer.AnonymiserUtilisateur(pb.UserIdRequest(user_id=str(self.user.id)), self.context)
+        self.assertTrue(response.username.startswith("utilisateur-anonymise-"))
+        self.assertFalse(response.email)
+
+    def test_exporter_donnees_utilisateur_retourne_un_json_structure(self) -> None:
+        import json
+
+        response = self.servicer.ExporterDonneesUtilisateur(pb.UserIdRequest(user_id=str(self.user.id)), self.context)
+        donnees = json.loads(response.json_export)
+        self.assertEqual(donnees["user_id"], str(self.user.id))
+        self.assertEqual(donnees["identite"]["donnees"]["username"], "comptable_grpc")
+
     def test_reset_user_password_admin_activated_sends_email(self) -> None:
         admin = User.objects.create_user(
             username="admin_grpc_reset",

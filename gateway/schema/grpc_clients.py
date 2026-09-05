@@ -132,6 +132,16 @@ class AuthServiceClient:
     def reactivate_user(self, user_id: str) -> auth_pb.UserResponse:
         return self._stub.ReactivateUser(auth_pb.UserIdRequest(user_id=user_id))
 
+    def anonymiser_utilisateur(self, user_id: str) -> auth_pb.UserResponse:
+        """RGPD — droit à l'effacement. Auth Service refuse (INVALID_ARGUMENT)
+        si le compte est encore actif (is_active=true)."""
+        return self._stub.AnonymiserUtilisateur(auth_pb.UserIdRequest(user_id=user_id))
+
+    def exporter_donnees_utilisateur(self, user_id: str) -> auth_pb.ExportDonneesUtilisateurResponse:
+        """RGPD — droit à la portabilité. Réponse synchrone (voir
+        comptes/export.py côté Auth Service pour le détail des sections)."""
+        return self._stub.ExporterDonneesUtilisateur(auth_pb.UserIdRequest(user_id=user_id))
+
     def reset_user_password(self, user_id: str) -> auth_pb.UserResponse:
         return self._stub.ResetUserPassword(auth_pb.UserIdRequest(user_id=user_id))
 

@@ -23,6 +23,22 @@ services/auth/
 - Verrouillage de compte après `MAX_LOGIN_ATTEMPTS` échecs, pendant `LOCKOUT_DURATION_MINUTES` (configurable via `.env`).
 - Logout = ajout du `jti` du token courant dans `RevokedToken` (blacklist vérifiée à chaque `ValidateToken`/`RefreshToken`).
 - Ce service n'appelle aucun autre service gRPC (pas de `grpc_clients.py`).
+- **RGPD** (`comptes/export.py`, `comptes/services.py::UserAdminService`) : `ExporterDonneesUtilisateur`
+  (export JSON structuré, dégradation gracieuse par section) et `AnonymiserUtilisateur` (anonymise
+  username/e-mail/téléphone, refuse si le compte est encore actif) — même esprit que le mécanisme RGPD
+  de l'Abonné Service (PR #179). Ne touche jamais à l'`AuditLog` (chantier séparé,
+  `feat/piste-audit-auth`).
+
+## Cron (4h00)
+
+```
+purge_rgpd_job (comptes/schedulers.py) :
+  Anonymise automatiquement tout utilisateur désactivé depuis plus de 3 ans
+  (comptes/services.py::DUREE_RETENTION_UTILISATEUR_DESACTIVE), calculé
+  depuis `User.date_desactivation`. Durée de rétention validée explicitement
+  par le porteur du projet. Best-effort par utilisateur — un échec n'empêche
+  pas le traitement des autres.
+```
 
 ## Démarrage local
 
