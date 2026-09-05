@@ -705,10 +705,17 @@ jobs:
     needs: [secrets-scan, check-grpc-lib-drift, lint-workflows, test-auth, test-gateway, test-abonne, test-campagne, test-facturation, test-paiement, test-notification, test-reporting, test-config]
     runs-on: ubuntu-latest
     steps:
-      - name: Vérifie qu'aucun job requis n'a échoué
+      # `contains(needs.*.result, 'failure')` seul laisse passer un job
+      # `cancelled` (ex. un timeout) : constaté en réel côté frontend (même
+      # job `ci-status`, PR #167 — un `Playwright E2E` annulé à 20m16s par une
+      # installation de navigateurs anormalement lente a quand même laissé
+      # `ci-status` conclure au succès). `cancelled` doit bloquer comme
+      # `failure`, sinon un job qui expire silencieusement fait passer la
+      # protection de branche.
+      - name: Vérifie qu'aucun job requis n'a échoué ou n'a été annulé
         run: |
-          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
-            echo "Au moins un job a échoué."
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" || "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "Au moins un job a échoué ou a été annulé (timeout ?)."
             exit 1
           fi
 
