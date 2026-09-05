@@ -486,6 +486,41 @@ Ce qui reste à faire (points 58 à 60 du registre), chaque service devant :
 
 ---
 
+## i18n — messages utilisateur
+
+Les messages destinés à un humain (erreurs de validation métier, messages
+d'exception remontés jusqu'à une réponse gRPC/GraphQL) sont externalisés via
+`django.utils.translation.gettext_lazy` (importé `as _`) dans chacun des 8
+services — `services.py`, `grpc_server.py`, `grpc_interceptors.py`,
+`repositories.py`, `validators.py`, `throttle.py`, `models.py` selon le
+service, partout où un tel littéral existe. **Aujourd'hui, ceci externalise
+sans traduire** : le texte reste français, identique caractère pour
+caractère, tant qu'aucun catalogue `.po` n'est activé. Ne sont **jamais**
+enveloppés : les messages de logs techniques (`logger.warning/error/
+exception`), les docstrings, les commentaires, ni les identifiants
+techniques déjà structurés (codes d'action d'audit, valeurs d'énumération).
+
+`_("texte {var}").format(var=valeur)` reste valide (l'objet lazy retourné
+par `_()` supporte `.format()`, y compris les conversions `!r`/`!s`) — seul
+piège vérifié : ne jamais nommer une variable locale `_` (ex.
+`total, _, _ = fn()`) dans une fonction qui appelle aussi `_(...)`, sous
+peine de masquer l'alias gettext pour toute la fonction.
+
+`LANGUAGE_CODE = "fr-fr"`, `USE_I18N = True` et `LOCALE_PATHS = [BASE_DIR /
+"locale"]` sont posés dans le `settings.py` de chaque service ; le dossier
+`locale/` à la racine de chaque service existe déjà (vide) et est prêt à
+recevoir un futur catalogue. Pour générer et compiler une traduction plus
+tard (**non fait, hors périmètre pour l'instant**), depuis la racine d'un
+service :
+
+```bash
+cd services/<nom>
+python manage.py makemessages -l en   # génère locale/en/LC_MESSAGES/django.po
+python manage.py compilemessages       # compile les .po en .mo
+```
+
+---
+
 ## Conventions de code
 
 - **Langue des commentaires :** Français

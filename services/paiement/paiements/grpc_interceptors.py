@@ -27,7 +27,7 @@ def _abort_for(exc: Exception, context: grpc.ServicerContext, handler_call_detai
     (le framework gRPC renverra alors UNKNOWN, comme pour les autres services)."""
     for exc_type, status_code, message in _STATUS_BY_EXCEPTION:
         if isinstance(exc, exc_type):
-            context.abort(status_code, message or str(exc))
+            context.abort(status_code, str(message) if message else str(exc))
             return
     method = getattr(handler_call_details, "method", "?")
     logger.exception("Exception non gérée dans %s", method)

@@ -11,6 +11,7 @@ from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 from .audit import enregistrer_audit
 from .event_publisher import publish_reporting_event
@@ -72,7 +73,9 @@ def _date_ou_none(valeur: str, nom: str) -> datetime.date | None:
     try:
         return datetime.date.fromisoformat(valeur)
     except ValueError as exc:
-        raise ValidationError(f"{nom} doit être une date ISO AAAA-MM-JJ (reçu : {valeur!r}).") from exc
+        raise ValidationError(
+            _("{nom} doit être une date ISO AAAA-MM-JJ (reçu : {valeur!r}).").format(nom=nom, valeur=valeur)
+        ) from exc
 
 
 @dataclass
@@ -103,7 +106,7 @@ class TarifService:
         chaque facture conserve le prix_m3 copié au moment de sa création.
         """
         if prix_m3 <= Decimal("0"):
-            raise ValidationError("Le prix du m³ doit être strictement positif.")
+            raise ValidationError(_("Le prix du m³ doit être strictement positif."))
         with transaction.atomic():
             self._repo.deactivate_all()
             tarif = self._repo.create(prix_m3=prix_m3, date_effet=date_effet)
@@ -226,7 +229,9 @@ class FactureService:
         try:
             tarif = self._tarif_repo.get_actif()
         except ObjectDoesNotExist as exc:
-            raise PreconditionError("Aucun tarif actif : configurez un tarif avant de générer des factures.") from exc
+            raise PreconditionError(
+                _("Aucun tarif actif : configurez un tarif avant de générer des factures.")
+            ) from exc
 
         # Récupéré une seule fois pour toute la campagne (dégradation gracieuse
         # vers "" si Campagne Service est inaccessible — purement informatif).
@@ -528,7 +533,11 @@ class FactureService:
         historique préservé à l'identique.
         """
         if statut and statut not in StatutFacture.values:
-            raise ValidationError(f"Statut invalide : {statut}. Valeurs attendues : {', '.join(StatutFacture.values)}")
+            raise ValidationError(
+                _("Statut invalide : {statut}. Valeurs attendues : {valeurs}").format(
+                    statut=statut, valeurs=", ".join(StatutFacture.values)
+                )
+            )
         return self._repo.list_by_filters(
             campagne_id=campagne_id,
             abonne_id=abonne_id,
@@ -550,7 +559,11 @@ class FactureService:
         """Nombre total de factures correspondant au filtre, indépendamment de
         toute pagination."""
         if statut and statut not in StatutFacture.values:
-            raise ValidationError(f"Statut invalide : {statut}. Valeurs attendues : {', '.join(StatutFacture.values)}")
+            raise ValidationError(
+                _("Statut invalide : {statut}. Valeurs attendues : {valeurs}").format(
+                    statut=statut, valeurs=", ".join(StatutFacture.values)
+                )
+            )
         return self._repo.count_by_filters(
             campagne_id=campagne_id,
             abonne_id=abonne_id,
@@ -594,11 +607,11 @@ class FactureService:
         la phrase saisie est la seule trace de la raison.
         """
         if not motif or not motif.strip():
-            raise ValidationError("Le motif de l'annulation est obligatoire.")
+            raise ValidationError(_("Le motif de l'annulation est obligatoire."))
 
         facture = self._repo.get_by_id(facture_id)
         if facture.statut == StatutFacture.ANNULEE:
-            raise ValidationError("Cette facture est déjà annulée.")
+            raise ValidationError(_("Cette facture est déjà annulée."))
         ancien_statut = facture.statut
 
         # Éteindre le solde d'abord : si le service paiement est indisponible,
@@ -667,29 +680,33 @@ class FactureService:
         ancienne = self._repo.get_by_id(facture_id)
         if ancienne.nature == NatureFacture.REGULARISATION:
             raise ValidationError(
-                "Une régularisation ne se régénère pas : son montant est déclaré, pas calculé. "
-                "Annulez-la et saisissez-en une nouvelle."
+                _(
+                    "Une régularisation ne se régénère pas : son montant est déclaré, pas calculé. "
+                    "Annulez-la et saisissez-en une nouvelle."
+                )
             )
         if not ancienne.campagne_id:
-            raise ValidationError("Cette facture n'est rattachée à aucune campagne : régénération impossible.")
+            raise ValidationError(_("Cette facture n'est rattachée à aucune campagne : régénération impossible."))
 
         releve = self._relire_releve(ancienne.campagne_id, ancienne.abonne_id)
         if releve is None:
             raise PreconditionError(
-                "Aucun relevé trouvé pour cet abonné dans la campagne. Corrigez le relevé avant de régénérer."
+                _("Aucun relevé trouvé pour cet abonné dans la campagne. Corrigez le relevé avant de régénérer.")
             )
 
         try:
             tarif = self._tarif_repo.get_actif()
         except ObjectDoesNotExist as exc:
-            raise PreconditionError("Aucun tarif actif : configurez un tarif avant de régénérer.") from exc
+            raise PreconditionError(_("Aucun tarif actif : configurez un tarif avant de régénérer.")) from exc
 
         ancien_index = Decimal(str(releve["ancien_index"]))
         nouveau_index = Decimal(str(releve["nouveau_index"]))
         if nouveau_index < ancien_index:
             raise ValidationError(
-                "Le relevé actuel est incohérent (index de fin inférieur à l'index de départ). "
-                "Corrigez-le avant de régénérer."
+                _(
+                    "Le relevé actuel est incohérent (index de fin inférieur à l'index de départ). "
+                    "Corrigez-le avant de régénérer."
+                )
             )
 
         consommation = (nouveau_index - ancien_index).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
@@ -747,7 +764,7 @@ class FactureService:
                 if tentative == _MAX_NUMERO_RETRIES - 1:
                     raise
         if nouvelle is None or outbox_event is None:  # pragma: no cover - la boucle sort par break ou raise
-            raise RuntimeError("Numérotation de la facture régénérée impossible")
+            raise RuntimeError(_("Numérotation de la facture régénérée impossible"))
 
         annulee.remplacee_par_id = str(nouvelle.id)
         annulee.save(update_fields=["remplacee_par_id"])
@@ -784,7 +801,9 @@ class FactureService:
         try:
             releves = self._campagne_client.list_releves(campagne_id)
         except Exception as exc:  # noqa: BLE001 - dégradation explicite
-            raise PreconditionError(f"Campagne Service indisponible, régénération impossible : {exc}") from exc
+            raise PreconditionError(
+                _("Campagne Service indisponible, régénération impossible : {exc}").format(exc=exc)
+            ) from exc
         for r in releves:
             if r.get("abonne_id") == abonne_id and r.get("nouveau_index") is not None:
                 return r
@@ -815,11 +834,11 @@ class FactureService:
         """
         montant_d = Decimal(str(montant)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         if montant_d <= 0:
-            raise ValidationError("Le montant de la régularisation doit être supérieur à zéro.")
+            raise ValidationError(_("Le montant de la régularisation doit être supérieur à zéro."))
         if not motif or not motif.strip():
-            raise ValidationError("Le motif de la régularisation est obligatoire.")
+            raise ValidationError(_("Le motif de la régularisation est obligatoire."))
         if not abonne_id:
-            raise ValidationError("L'identifiant de l'abonné est obligatoire.")
+            raise ValidationError(_("L'identifiant de l'abonné est obligatoire."))
 
         aujourdhui = datetime.date.today()
         # Sans échéance fournie, la dette est exigible immédiatement : elle
@@ -862,7 +881,7 @@ class FactureService:
                 if tentative == _MAX_NUMERO_RETRIES - 1:
                     raise
         else:  # pragma: no cover - la boucle sort toujours par break ou raise
-            raise RuntimeError("Numérotation de régularisation impossible")
+            raise RuntimeError(_("Numérotation de régularisation impossible"))
 
         # Le solde doit exister pour que la dette apparaisse dans les impayés
         # et entre dans l'escalade des relances comme n'importe quelle
@@ -881,7 +900,11 @@ class FactureService:
     def update_statut(self, facture_id: str, statut: str) -> Facture:
         """Met à jour le statut d'une facture (appelé par Paiement Service)."""
         if statut not in StatutFacture.values:
-            raise ValidationError(f"Statut invalide : {statut}. Valeurs attendues : {', '.join(StatutFacture.values)}")
+            raise ValidationError(
+                _("Statut invalide : {statut}. Valeurs attendues : {valeurs}").format(
+                    statut=statut, valeurs=", ".join(StatutFacture.values)
+                )
+            )
         facture = self._repo.get_by_id(facture_id)
         ancien_statut = facture.statut
         facture = self._repo.update_statut(facture, statut)
@@ -919,7 +942,9 @@ class FactureService:
         #
         # La régénération ne concerne donc que les abonnés endettés ; pour un
         # abonné à jour, le cache continue de faire son travail.
-        dette, _, _ = self._lire_solde_anterieur(abonne_id=str(facture.abonne_id), facture_id=str(facture.id))
+        dette, _avoir, _statut = self._lire_solde_anterieur(
+            abonne_id=str(facture.abonne_id), facture_id=str(facture.id)
+        )
         cache_a_jour = (
             facture.pdf_path
             and facture.pdf_template_version == PDF_TEMPLATE_VERSION
@@ -941,7 +966,9 @@ class FactureService:
             )
             return lire_pdf(facture.pdf_path), f"{facture.numero_facture}.pdf"
 
-        raise FileNotFoundError(f"Impossible de générer le PDF pour la facture {facture_id}.")
+        raise FileNotFoundError(
+            _("Impossible de générer le PDF pour la facture {facture_id}.").format(facture_id=facture_id)
+        )
 
 
 class OutboxRelayService:
@@ -1172,7 +1199,9 @@ class SyntheseCampagneService:
 
         stats = self._reporting_client.get_stats_completes(campagne_id)
         if not stats or stats.get("campagne") is None:
-            raise ObjectDoesNotExist(f"Aucune statistique pour la campagne : {campagne_id}")
+            raise ObjectDoesNotExist(
+                _("Aucune statistique pour la campagne : {campagne_id}").format(campagne_id=campagne_id)
+            )
 
         societe = self._config_client.get_infos_societe()
         date_edition = datetime.date.today()
@@ -1246,7 +1275,7 @@ class RecuPaiementService:
         paiements = self._paiement_client.list_paiements(facture_id)
         versement = next((p for p in paiements if p.get("paiement_id") == paiement_id), None)
         if versement is None:
-            raise ObjectDoesNotExist(f"Paiement introuvable : {paiement_id}")
+            raise ObjectDoesNotExist(_("Paiement introuvable : {paiement_id}").format(paiement_id=paiement_id))
 
         # Un reçu ne peut pas attester ce qu'on n'a pas pu lire.
         #
@@ -1267,8 +1296,10 @@ class RecuPaiementService:
         solde = self._paiement_client.get_solde(facture_id)
         if solde is None:
             raise ObjectDoesNotExist(
-                f"Solde de la facture {facture_id} illisible (Paiement Service injoignable) : "
-                "un reçu ne peut pas être émis sans connaître le solde."
+                _(
+                    "Solde de la facture {facture_id} illisible (Paiement Service injoignable) : "
+                    "un reçu ne peut pas être émis sans connaître le solde."
+                ).format(facture_id=facture_id)
             )
         nb_versements = sum(1 for p in paiements if not p.get("annule"))
 

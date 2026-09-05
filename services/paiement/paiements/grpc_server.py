@@ -10,6 +10,7 @@ import grpc
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 # Assure que le dossier proto/ est dans sys.path avant les imports générés
 sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
@@ -601,7 +602,7 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):  # type: ignore[misc]
         """
         token_resp = self._notification_client.valider_token(request.token_espace)
         if not token_resp["is_valid"]:
-            raise ObjectDoesNotExist("Token de l'espace abonné invalide ou expiré.")
+            raise ObjectDoesNotExist(_("Token de l'espace abonné invalide ou expiré."))
 
         session = self._svc.creer_session_paiement_en_ligne(
             facture_id=request.facture_id,
@@ -635,7 +636,7 @@ class PaiementServicer(pb_grpc.PaiementServiceServicer):  # type: ignore[misc]
         """
         session = self._svc.get_session_paiement(request.session_id)
         if session.token_espace != request.token_espace:
-            raise ObjectDoesNotExist("Session de paiement introuvable.")
+            raise ObjectDoesNotExist(_("Session de paiement introuvable."))
 
         if session.statut != StatutSessionPaiement.EN_ATTENTE:
             return session_paiement_to_proto(session)

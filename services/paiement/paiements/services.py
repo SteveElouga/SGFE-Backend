@@ -8,6 +8,7 @@ from decimal import Decimal
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import transaction
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 from .audit import enregistrer_audit
 from .grpc_clients import (
@@ -55,7 +56,9 @@ def _borne_ou_none(valeur: str, nom: str) -> date | None:
     try:
         return date.fromisoformat(valeur)
     except ValueError as exc:
-        raise ValidationError(f"{nom} doit être une date ISO AAAA-MM-JJ (reçu : {valeur!r}).") from exc
+        raise ValidationError(
+            _("{nom} doit être une date ISO AAAA-MM-JJ (reçu : {valeur!r}).").format(nom=nom, valeur=valeur)
+        ) from exc
 
 
 class PaiementService:
@@ -82,12 +85,12 @@ class PaiementService:
         Appelé par Facturation Service via gRPC.
         """
         if not facture_id:
-            raise ValidationError("L'identifiant de la facture est obligatoire.")
+            raise ValidationError(_("L'identifiant de la facture est obligatoire."))
         if not abonne_id:
-            raise ValidationError("L'identifiant de l'abonné est obligatoire.")
+            raise ValidationError(_("L'identifiant de l'abonné est obligatoire."))
         montant_d = Decimal(str(montant_total))
         if montant_d <= 0:
-            raise ValidationError("Le montant total doit être supérieur à zéro.")
+            raise ValidationError(_("Le montant total doit être supérieur à zéro."))
 
         # Idempotent : si le solde existe déjà (ré-initialisation, réconciliation
         # d'une facture orpheline), on le renvoie tel quel — on n'écrase JAMAIS
@@ -193,9 +196,9 @@ class PaiementService:
         tracé au journal (qui, combien, pourquoi)."""
         montant_d = Decimal(str(montant))
         if montant_d <= 0:
-            raise ValidationError("Le montant de l'avoir doit être supérieur à zéro.")
+            raise ValidationError(_("Le montant de l'avoir doit être supérieur à zéro."))
         if not motif or not motif.strip():
-            raise ValidationError("Le motif de la rectification est obligatoire.")
+            raise ValidationError(_("Le motif de la rectification est obligatoire."))
 
         with transaction.atomic():
             avoir = self._avoir_repo.crediter(abonne_id, montant_d)
@@ -253,12 +256,16 @@ class PaiementService:
         # Validation du montant
         montant_d = Decimal(str(montant))
         if montant_d <= 0:
-            raise ValidationError("Le montant du paiement doit être supérieur à zéro.")
+            raise ValidationError(_("Le montant du paiement doit être supérieur à zéro."))
 
         # Validation du mode et de la référence
         if mode_paiement in (ModePaiement.MOBILE_MONEY, ModePaiement.VIREMENT):
             if not reference_transaction or not reference_transaction.strip():
-                raise ValidationError(f"La référence de transaction est obligatoire pour le mode {mode_paiement}.")
+                raise ValidationError(
+                    _("La référence de transaction est obligatoire pour le mode {mode_paiement}.").format(
+                        mode_paiement=mode_paiement
+                    )
+                )
 
         # Récupération du solde, contrôle anti-surpaiement, création du versement
         # et recalcul du solde/statut dans une seule transaction : les deux
@@ -418,10 +425,14 @@ class PaiementService:
         """
         montant_d = Decimal(str(montant))
         if montant_d <= 0:
-            raise ValidationError("Le montant du paiement doit être supérieur à zéro.")
+            raise ValidationError(_("Le montant du paiement doit être supérieur à zéro."))
         if mode_paiement in (ModePaiement.MOBILE_MONEY, ModePaiement.VIREMENT):
             if not reference_transaction or not reference_transaction.strip():
-                raise ValidationError(f"La référence de transaction est obligatoire pour le mode {mode_paiement}.")
+                raise ValidationError(
+                    _("La référence de transaction est obligatoire pour le mode {mode_paiement}.").format(
+                        mode_paiement=mode_paiement
+                    )
+                )
 
         reference = (reference_transaction or "").strip()
         crees: list[Paiement] = []
@@ -500,10 +511,10 @@ class PaiementService:
         `PaiementServicer.CreerSessionPaiementEnLigne`.
         """
         if not facture_id:
-            raise ValidationError("L'identifiant de la facture est obligatoire.")
+            raise ValidationError(_("L'identifiant de la facture est obligatoire."))
         montant_d = Decimal(str(montant))
         if montant_d <= 0:
-            raise ValidationError("Le montant du paiement doit être supérieur à zéro.")
+            raise ValidationError(_("Le montant du paiement doit être supérieur à zéro."))
 
         expire_a = timezone.now() + DUREE_VALIDITE_SESSION_PAIEMENT
         return self._session_repo.create(
@@ -590,7 +601,7 @@ class PaiementService:
         with transaction.atomic():
             demande = self._paiement_repo.get_by_id(paiement_id)
             if demande.annule:
-                raise ValidationError("Ce paiement est déjà annulé.")
+                raise ValidationError(_("Ce paiement est déjà annulé."))
 
             # On annule le VERSEMENT, pas l'écriture.
             #
@@ -650,9 +661,11 @@ class PaiementService:
         disponible = Decimal(str(avoir.montant)) if avoir is not None else Decimal("0")
         if disponible < excedent:
             raise ValidationError(
-                f"Annulation impossible : le trop-perçu de {excedent} a déjà été imputé sur une "
-                f"facture suivante (avoir disponible : {disponible}). Annulez d'abord cette "
-                "imputation, ou émettez un avoir de rectification."
+                _(
+                    "Annulation impossible : le trop-perçu de {excedent} a déjà été imputé sur une "
+                    "facture suivante (avoir disponible : {disponible}). Annulez d'abord cette "
+                    "imputation, ou émettez un avoir de rectification."
+                ).format(excedent=excedent, disponible=disponible)
             )
         # `excedent` > 0 (garanti par l'appelant) : si `avoir` était None,
         # `disponible` vaudrait 0 < excedent et le contrôle ci-dessus aurait

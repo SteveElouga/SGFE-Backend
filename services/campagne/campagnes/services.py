@@ -8,6 +8,7 @@ from typing import Any, Optional, cast
 import grpc
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.utils.translation import gettext_lazy as _
 
 from .audit import enregistrer_audit
 from .dtos import AgentAffecteDict, StatsReportingDict, ZoneAgentDict
@@ -55,13 +56,19 @@ class CampagneService:
             abonne = self._abonne_client.get_abonne(abonne_id)
         except grpc.RpcError as exc:
             raise ValidationError(
-                f"Impossible de vérifier le statut de l'abonné {abonne_id} "
-                f"(Abonné Service inaccessible) : {exc.details() if hasattr(exc, 'details') else exc}"
+                _(
+                    "Impossible de vérifier le statut de l'abonné {abonne_id} (Abonné Service inaccessible) : {detail}"
+                ).format(
+                    abonne_id=abonne_id,
+                    detail=exc.details() if hasattr(exc, "details") else exc,
+                )
             ) from exc
         if abonne.statut != "ACTIF":
             raise ValidationError(
-                f"L'abonné {abonne_id} n'est pas ACTIF (statut actuel : {abonne.statut}). "
-                "Un abonné suspendu ou résilié ne peut pas être relevé."
+                _(
+                    "L'abonné {abonne_id} n'est pas ACTIF (statut actuel : {statut}). "
+                    "Un abonné suspendu ou résilié ne peut pas être relevé."
+                ).format(abonne_id=abonne_id, statut=abonne.statut)
             )
         return abonne
 
@@ -89,15 +96,15 @@ class CampagneService:
         demarrer_maintenant: bool = False,
     ) -> Campagne:
         if not nom.strip():
-            raise ValidationError("Le nom de la campagne est obligatoire.")
+            raise ValidationError(_("Le nom de la campagne est obligatoire."))
         if not (1 <= periode_mois <= 12):
-            raise ValidationError("Le mois de la période doit être entre 1 et 12.")
+            raise ValidationError(_("Le mois de la période doit être entre 1 et 12."))
         if periode_annee < 2000:
-            raise ValidationError("L'année est invalide.")
+            raise ValidationError(_("L'année est invalide."))
         if not created_by:
-            raise ValidationError("L'identifiant du créateur est obligatoire.")
+            raise ValidationError(_("L'identifiant du créateur est obligatoire."))
         if numero_mobile_money and (not numero_mobile_money.isdigit() or len(numero_mobile_money) != 9):
-            raise ValidationError("Le numéro Mobile Money doit contenir exactement 9 chiffres (ex: 658552294).")
+            raise ValidationError(_("Le numéro Mobile Money doit contenir exactement 9 chiffres (ex: 658552294)."))
         with transaction.atomic():
             campagne = self._repo.create(
                 nom=nom,
@@ -128,7 +135,11 @@ class CampagneService:
         """
         campagne = self._repo.get_by_id(campagne_id)
         if campagne.statut != StatutCampagne.PLANIFIEE:
-            raise ValidationError(f"Seule une campagne PLANIFIEE peut être démarrée. Statut actuel : {campagne.statut}")
+            raise ValidationError(
+                _("Seule une campagne PLANIFIEE peut être démarrée. Statut actuel : {statut}").format(
+                    statut=campagne.statut
+                )
+            )
         with transaction.atomic():
             campagne = self._repo.update_statut(campagne, StatutCampagne.EN_COURS)
             enregistrer_audit(
@@ -142,7 +153,11 @@ class CampagneService:
     def cloturer_campagne(self, campagne_id: str) -> Campagne:
         campagne = self._repo.get_by_id(campagne_id)
         if campagne.statut != StatutCampagne.EN_COURS:
-            raise ValidationError(f"Seule une campagne EN_COURS peut être clôturée. Statut actuel : {campagne.statut}")
+            raise ValidationError(
+                _("Seule une campagne EN_COURS peut être clôturée. Statut actuel : {statut}").format(
+                    statut=campagne.statut
+                )
+            )
         with transaction.atomic():
             campagne = self._repo.update_statut(campagne, StatutCampagne.CLOTUREE)
             enregistrer_audit(
@@ -202,11 +217,15 @@ class CampagneService:
     ) -> Releve:
         campagne = self._repo.get_by_id(campagne_id)
         if campagne.statut not in (StatutCampagne.PLANIFIEE, StatutCampagne.EN_COURS):
-            raise ValidationError("Impossible d'ajouter un abonné à une campagne clôturée.")
+            raise ValidationError(_("Impossible d'ajouter un abonné à une campagne clôturée."))
         abonne = self._verifier_abonne_actif(abonne_id)
         existant = self._releve_repo.get_by_campagne_abonne(campagne_id, abonne_id)
         if existant:
-            raise ValidationError(f"L'abonné {abonne_id} est déjà inscrit à la campagne {campagne_id}.")
+            raise ValidationError(
+                _("L'abonné {abonne_id} est déjà inscrit à la campagne {campagne_id}.").format(
+                    abonne_id=abonne_id, campagne_id=campagne_id
+                )
+            )
         quartier, camp = self._zone_de(abonne)
         with transaction.atomic():
             releve = self._releve_repo.create(
@@ -288,7 +307,7 @@ class CampagneService:
         """
         campagne = self._repo.get_by_id(campagne_id)
         if not agent_id:
-            raise ValidationError("L'identifiant de l'agent est obligatoire.")
+            raise ValidationError(_("L'identifiant de l'agent est obligatoire."))
         with transaction.atomic():
             self._agent_repo.assigner(campagne, agent_id)
             self._zone_repo.set_zones_for_agent(campagne, agent_id, zones)
@@ -487,7 +506,7 @@ class ReleveService:
         et SUPERVISEUR ne sont pas restreints (aucune zone affectée).
         """
         if auteur_role == "AGENT" and self._hors_perimetre_zone(releve, agent_id):
-            raise ValidationError("Ce relevé est hors de votre périmètre de zones affectées.")
+            raise ValidationError(_("Ce relevé est hors de votre périmètre de zones affectées."))
 
     def list_tournee(self, campagne_id: str, agent_id: str) -> list[Releve]:
         """Tournée d'un agent : ce qu'il a **déjà saisi** + les abonnés **à
@@ -523,12 +542,14 @@ class ReleveService:
         releve = self._repo.get_by_id(releve_id)
         self._verifier_perimetre_agent(releve, agent_id, auteur_role)
         if releve.campagne.statut != StatutCampagne.EN_COURS:
-            raise ValidationError("Le relevé ne peut être saisi que sur une campagne EN_COURS.")
+            raise ValidationError(_("Le relevé ne peut être saisi que sur une campagne EN_COURS."))
         if releve.statut == StatutReleve.RELEVE:
-            raise ValidationError("Cet index a déjà été relevé.")
+            raise ValidationError(_("Cet index a déjà été relevé."))
         if nouveau_index < releve.ancien_index:
             raise ValidationError(
-                f"Le nouvel index ne peut pas être inférieur à l'ancien index ({releve.ancien_index})."
+                _("Le nouvel index ne peut pas être inférieur à l'ancien index ({ancien}).").format(
+                    ancien=releve.ancien_index
+                )
             )
         with transaction.atomic():
             releve = self._repo.saisir_index(
@@ -572,10 +593,12 @@ class ReleveService:
         """
         releve = self._repo.get_by_id(releve_id)
         if releve.statut != StatutReleve.RELEVE:
-            raise ValidationError("Seul un index déjà relevé peut être corrigé (utilisez la saisie d'index).")
+            raise ValidationError(_("Seul un index déjà relevé peut être corrigé (utilisez la saisie d'index)."))
         if nouveau_index < releve.ancien_index:
             raise ValidationError(
-                f"Le nouvel index ne peut pas être inférieur à l'ancien index ({releve.ancien_index})."
+                _("Le nouvel index ne peut pas être inférieur à l'ancien index ({ancien}).").format(
+                    ancien=releve.ancien_index
+                )
             )
         # Valeur relevée AVANT la correction : c'est elle que l'action remplace
         # (l'« index avant l'action » au sens du proto), pas l'index compteur de
@@ -613,18 +636,20 @@ class ReleveService:
         agent_id: str = "",
     ) -> Releve:
         if statut not in (StatutReleve.NON_RELEVE, StatutReleve.ESTIME):
-            raise ValidationError(f"Statut invalide : {statut}. Valeurs attendues : NON_RELEVE, ESTIME.")
+            raise ValidationError(
+                _("Statut invalide : {statut}. Valeurs attendues : NON_RELEVE, ESTIME.").format(statut=statut)
+            )
         releve = self._repo.get_by_id(releve_id)
         # Cloisonnement en écriture, symétrique de saisir_index : un AGENT ne
         # peut pas marquer NON_RELEVE/ESTIME un relevé hors de ses zones (les
         # ESTIME sont facturés). Auteur sans zone (ADMIN/SUPERVISEUR/agent
         # global) → non restreint.
         if self._hors_perimetre_zone(releve, agent_id):
-            raise ValidationError("Ce relevé est hors de votre périmètre de zones affectées.")
+            raise ValidationError(_("Ce relevé est hors de votre périmètre de zones affectées."))
         if releve.campagne.statut != StatutCampagne.EN_COURS:
-            raise ValidationError("Le relevé ne peut être modifié que sur une campagne EN_COURS.")
+            raise ValidationError(_("Le relevé ne peut être modifié que sur une campagne EN_COURS."))
         if releve.statut == StatutReleve.RELEVE:
-            raise ValidationError("Un relevé déjà saisi ne peut pas être marqué non-relevé.")
+            raise ValidationError(_("Un relevé déjà saisi ne peut pas être marqué non-relevé."))
         with transaction.atomic():
             releve = self._repo.marquer_non_releve(releve, statut=statut, observation=observation)
             enregistrer_audit(

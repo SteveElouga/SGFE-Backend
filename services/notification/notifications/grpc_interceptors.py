@@ -15,6 +15,7 @@ from typing import Any, Callable
 import grpc
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import IntegrityError
+from django.utils.translation import gettext_lazy as _
 
 from notifications.whatsapp_client import WhatsAppDeliveryError
 
@@ -26,11 +27,11 @@ _STATUS_BY_EXCEPTION = (
     (ObjectDoesNotExist, grpc.StatusCode.NOT_FOUND, None),
     (ValueError, grpc.StatusCode.INVALID_ARGUMENT, None),
     (ValidationError, grpc.StatusCode.INVALID_ARGUMENT, None),
-    (IntegrityError, grpc.StatusCode.ALREADY_EXISTS, "Cette ressource existe déjà"),
+    (IntegrityError, grpc.StatusCode.ALREADY_EXISTS, _("Cette ressource existe déjà")),
     (
         WhatsAppDeliveryError,
         grpc.StatusCode.UNAVAILABLE,
-        "Échec de l'envoi WhatsApp, réessayez plus tard",
+        _("Échec de l'envoi WhatsApp, réessayez plus tard"),
     ),
 )
 
@@ -45,7 +46,7 @@ def _abort_for(exc: Exception, context: grpc.ServicerContext, handler_call_detai
         if isinstance(exc, exc_type):
             if message:
                 logger.warning("%s: %s", exc_type.__name__, exc)
-            context.abort(status_code, message or str(exc))
+            context.abort(status_code, str(message) if message else str(exc))
             return
     method = getattr(handler_call_details, "method", "?")
     logger.exception("Exception non gérée dans %s", method)

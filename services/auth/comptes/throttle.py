@@ -37,6 +37,7 @@ import time
 from typing import Any
 
 from django.conf import settings
+from django.utils.translation import gettext_lazy as _
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +91,11 @@ def _verifier_via_redis(cle: str, fenetre_secondes: int) -> None:
         # notifications/rate_limiter.py).
         acquis: Any = client.set(cle, "1", nx=True, ex=fenetre_secondes)
         if not acquis:
-            raise ThrottleError(f"Trop de demandes, réessayez dans au plus {fenetre_secondes} secondes")
+            raise ThrottleError(
+                _("Trop de demandes, réessayez dans au plus {fenetre_secondes} secondes").format(
+                    fenetre_secondes=fenetre_secondes
+                )
+            )
     finally:
         client.close()  # type: ignore[no-untyped-call]  # redis-py : Redis.close() n'est pas annoté
 
@@ -101,5 +106,9 @@ def _verifier_local(cle: str, fenetre_secondes: int) -> None:
     with _local_lock:
         derniere = _local_dernieres_demandes.get(cle)
         if derniere is not None and now - derniere < fenetre_secondes:
-            raise ThrottleError(f"Trop de demandes, réessayez dans au plus {fenetre_secondes} secondes")
+            raise ThrottleError(
+                _("Trop de demandes, réessayez dans au plus {fenetre_secondes} secondes").format(
+                    fenetre_secondes=fenetre_secondes
+                )
+            )
         _local_dernieres_demandes[cle] = now

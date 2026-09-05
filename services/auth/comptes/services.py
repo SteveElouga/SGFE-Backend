@@ -7,6 +7,7 @@ from django.contrib.auth.hashers import check_password, make_password
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken, Token
 
@@ -25,7 +26,7 @@ from comptes.whatsapp_client import whatsapp_client
 
 logger = logging.getLogger(__name__)
 
-_MSG_INVALID_CREDENTIALS = "Identifiants invalides"
+_MSG_INVALID_CREDENTIALS = _("Identifiants invalides")
 
 # RGPD — durée de rétention après désactivation d'un compte utilisateur
 # interne, avant purge automatique (anonymisation) par
@@ -80,7 +81,7 @@ def _refuser_si_anterieur_au_mot_de_passe(user: User, jeton: Token) -> None:
     # Tronquer les deux à la seconde laisse passer ce cas et ne rouvre rien :
     # la fenêtre est celle d'une seconde partagée avec l'acte de changement.
     if int(emis_le) < int(change_le.timestamp()):
-        raise AuthenticationError("Session fermée par un changement de mot de passe")
+        raise AuthenticationError(_("Session fermée par un changement de mot de passe"))
 
 
 class AuthService:
@@ -118,7 +119,7 @@ class AuthService:
             raise AuthenticationError(_MSG_INVALID_CREDENTIALS)
 
         if not user.is_active:
-            raise AuthenticationError("Compte désactivé")
+            raise AuthenticationError(_("Compte désactivé"))
 
         user.failed_attempts = 0
         user.locked_until = None
@@ -146,15 +147,15 @@ class AuthService:
             # chaîne JWT brute au runtime (c'est même l'usage documenté).
             access = AccessToken(token)  # type: ignore[arg-type]
         except TokenError as exc:
-            raise AuthenticationError("Token invalide ou expiré") from exc
+            raise AuthenticationError(_("Token invalide ou expiré")) from exc
 
         if self.revoked_tokens.is_revoked(access["jti"]):
-            raise AuthenticationError("Token révoqué")
+            raise AuthenticationError(_("Token révoqué"))
 
         try:
             user = self.users.get_by_id(access["user_id"])
         except ObjectDoesNotExist as exc:
-            raise AuthenticationError("Utilisateur introuvable") from exc
+            raise AuthenticationError(_("Utilisateur introuvable")) from exc
 
         _refuser_si_anterieur_au_mot_de_passe(user, access)
         return user
@@ -164,15 +165,15 @@ class AuthService:
             # Même imprécision de stub que validate_token ci-dessus.
             refresh = RefreshToken(refresh_token)  # type: ignore[arg-type]
         except TokenError as exc:
-            raise AuthenticationError("Refresh token invalide ou expiré") from exc
+            raise AuthenticationError(_("Refresh token invalide ou expiré")) from exc
 
         if self.revoked_tokens.is_revoked(refresh["jti"]):
-            raise AuthenticationError("Refresh token révoqué")
+            raise AuthenticationError(_("Refresh token révoqué"))
 
         try:
             user = self.users.get_by_id(refresh["user_id"])
         except ObjectDoesNotExist as exc:
-            raise AuthenticationError("Utilisateur introuvable") from exc
+            raise AuthenticationError(_("Utilisateur introuvable")) from exc
 
         _refuser_si_anterieur_au_mot_de_passe(user, refresh)
 
@@ -194,7 +195,7 @@ class AuthService:
             # Même imprécision de stub que validate_token ci-dessus.
             access = AccessToken(token)  # type: ignore[arg-type]
         except TokenError as exc:
-            raise AuthenticationError("Token invalide") from exc
+            raise AuthenticationError(_("Token invalide")) from exc
 
         self.revoked_tokens.revoke(
             token_jti=access["jti"],
@@ -223,7 +224,7 @@ class UserAdminService:
         """
         phone = validate_phone_cameroon(phone_number)
         if role == "ADMIN" and not email:
-            raise ValueError("L'e-mail est obligatoire pour le rôle ADMIN")
+            raise ValueError(_("L'e-mail est obligatoire pour le rôle ADMIN"))
 
         with transaction.atomic():
             if role == "ADMIN":
@@ -296,10 +297,10 @@ class UserAdminService:
         user = self.users.get_by_id(user_id)
 
         if caller_id and str(user.id) == str(caller_id):
-            raise ValueError("Vous ne pouvez pas désactiver votre propre compte")
+            raise ValueError(_("Vous ne pouvez pas désactiver votre propre compte"))
 
         if user.role == "ADMIN" and user.is_active and self.users.count_active_admins(exclude_id=user.id) == 0:
-            raise ValueError("Impossible de désactiver le dernier administrateur actif")
+            raise ValueError(_("Impossible de désactiver le dernier administrateur actif"))
 
         with transaction.atomic():
             user.is_active = False
@@ -368,7 +369,11 @@ class UserAdminService:
         """
         user = self.users.get_by_id(user_id)
         if user.is_active:
-            raise ValueError(f"Seul un utilisateur désactivé peut être anonymisé (RGPD) — compte {user.username} actif")
+            raise ValueError(
+                _("Seul un utilisateur désactivé peut être anonymisé (RGPD) — compte {username} actif").format(
+                    username=user.username
+                )
+            )
         user.username = f"{PREFIXE_USERNAME_ANONYMISE}{user.id}"
         user.email = None
         user.phone_number = self._telephone_anonymise(user.id)
@@ -521,10 +526,10 @@ class PasswordSetupService:
         try:
             setup_token = self.tokens.get_valid(token)
         except ObjectDoesNotExist as exc:
-            raise AuthenticationError("Token invalide") from exc
+            raise AuthenticationError(_("Token invalide")) from exc
 
         if not setup_token.is_valid():
-            raise AuthenticationError("Token invalide ou expiré")
+            raise AuthenticationError(_("Token invalide ou expiré"))
 
         user = setup_token.user
         with transaction.atomic():
@@ -599,14 +604,14 @@ class PhoneOtpService:
 
         otp_token = self.otp_tokens.get_latest_valid(user)
         if otp_token is None or not otp_token.is_valid():
-            raise AuthenticationError("Code OTP invalide ou expiré")
+            raise AuthenticationError(_("Code OTP invalide ou expiré"))
 
         if not otp_token.check_otp(otp_code):
             # Comptabilise l'échec et invalide le token au-delà du plafond :
             # sans cela le code à 6 chiffres serait brute-forçable pendant toute
             # la fenêtre de validité (aucun verrou côté vérification OTP).
             otp_token.register_failed_attempt(settings.MAX_OTP_ATTEMPTS)
-            raise AuthenticationError("Code OTP invalide ou expiré")
+            raise AuthenticationError(_("Code OTP invalide ou expiré"))
 
         with transaction.atomic():
             user.set_password(new_password)

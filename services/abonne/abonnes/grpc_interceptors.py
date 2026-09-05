@@ -9,6 +9,7 @@ from typing import Any, Callable
 import grpc
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError
+from django.utils.translation import gettext_lazy as _
 
 from abonnes.services import ValidationError
 
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 _STATUS_BY_EXCEPTION = (
     (ValidationError, grpc.StatusCode.INVALID_ARGUMENT, None),
     (ObjectDoesNotExist, grpc.StatusCode.NOT_FOUND, None),
-    (IntegrityError, grpc.StatusCode.ALREADY_EXISTS, "Cette ressource existe déjà"),
+    (IntegrityError, grpc.StatusCode.ALREADY_EXISTS, _("Cette ressource existe déjà")),
 )
 
 
@@ -29,7 +30,7 @@ def _abort_for(exc: Exception, context: grpc.ServicerContext, handler_call_detai
         if isinstance(exc, exc_type):
             if message:
                 logger.warning("%s: %s", exc_type.__name__, exc)
-            context.abort(status_code, message or str(exc))
+            context.abort(status_code, str(message) if message else str(exc))
             return
     method = getattr(handler_call_details, "method", "?")
     logger.exception("Exception non gérée dans %s", method)

@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import QuerySet, Sum
+from django.utils.translation import gettext_lazy as _
 
 from .models import (
     AvoirAbonne,
@@ -83,7 +84,7 @@ class PaiementRepository:
         try:
             return Paiement.objects.get(pk=paiement_id)
         except Paiement.DoesNotExist:
-            raise ObjectDoesNotExist(f"Paiement introuvable : {paiement_id}")
+            raise ObjectDoesNotExist(_("Paiement introuvable : {paiement_id}").format(paiement_id=paiement_id))
 
     def marquer_annule(self, paiement: Paiement, motif: str, annule_par: str) -> Paiement:
         """Annulation douce d'un paiement : le marque annulé + traçabilité."""
@@ -209,7 +210,9 @@ class SoldeFactureRepository:
         try:
             return qs.get(pk=facture_id)
         except SoldeFacture.DoesNotExist:
-            raise ObjectDoesNotExist(f"Solde introuvable pour la facture : {facture_id}")
+            raise ObjectDoesNotExist(
+                _("Solde introuvable pour la facture : {facture_id}").format(facture_id=facture_id)
+            )
 
     def get_if_exists(self, facture_id: str) -> "SoldeFacture | None":
         """Solde de la facture, ou None — support de l'initialisation idempotente
@@ -331,7 +334,9 @@ class SuiviImpayeRepository:
         try:
             return SuiviImpaye.objects.get(facture_id=facture_id)
         except SuiviImpaye.DoesNotExist:
-            raise ObjectDoesNotExist(f"Suivi impayé introuvable pour la facture : {facture_id}")
+            raise ObjectDoesNotExist(
+                _("Suivi impayé introuvable pour la facture : {facture_id}").format(facture_id=facture_id)
+            )
 
     def save_suivi(self, suivi: SuiviImpaye) -> SuiviImpaye:
         """Persiste les modifications d'un suivi."""
@@ -367,7 +372,7 @@ class SessionPaiementRepository:
             # `ValueError`/`TypeError` : un `session_id` mal formé (pas un
             # UUID) lève avant même la requête SQL — traité comme
             # « introuvable », pas comme une erreur serveur.
-            raise ObjectDoesNotExist(f"Session de paiement introuvable : {session_id}")
+            raise ObjectDoesNotExist(_("Session de paiement introuvable : {session_id}").format(session_id=session_id))
 
     def marquer_statut(self, session: SessionPaiementEnLigne, statut: str) -> SessionPaiementEnLigne:
         """Change le statut d'une session (transition EN_ATTENTE -> état terminal)."""
