@@ -209,3 +209,57 @@ class AuthServiceServicerTests(TestCase):
             self.servicer.SetPasswordWithToken(
                 pb.SetPasswordRequest(token="invalide", new_password="nouveaumotdepasse"), self.context
             )
+
+
+class DeactivateUserRevalidationRoleTests(TestCase):
+    """Défense en profondeur (voir docs/CONFORMITE_SOC2_OWASP.md §3.1 A01,
+    plan de remédiation item #3) : `DeactivateUser` revalide le rôle de
+    l'appelant à partir de l'identité propagée par la gateway
+    (`get_caller()`), en plus du RBAC déjà appliqué côté gateway
+    (`gateway/schema/auth_mutations.py`, `require_role(info, "ADMIN")`).
+
+    Compromis assumé (documenté sur `_revalider_role_deactivate`) : ce
+    filet ne bloque JAMAIS l'appel, même avec un mauvais rôle ou une
+    identité absente — il se contente de journaliser un avertissement.
+    """
+
+    def setUp(self) -> None:
+        self.servicer = AuthServiceServicer()
+        self.context = _mock_context()
+        self.user = User.objects.create_user(
+            username="a_desactiver",
+            email="a_desactiver@example.com",
+            password="secret123",
+            role=Role.COMPTABLE,
+            phone_number="+237690000097",
+        )
+
+    def _poser_identite(self, role: str) -> None:
+        from comptes.grpc_interceptors import CallerIdentity, caller_identity
+
+        jeton = caller_identity.set(CallerIdentity(user_id="u-1", username="testeur", role=role))
+        self.addCleanup(caller_identity.reset, jeton)
+
+    @patch("comptes.grpc_server.logger")
+    def test_role_admin_passe_sans_avertissement_de_role(self, mock_logger: MagicMock) -> None:
+        self._poser_identite("ADMIN")
+        response = self.servicer.DeactivateUser(pb.DeactivateUserRequest(user_id=str(self.user.id)), self.context)
+        self.assertFalse(response.is_active)
+        for appel in mock_logger.warning.call_args_list:
+            self.assertNotIn("hors de l'ensemble autorisé", appel.args[0])
+
+    def test_role_non_autorise_journalise_un_avertissement_mais_passe(self) -> None:
+        self._poser_identite("COMPTABLE")
+        with self.assertLogs("comptes.grpc_server", level="WARNING") as journaux:
+            response = self.servicer.DeactivateUser(pb.DeactivateUserRequest(user_id=str(self.user.id)), self.context)
+        self.assertFalse(response.is_active)  # jamais bloqué (voir docstring de la classe)
+        trace = "\n".join(journaux.output)
+        self.assertIn("DeactivateUser", trace)
+        self.assertIn("hors de l'ensemble autorisé", trace)
+        self.assertIn("COMPTABLE", trace)
+
+    def test_sans_identite_reste_retrocompatible(self) -> None:
+        """Aucune identité propagée (appel hors gateway, ou service-à-service
+        légitime) : comportement inchangé — aucune exception."""
+        response = self.servicer.DeactivateUser(pb.DeactivateUserRequest(user_id=str(self.user.id)), self.context)
+        self.assertFalse(response.is_active)

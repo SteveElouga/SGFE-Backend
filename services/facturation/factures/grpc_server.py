@@ -17,7 +17,7 @@ import facturation_service_pb2_grpc as pb_grpc
 
 from .event_publisher import publish_facture_event, publish_tarif_event
 from .grpc_clients import CampagneServiceClient, ConfigServiceClient
-from .grpc_interceptors import ErrorHandlingInterceptor, IdentityInterceptor
+from .grpc_interceptors import ErrorHandlingInterceptor, IdentityInterceptor, get_caller
 from .grpc_auth import AuthServerInterceptor, ouvrir_port_grpc
 from .serializers import facture_to_proto, tarif_to_proto
 from .services import (
@@ -32,6 +32,52 @@ from .services import (
 logger = logging.getLogger(__name__)
 
 _GRPC_MAX_WORKERS = 10
+
+# Défense en profondeur (OWASP A01/API5, ASVS V8, SOC2 CC6) — voir
+# docs/CONFORMITE_SOC2_OWASP.md §3.1/§3.3/§3.4 et le plan de remédiation
+# item #3. La gateway reste l'unique point de DÉCISION RBAC
+# (`services/auth/comptes/services.py:193`) : ce module ne fait que
+# journaliser un avertissement quand l'identité propagée par
+# `IdentityInterceptor` (PR #193, `get_caller()`) porte un rôle qui n'aurait
+# pas dû franchir la gateway pour la modification du tarif — sans jamais
+# bloquer l'appel.
+#
+# Ensemble aligné sur le tableau "Rôles et permissions" du CLAUDE.md racine
+# ("Modifier les paramètres" -> ADMIN uniquement) et sur
+# `gateway/schema/facturation_mutations.py` (`require_role(info, "ADMIN")`
+# sur `update_tarif`), qui applique déjà cette règle côté gateway.
+_ROLES_AUTORISES_TARIF: frozenset[str] = frozenset({"ADMIN"})
+
+
+def _revalider_role_tarif(action: str) -> None:
+    """Filet de sécurité : journalise un avertissement si l'identité propagée
+    par la gateway ne correspond pas au rôle attendu pour `action`.
+
+    Ne BLOQUE jamais l'appel — c'est un compromis assumé, pas un oubli.
+    L'identité n'est pas propagée par tous les chemins d'appel légitimes
+    aujourd'hui (ex. certains appels service-à-service internes n'ont pas
+    d'identité utilisateur humaine) ; bloquer romprait ces appels sans gain
+    réel puisque la gateway a déjà tranché en amont. Voir
+    `docs/CONFORMITE_SOC2_OWASP.md` §3.1 A01 pour le constat d'origine.
+    """
+    caller = get_caller()
+    if caller.is_anonyme:
+        logger.warning(
+            "Défense en profondeur — %s appelé sans identité propagée : revalidation de "
+            "rôle impossible (appel direct hors gateway, ou appel service-à-service "
+            "légitime sans identité utilisateur).",
+            action,
+        )
+        return
+    if caller.role not in _ROLES_AUTORISES_TARIF:
+        logger.warning(
+            "Défense en profondeur — %s appelé par %s (role=%s), hors de l'ensemble "
+            "autorisé %s : la gateway aurait dû bloquer cet appel.",
+            action,
+            caller.username or caller.user_id,
+            caller.role,
+            sorted(_ROLES_AUTORISES_TARIF),
+        )
 
 
 class FacturationServicer(pb_grpc.FacturationServiceServicer):  # type: ignore[misc]
@@ -75,6 +121,7 @@ class FacturationServicer(pb_grpc.FacturationServiceServicer):  # type: ignore[m
         context: grpc.ServicerContext,
     ) -> pb.TarifResponse:
         """Crée un nouveau tarif actif en désactivant le précédent."""
+        _revalider_role_tarif("UpdateTarif")
         date_effet = datetime.date.fromisoformat(request.date_effet) if request.date_effet else datetime.date.today()
         tarif = self._tarif_svc.update_tarif(
             prix_m3=Decimal(str(request.prix_m3)),

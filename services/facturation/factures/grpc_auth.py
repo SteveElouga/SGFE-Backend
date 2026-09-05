@@ -34,12 +34,24 @@ certificat, ne peut ni lire le trafic ni initier de connexion, même s'il
 devinait `INTERNAL_GRPC_KEY`. Les deux couches sont indépendantes et
 cumulatives : retirer l'une ne désactive pas l'autre.
 
-**Repli en clair explicite.** `GRPC_TLS_CA`/`GRPC_TLS_CERT`/`GRPC_TLS_KEY`
-absentes de l'environnement → le serveur retombe sur `add_insecure_port` et
-le client sur `insecure_channel`, sans erreur. C'est le cas des suites de
-tests, qui instancient un serveur ou un canal en mémoire sans docker-compose
-ni certificats montés : elles n'ont pas à générer de PKI pour rester vertes.
+**Repli en clair, désormais toujours averti.** `GRPC_TLS_CA`/`GRPC_TLS_CERT`/
+`GRPC_TLS_KEY` absentes ou illisibles → le serveur retombe sur
+`add_insecure_port` et le client sur `insecure_channel`, comme avant — mais
+ce repli journalise maintenant systématiquement un avertissement explicite
+(`logger.warning`), là où il ne disait auparavant rien du tout. C'est le cas
+des suites de tests, qui instancient un serveur ou un canal en mémoire sans
+docker-compose ni certificats montés : elles n'ont pas à générer de PKI pour
+rester vertes, et le nouvel avertissement ne les fait pas échouer.
 Voir `scripts/generate-grpc-certs.sh` pour la génération de la CA/certificat.
+
+**`GRPC_TLS_REQUIRED` (défaut `false`) — refus de démarrer en production.**
+Positionnée à `true`, cette variable transforme le repli en clair ci-dessus
+en refus explicite de démarrer (`CertificatTlsManquant`) dès qu'un des trois
+fichiers de certificat est absent ou illisible : c'est la remédiation à
+l'écart ASVS V12 relevé par `docs/CONFORMITE_SOC2_OWASP.md` (repli silencieux
+sans garde-fou). Laissée à `false` par défaut pour ne rien changer au
+comportement existant en développement/tests ; à positionner à `true` dans
+l'environnement de chaque service en production.
 
 **Ce module est partagé** entre les neuf composants gRPC (huit services +
 la gateway) via `scripts/sync-grpc-lib.sh`, qui le recopie tel quel (avec un
@@ -201,6 +213,30 @@ class AuthClientInterceptor(grpc.UnaryUnaryClientInterceptor):
 # (cloisonnement plus fin, révocation par service).
 
 
+class CertificatTlsManquant(RuntimeError):
+    """Levée au démarrage quand `GRPC_TLS_REQUIRED=true` mais qu'un fichier de
+    certificat mTLS (`GRPC_TLS_CA`/`GRPC_TLS_CERT`/`GRPC_TLS_KEY`) est absent
+    ou illisible.
+
+    Avant cette exception, l'absence de certificats produisait un repli
+    silencieux sur `add_insecure_port`/`insecure_channel` — l'écart ASVS V12
+    relevé par `docs/CONFORMITE_SOC2_OWASP.md` §3.3. `GRPC_TLS_REQUIRED=true`
+    (à positionner en production) transforme ce repli en refus explicite de
+    démarrer.
+    """
+
+
+def _tls_requis() -> bool:
+    """Lit `GRPC_TLS_REQUIRED` : True si le mTLS interne est obligatoire.
+
+    Défaut `False` — comportement historique inchangé : absence de
+    certificats ⇒ repli en clair (désormais averti, voir `_materiel_tls`).
+    Accepte les formes usuelles `1/true/yes/on` (insensible à la casse) ;
+    toute autre valeur, y compris absente, vaut `False`.
+    """
+    return os.environ.get("GRPC_TLS_REQUIRED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def _lire_credentiel_tls(variable: str) -> bytes | None:
     """Lit le fichier pointé par `variable`, ou None si absent/illisible.
 
@@ -209,6 +245,10 @@ def _lire_credentiel_tls(variable: str) -> bytes | None:
     serveur ou canal instancié en mémoire — mTLS se désactive proprement (voir
     docstring du module) ; l'authentification applicative ci-dessus reste
     elle intacte.
+
+    Si `GRPC_TLS_REQUIRED=true` et que le fichier pointé par une variable
+    *définie* est illisible, refuse immédiatement de démarrer plutôt que de
+    retomber sur un canal en clair (voir `CertificatTlsManquant`).
     """
     valeur = os.environ.get(variable)
     if not valeur:
@@ -216,16 +256,53 @@ def _lire_credentiel_tls(variable: str) -> bytes | None:
     try:
         return Path(valeur).read_bytes()
     except OSError as exc:
-        logger.warning("%s défini (%s) mais illisible (%s) — repli sur gRPC en clair.", variable, valeur, exc)
+        if _tls_requis():
+            raise CertificatTlsManquant(
+                f"{variable} défini ({valeur}) mais illisible ({exc}) — GRPC_TLS_REQUIRED=true "
+                "exige un mTLS interne fonctionnel : le service refuse de démarrer plutôt que de "
+                "retomber sur un canal gRPC en clair. Corrigez le montage du fichier de certificat "
+                "ou désactivez GRPC_TLS_REQUIRED (développement uniquement)."
+            ) from exc
+        logger.warning(
+            "%s défini (%s) mais illisible (%s) — repli sur gRPC en clair (GRPC_TLS_REQUIRED non activé).",
+            variable,
+            valeur,
+            exc,
+        )
         return None
 
 
 def _materiel_tls() -> tuple[bytes, bytes, bytes] | None:
-    """CA + certificat + clé, ou None si l'une des trois variables manque."""
+    """CA + certificat + clé, ou None si l'une des trois variables manque.
+
+    Si `GRPC_TLS_REQUIRED=true`, l'absence d'un seul des trois fichiers lève
+    `CertificatTlsManquant` (refus explicite de démarrer) au lieu de renvoyer
+    `None` ; sinon, renvoie `None` après avoir journalisé un avertissement
+    explicite — c'était la moitié manquante du dispositif : un repli qui
+    n'avertissait jamais personne.
+    """
     ca = _lire_credentiel_tls("GRPC_TLS_CA")
     cert = _lire_credentiel_tls("GRPC_TLS_CERT")
     cle = _lire_credentiel_tls("GRPC_TLS_KEY")
     if ca is None or cert is None or cle is None:
+        if _tls_requis():
+            manquantes = [
+                nom
+                for nom, valeur in (("GRPC_TLS_CA", ca), ("GRPC_TLS_CERT", cert), ("GRPC_TLS_KEY", cle))
+                if valeur is None
+            ]
+            raise CertificatTlsManquant(
+                "GRPC_TLS_REQUIRED=true exige un mTLS interne fonctionnel, mais la ou les "
+                f"variable(s) suivante(s) ne pointent vers aucun fichier lisible : "
+                f"{', '.join(manquantes)}. Générez les certificats "
+                "(scripts/generate-grpc-certs.sh), montez-les et positionnez ces variables, ou "
+                "désactivez GRPC_TLS_REQUIRED (développement uniquement)."
+            )
+        logger.warning(
+            "mTLS gRPC non configuré (GRPC_TLS_CA/GRPC_TLS_CERT/GRPC_TLS_KEY absent(s) ou "
+            "illisible(s)) — repli sur un canal gRPC en clair. Positionnez GRPC_TLS_REQUIRED=true "
+            "en production pour transformer ce repli en refus de démarrage explicite."
+        )
         return None
     return ca, cert, cle
 

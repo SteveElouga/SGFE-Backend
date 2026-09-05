@@ -10,8 +10,11 @@ laisser désarmer par une variable oubliée, et il ne laisse pas fuiter le
 secret dans les journaux.
 """
 
+import os
+import tempfile
 from collections.abc import Iterable
-from unittest.mock import MagicMock
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import grpc
 from django.test import SimpleTestCase
@@ -20,7 +23,10 @@ from paiements.grpc_auth import (
     METADATA_KEY,
     AuthClientInterceptor,
     AuthServerInterceptor,
+    CertificatTlsManquant,
     CleInterneManquante,
+    _materiel_tls,
+    _tls_requis,
     canal_authentifie,
     exiger_cle,
 )
@@ -152,3 +158,101 @@ class CanalTest(SimpleTestCase):
         metaclasse = type(grpc.Channel)
         self.assertNotIsInstance(canal, metaclasse)
         self.assertTrue(hasattr(canal, "unary_unary"))
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# mTLS — repli en clair désormais averti, et GRPC_TLS_REQUIRED (voir
+# docs/CONFORMITE_SOC2_OWASP.md §3.3 V12, plan de remédiation item #4).
+# ─────────────────────────────────────────────────────────────────────────
+
+_VARIABLES_TLS = ("GRPC_TLS_CA", "GRPC_TLS_CERT", "GRPC_TLS_KEY")
+
+
+class TlsRequisTest(SimpleTestCase):
+    """`_tls_requis()` lit GRPC_TLS_REQUIRED — défaut False, formes usuelles acceptées."""
+
+    def test_defaut_absent_vaut_false(self) -> None:
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("GRPC_TLS_REQUIRED", None)
+            self.assertFalse(_tls_requis())
+
+    def test_formes_vraies_acceptees(self) -> None:
+        for valeur in ("1", "true", "True", "TRUE", "yes", "on"):
+            with patch.dict(os.environ, {"GRPC_TLS_REQUIRED": valeur}):
+                self.assertTrue(_tls_requis(), msg=f"valeur={valeur!r}")
+
+    def test_formes_fausses(self) -> None:
+        for valeur in ("0", "false", "", "n'importe-quoi"):
+            with patch.dict(os.environ, {"GRPC_TLS_REQUIRED": valeur}):
+                self.assertFalse(_tls_requis(), msg=f"valeur={valeur!r}")
+
+
+class MaterielTlsRepliAverstiTest(SimpleTestCase):
+    """`GRPC_TLS_REQUIRED` absent/false (comportement historique) : le repli
+    en clair reste possible, mais journalise désormais un avertissement
+    explicite — c'était la moitié manquante du dispositif signalée par
+    docs/CONFORMITE_SOC2_OWASP.md §3.3 V12."""
+
+    def setUp(self) -> None:
+        for variable in (*_VARIABLES_TLS, "GRPC_TLS_REQUIRED"):
+            os.environ.pop(variable, None)
+
+    def test_aucun_certificat_renvoie_none_et_journalise_un_avertissement(self) -> None:
+        with self.assertLogs("paiements.grpc_auth", level="WARNING") as journaux:
+            resultat = _materiel_tls()
+        self.assertIsNone(resultat)
+        trace = "\n".join(journaux.output)
+        self.assertIn("repli sur un canal gRPC en clair", trace)
+        self.assertIn("GRPC_TLS_REQUIRED=true", trace)
+
+    def test_fichier_illisible_renvoie_none_et_journalise_un_avertissement(self) -> None:
+        with patch.dict(os.environ, {"GRPC_TLS_CA": "/chemin/inexistant.crt"}):
+            with self.assertLogs("paiements.grpc_auth", level="WARNING") as journaux:
+                resultat = _materiel_tls()
+        self.assertIsNone(resultat)
+        trace = "\n".join(journaux.output)
+        self.assertIn("GRPC_TLS_CA", trace)
+        self.assertIn("illisible", trace)
+
+
+class MaterielTlsRequisTest(SimpleTestCase):
+    """`GRPC_TLS_REQUIRED=true` : refus explicite de démarrer plutôt que le
+    repli en clair — la remédiation elle-même (ASVS V12, plan de remédiation
+    item #4)."""
+
+    def setUp(self) -> None:
+        for variable in _VARIABLES_TLS:
+            os.environ.pop(variable, None)
+        self.env_patcher = patch.dict(os.environ, {"GRPC_TLS_REQUIRED": "true"})
+        self.env_patcher.start()
+        self.addCleanup(self.env_patcher.stop)
+
+    def test_aucun_certificat_leve_certificat_tls_manquant(self) -> None:
+        with self.assertRaises(CertificatTlsManquant) as ctx:
+            _materiel_tls()
+        message = str(ctx.exception)
+        self.assertIn("GRPC_TLS_REQUIRED=true", message)
+        for variable in _VARIABLES_TLS:
+            self.assertIn(variable, message)
+
+    def test_fichier_illisible_leve_certificat_tls_manquant(self) -> None:
+        with patch.dict(os.environ, {"GRPC_TLS_CA": "/chemin/inexistant.crt"}):
+            with self.assertRaises(CertificatTlsManquant) as ctx:
+                _materiel_tls()
+        message = str(ctx.exception)
+        self.assertIn("GRPC_TLS_CA", message)
+        self.assertIn("GRPC_TLS_REQUIRED=true", message)
+
+    def test_certificats_complets_et_lisibles_ne_leve_rien(self) -> None:
+        """Un certificat effectivement présent et lisible ne doit jamais être
+        pénalisé par GRPC_TLS_REQUIRED — seule l'ABSENCE doit faire refuser
+        de démarrer."""
+        with tempfile.TemporaryDirectory() as dossier:
+            chemins = {}
+            for variable in _VARIABLES_TLS:
+                chemin = Path(dossier) / f"{variable}.pem"
+                chemin.write_bytes(b"contenu-de-test")
+                chemins[variable] = str(chemin)
+            with patch.dict(os.environ, chemins):
+                resultat = _materiel_tls()
+        self.assertEqual(resultat, (b"contenu-de-test", b"contenu-de-test", b"contenu-de-test"))
