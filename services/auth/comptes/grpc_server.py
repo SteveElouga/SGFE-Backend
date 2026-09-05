@@ -1,3 +1,4 @@
+import json
 import logging
 import sys
 from concurrent import futures
@@ -12,6 +13,7 @@ import auth_service_pb2 as pb
 import auth_service_pb2_grpc as pb_grpc
 
 from comptes.event_publisher import publish_user_event
+from comptes.export import ExportService
 from comptes.grpc_interceptors import ErrorHandlingInterceptor, IdentityInterceptor, get_caller
 from comptes.grpc_auth import AuthServerInterceptor, ouvrir_port_grpc
 from comptes.serializers import user_to_payload, user_to_response
@@ -81,6 +83,9 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):  # type: ignore[misc]
         self.user_admin_service = UserAdminService()
         self.password_setup_service = PasswordSetupService()
         self.phone_otp_service = PhoneOtpService()
+        # Construction sans I/O (aucun client gRPC externe, voir CLAUDE.md du
+        # service) — sûre même si elle n'est jamais appelée.
+        self.export_service = ExportService()
 
     def Login(self, request: pb.LoginRequest, context: grpc.ServicerContext) -> pb.TokenResponse:
         access, refresh, expires_in = self.auth_service.login(request.identifier, request.password)
@@ -132,6 +137,17 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):  # type: ignore[misc]
         user = self.user_admin_service.reactivate_user(request.user_id)
         publish_user_event(str(user.id), "USER_UPDATED")
         return pb.UserResponse(**user_to_response(user))
+
+    def AnonymiserUtilisateur(self, request: pb.UserIdRequest, context: grpc.ServicerContext) -> pb.UserResponse:
+        user = self.user_admin_service.anonymiser_utilisateur(request.user_id)
+        publish_user_event(str(user.id), "USER_UPDATED")
+        return pb.UserResponse(**user_to_response(user))
+
+    def ExporterDonneesUtilisateur(
+        self, request: pb.UserIdRequest, context: grpc.ServicerContext
+    ) -> pb.ExportDonneesUtilisateurResponse:
+        json_export = json.dumps(self.export_service.exporter(request.user_id), ensure_ascii=False, indent=2)
+        return pb.ExportDonneesUtilisateurResponse(json_export=json_export)
 
     def ResetUserPassword(self, request: pb.UserIdRequest, context: grpc.ServicerContext) -> pb.UserResponse:
         user = self.user_admin_service.resend_credentials(request.user_id)

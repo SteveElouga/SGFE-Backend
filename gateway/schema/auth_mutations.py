@@ -118,6 +118,26 @@ class AuthMutations:
 
     @strawberry.mutation(  # type: ignore[untyped-decorator]  # voir mypy.ini
         description=(
+            "RGPD — droit à l'effacement. Anonymise un utilisateur interne — ADMIN uniquement. "
+            "Auth Service refuse si le compte est encore actif (erreur GraphQL relayée telle quelle)."
+        )
+    )
+    def anonymiser_utilisateur(self, info: strawberry.types.Info, id: strawberry.ID) -> User:
+        require_role(info, "ADMIN")
+        return user_from_grpc(auth_client.anonymiser_utilisateur(str(id)))
+
+    @strawberry.mutation(  # type: ignore[untyped-decorator]  # voir mypy.ini
+        description=(
+            "RGPD — droit à la portabilité. Renvoie l'export JSON structuré des données "
+            "personnelles d'un utilisateur interne — ADMIN uniquement."
+        )
+    )
+    def exporter_donnees_utilisateur(self, info: strawberry.types.Info, id: strawberry.ID) -> str:
+        require_role(info, "ADMIN")
+        return str(auth_client.exporter_donnees_utilisateur(str(id)).json_export)
+
+    @strawberry.mutation(  # type: ignore[untyped-decorator]  # voir mypy.ini
+        description=(
             "Renvoie les identifiants d'accès à un utilisateur — ADMIN uniquement. "
             "Sert à la fois de « Renvoyer le lien d'activation » (compte encore en attente) "
             "et de « Réinitialiser le mot de passe » (compte déjà activé) : le canal "

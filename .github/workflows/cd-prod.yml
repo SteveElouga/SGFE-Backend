@@ -150,6 +150,39 @@ jobs:
       # lui-même signé par la même identité OIDC — c'est cette dernière
       # propriété qui manquait : une provenance générée mais jamais consommée
       # ne protège de rien. D'où l'ajout, pas le remplacement.
+      #
+      # ── Migration vers `slsa-framework/slsa-github-generator` (item #12) ────
+      #
+      # Depuis cette migration, `_publish-image.yml` ne génère plus lui-même
+      # sa provenance (`provenance: true` retiré du job `publish` — la
+      # provenance auto-attestée dans le même job que le build est
+      # exactement ce que SLSA Build L3 refuse). Un job séparé,
+      # `provenance` dans `_publish-image.yml`, appelle désormais le
+      # générateur officiel `generator_container_slsa3.yml`, épinglé
+      # `@v2.1.0`, sur le digest de l'image déjà poussée.
+      #
+      # Le TYPE d'attestation ne change pas (`--type slsaprovenance` reste le
+      # bon prédicat, `https://slsa.dev/provenance/v0.2`, documenté par le
+      # générateur comme compatible avec le format d'attestation cosign) —
+      # mais l'IDENTITÉ OIDC signée change. Fulcio dérive l'identité du
+      # certificat de `job_workflow_ref` : le workflow qui exécute
+      # RÉELLEMENT le job de signature de la provenance. Ce n'est plus
+      # `_publish-image.yml` dans CE dépôt — c'est le générateur lui-même,
+      # dans SON dépôt, à SA version épinglée. Garder l'ancien motif
+      # (`_publish-image.yml@`) ferait échouer cette vérification sur les
+      # onze images : la provenance existe toujours, mais n'est plus signée
+      # par cette identité-là.
+      #
+      # C'est le principe même de L3 : la confiance ne repose plus sur ce
+      # que ce dépôt s'auto-délivre, mais sur un générateur commun, tiers,
+      # dont l'identité est fixe et connue à l'avance — d'où l'ancrage sur
+      # le dépôt `slsa-framework/slsa-github-generator`, pas sur
+      # `${GITHUB_REPOSITORY}`.
+      #
+      # ⚠️ Si la version du générateur change dans `_publish-image.yml`
+      # (job `provenance`), mettre AUSSI à jour `refs/tags/v2.1.0` ici — les
+      # deux doivent rester synchronisés, sinon cette vérification échoue
+      # après la prochaine bascule de version.
       - name: Vérifier la provenance SLSA des onze images
         env:
           REPO_GHCR: ${{ vars.GHCR_REPO }}
@@ -159,15 +192,16 @@ jobs:
           echo "Tag déployé : $TAG"
           for svc in $SERVICES_SIGNES; do
             echo "── $svc"
-            # Même ancrage d'identité OIDC que `cosign verify` ci-dessus (voir
-            # son commentaire pour le détail `_publish-image.yml@` vs `ci.yml@`).
+            # Ancrage sur le générateur SLSA tiers (voir commentaire
+            # ci-dessus), PAS sur ${GITHUB_REPOSITORY}/_publish-image.yml
+            # comme avant cette migration.
             cosign verify-attestation "ghcr.io/${REPO_GHCR}/${svc}:${TAG}" \
               --type slsaprovenance \
-              --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/_publish-image\.yml@" \
+              --certificate-identity-regexp "^https://github.com/slsa-framework/slsa-github-generator/\.github/workflows/generator_container_slsa3\.yml@refs/tags/v2\.1\.0$" \
               --certificate-oidc-issuer https://token.actions.githubusercontent.com \
               > /dev/null
           done
-          echo "Onze attestations de provenance SLSA vérifiées."
+          echo "Onze attestations de provenance SLSA vérifiées (générateur slsa-framework, isolé du build — SLSA Build L3)."
     outputs:
       tag: ${{ steps.tag.outputs.value }}
 

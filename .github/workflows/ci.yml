@@ -720,10 +720,17 @@ jobs:
     needs: [secrets-scan, check-grpc-lib-drift, check-db-hardening-lib-drift, lint-workflows, test-auth, test-gateway, test-abonne, test-campagne, test-facturation, test-paiement, test-notification, test-reporting, test-config]
     runs-on: ubuntu-latest
     steps:
-      - name: Vérifie qu'aucun job requis n'a échoué
+      # `contains(needs.*.result, 'failure')` seul laisse passer un job
+      # `cancelled` (ex. un timeout) : constaté en réel côté frontend (même
+      # job `ci-status`, PR #167 — un `Playwright E2E` annulé à 20m16s par une
+      # installation de navigateurs anormalement lente a quand même laissé
+      # `ci-status` conclure au succès). `cancelled` doit bloquer comme
+      # `failure`, sinon un job qui expire silencieusement fait passer la
+      # protection de branche.
+      - name: Vérifie qu'aucun job requis n'a échoué ou n'a été annulé
         run: |
-          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
-            echo "Au moins un job a échoué."
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" || "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "Au moins un job a échoué ou a été annulé (timeout ?)."
             exit 1
           fi
 
@@ -739,6 +746,11 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      # Requis par le job `provenance` de `_publish-image.yml` (générateur
+      # SLSA officiel, item #12 du plan de remédiation) : un job appelé ne
+      # peut jamais recevoir plus de permissions que son appelant n'en détient
+      # — voir le commentaire du job `provenance` dans `_publish-image.yml`.
+      actions: read
     uses: ./.github/workflows/_publish-image.yml
     with:
       service: auth-service
@@ -751,6 +763,11 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      # Requis par le job `provenance` de `_publish-image.yml` (générateur
+      # SLSA officiel, item #12 du plan de remédiation) : un job appelé ne
+      # peut jamais recevoir plus de permissions que son appelant n'en détient
+      # — voir le commentaire du job `provenance` dans `_publish-image.yml`.
+      actions: read
     uses: ./.github/workflows/_publish-image.yml
     with:
       service: config-service
@@ -763,6 +780,11 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      # Requis par le job `provenance` de `_publish-image.yml` (générateur
+      # SLSA officiel, item #12 du plan de remédiation) : un job appelé ne
+      # peut jamais recevoir plus de permissions que son appelant n'en détient
+      # — voir le commentaire du job `provenance` dans `_publish-image.yml`.
+      actions: read
     uses: ./.github/workflows/_publish-image.yml
     with:
       service: reporting-service
@@ -775,6 +797,11 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      # Requis par le job `provenance` de `_publish-image.yml` (générateur
+      # SLSA officiel, item #12 du plan de remédiation) : un job appelé ne
+      # peut jamais recevoir plus de permissions que son appelant n'en détient
+      # — voir le commentaire du job `provenance` dans `_publish-image.yml`.
+      actions: read
     uses: ./.github/workflows/_publish-image.yml
     with:
       service: gateway
@@ -787,6 +814,11 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      # Requis par le job `provenance` de `_publish-image.yml` (générateur
+      # SLSA officiel, item #12 du plan de remédiation) : un job appelé ne
+      # peut jamais recevoir plus de permissions que son appelant n'en détient
+      # — voir le commentaire du job `provenance` dans `_publish-image.yml`.
+      actions: read
     uses: ./.github/workflows/_publish-image.yml
     with:
       service: abonne-service
@@ -799,6 +831,11 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      # Requis par le job `provenance` de `_publish-image.yml` (générateur
+      # SLSA officiel, item #12 du plan de remédiation) : un job appelé ne
+      # peut jamais recevoir plus de permissions que son appelant n'en détient
+      # — voir le commentaire du job `provenance` dans `_publish-image.yml`.
+      actions: read
     uses: ./.github/workflows/_publish-image.yml
     with:
       service: facturation-service
@@ -811,6 +848,11 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      # Requis par le job `provenance` de `_publish-image.yml` (générateur
+      # SLSA officiel, item #12 du plan de remédiation) : un job appelé ne
+      # peut jamais recevoir plus de permissions que son appelant n'en détient
+      # — voir le commentaire du job `provenance` dans `_publish-image.yml`.
+      actions: read
     uses: ./.github/workflows/_publish-image.yml
     with:
       service: campagne-service
@@ -823,6 +865,11 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      # Requis par le job `provenance` de `_publish-image.yml` (générateur
+      # SLSA officiel, item #12 du plan de remédiation) : un job appelé ne
+      # peut jamais recevoir plus de permissions que son appelant n'en détient
+      # — voir le commentaire du job `provenance` dans `_publish-image.yml`.
+      actions: read
     uses: ./.github/workflows/_publish-image.yml
     with:
       service: paiement-service
@@ -835,6 +882,11 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      # Requis par le job `provenance` de `_publish-image.yml` (générateur
+      # SLSA officiel, item #12 du plan de remédiation) : un job appelé ne
+      # peut jamais recevoir plus de permissions que son appelant n'en détient
+      # — voir le commentaire du job `provenance` dans `_publish-image.yml`.
+      actions: read
     uses: ./.github/workflows/_publish-image.yml
     with:
       service: notification-service
@@ -847,6 +899,11 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      # Requis par le job `provenance` de `_publish-image.yml` (générateur
+      # SLSA officiel, item #12 du plan de remédiation) : un job appelé ne
+      # peut jamais recevoir plus de permissions que son appelant n'en détient
+      # — voir le commentaire du job `provenance` dans `_publish-image.yml`.
+      actions: read
     uses: ./.github/workflows/_publish-image.yml
     with:
       service: nginx
@@ -859,6 +916,11 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      # Requis par le job `provenance` de `_publish-image.yml` (générateur
+      # SLSA officiel, item #12 du plan de remédiation) : un job appelé ne
+      # peut jamais recevoir plus de permissions que son appelant n'en détient
+      # — voir le commentaire du job `provenance` dans `_publish-image.yml`.
+      actions: read
     uses: ./.github/workflows/_publish-image.yml
     with:
       service: whatsapp-service

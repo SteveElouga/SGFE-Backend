@@ -3,7 +3,7 @@ from uuid import UUID
 
 from django.db.models import Q
 
-from comptes.models import PasswordSetupToken, PhoneOtpToken, RevokedToken, User
+from comptes.models import PREFIXE_USERNAME_ANONYMISE, PasswordSetupToken, PhoneOtpToken, RevokedToken, User
 
 
 class UserRepository:
@@ -49,6 +49,21 @@ class UserRepository:
     def save(self, user: User) -> User:
         user.save()
         return user
+
+    def list_desactives_avant(self, avant: datetime) -> list[User]:
+        """Utilisateurs désactivés depuis `avant` — candidats à la purge RGPD
+        automatique (voir comptes/schedulers.py::purge_rgpd_job et
+        UserAdminService.purger_utilisateurs_desactives).
+
+        Exclut les comptes déjà anonymisés (`username` préfixé) : optimisation
+        pure pour ne pas les retraiter à chaque passage du job — l'anonymisation
+        elle-même reste idempotente si ce filtre venait à en manquer un.
+        """
+        return list(
+            User.objects.filter(
+                is_active=False, date_desactivation__isnull=False, date_desactivation__lte=avant
+            ).exclude(username__startswith=PREFIXE_USERNAME_ANONYMISE)
+        )
 
 
 class RevokedTokenRepository:
