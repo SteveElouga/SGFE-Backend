@@ -23,7 +23,6 @@ from campagnes.grpc_interceptors import ErrorHandlingInterceptor, IdentityInterc
 from campagnes.grpc_auth import AuthServerInterceptor, ouvrir_port_grpc
 from campagnes.models import StatutCampagne, StatutReleve
 from campagnes.repositories import (
-    CampagneAgentRepository,
     CampagneRepository,
     ReleveRepository,
 )
@@ -50,7 +49,6 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):  # type: ignore[misc]
         self._releve_svc = ReleveService()
         self._releve_repo = ReleveRepository()
         self._campagne_repo = CampagneRepository()
-        self._agent_repo = CampagneAgentRepository()
         self._facturation_client = FacturationServiceClient()
         self._abonne_client = AbonneServiceClient()
 
@@ -103,9 +101,8 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):  # type: ignore[misc]
         request: pb.AssignerAgentRequest,
         context: grpc.ServicerContext,
     ) -> pb.CampagneResponse:
-        """Affecte un agent à une campagne — idempotent."""
-        campagne = self._campagne_repo.get_by_id(request.campagne_id)
-        self._agent_repo.assigner(campagne=campagne, agent_id=request.agent_id)
+        """Affecte un agent à une campagne — idempotent, journalisé (AuditLog)."""
+        campagne = self._campagne_svc.assigner_agent(request.campagne_id, request.agent_id)
         return campagne_to_proto(campagne)
 
     def AffecterZones(
