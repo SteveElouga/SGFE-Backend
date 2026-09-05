@@ -352,6 +352,30 @@
 > combinées (i18n + journalisation) : 97 items, 82 faits (85 %), 2 partiels,
 > 6 incertains/non revérifiés, 7 non faits.**
 
+> ⚠️ **8e revue de fraîcheur — 5 septembre 2026 : vérification dynamique de
+> sécurité contre la stack live, reconstruite.** Nouveau `docs/PENTEST_LITE.md`
+> — **pas un test de pénétration professionnel**, une vérification ciblée
+> par requêtes HTTP/GraphQL réelles contre `docker compose up -d --build`,
+> guidée par les affirmations déjà écrites dans ce document. **Incident
+> méthodologique découvert et corrigé en cours de route** : le premier
+> passage (throttle OTP) n'a montré aucun blocage — investigation a révélé
+> que le conteneur `auth-service` en cours d'exécution datait d'avant PR #200
+> (`throttle.py` absent du conteneur), `docker compose up -d` sans `--build`
+> ayant réutilisé une image obsolète. Après arrêt complet + rebuild explicite,
+> confirmé en conditions live : throttle OTP/reset (PR #200), RBAC gateway
+> (AGENT rejeté sur `updateTarif`/`deactivateUser`), validation de signature
+> JWT RS256 (résiste à la falsification et à l'élévation de rôle par
+> modification du payload), limite d'alias GraphQL (50), en-têtes de sécurité
+> HTTP, rate limiting nginx (10/80 requêtes rejetées en rafale), isolation
+> réseau gRPC/Postgres, fail-closed WhatsApp. Une observation d'architecture
+> (pas une vulnérabilité) : `whatsapp-service:3000` publié directement sur
+> l'hôte en plus de nginx, protégé par clé API. **Non couvert, à faire par un
+> prestataire spécialisé** : IDOR espace abonné, injection active, mTLS
+> inter-services, configuration de production réelle. **Décompte mis à jour
+> (97 items, recompté par script)** : **82 faits (85 %)** · **3 partiels** ·
+> **6 incertains/non revérifiés** · **6 non faits** — un seul item change de
+> colonne (non-fait → partiel).
+
 ## 1. Synthèse exécutive
 
 Le SGFE est un projet d'une **maturité technique remarquable pour son stade** : architecture microservices propre et cohérente, backend rigoureux (gestion monétaire en `Decimal`, transactions, verrous de concurrence, règles métier codées en défense en profondeur), frontend Angular ultra‑moderne (zoneless, signals, offline‑first sur l'interface terrain), et une chaîne d'intégration continue de niveau professionnel (SAST, scan de dépendances, gate de couverture 80 %, SBOM + signature d'images). Le contrat d'API entre le front et le back est **aligné à un niveau inhabituel** (61 opérations GraphQL concordantes).
@@ -787,7 +811,7 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 - [x] Job CI backend sur **PostgreSQL**. *(S)* — **✅ Fait — PR #169 (fusionnée 03/09).** `postgres:16-alpine` ajouté aux 8 jobs `test-*` concernés, SQLite gardé en défaut local. Vérifié réellement (pas que le YAML) : suite `config` (31/31) exécutée contre un Postgres 16 jetable.
 - [x] **Trivy** sur l'image frontend. *(S)* — **✅ Refait, en deux moitiés d'inégale rigueur.** Frontend : PR #164 (04/09) ajoute Trivy dans `cd-canary.yml`/`cd-staging.yml` sur une image construite localement (`push: false`) avec le **même Dockerfile/contexte** juste avant le `push` réel — ferme le gap presque intégralement (mêmes entrées, même job, quasi immédiatement avant le déploiement), sans garantir une identité binaire exacte des deux images. Backend : PR #197 (05/09) fait dépendre chaque `publish-*` de son `docker-build-*` (`ci.yml:781` et 9 jobs identiques) — corrige exactement ce que demandait le rapport (« faire dépendre chaque publish-* de son docker-build-* »), mais **`_publish-image.yml` reconstruit toujours une image séparée** (vérifié dans le fichier : nouveau `docker build`, pas de réutilisation de l'artefact scanné) : un `docker-build-*` qui échoue bloque désormais `publish-*`, mais l'image réellement poussée n'est toujours pas celle qui a été scannée — recommandation « idéalement, unifier en un seul build par service » du rapport toujours pas appliquée côté backend. Historique : PR #143 avait ajouté Trivy sur une image jetable (`ci.yml`, `push: false`), jamais celle réellement déployée — écart trouvé par `docs/CONFORMITE_CICD.md` (OWASP CICD-SEC-9), repassé en partiel le 04/09, le minimum demandé refermé le 05/09.
 - [x] **Test de charge / performance**. *(M)* — **✅ Fait — PR #211 (05/09/2026), `loadtest/parcours-metier.js` (nouveau, côté backend — le script frontend `loadtest/basic.js`, PR #143, reste un point de départ distinct, non remplacé).** Scénario réaliste contre la Gateway : login puis parcours authentifiés (abonnés paginés, factures paginées, dashboard reporting), profil `ramping-vus` (0→20 VUs/30s, palier 90s, descente 30s), seuils explicites justifiés en commentaire, dimensionné sur la contrainte réelle `limit_req_zone rate=30r/s burst=60` de `nginx/default.conf`. Vérifié par une exécution k6 complète contre un mock GraphQL jetable (18/18 checks). **Non vérifié depuis cet environnement** : exécution contre une vraie stack `docker compose up` (latences réelles, tenue effective des seuils) — à faire manuellement, documenté dans `loadtest/README.md`.
-- [ ] **Test de pénétration** avant go‑live. *(M)* — **Non fait.**
+- [ ] 🟡 **Test de pénétration** avant go‑live. *(M)* — **Vérification dynamique ciblée faite le 05/09/2026, pas un pentest professionnel.** Nouveau `docs/PENTEST_LITE.md` : contre la stack `docker compose` reconstruite (le premier passage avait tourné par erreur contre une image obsolète, antérieure à PR #200 — incident méthodologique découvert et corrigé avant de continuer, détaillé dans le rapport), confirmé en conditions live : throttle OTP/reset-password (PR #200), RBAC gateway (AGENT rejeté sur `updateTarif`/`deactivateUser`), validation de signature JWT RS256 (résiste à la falsification et à l'élévation de rôle par modification du payload), limite d'alias GraphQL (50), en-têtes de sécurité HTTP, rate limiting nginx (30r/s burst=60, 10/80 requêtes rejetées en rafale), isolation réseau gRPC/Postgres (aucun port interne exposé sur l'hôte), fail-closed WhatsApp (`/health` → 503 sans session). Une observation d'architecture (pas une vulnérabilité) : `whatsapp-service:3000` publié directement sur l'hôte en plus de nginx, protégé par clé API. **Non couvert, à faire par un prestataire spécialisé** : IDOR espace abonné, injection active (fuzzing), mTLS inter-services, configuration de production réelle.
 
 ### 🟡 P2 — Important (industrialisation, qualité, montée en charge)
 
@@ -867,10 +891,10 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 | Priorité | Total | ✅ Fait | 🟡 Partiel | ❓ Incertain / non revérifié | Non fait | Effort dominant (origine) |
 |---|:---:|:---:|:---:|:---:|:---:|---|
 | 🔴 P0 | 27 | 26 | 0 | 1 | 0 | S/M (+ 2 L : mTLS fait — PR #168, déploiement fait) |
-| 🟠 P1 | 34 | 26 | 2 | 0 | 6 | M (+ 2 L : paiement en ligne fait (sandbox) — PR #192, outbox fait — PR #191, périmètre facturation→paiement uniquement ; avoir/rectification fait ; piste d'audit sur 6/6 services + immuabilité réelle paiement/facturation — PR #205/#208/#210/#212/#215 ; journalisation de sécurité centralisée et chaînée — cette PR) |
+| 🟠 P1 | 34 | 26 | 3 | 0 | 5 | M (+ 2 L : paiement en ligne fait (sandbox) — PR #192, outbox fait — PR #191, périmètre facturation→paiement uniquement ; avoir/rectification fait ; piste d'audit sur 6/6 services + immuabilité réelle paiement/facturation — PR #205/#208/#210/#212/#215 ; journalisation de sécurité centralisée et chaînée ; vérification dynamique de sécurité — `docs/PENTEST_LITE.md`, pas un pentest professionnel) |
 | 🟡 P2 | 21 | 20 | 0 | 0 | 1 | S/M (+ 1 L : réplication PostgreSQL, fait en PoC — PR #173) |
 | 🟢 P3 | 15 | 10 | 0 | 5 | 0 | M/L (RGPD étendu aux utilisateurs internes + rétention 3 ans — PR #213 ; i18n backend externalisée — 113 littéraux sur 8 services, pas de traduction fournie) |
-| **Total** | **97** | **82 (85 %)** | **2 (2 %)** | **6 (6 %)** | **7 (7 %)** | — |
+| **Total** | **97** | **82 (85 %)** | **3 (3 %)** | **6 (6 %)** | **6 (6 %)** | — |
 
 > **Mise à jour du 4 septembre 2026** : quatre chantiers distincts livrés le même jour, puis deux écarts trouvés à la vérification croisée. **Retry automatique des notifications en échec** (§8·O, PR #190) porte le total à 73 (P3 : 7→8 faits, 2→1 non fait). **Piste d'audit §J entamée** (identité propagée + `AuditLog` paiement/facturation + rétention/horodatage + logger sécurité gateway, voir ci-dessus) déplace 3 items de non-fait à partiel dans P1, sans changer le total de faits. **Transactional outbox** (§F, PR #191, périmètre facturation→paiement uniquement) et **paiement en ligne** (§8·H, PR #192, sandbox/mock exclusivement) portent chacun un item de P1 de non-fait à fait, portant le total à 76. Puis, à la lecture de `docs/CONFORMITE_CICD.md` et `docs/CONFORMITE_SOC2_OWASP.md` (5e revue de fraîcheur ci-dessus) : **externalisation des secrets** (§8·A, P0) et **Trivy frontend** (§8·K, P1) repassent chacun de fait à partiel — valeurs de repli de secrets réels dans `docker-compose.yml` d'un côté, image scannée jamais déployée de l'autre — ramenant le total à **74**.
 >
