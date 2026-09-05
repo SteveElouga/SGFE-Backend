@@ -29,6 +29,7 @@ from .campagne_types import (
 from .campagne_queries import _enrichir_agents, _verifier_propriete_superviseur
 from .context import require_auth, require_role
 from .grpc_clients import campagne_client
+from .validators import valider_date_iso, valider_index
 
 
 @strawberry.type
@@ -38,6 +39,8 @@ class CampagneMutations:
         """Crée une nouvelle campagne — ADMIN ou SUPERVISEUR."""
         user = require_auth(info)
         require_role(info, "ADMIN", "SUPERVISEUR")
+        # Validation de format, avant tout appel gRPC (item #10, ASVS V2).
+        valider_date_iso(input.date_planifiee, "date_planifiee")
         response = campagne_client.create_campagne(
             nom=input.nom,
             periode_mois=input.periode_mois,
@@ -108,6 +111,8 @@ class CampagneMutations:
         user = require_auth(info)
         require_role(info, "ADMIN", "AGENT", "SUPERVISEUR")
         _verifier_propriete_superviseur(user, input.campagne_id)
+        # Validation de format, avant tout appel gRPC (item #10, ASVS V2).
+        valider_index(input.nouveau_index, "nouveau_index")
         response = campagne_client.saisir_index(
             campagne_id=input.campagne_id,
             abonne_id=input.abonne_id,
@@ -129,6 +134,8 @@ class CampagneMutations:
         user = require_auth(info)
         require_role(info, "ADMIN", "SUPERVISEUR")
         _verifier_propriete_superviseur(user, input.campagne_id)
+        # Validation de format, avant tout appel gRPC (item #10, ASVS V2).
+        valider_index(input.nouveau_index, "nouveau_index")
         response = campagne_client.corriger_releve(
             campagne_id=input.campagne_id,
             abonne_id=input.abonne_id,

@@ -144,7 +144,7 @@ class AbonneMutationTests(SimpleTestCase):
     def test_create_abonne_requires_admin_role(self) -> None:
         with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="AGENT")):
             result = schema.execute_sync(
-                'mutation { createAbonne(input: {nom: "Doe", prenom: "John", telephoneWhatsapp: "+241", '
+                'mutation { createAbonne(input: {nom: "Doe", prenom: "John", telephoneWhatsapp: "+24100000000", '
                 'numeroCompteur: 1, quartier: "Centre", camp: 1, indexInitial: 0, datePose: "2024-01-01"}) '
                 "{ numeroAbonne } }",
                 context_value=self._admin_context(),
@@ -159,7 +159,7 @@ class AbonneMutationTests(SimpleTestCase):
             patch.object(abonne_client, "create_abonne", return_value=make_abonne_response()) as mock_create,
         ):
             result = schema.execute_sync(
-                'mutation { createAbonne(input: {nom: "Doe", prenom: "John", telephoneWhatsapp: "+241", '
+                'mutation { createAbonne(input: {nom: "Doe", prenom: "John", telephoneWhatsapp: "+24100000000", '
                 'numeroCompteur: 1, quartier: "Centre", camp: 1, indexInitial: 0, datePose: "2024-01-01"}) '
                 "{ numeroAbonne } }",
                 context_value=self._admin_context(),
@@ -169,13 +169,67 @@ class AbonneMutationTests(SimpleTestCase):
         self.assertIsNone(result.errors)
         self.assertEqual(_data(result)["createAbonne"]["numeroAbonne"], "AB-0001")
 
+    def test_create_abonne_index_initial_negatif_rejete_sans_appel_grpc(self) -> None:
+        """Item #10 (ASVS V2) : un index négatif est rejeté à la gateway,
+        avant tout appel gRPC vers l'Abonné Service."""
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(abonne_client, "create_abonne", return_value=make_abonne_response()) as mock_create,
+        ):
+            result = schema.execute_sync(
+                'mutation { createAbonne(input: {nom: "Doe", prenom: "John", telephoneWhatsapp: "+24100000000", '
+                'numeroCompteur: 1, quartier: "Centre", camp: 1, indexInitial: -5, datePose: "2024-01-01"}) '
+                "{ numeroAbonne } }",
+                context_value=self._admin_context(),
+            )
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("index_initial doit être positif ou nul", str(result.errors))
+        mock_create.assert_not_called()
+
+    def test_create_abonne_telephone_invalide_rejete_sans_appel_grpc(self) -> None:
+        """Item #10 (ASVS V2) : un numéro WhatsApp mal formé est rejeté à la
+        gateway, avant tout appel gRPC vers l'Abonné Service."""
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(abonne_client, "create_abonne", return_value=make_abonne_response()) as mock_create,
+        ):
+            result = schema.execute_sync(
+                'mutation { createAbonne(input: {nom: "Doe", prenom: "John", telephoneWhatsapp: "pas-un-numero", '
+                'numeroCompteur: 1, quartier: "Centre", camp: 1, indexInitial: 0, datePose: "2024-01-01"}) '
+                "{ numeroAbonne } }",
+                context_value=self._admin_context(),
+            )
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("telephone_whatsapp invalide", str(result.errors))
+        mock_create.assert_not_called()
+
+    def test_create_abonne_date_pose_invalide_rejetee_sans_appel_grpc(self) -> None:
+        """Item #10 (ASVS V2) : une date mal formée est rejetée à la gateway,
+        avant tout appel gRPC vers l'Abonné Service."""
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(abonne_client, "create_abonne", return_value=make_abonne_response()) as mock_create,
+        ):
+            result = schema.execute_sync(
+                'mutation { createAbonne(input: {nom: "Doe", prenom: "John", telephoneWhatsapp: "+24100000000", '
+                'numeroCompteur: 1, quartier: "Centre", camp: 1, indexInitial: 0, datePose: "pas-une-date"}) '
+                "{ numeroAbonne } }",
+                context_value=self._admin_context(),
+            )
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("date_pose invalide", str(result.errors))
+        mock_create.assert_not_called()
+
     def test_create_abonne_transporte_la_position(self) -> None:
         with (
             patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
             patch.object(abonne_client, "create_abonne", return_value=make_abonne_response()) as mock_create,
         ):
             schema.execute_sync(
-                'mutation { createAbonne(input: {nom: "Doe", prenom: "John", telephoneWhatsapp: "+241", '
+                'mutation { createAbonne(input: {nom: "Doe", prenom: "John", telephoneWhatsapp: "+24100000000", '
                 'numeroCompteur: 1, quartier: "Centre", camp: 1, indexInitial: 0, datePose: "2024-01-01", '
                 'position: "3e maison à gauche"}) { numeroAbonne } }',
                 context_value=self._admin_context(),
@@ -188,7 +242,7 @@ class AbonneMutationTests(SimpleTestCase):
             patch.object(abonne_client, "create_abonne", return_value=make_abonne_response()) as mock_create,
         ):
             schema.execute_sync(
-                'mutation { createAbonne(input: {nom: "Doe", prenom: "John", telephoneWhatsapp: "+241", '
+                'mutation { createAbonne(input: {nom: "Doe", prenom: "John", telephoneWhatsapp: "+24100000000", '
                 'numeroCompteur: 1, quartier: "Centre", camp: 1, indexInitial: 0, datePose: "2024-01-01"}) '
                 "{ numeroAbonne } }",
                 context_value=self._admin_context(),
@@ -207,6 +261,23 @@ class AbonneMutationTests(SimpleTestCase):
 
         self.assertIsNone(result.errors)
         self.assertEqual(_data(result)["updateAbonne"]["numeroAbonne"], "AB-0002")
+
+    def test_update_abonne_telephone_invalide_rejete_sans_appel_grpc(self) -> None:
+        """Champ optionnel : validé seulement s'il est fourni, mais rejeté
+        avant tout appel gRPC s'il est mal formé."""
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(abonne_client, "update_abonne") as mock_update,
+        ):
+            result = schema.execute_sync(
+                'mutation { updateAbonne(id: "abonne-1", input: {telephoneWhatsapp: "pas-un-numero"}) '
+                "{ numeroAbonne } }",
+                context_value=self._admin_context(),
+            )
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("telephone_whatsapp invalide", str(result.errors))
+        mock_update.assert_not_called()
 
     def test_suspendre_abonne_success_as_admin(self) -> None:
         with (

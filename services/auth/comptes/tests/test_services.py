@@ -1,5 +1,7 @@
+import sys
 from datetime import timedelta
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -8,6 +10,13 @@ from rest_framework_simplejwt.tokens import RefreshToken as RefreshTokenJWT
 from comptes.email_client import EmailDeliveryError
 from comptes.models import PasswordSetupToken, PhoneOtpToken, Role, User
 from comptes.services import AuthenticationError, AuthService, PasswordSetupService, PhoneOtpService, UserAdminService
+from comptes.throttle import ThrottleError
+
+
+def _fake_redis_module(client: MagicMock) -> SimpleNamespace:
+    """Même patron que `comptes/tests/test_throttle.py` : simule le module
+    `redis` pour que ces tests d'intégration ne touchent jamais un vrai Redis."""
+    return SimpleNamespace(Redis=SimpleNamespace(from_url=MagicMock(return_value=client)))
 
 
 class AuthServiceTests(TestCase):
@@ -479,6 +488,45 @@ class PasswordSetupServiceTests(TestCase):
             self.service.send_activation_email(self.user)
 
 
+class PasswordSetupServiceThrottleTests(TestCase):
+    """Vérifie le throttle de `request_password_reset` (item #7 du plan de
+    remédiation, voir `comptes/throttle.py`). Le mécanisme lui-même
+    (SET NX EX, repli local, etc.) est testé en isolation dans
+    `tests/test_throttle.py` — ici, on vérifie l'intégration bout en bout
+    dans le service : TESTING est forcé à False (sinon le throttle est
+    no-op par défaut, voir `comptes.throttle`) et Redis est mocké."""
+
+    def setUp(self) -> None:
+        self.service = PasswordSetupService()
+        self.user = User.objects.create_user(
+            username="admin_throttle",
+            email="admin_throttle@example.com",
+            password="oldpassword",
+            role=Role.ADMIN,
+            phone_number="+237690000032",
+        )
+        self.send_patcher = patch("comptes.services.email_client.send")
+        self.mock_send = self.send_patcher.start()
+        self.addCleanup(self.send_patcher.stop)
+
+    @override_settings(TESTING=False)
+    def test_premiere_passe_deuxieme_immediate_bloquee_puis_repasse_apres_delai(self) -> None:
+        client = MagicMock()
+        # 1re demande : SET NX réussit. 2e immédiate : échoue (clé déjà posée).
+        # 3e (après expiration simulée de la fenêtre côté Redis) : réussit à nouveau.
+        client.set.side_effect = [True, False, True]
+        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+            self.service.request_password_reset("admin_throttle@example.com")
+            self.assertEqual(self.mock_send.call_count, 1)
+
+            with self.assertRaises(ThrottleError):
+                self.service.request_password_reset("admin_throttle@example.com")
+            self.assertEqual(self.mock_send.call_count, 1)  # pas de 2e envoi
+
+            self.service.request_password_reset("admin_throttle@example.com")
+            self.assertEqual(self.mock_send.call_count, 2)
+
+
 class PhoneOtpServiceTests(TestCase):
     def setUp(self) -> None:
         self.service = PhoneOtpService()
@@ -616,3 +664,53 @@ class PhoneOtpServiceTests(TestCase):
             self.service.verify_otp_and_set_password("+237690000040", raw_otp, "newpassword123")
         self.user.refresh_from_db()
         self.assertFalse(self.user.check_password("newpassword123"))
+
+
+class PhoneOtpServiceThrottleTests(TestCase):
+    """Vérifie le throttle de `request_otp_by_phone` (item #7 du plan de
+    remédiation, voir `comptes/throttle.py`). Le mécanisme lui-même
+    (SET NX EX, repli local, etc.) est testé en isolation dans
+    `tests/test_throttle.py` — ici, on vérifie l'intégration bout en bout
+    dans le service : TESTING est forcé à False (sinon le throttle est
+    no-op par défaut, voir `comptes.throttle`) et Redis est mocké."""
+
+    def setUp(self) -> None:
+        self.service = PhoneOtpService()
+        self.user = User.objects.create_user(
+            username="agent_throttle",
+            phone_number="+237690000050",
+            password="secret123",
+            role=Role.AGENT,
+        )
+        self.whatsapp_patcher = patch("comptes.services.whatsapp_client.send")
+        self.mock_whatsapp = self.whatsapp_patcher.start()
+        self.addCleanup(self.whatsapp_patcher.stop)
+
+    @override_settings(TESTING=False)
+    def test_premiere_passe_deuxieme_immediate_bloquee_puis_repasse_apres_delai(self) -> None:
+        client = MagicMock()
+        # 1re demande : SET NX réussit. 2e immédiate : échoue (clé déjà posée).
+        # 3e (après expiration simulée de la fenêtre côté Redis) : réussit à nouveau.
+        client.set.side_effect = [True, False, True]
+        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+            self.service.request_otp_by_phone("+237690000050")
+            self.assertEqual(self.mock_whatsapp.call_count, 1)
+
+            with self.assertRaises(ThrottleError):
+                self.service.request_otp_by_phone("+237690000050")
+            self.assertEqual(self.mock_whatsapp.call_count, 1)  # pas de 2e envoi
+
+            self.service.request_otp_by_phone("+237690000050")
+            self.assertEqual(self.mock_whatsapp.call_count, 2)
+
+    @override_settings(TESTING=False)
+    def test_throttle_verifie_avant_tout_envoi_meme_pour_numero_inconnu(self) -> None:
+        """Le throttle protège aussi les numéros inexistants : sans lui, un
+        attaquant pourrait bomber n'importe quel numéro, enregistré ou non."""
+        client = MagicMock()
+        client.set.side_effect = [True, False]
+        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+            self.service.request_otp_by_phone("+237600000000")  # 1re : silencieuse mais acceptée
+            with self.assertRaises(ThrottleError):
+                self.service.request_otp_by_phone("+237600000000")  # 2e immédiate : bloquée
+        self.mock_whatsapp.assert_not_called()

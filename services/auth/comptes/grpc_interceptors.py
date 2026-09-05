@@ -12,6 +12,7 @@ from django.db import IntegrityError
 
 from comptes.email_client import EmailDeliveryError
 from comptes.services import AuthenticationError
+from comptes.throttle import ThrottleError
 from comptes.whatsapp_client import WhatsAppDeliveryError
 
 logger = logging.getLogger(__name__)
@@ -21,9 +22,15 @@ logger = logging.getLogger(__name__)
 # IntegrityError/EmailDeliveryError, str(exc) contient un détail interne
 # (contrainte SQL, réponse brute du fournisseur d'e-mail) — remplacé par un
 # message générique pour ne pas exposer un détail d'implémentation.
+#
+# ThrottleError -> RESOURCE_EXHAUSTED : code gRPC dédié au dépassement de
+# quota/débit (cohérent avec la sémantique HTTP 429), à distinguer d'un
+# UNAUTHENTICATED ou d'un INVALID_ARGUMENT — le client sait ainsi qu'il doit
+# réessayer plus tard plutôt que corriger sa requête.
 _STATUS_BY_EXCEPTION = (
     (AuthenticationError, grpc.StatusCode.UNAUTHENTICATED, None),
     (ObjectDoesNotExist, grpc.StatusCode.NOT_FOUND, None),
+    (ThrottleError, grpc.StatusCode.RESOURCE_EXHAUSTED, None),
     (ValueError, grpc.StatusCode.INVALID_ARGUMENT, None),
     (IntegrityError, grpc.StatusCode.ALREADY_EXISTS, "Cette ressource existe déjà"),
     (EmailDeliveryError, grpc.StatusCode.UNAVAILABLE, "Échec de l'envoi de l'e-mail, réessayez plus tard"),

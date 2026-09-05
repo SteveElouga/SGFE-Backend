@@ -11,6 +11,7 @@ from django.test import SimpleTestCase
 from comptes.email_client import EmailDeliveryError
 from comptes.grpc_interceptors import ErrorHandlingInterceptor
 from comptes.services import AuthenticationError
+from comptes.throttle import ThrottleError
 from comptes.whatsapp_client import WhatsAppDeliveryError
 
 
@@ -46,6 +47,14 @@ class ErrorHandlingInterceptorTests(SimpleTestCase):
         with self.assertRaises(ObjectDoesNotExist):
             behavior(request=None, context=self.context)
         self.assertEqual(self.context.abort.call_args[0][0], grpc.StatusCode.NOT_FOUND)
+
+    def test_throttle_error_maps_to_resource_exhausted(self) -> None:
+        behavior = _wrapped_behavior(ThrottleError("Trop de demandes, réessayez dans au plus 60 secondes"))
+        with self.assertRaises(ThrottleError):
+            behavior(request=None, context=self.context)
+        self.context.abort.assert_called_once_with(
+            grpc.StatusCode.RESOURCE_EXHAUSTED, "Trop de demandes, réessayez dans au plus 60 secondes"
+        )
 
     def test_value_error_maps_to_invalid_argument(self) -> None:
         behavior = _wrapped_behavior(ValueError("Numéro de téléphone invalide"))

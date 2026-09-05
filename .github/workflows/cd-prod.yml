@@ -14,9 +14,10 @@
 # c'est ce qui distingue ce fichier des workflows du frontend, qui portent une
 # clé permanente dans `secrets.SSH_PRIVATE_KEY`.
 #
-# Il ne déploie pas sans vérifier les signatures. La chaîne cosign, SBOM et
-# provenance est construite depuis juillet et n'était consommée par personne —
-# une signature que rien ne vérifie ne protège de rien.
+# Il ne déploie pas sans vérifier les signatures ET la provenance SLSA. La
+# chaîne cosign, SBOM et provenance est construite depuis juillet ; seule la
+# signature était vérifiée jusqu'ici (item #8 du plan de remédiation, OWASP
+# A08) — une provenance générée mais jamais consommée ne protège de rien.
 #
 # Il ne laisse pas les conteneurs migrer eux-mêmes. Voir
 # `docker-compose.prod.yml`, section des services Django : combiné à
@@ -136,6 +137,37 @@ jobs:
               > /dev/null
           done
           echo "Onze signatures vérifiées — liste de manifestes ET variantes par architecture (cosign sign --recursive)."
+
+      # Item #8 du plan de remédiation (OWASP A08) : `_publish-image.yml:77`
+      # génère une attestation de provenance SLSA (`provenance: true`) depuis
+      # juillet, mais rien ne la vérifiait jamais — seule la signature de
+      # l'image ci-dessus l'était. `cosign verify` et `cosign verify-attestation`
+      # portent sur deux objets différents et ne se substituent pas l'un à
+      # l'autre (doc cosign, sous-commandes distinctes) : le premier prouve que
+      # l'IMAGE a été signée par ce workflow ; le second prouve qu'un DOCUMENT
+      # D'ATTESTATION (ici la provenance SLSA, `--type slsaprovenance`) existe
+      # pour cette même image, porte sur son digest exact (subject), et est
+      # lui-même signé par la même identité OIDC — c'est cette dernière
+      # propriété qui manquait : une provenance générée mais jamais consommée
+      # ne protège de rien. D'où l'ajout, pas le remplacement.
+      - name: Vérifier la provenance SLSA des onze images
+        env:
+          REPO_GHCR: ${{ vars.GHCR_REPO }}
+          TAG: ${{ steps.tag.outputs.value }}
+        run: |
+          set -euo pipefail
+          echo "Tag déployé : $TAG"
+          for svc in $SERVICES_SIGNES; do
+            echo "── $svc"
+            # Même ancrage d'identité OIDC que `cosign verify` ci-dessus (voir
+            # son commentaire pour le détail `_publish-image.yml@` vs `ci.yml@`).
+            cosign verify-attestation "ghcr.io/${REPO_GHCR}/${svc}:${TAG}" \
+              --type slsaprovenance \
+              --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/_publish-image\.yml@" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              > /dev/null
+          done
+          echo "Onze attestations de provenance SLSA vérifiées."
     outputs:
       tag: ${{ steps.tag.outputs.value }}
 
