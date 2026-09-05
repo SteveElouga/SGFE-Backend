@@ -118,3 +118,37 @@ l'injection du logger pour ne pas régresser sur le point 2 ci-dessus.
 # Vérifier qu'aucune copie n'a dérivé de la source canonique (CI/pre-commit) :
 ./scripts/sync-grpc-lib.sh --check
 ```
+
+---
+
+## `db_hardening.py` — isolation Postgres du rôle applicatif d'exécution
+
+Réponse à AUDIT_SGFE.md §8·J — la limite honnête documentée dans
+`..._audit_log_immutable` (PR #193, Paiement/Facturation) : le `REVOKE
+UPDATE, DELETE ON audit_log` de cette migration s'est révélé sans effet réel
+contre le rôle applicatif Postgres, qui s'est avéré être un
+**superutilisateur** (pas seulement le propriétaire de la table — voir le
+commentaire de tête de `sgfe_common/db_hardening.py` pour le constat
+empirique complet, vérifié sur un conteneur Postgres jetable).
+
+Même choix d'architecture que `grpc_auth.py` ci-dessus, et pour les mêmes
+raisons (contexte de build Docker scopé par service) : `db_hardening.py` est
+la source canonique unique, recopiée par `scripts/sync-db-hardening-lib.sh`
+vers les services qui en ont besoin — aujourd'hui `paiement` et
+`facturation` (les deux seuls avec une table `audit_log`), demain campagne,
+abonné, auth, config au fur et à mesure qu'ils ajoutent la leur.
+
+Différence avec `grpc_auth.py` : ce n'est pas (encore) neuf copies
+identiques, seulement deux — la liste `DESTINATIONS` de
+`scripts/sync-db-hardening-lib.sh` s'allonge d'une ligne par service qui
+adopte le mécanisme (voir le "Comment un futur service adopte ce mécanisme"
+dans `db_hardening.py` pour la marche à suivre complète, en 4 étapes).
+
+```bash
+# Après avoir modifié libs/sgfe_common/sgfe_common/db_hardening.py :
+./scripts/sync-db-hardening-lib.sh          # recopie vers les destinations
+
+# Vérifier qu'aucune copie n'a dérivé de la source canonique (déjà en CI,
+# job check-db-hardening-lib-drift) :
+./scripts/sync-db-hardening-lib.sh --check
+```
