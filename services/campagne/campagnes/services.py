@@ -9,6 +9,7 @@ import grpc
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
+from .audit import enregistrer_audit
 from .dtos import AgentAffecteDict, StatsReportingDict, ZoneAgentDict
 from .grpc_clients import AbonneServiceClient, FacturationServiceClient
 from .models import ActionAudit, AffectationZone, Campagne, Releve, StatutCampagne, StatutReleve
@@ -97,29 +98,60 @@ class CampagneService:
             raise ValidationError("L'identifiant du créateur est obligatoire.")
         if numero_mobile_money and (not numero_mobile_money.isdigit() or len(numero_mobile_money) != 9):
             raise ValidationError("Le numéro Mobile Money doit contenir exactement 9 chiffres (ex: 658552294).")
-        return self._repo.create(
-            nom=nom,
-            periode_mois=periode_mois,
-            periode_annee=periode_annee,
-            created_by=created_by,
-            date_planifiee=date_planifiee,
-            numero_mobile_money=numero_mobile_money,
-            generer_factures_auto=generer_factures_auto,
-            envoyer_whatsapp_auto=envoyer_whatsapp_auto,
-            demarrer_maintenant=demarrer_maintenant,
-        )
+        with transaction.atomic():
+            campagne = self._repo.create(
+                nom=nom,
+                periode_mois=periode_mois,
+                periode_annee=periode_annee,
+                created_by=created_by,
+                date_planifiee=date_planifiee,
+                numero_mobile_money=numero_mobile_money,
+                generer_factures_auto=generer_factures_auto,
+                envoyer_whatsapp_auto=envoyer_whatsapp_auto,
+                demarrer_maintenant=demarrer_maintenant,
+            )
+            enregistrer_audit(
+                action="CAMPAGNE_CREEE",
+                objet_type="Campagne",
+                objet_id=str(campagne.id),
+                detail=f"nom={nom!r} — période={periode_mois:02d}/{periode_annee} — créée par {created_by}",
+            )
+        return campagne
 
     def demarrer_campagne(self, campagne_id: str) -> Campagne:
+        """Démarre manuellement une campagne PLANIFIEE (→ EN_COURS).
+
+        Mutation déclenchée par une action humaine (bouton ADMIN/SUPERVISEUR) —
+        journalisée. Le démarrage automatique du cron 7h00
+        (`demarrer_campagnes_planifiees_pour_aujourd_hui`) reste, lui,
+        volontairement hors du journal : il n'a pas d'acteur humain à tracer.
+        """
         campagne = self._repo.get_by_id(campagne_id)
         if campagne.statut != StatutCampagne.PLANIFIEE:
             raise ValidationError(f"Seule une campagne PLANIFIEE peut être démarrée. Statut actuel : {campagne.statut}")
-        return self._repo.update_statut(campagne, StatutCampagne.EN_COURS)
+        with transaction.atomic():
+            campagne = self._repo.update_statut(campagne, StatutCampagne.EN_COURS)
+            enregistrer_audit(
+                action="CAMPAGNE_DEMARREE",
+                objet_type="Campagne",
+                objet_id=str(campagne.id),
+                detail=f"nom={campagne.nom!r}",
+            )
+        return campagne
 
     def cloturer_campagne(self, campagne_id: str) -> Campagne:
         campagne = self._repo.get_by_id(campagne_id)
         if campagne.statut != StatutCampagne.EN_COURS:
             raise ValidationError(f"Seule une campagne EN_COURS peut être clôturée. Statut actuel : {campagne.statut}")
-        return self._repo.update_statut(campagne, StatutCampagne.CLOTUREE)
+        with transaction.atomic():
+            campagne = self._repo.update_statut(campagne, StatutCampagne.CLOTUREE)
+            enregistrer_audit(
+                action="CAMPAGNE_CLOTUREE",
+                objet_type="Campagne",
+                objet_id=str(campagne.id),
+                detail=f"nom={campagne.nom!r}",
+            )
+        return campagne
 
     def get_campagne(self, campagne_id: str) -> Campagne:
         return self._repo.get_by_id(campagne_id)
@@ -176,13 +208,40 @@ class CampagneService:
         if existant:
             raise ValidationError(f"L'abonné {abonne_id} est déjà inscrit à la campagne {campagne_id}.")
         quartier, camp = self._zone_de(abonne)
-        return self._releve_repo.create(
-            campagne=campagne,
-            abonne_id=abonne_id,
-            ancien_index=ancien_index,
-            quartier=quartier,
-            camp=camp,
-        )
+        with transaction.atomic():
+            releve = self._releve_repo.create(
+                campagne=campagne,
+                abonne_id=abonne_id,
+                ancien_index=ancien_index,
+                quartier=quartier,
+                camp=camp,
+            )
+            enregistrer_audit(
+                action="RELEVE_ABONNE_AJOUTE",
+                objet_type="Releve",
+                objet_id=str(releve.id),
+                detail=f"campagne={campagne_id} — abonné={abonne_id} — ancien_index={ancien_index}",
+            )
+        return releve
+
+    def assigner_agent(self, campagne_id: str, agent_id: str) -> Campagne:
+        """Affecte un agent à une campagne (idempotent) — journalise la mutation.
+
+        Même comportement qu'avant l'audit (`CampagneAgentRepository.assigner`
+        est idempotent, aucune validation supplémentaire ajoutée ici) : seule
+        l'écriture d'une entrée `AuditLog`, dans la même transaction, est
+        nouvelle.
+        """
+        campagne = self._repo.get_by_id(campagne_id)
+        with transaction.atomic():
+            self._agent_repo.assigner(campagne=campagne, agent_id=agent_id)
+            enregistrer_audit(
+                action="CAMPAGNE_AGENT_ASSIGNE",
+                objet_type="Campagne",
+                objet_id=str(campagne.id),
+                detail=f"agent_id={agent_id}",
+            )
+        return campagne
 
     def verifier_deja_presente(self, campagne_id: str) -> Optional[Campagne]:
         """Retourne la première campagne EN_COURS, ou None."""
@@ -233,6 +292,12 @@ class CampagneService:
         with transaction.atomic():
             self._agent_repo.assigner(campagne, agent_id)
             self._zone_repo.set_zones_for_agent(campagne, agent_id, zones)
+            enregistrer_audit(
+                action="CAMPAGNE_ZONES_AFFECTEES",
+                objet_type="Campagne",
+                objet_id=str(campagne.id),
+                detail=f"agent_id={agent_id} — {len(zones)} zone(s)",
+            )
         return self.list_agents_campagne(campagne_id)
 
     def list_agents_campagne(self, campagne_id: str) -> list[AgentAffecteDict]:
@@ -481,6 +546,12 @@ class ReleveService:
                 ancien_index=releve.ancien_index,
                 nouvel_index=nouveau_index,
             )
+            enregistrer_audit(
+                action="RELEVE_INDEX_SAISI",
+                objet_type="Releve",
+                objet_id=str(releve.id),
+                detail=f"ancien_index={releve.ancien_index} — nouveau_index={nouveau_index}",
+            )
         return releve
 
     def corriger_releve(
@@ -526,6 +597,12 @@ class ReleveService:
                 ancien_index=index_avant_correction,
                 nouvel_index=nouveau_index,
             )
+            enregistrer_audit(
+                action="RELEVE_INDEX_CORRIGE",
+                objet_type="Releve",
+                objet_id=str(releve.id),
+                detail=f"ancien_index={index_avant_correction} — nouveau_index={nouveau_index}",
+            )
         return releve
 
     def marquer_non_releve(
@@ -548,7 +625,15 @@ class ReleveService:
             raise ValidationError("Le relevé ne peut être modifié que sur une campagne EN_COURS.")
         if releve.statut == StatutReleve.RELEVE:
             raise ValidationError("Un relevé déjà saisi ne peut pas être marqué non-relevé.")
-        return self._repo.marquer_non_releve(releve, statut=statut, observation=observation)
+        with transaction.atomic():
+            releve = self._repo.marquer_non_releve(releve, statut=statut, observation=observation)
+            enregistrer_audit(
+                action="RELEVE_MARQUE",
+                objet_type="Releve",
+                objet_id=str(releve.id),
+                detail=f"statut={statut}",
+            )
+        return releve
 
     def get_releve(self, releve_id: str) -> Releve:
         return self._repo.get_by_id(releve_id)

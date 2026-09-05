@@ -101,7 +101,7 @@ Frontend         Angular 22 + PrimeNG 21 + PWA
 Observabilité    ⚠️ AUCUNE aujourd'hui — dépendances présentes, 0 fichier instrumenté
 Déploiement      Compose ; cible AWS — voir docs/INFRASTRUCTURE_AWS.md
 Serveur          local ; cible EC2 t4g.medium en eu-west-3
-Auth             JWT (SimpleJWT) — access 24h (cookie HttpOnly pour le refresh, 7j)
+Auth             JWT (SimpleJWT) — access 15 min par défaut (cookie HttpOnly pour le refresh, 7j)
 Scheduler        APScheduler (cron jobs)
 ```
 
