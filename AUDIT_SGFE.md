@@ -182,10 +182,13 @@
 >   (`services/abonne/abonnes/migrations/0008_rotate_pii_encryption_key.py`)
 >   exécutée en direct sur les données réelles, zéro perte. *(item CICD #2,
 >   SOC2/OWASP écart A02 critique.)*
-> - **§8·K repasse de 🟡 partiel à ✅ fait** — le même écart avait deux moitiés :
->   côté backend, PR #197 fait désormais dépendre chaque `publish-*` de son
->   `docker-build-*` (l'image scannée est enfin celle poussée) et ajoute
->   `lint-workflows` (actionlint, `reporter: github-pr-check`) ; côté
+> - **§8·K repasse de 🟡 partiel à ✅ fait** — le même écart avait deux moitiés,
+>   refermées avec une rigueur inégale : côté backend, PR #197 fait désormais
+>   dépendre chaque `publish-*` de son `docker-build-*` (bloque si le scan
+>   échoue) et ajoute `lint-workflows` (actionlint, `reporter:
+>   github-pr-check`) — mais `_publish-image.yml` reconstruit toujours une
+>   image séparée, jamais celle réellement scannée (vérifié dans le fichier) ;
+>   côté
 >   frontend, PR #164 (fusionnée plus tôt le 4 septembre, non encore reflétée
 >   ici) ajoute Trivy avant `push` dans `cd-canary.yml`/`cd-staging.yml`, SBOM
 >   + provenance sur les mêmes workflows, `npm audit --omit=dev
@@ -676,7 +679,7 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 - [ ] 🔗 Vrais **tests e2e Playwright**. *(M)* — **🟡 Partiel, étendu mais toujours incomplet.** PR #143 (fusionnée 31/08) ajoute un spec saisie-index (gaté `E2E_LIVE_BACKEND=1`, skip propre en CI). Le spec paiement est écrit mais en `test.skip()` **permanent** : vérifié dans le code backend que l'enregistrement d'un paiement déclenche un envoi WhatsApp réel et inconditionnel (`_propager_versement`), sans possibilité de l'éviter côté UI — jamais exécuté contre un backend réel, à raison.
 - [x] Lancer **Vitest** en CI. *(S)* — **✅ Fait.** `.github/workflows/ci.yml` : `npx ng test --no-watch`.
 - [x] Job CI backend sur **PostgreSQL**. *(S)* — **✅ Fait — PR #169 (fusionnée 03/09).** `postgres:16-alpine` ajouté aux 8 jobs `test-*` concernés, SQLite gardé en défaut local. Vérifié réellement (pas que le YAML) : suite `config` (31/31) exécutée contre un Postgres 16 jetable.
-- [x] **Trivy** sur l'image frontend. *(S)* — **✅ Refait, en deux moitiés.** Backend : PR #197 (05/09/2026) fait désormais dépendre chaque `publish-*` de son `docker-build-*` — l'image scannée est enfin celle réellement poussée. Frontend : PR #164 (fusionnée le 04/09, non encore reflétée dans cette checklist jusqu'ici) ajoute Trivy avant `push` dans `cd-canary.yml`/`cd-staging.yml`. Historique : PR #143 avait ajouté Trivy sur une image jetable (`ci.yml`, `push: false`), jamais celle réellement déployée — écart trouvé par `docs/CONFORMITE_CICD.md` (OWASP CICD-SEC-9), repassé en partiel le 04/09, refermé le 05/09.
+- [x] **Trivy** sur l'image frontend. *(S)* — **✅ Refait, en deux moitiés d'inégale rigueur.** Frontend : PR #164 (04/09) ajoute Trivy dans `cd-canary.yml`/`cd-staging.yml` sur une image construite localement (`push: false`) avec le **même Dockerfile/contexte** juste avant le `push` réel — ferme le gap presque intégralement (mêmes entrées, même job, quasi immédiatement avant le déploiement), sans garantir une identité binaire exacte des deux images. Backend : PR #197 (05/09) fait dépendre chaque `publish-*` de son `docker-build-*` (`ci.yml:781` et 9 jobs identiques) — corrige exactement ce que demandait le rapport (« faire dépendre chaque publish-* de son docker-build-* »), mais **`_publish-image.yml` reconstruit toujours une image séparée** (vérifié dans le fichier : nouveau `docker build`, pas de réutilisation de l'artefact scanné) : un `docker-build-*` qui échoue bloque désormais `publish-*`, mais l'image réellement poussée n'est toujours pas celle qui a été scannée — recommandation « idéalement, unifier en un seul build par service » du rapport toujours pas appliquée côté backend. Historique : PR #143 avait ajouté Trivy sur une image jetable (`ci.yml`, `push: false`), jamais celle réellement déployée — écart trouvé par `docs/CONFORMITE_CICD.md` (OWASP CICD-SEC-9), repassé en partiel le 04/09, le minimum demandé refermé le 05/09.
 - [ ] **Test de charge / performance**. *(M)* — **🟡 Partiel, point de départ seulement.** PR #143 ajoute `loadtest/basic.js` (k6, 2-3 requêtes GraphQL de lecture) — explicitement documenté comme non représentatif d'un vrai test de charge de production, faute d'environnement de staging à ce jour. Cible mise à jour le 03/09 (PR #146) : `https://localhost:8443` + `--insecure-skip-tls-verify` après le durcissement TLS de nginx.
 - [ ] **Test de pénétration** avant go‑live. *(M)* — **Non fait.**
 
