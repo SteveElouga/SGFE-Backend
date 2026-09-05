@@ -118,7 +118,11 @@ REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 # (protection XSS), et lu depuis ce cookie par refreshToken/logout.
 REFRESH_TOKEN_COOKIE_NAME = "refresh_token"
 REFRESH_TOKEN_COOKIE_MAX_AGE = env.int("JWT_REFRESH_TOKEN_EXPIRE_DAYS", default=7) * 86400
-REFRESH_TOKEN_COOKIE_SECURE = env.bool("COOKIE_SECURE", default=not DEBUG)
+# Littéral, jamais dérivé de DEBUG (registre CONFORMITE_SOC2_OWASP.md, item 11) :
+# un cookie de refresh sans l'attribut Secure resterait exploitable en clair sur
+# une origine http:// mal configurée. Le dev local passe déjà par le nginx TLS
+# auto-signé (voir CLAUDE.md racine, §Frontend) donc ça ne casse rien en local.
+REFRESH_TOKEN_COOKIE_SECURE = True
 
 # --- Journalisation (voir AUDIT_SGFE.md §J : rétention + horodatage fiable) ---
 #
