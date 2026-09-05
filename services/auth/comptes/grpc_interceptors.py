@@ -49,7 +49,7 @@ def _abort_for(exc: Exception, context: grpc.ServicerContext, handler_call_detai
                 # Le détail réel (str(exc)) est masqué au client : gardé dans
                 # les logs serveur pour le débogage.
                 logger.warning("%s: %s", exc_type.__name__, exc)
-            context.abort(status_code, message or str(exc))
+            context.abort(status_code, str(message) if message else str(exc))
             return
     method = getattr(handler_call_details, "method", "?")
     logger.exception("Exception non gérée dans %s", method)
