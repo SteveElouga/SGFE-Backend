@@ -3,10 +3,12 @@ from datetime import datetime, timedelta
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.exceptions import ObjectDoesNotExist
+from django.db import transaction
 from django.utils import timezone
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken, Token
 
+from comptes.audit import enregistrer_audit
 from comptes.email_client import email_client
 from comptes.models import User, _generate_otp
 from comptes.repositories import (
@@ -202,16 +204,31 @@ class UserAdminService:
 
         ADMIN : activation par e-mail (lien de définition du mot de passe).
         Autres rôles : activation par OTP WhatsApp.
+
+        La création et l'écriture d'audit commitent ensemble
+        (`transaction.atomic()`) ; l'envoi de l'e-mail/OTP a lieu après coup,
+        hors transaction — un échec d'envoi ne doit pas faire disparaître le
+        compte déjà créé (rejouable via `resend_credentials`).
         """
         phone = validate_phone_cameroon(phone_number)
+        if role == "ADMIN" and not email:
+            raise ValueError("L'e-mail est obligatoire pour le rôle ADMIN")
+
+        with transaction.atomic():
+            if role == "ADMIN":
+                user = self.users.create(username=username, email=email, phone_number=phone, role=role)
+            else:
+                user = self.users.create(username=username, phone_number=phone, role=role)
+            enregistrer_audit(
+                action="UTILISATEUR_CREE",
+                objet_type="User",
+                objet_id=str(user.id),
+                detail=f"username={username!r} — role={role}",
+            )
 
         if role == "ADMIN":
-            if not email:
-                raise ValueError("L'e-mail est obligatoire pour le rôle ADMIN")
-            user = self.users.create(username=username, email=email, phone_number=phone, role=role)
             self.password_setup.send_activation_email(user)
         else:
-            user = self.users.create(username=username, phone_number=phone, role=role)
             self.phone_otp.send_otp(user)
 
         return user
@@ -229,13 +246,26 @@ class UserAdminService:
         user = self.users.get_by_id(user_id)
         old_phone = user.phone_number
         old_email = user.email
+        old_role = user.role
         if email:
             user.email = email
         if role:
             user.role = role
         if phone_number:
             user.phone_number = validate_phone_cameroon(phone_number)
-        saved_user = self.users.save(user)
+
+        with transaction.atomic():
+            saved_user = self.users.save(user)
+            enregistrer_audit(
+                action="UTILISATEUR_MODIFIE",
+                objet_type="User",
+                objet_id=str(saved_user.id),
+                detail=(
+                    f"role={old_role}->{saved_user.role} — "
+                    f"email={old_email or ''}->{saved_user.email or ''} — "
+                    f"telephone={old_phone}->{saved_user.phone_number}"
+                ),
+            )
 
         phone_changed = phone_number and saved_user.phone_number != old_phone
         email_changed = email and saved_user.email != old_email
@@ -260,13 +290,34 @@ class UserAdminService:
         if user.role == "ADMIN" and user.is_active and self.users.count_active_admins(exclude_id=user.id) == 0:
             raise ValueError("Impossible de désactiver le dernier administrateur actif")
 
-        user.is_active = False
-        return self.users.save(user)
+        with transaction.atomic():
+            user.is_active = False
+            saved_user = self.users.save(user)
+            enregistrer_audit(
+                action="UTILISATEUR_DESACTIVE",
+                objet_type="User",
+                objet_id=str(saved_user.id),
+                detail=f"username={saved_user.username!r} — role={saved_user.role}",
+            )
+        return saved_user
 
     def reactivate_user(self, user_id: str) -> User:
+        """Réactive un compte désactivé.
+
+        Écriture d'audit dans la même transaction que le changement de statut
+        — symétrique de `deactivate_user`.
+        """
         user = self.users.get_by_id(user_id)
-        user.is_active = True
-        return self.users.save(user)
+        with transaction.atomic():
+            user.is_active = True
+            saved_user = self.users.save(user)
+            enregistrer_audit(
+                action="UTILISATEUR_REACTIVE",
+                objet_type="User",
+                objet_id=str(saved_user.id),
+                detail=f"username={saved_user.username!r} — role={saved_user.role}",
+            )
+        return saved_user
 
     def resend_credentials(self, user_id: str) -> User:
         """Renvoi manuel (déclenché par un admin) des identifiants d'accès.
@@ -276,9 +327,30 @@ class UserAdminService:
         aussi bien pour « Renvoyer le lien d'activation » que pour
         « Réinitialiser le mot de passe » côté frontend, ces deux actions
         partageant le même mécanisme sous-jacent (voir PasswordSetupService).
+
+        Note d'honnêteté : l'écriture d'audit ci-dessous ne partage PAS la
+        transaction du token créé par `send_activation_email`/
+        `send_password_reset_email`/`send_otp` — ces méthodes sont aussi le
+        chemin du flux self-service (activation à la création du compte) et
+        ne devaient pas être restructurées pour ce seul appelant. Le geste
+        déclencheur (décision de l'admin de renvoyer des identifiants) est
+        néanmoins tracé au moment même de l'appel, avant l'envoi.
         """
         user = self.users.get_by_id(user_id)
         pending_activation = not user.has_usable_password()
+
+        with transaction.atomic():
+            enregistrer_audit(
+                action="IDENTIFIANTS_RENVOYES",
+                objet_type="User",
+                objet_id=str(user.id),
+                detail=(
+                    f"username={user.username!r} — lien d'activation renvoyé"
+                    if pending_activation
+                    else f"username={user.username!r} — réinitialisation de mot de passe demandée"
+                ),
+            )
+
         if user.role == "ADMIN":
             if pending_activation:
                 self.password_setup.send_activation_email(user)
@@ -373,8 +445,6 @@ class PasswordSetupService:
         if not setup_token.is_valid():
             raise AuthenticationError("Token invalide ou expiré")
 
-        from django.db import transaction
-
         user = setup_token.user
         with transaction.atomic():
             user.set_password(new_password)
@@ -456,8 +526,6 @@ class PhoneOtpService:
             # la fenêtre de validité (aucun verrou côté vérification OTP).
             otp_token.register_failed_attempt(settings.MAX_OTP_ATTEMPTS)
             raise AuthenticationError("Code OTP invalide ou expiré")
-
-        from django.db import transaction
 
         with transaction.atomic():
             user.set_password(new_password)
