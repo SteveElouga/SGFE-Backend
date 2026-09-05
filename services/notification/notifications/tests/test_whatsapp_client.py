@@ -105,6 +105,20 @@ class WhatsAppWebClientTests(SimpleTestCase):
         self.assertEqual(depuis, 0)
 
     @patch("notifications.whatsapp_client.requests.get")
+    def test_get_qr_depuis_non_convertible_leve_delivery_error(self, mock_get: Mock) -> None:
+        """Registre CONFORMITE_SOC2_OWASP.md, item 13 : `int(data["depuis"])`
+        devait s'exécuter hors du bloc `try/except ValueError`, ce qui aurait
+        laissé fuiter une ValueError brute — contredisant la docstring de
+        `GetWhatsAppQr` (« ne lève jamais d'erreur gRPC non gérée »). Doit
+        désormais dégrader vers WhatsAppDeliveryError comme un JSON invalide."""
+        mock_get.return_value = Mock(
+            status_code=200,
+            json=Mock(return_value={"ready": False, "qr": "", "number": "", "phase": "demarrage", "depuis": "abc"}),
+        )
+        with self.assertRaises(WhatsAppDeliveryError):
+            self.wa_client.get_qr()
+
+    @patch("notifications.whatsapp_client.requests.get")
     def test_get_qr_network_error_raises_delivery_error(self, mock_get: Mock) -> None:
         mock_get.side_effect = requests.ConnectionError("refused")
         with self.assertRaises(WhatsAppDeliveryError):
