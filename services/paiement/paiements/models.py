@@ -308,8 +308,10 @@ class AuditLog(models.Model):
     - applicative : aucun code de ce dépôt ne fait d'UPDATE ni de DELETE sur
       ce modèle (`enregistrer_audit` ne fait qu'un `create`) ;
     - défense en profondeur, niveau base : la migration
-      `0012_audit_log_immutable` révoque UPDATE/DELETE sur cette table pour
-      le rôle applicatif Postgres.
+      `0013_audit_log_immutable` révoque UPDATE/DELETE sur cette table pour
+      le rôle applicatif Postgres — révocation rendue réellement effective
+      par `0015_audit_log_role_runtime` (rôle `_runtime` non superutilisateur,
+      voir `paiements/db_hardening.py` et AUDIT_SGFE.md §8·J).
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

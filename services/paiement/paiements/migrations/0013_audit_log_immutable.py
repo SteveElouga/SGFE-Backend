@@ -13,21 +13,32 @@ d'environnement `PAIEMENT_DB_USER`, défaut `paiement_user` — voir
 `paiement/settings.py`) — pas une chaîne codée en dur, pour rester correct
 si ce rôle est un jour renommé via l'environnement.
 
-Note d'honnêteté (limite connue de PostgreSQL). Cette révocation n'est un
-verrou réel que si le rôle applicatif N'EST PAS le propriétaire de la table :
-un propriétaire conserve ses privilèges DML même après un REVOKE explicite
-sur lui-même (la propriété prime sur la liste de contrôle d'accès). Dans la
-configuration actuelle du dépôt (`docker-compose.yml`), chaque service se
-connecte avec le MÊME rôle Postgres que celui qui a créé la table via
-`migrate` (`POSTGRES_USER`) : il en est donc le propriétaire, et cette
-révocation reste une défense en profondeur symbolique pour ce rôle précis
-(elle bloquerait un rôle tiers auquel on accorderait un accès restreint,
-mais pas le rôle applicatif actuel lui-même, qui reste propriétaire). Un
-durcissement réel exigerait un rôle Postgres dédié aux migrations
-(propriétaire) distinct du rôle d'exécution de l'application (non
-propriétaire, avec GRANT ciblé sur INSERT/SELECT) — changement d'architecture
-plus large, explicitement hors périmètre de cette PR (voir AUDIT_SGFE.md §J,
-« reste à faire »).
+Note d'honnêteté — MISE À JOUR (voir `0015_audit_log_role_runtime`, qui
+corrige ce qui suit). Ce commentaire documentait à l'origine une limite :
+cette révocation n'est un verrou réel que si le rôle applicatif N'EST PAS le
+propriétaire de la table, or dans la configuration d'alors (`docker-
+compose.yml`), chaque service se connectait avec le MÊME rôle Postgres que
+celui qui a créé la table via `migrate` (`POSTGRES_USER`) — il en était donc
+le propriétaire, et cette révocation restait symbolique pour ce rôle précis.
+
+**L'investigation menée pour `0015` a montré que c'était en réalité plus
+grave que la seule propriété** : le rôle `POSTGRES_USER` de l'image Postgres
+officielle est un SUPERUTILISATEUR (attribut hérité du bootstrap `initdb`),
+qui contourne TOUT contrôle d'accès — REVOKE, ACL, propriété — pas seulement
+la propriété d'une table. Vérifié empiriquement sur un conteneur Postgres
+jetable : même un `ALTER TABLE ... OWNER TO <tiers>` combiné à un
+`REVOKE ALL` ne bloque pas un rôle superutilisateur. Ce REVOKE-ci, à lui
+seul, restait donc un verrou purement documentaire.
+
+`0015_audit_log_role_runtime` (voir `paiements/db_hardening.py` pour le
+mécanisme complet) referme ce point : un second rôle Postgres `NOLOGIN`,
+non superutilisateur, reçoit `SELECT, INSERT` sur `audit_log` (jamais
+`UPDATE`/`DELETE`), et `grpc_server` bascule dessus via `SET ROLE` à chaque
+connexion (`migrate` continue de tourner sous le rôle propriétaire, seul
+habilité à faire du DDL). Cette migration-ci (`0013`) reste en place (le
+REVOKE sur le rôle propriétaire ne fait de mal à personne et documente
+l'intention), mais ce n'est plus elle qui protège `audit_log` en pratique —
+c'est `0015`. Voir AUDIT_SGFE.md §8·J pour l'état à jour.
 
 Sans effet hors PostgreSQL : `REVOKE`/`GRANT` sur les rôles n'existent pas en
 SQLite (moteur des tests locaux par défaut, voir `TESTING` dans

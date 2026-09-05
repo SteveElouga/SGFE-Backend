@@ -133,6 +133,21 @@ jobs:
       - name: Vérifie l'absence de dérive (sync-grpc-lib.sh --check)
         run: ./scripts/sync-grpc-lib.sh --check
 
+  # Même rationale que check-grpc-lib-drift ci-dessus, pour la lib partagée
+  # d'isolation Postgres (`SET ROLE` sur un rôle `_runtime` non
+  # superutilisateur — voir libs/sgfe_common/sgfe_common/db_hardening.py,
+  # AUDIT_SGFE.md §8·J). Tourne toujours, pas de path-filter, pour la même
+  # raison : une dérive sur une seule copie (paiement OU facturation, et
+  # demain campagne/abonné/auth/config) ne toucherait pas forcément le
+  # dossier services/* modifié par le commit qui l'introduit.
+  check-db-hardening-lib-drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Vérifie l'absence de dérive (sync-db-hardening-lib.sh --check)
+        run: ./scripts/sync-db-hardening-lib.sh --check
+
   # Scanner de mauvaise configuration des pipelines eux-mêmes (CIS 2.3.6,
   # OWASP CICD-SEC-8) : actionlint (rhysd/actionlint) analyse tous les
   # workflows .github/workflows/*.yml — syntaxe, expressions ${{ }} mal
@@ -702,7 +717,7 @@ jobs:
   # bloquerait indéfiniment toute PR qui ne les déclenche pas.
   ci-status:
     if: always()
-    needs: [secrets-scan, check-grpc-lib-drift, lint-workflows, test-auth, test-gateway, test-abonne, test-campagne, test-facturation, test-paiement, test-notification, test-reporting, test-config]
+    needs: [secrets-scan, check-grpc-lib-drift, check-db-hardening-lib-drift, lint-workflows, test-auth, test-gateway, test-abonne, test-campagne, test-facturation, test-paiement, test-notification, test-reporting, test-config]
     runs-on: ubuntu-latest
     steps:
       - name: Vérifie qu'aucun job requis n'a échoué
