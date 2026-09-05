@@ -148,6 +148,24 @@ jobs:
       - name: Vérifie l'absence de dérive (sync-db-hardening-lib.sh --check)
         run: ./scripts/sync-db-hardening-lib.sh --check
 
+  # Même rationale que check-grpc-lib-drift/check-db-hardening-lib-drift
+  # ci-dessus, pour la lib partagée de chaînage de hash tamper-evident des
+  # logs (voir libs/sgfe_common/sgfe_common/log_integrity.py, AUDIT_SGFE.md
+  # §J "Journalisation de sécurité centralisée et inviolable"). Tourne
+  # toujours, pas de path-filter, pour la même raison que les deux jobs
+  # ci-dessus. Le module n'a aucune dépendance Django/tierce (stdlib
+  # uniquement) : ses tests tournent ici directement avec le Python du
+  # runner, sans venv de service.
+  check-log-integrity-lib-drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Vérifie l'absence de dérive (sync-log-integrity-lib.sh --check)
+        run: ./scripts/sync-log-integrity-lib.sh --check
+      - name: Tests unitaires (sgfe_common.log_integrity / verifier_chaine_logs)
+        run: python3 -m unittest discover -s libs/sgfe_common/tests -v
+
   # Scanner de mauvaise configuration des pipelines eux-mêmes (CIS 2.3.6,
   # OWASP CICD-SEC-8) : actionlint (rhysd/actionlint) analyse tous les
   # workflows .github/workflows/*.yml — syntaxe, expressions ${{ }} mal
@@ -717,7 +735,7 @@ jobs:
   # bloquerait indéfiniment toute PR qui ne les déclenche pas.
   ci-status:
     if: always()
-    needs: [secrets-scan, check-grpc-lib-drift, check-db-hardening-lib-drift, lint-workflows, test-auth, test-gateway, test-abonne, test-campagne, test-facturation, test-paiement, test-notification, test-reporting, test-config]
+    needs: [secrets-scan, check-grpc-lib-drift, check-db-hardening-lib-drift, check-log-integrity-lib-drift, lint-workflows, test-auth, test-gateway, test-abonne, test-campagne, test-facturation, test-paiement, test-notification, test-reporting, test-config]
     runs-on: ubuntu-latest
     steps:
       # `contains(needs.*.result, 'failure')` seul laisse passer un job

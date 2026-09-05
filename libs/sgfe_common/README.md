@@ -152,3 +152,51 @@ dans `db_hardening.py` pour la marche à suivre complète, en 4 étapes).
 # job check-db-hardening-lib-drift) :
 ./scripts/sync-db-hardening-lib.sh --check
 ```
+
+---
+
+## `log_integrity.py` — chaînage de hash tamper-evident des logs locaux
+
+Réponse à AUDIT_SGFE.md §J — « Journalisation de sécurité centralisée et
+inviolable » : le bloc `LOGGING` (PR #193, 9 composants) écrivait des
+fichiers locaux sans aucune garantie d'intégrité, rendant "inviolable"
+purement déclaratif. `sgfe_common/log_integrity.py` fournit un
+`logging.Formatter` (`ChainedHashFormatter`) qui chaîne un hash SHA-256 à
+chaque ligne — voir le commentaire de tête du fichier pour le mécanisme
+complet et, tout aussi important, ce qu'il garantit VRAIMENT (détecte une
+modification/suppression après coup, avec l'outil de vérification dédié) et
+ce qu'il NE garantit PAS (pas un WORM, pas une signature externe, pas de
+persistance de la chaîne entre deux redémarrages — v1 assumée). Un
+utilitaire compagnon, `sgfe_common/verifier_chaine_logs.py`, relit un
+fichier de log et confirme (ou infirme) que la chaîne n'a pas été rompue.
+
+Même choix d'architecture que `grpc_auth.py`/`db_hardening.py` ci-dessus, et
+pour les mêmes raisons : `log_integrity.py` est la source canonique unique,
+recopiée par `scripts/sync-log-integrity-lib.sh` vers les composants qui en
+ont besoin — aujourd'hui **Auth** et la **Gateway** (les deux points
+d'entrée les plus sensibles pour la sécurité), pas les 9 : étendre aux 7
+autres composants est une simple répétition du câblage documenté dans
+`log_integrity.py` ("Comment un futur service adopte ce mécanisme"),
+délibérément non faite dans la PR d'origine de ce fichier (hors de
+proportion pour cette tâche précise — 2 composants suffisent comme preuve du
+mécanisme).
+
+`verifier_chaine_logs.py`, lui, N'EST PAS synchronisé vers les services : ce
+n'est pas du code embarqué dans une image Docker, c'est un outil d'audit
+autonome (sans dépendance Django), destiné à être lancé depuis la racine du
+dépôt par un humain (ou une CI) qui relit un fichier de log après coup.
+
+```bash
+# Après avoir modifié libs/sgfe_common/sgfe_common/log_integrity.py :
+./scripts/sync-log-integrity-lib.sh          # recopie vers les destinations
+
+# Vérifier qu'aucune copie n'a dérivé de la source canonique (déjà en CI,
+# job check-log-integrity-lib-drift) :
+./scripts/sync-log-integrity-lib.sh --check
+
+# Vérifier l'intégrité d'un fichier de log réel :
+python3 libs/sgfe_common/sgfe_common/verifier_chaine_logs.py services/auth/logs/auth.log
+
+# Tests (stdlib uniquement, aucun venv de service requis) :
+python3 -m unittest discover -s libs/sgfe_common/tests -v
+```
