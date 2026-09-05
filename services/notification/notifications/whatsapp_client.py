@@ -187,7 +187,11 @@ class WhatsAppWebClient:
 
         try:
             data = response.json()
+            depuis_ms = int(data.get("depuis") or 0)
         except ValueError as exc:
+            # Couvre autant un JSON invalide qu'un champ "depuis" non convertible
+            # (ex. whatsapp-service renvoie une valeur inattendue) : `GetWhatsAppQr`
+            # ne doit jamais lever d'erreur gRPC non gérée (voir grpc_server.py).
             raise WhatsAppDeliveryError(f"Réponse invalide du service WhatsApp (HTTP {response.status_code})") from exc
 
         return (
@@ -195,7 +199,7 @@ class WhatsAppWebClient:
             data.get("qr", "") or "",
             data.get("number", "") or "",
             data.get("phase", "") or "demarrage",
-            int(data.get("depuis") or 0),
+            depuis_ms,
         )
 
 
