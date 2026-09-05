@@ -1,5 +1,6 @@
 from django.db import transaction
 
+from abonnes.audit import enregistrer_audit
 from abonnes.dtos import ZoneStatDict
 from abonnes.models import Abonne, Compteur, HistoriqueCompteur, StatutAbonne, StatutCompteur
 from abonnes.repositories import AbonneRepository, CompteurRepository, HistoriqueCompteurRepository
@@ -92,33 +93,74 @@ class AbonneService:
                 date_pose=date_pose,
                 position=position,
             )
+            # Pas de PII (nom/prénom/téléphone/adresse — chiffrées au repos,
+            # voir abonnes/fields.py) dans le détail d'audit : uniquement des
+            # identifiants métier, comme pour le Paiement Service.
+            enregistrer_audit(
+                action="ABONNE_CREE",
+                objet_type="Abonne",
+                objet_id=str(abonne.id),
+                detail=(
+                    f"numero_abonne={numero_abonne} — compteur={numero_compteur} (quartier={quartier}, camp={camp})"
+                ),
+            )
         return abonne
 
     def update_abonne(self, abonne_id: str, nom: str, prenom: str, telephone_whatsapp: str, adresse: str) -> Abonne:
         abonne = self.abonnes.get_by_id(abonne_id)
+        champs_modifies: list[str] = []
         if nom:
             abonne.nom = nom
+            champs_modifies.append("nom")
         if prenom:
             abonne.prenom = prenom
+            champs_modifies.append("prenom")
         if telephone_whatsapp:
             abonne.telephone_whatsapp = validate_telephone_whatsapp(telephone_whatsapp)
+            champs_modifies.append("telephone_whatsapp")
         if adresse:
             abonne.adresse = adresse
-        return self.abonnes.save(abonne)
+            champs_modifies.append("adresse")
+        with transaction.atomic():
+            abonne = self.abonnes.save(abonne)
+            # Détail = noms des champs touchés, jamais leur valeur (PII).
+            enregistrer_audit(
+                action="ABONNE_MODIFIE",
+                objet_type="Abonne",
+                objet_id=str(abonne.id),
+                detail=f"champs modifiés : {', '.join(champs_modifies) if champs_modifies else 'aucun'}",
+            )
+        return abonne
 
     def suspendre_abonne(self, abonne_id: str) -> Abonne:
         abonne = self.abonnes.get_by_id(abonne_id)
         if abonne.statut != StatutAbonne.ACTIF:
             raise ValidationError(f"Un abonné {abonne.statut} ne peut pas être suspendu")
         abonne.statut = StatutAbonne.SUSPENDU
-        return self.abonnes.save(abonne)
+        with transaction.atomic():
+            abonne = self.abonnes.save(abonne)
+            enregistrer_audit(
+                action="ABONNE_SUSPENDU",
+                objet_type="Abonne",
+                objet_id=str(abonne.id),
+                detail=f"numero_abonne={abonne.numero_abonne}",
+            )
+        return abonne
 
     def reactiver_abonne(self, abonne_id: str) -> Abonne:
         abonne = self.abonnes.get_by_id(abonne_id)
         if abonne.statut != StatutAbonne.SUSPENDU:
             raise ValidationError(f"Un abonné {abonne.statut} ne peut pas être réactivé")
         abonne.statut = StatutAbonne.ACTIF
-        return self.abonnes.save(abonne)
+        with transaction.atomic():
+            abonne = self.abonnes.save(abonne)
+            enregistrer_audit(
+                action="ABONNE_REACTIVE",
+                objet_type="Abonne",
+                objet_id=str(abonne.id),
+                detail=f"numero_abonne={abonne.numero_abonne}",
+            )
+        return abonne
 
     def resilier_abonne(self, abonne_id: str) -> Abonne:
         abonne = self.abonnes.get_by_id(abonne_id)
@@ -136,6 +178,12 @@ class AbonneService:
                 self.compteurs.save(compteur)
             except Compteur.DoesNotExist:
                 pass
+            enregistrer_audit(
+                action="ABONNE_RESILIE",
+                objet_type="Abonne",
+                objet_id=str(abonne.id),
+                detail=f"numero_abonne={abonne.numero_abonne}",
+            )
         return abonne
 
     def anonymiser_abonne(self, abonne_id: str) -> Abonne:
@@ -190,17 +238,34 @@ class CompteurService:
         position: str | None = None,
     ) -> Compteur:
         compteur = self.compteurs.get_actif(abonne_id)
+        champs_modifies: list[str] = []
         if quartier is not None:
             compteur.quartier = quartier
+            champs_modifies.append("quartier")
         if camp is not None:
             compteur.camp = camp
+            champs_modifies.append("camp")
         if index_initial is not None:
             compteur.index_initial = index_initial
+            champs_modifies.append("index_initial")
         if date_pose is not None:
             compteur.date_pose = date_pose
+            champs_modifies.append("date_pose")
         if position is not None:
             compteur.position = position
-        return self.compteurs.save(compteur)
+            champs_modifies.append("position")
+        with transaction.atomic():
+            compteur = self.compteurs.save(compteur)
+            enregistrer_audit(
+                action="COMPTEUR_MODIFIE",
+                objet_type="Compteur",
+                objet_id=str(compteur.id),
+                detail=(
+                    f"abonné={abonne_id} — champs modifiés : "
+                    f"{', '.join(champs_modifies) if champs_modifies else 'aucun'}"
+                ),
+            )
+        return compteur
 
     def get_historique(self, abonne_id: str) -> list[HistoriqueCompteur]:
         return self.historique.list_by_abonne(abonne_id)
@@ -248,6 +313,17 @@ class CompteurService:
                 index_fermeture=index_fermeture,
                 date_remplacement=date_remplacement,
                 motif=motif,
+            )
+
+            enregistrer_audit(
+                action="COMPTEUR_REMPLACE",
+                objet_type="Compteur",
+                objet_id=str(nouveau_compteur.id),
+                detail=(
+                    f"abonné={abonne_id} — ancien compteur={ancien_compteur.numero_compteur} "
+                    f"remplacé par {nouveau_numero_compteur} — index_fermeture={index_fermeture} — "
+                    f"motif={motif!r}"
+                ),
             )
 
         return nouveau_compteur
