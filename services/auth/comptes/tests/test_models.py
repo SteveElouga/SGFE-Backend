@@ -28,3 +28,10 @@ class UserModelTests(TestCase):
             username="comptable2", email="comptable2@example.com", password="secret123", role=Role.COMPTABLE
         )
         self.assertEqual(str(user), "comptable2")
+
+    def test_date_desactivation_defaults_to_none(self) -> None:
+        """RGPD — un compte fraîchement créé n'a jamais été désactivé."""
+        user = User.objects.create_user(
+            username="agent2", email="agent2@example.com", password="secret123", role=Role.AGENT
+        )
+        self.assertIsNone(user.date_desactivation)

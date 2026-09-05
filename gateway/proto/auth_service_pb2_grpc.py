@@ -109,6 +109,16 @@ class AuthServiceStub:
                 request_serializer=auth__service__pb2.VerifyOtpRequest.SerializeToString,
                 response_deserializer=auth__service__pb2.StatusResponse.FromString,
                 _registered_method=True)
+        self.AnonymiserUtilisateur = channel.unary_unary(
+                '/auth.AuthService/AnonymiserUtilisateur',
+                request_serializer=auth__service__pb2.UserIdRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.UserResponse.FromString,
+                _registered_method=True)
+        self.ExporterDonneesUtilisateur = channel.unary_unary(
+                '/auth.AuthService/ExporterDonneesUtilisateur',
+                request_serializer=auth__service__pb2.UserIdRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.ExportDonneesUtilisateurResponse.FromString,
+                _registered_method=True)
 
 
 class AuthServiceServicer:
@@ -210,6 +220,28 @@ class AuthServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def AnonymiserUtilisateur(self, request, context):
+        """RGPD — droit à l'effacement. N'anonymise QUE l'identité nominative
+        (username, e-mail, téléphone) d'un utilisateur interne ; refuse si le
+        compte est encore actif (is_active=true). Ne touche jamais à l'AuditLog
+        (chantier séparé, feat/piste-audit-auth) ni au rôle. Idempotent :
+        ré-appeler sur un utilisateur déjà anonymisé réapplique les mêmes
+        valeurs sans erreur.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ExporterDonneesUtilisateur(self, request, context):
+        """RGPD — droit à la portabilité. Export JSON structuré des données
+        personnelles d'un utilisateur interne (identité, cycle de vie du
+        compte, historique de connexion si trackable). Dégradation gracieuse
+        par section : voir comptes/export.py.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AuthServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -287,6 +319,16 @@ def add_AuthServiceServicer_to_server(servicer, server):
                     servicer.VerifyOtpAndSetPassword,
                     request_deserializer=auth__service__pb2.VerifyOtpRequest.FromString,
                     response_serializer=auth__service__pb2.StatusResponse.SerializeToString,
+            ),
+            'AnonymiserUtilisateur': grpc.unary_unary_rpc_method_handler(
+                    servicer.AnonymiserUtilisateur,
+                    request_deserializer=auth__service__pb2.UserIdRequest.FromString,
+                    response_serializer=auth__service__pb2.UserResponse.SerializeToString,
+            ),
+            'ExporterDonneesUtilisateur': grpc.unary_unary_rpc_method_handler(
+                    servicer.ExporterDonneesUtilisateur,
+                    request_deserializer=auth__service__pb2.UserIdRequest.FromString,
+                    response_serializer=auth__service__pb2.ExportDonneesUtilisateurResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -694,6 +736,60 @@ class AuthService:
             '/auth.AuthService/VerifyOtpAndSetPassword',
             auth__service__pb2.VerifyOtpRequest.SerializeToString,
             auth__service__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AnonymiserUtilisateur(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/AnonymiserUtilisateur',
+            auth__service__pb2.UserIdRequest.SerializeToString,
+            auth__service__pb2.UserResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ExporterDonneesUtilisateur(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/ExporterDonneesUtilisateur',
+            auth__service__pb2.UserIdRequest.SerializeToString,
+            auth__service__pb2.ExportDonneesUtilisateurResponse.FromString,
             options,
             channel_credentials,
             insecure,

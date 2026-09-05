@@ -1,4 +1,6 @@
+import logging
 from datetime import datetime, timedelta
+from uuid import UUID
 
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
@@ -10,7 +12,7 @@ from rest_framework_simplejwt.tokens import AccessToken, RefreshToken, Token
 
 from comptes.audit import enregistrer_audit
 from comptes.email_client import email_client
-from comptes.models import User, _generate_otp
+from comptes.models import PREFIXE_TELEPHONE_ANONYMISE, PREFIXE_USERNAME_ANONYMISE, User, _generate_otp
 from comptes.repositories import (
     PasswordSetupTokenRepository,
     PhoneOtpTokenRepository,
@@ -21,8 +23,17 @@ from comptes.throttle import verifier_throttle
 from comptes.validators import validate_phone_cameroon
 from comptes.whatsapp_client import whatsapp_client
 
+logger = logging.getLogger(__name__)
 
 _MSG_INVALID_CREDENTIALS = "Identifiants invalides"
+
+# RGPD — durée de rétention après désactivation d'un compte utilisateur
+# interne, avant purge automatique (anonymisation) par
+# UserAdminService.purger_utilisateurs_desactives. Validée EXPLICITEMENT par
+# le porteur du projet (voir corps de la PR d'introduction de cette
+# constante) : 3 ans après `date_desactivation`, pas après la création du
+# compte ni sa dernière connexion.
+DUREE_RETENTION_UTILISATEUR_DESACTIVE = timedelta(days=3 * 365)
 
 # Hash factice servant à égaliser le temps de réponse du login quand
 # l'identifiant est inconnu : on exécute quand même un check_password (coût
@@ -292,6 +303,11 @@ class UserAdminService:
 
         with transaction.atomic():
             user.is_active = False
+            # RGPD — point de départ de la purge automatique après 3 ans (voir
+            # purger_utilisateurs_desactives). Posé même si le compte était déjà
+            # inactif (rien à ce niveau n'empêche cet appel, il reste
+            # idempotent — la date est simplement rafraîchie).
+            user.date_desactivation = timezone.now()
             saved_user = self.users.save(user)
             enregistrer_audit(
                 action="UTILISATEUR_DESACTIVE",
@@ -310,6 +326,9 @@ class UserAdminService:
         user = self.users.get_by_id(user_id)
         with transaction.atomic():
             user.is_active = True
+            # Le compte redevient actif : la minuterie de purge RGPD n'a plus lieu
+            # d'être, une désactivation future en posera une nouvelle le moment venu.
+            user.date_desactivation = None
             saved_user = self.users.save(user)
             enregistrer_audit(
                 action="UTILISATEUR_REACTIVE",
@@ -318,6 +337,68 @@ class UserAdminService:
                 detail=f"username={saved_user.username!r} — role={saved_user.role}",
             )
         return saved_user
+
+    def _telephone_anonymise(self, user_id: UUID) -> str:
+        """Numéro placeholder unique par utilisateur, RGPD — dans la limite des
+        20 caractères du champ `phone_number` (contrainte du modèle), trop
+        court pour un UUID complet (36 caractères). 16 caractères hexadécimaux
+        (64 bits d'entropie dérivés de `user_id`, déjà unique) rendent une
+        collision entre deux utilisateurs anonymisés négligeable à l'échelle
+        de ce système (quelques centaines de comptes, jamais des milliards)."""
+        return f"{PREFIXE_TELEPHONE_ANONYMISE}{user_id.hex[:16]}"
+
+    def anonymiser_utilisateur(self, user_id: str) -> User:
+        """RGPD — droit à l'effacement, restreint aux comptes désactivés.
+
+        N'anonymise QUE l'identité nominative (username, e-mail, téléphone) :
+        `user_id` et `role` sont préservés, ainsi que tout ce que ce service ne
+        possède pas ou ne doit jamais toucher — notamment l'`AuditLog`
+        (chantier séparé, feat/piste-audit-auth), jamais réécrit ni supprimé
+        ici, même principe que « jamais les factures/paiements » côté Abonné
+        Service (abonnes/services.py::AbonneService.anonymiser_abonne, PR #179).
+
+        Refuse sur un compte encore actif (`is_active=True`) : anonymiser
+        l'identité d'un utilisateur qui utilise encore le système lui
+        retirerait son propre accès (username/téléphone servent à se
+        connecter) sans qu'aucune demande RGPD ne le justifie avant la fin de
+        son habilitation.
+
+        Idempotent : ré-appeler sur un utilisateur déjà anonymisé réapplique
+        les mêmes valeurs sans erreur (dérivées de `user.id`, stable).
+        """
+        user = self.users.get_by_id(user_id)
+        if user.is_active:
+            raise ValueError(f"Seul un utilisateur désactivé peut être anonymisé (RGPD) — compte {user.username} actif")
+        user.username = f"{PREFIXE_USERNAME_ANONYMISE}{user.id}"
+        user.email = None
+        user.phone_number = self._telephone_anonymise(user.id)
+        return self.users.save(user)
+
+    def purger_utilisateurs_desactives(
+        self, retention: timedelta = DUREE_RETENTION_UTILISATEUR_DESACTIVE
+    ) -> tuple[int, int]:
+        """RGPD — anonymise automatiquement tout utilisateur interne désactivé
+        depuis plus de `retention` (3 ans par défaut, durée validée par le
+        porteur du projet — voir DUREE_RETENTION_UTILISATEUR_DESACTIVE).
+
+        Best-effort PAR UTILISATEUR : l'échec de l'anonymisation de l'un
+        n'empêche jamais le traitement des autres (voir
+        comptes/schedulers.py::purge_rgpd_job pour le déclenchement planifié).
+
+        Retourne (nb_anonymises, nb_echecs).
+        """
+        cutoff = timezone.now() - retention
+        candidats = self.users.list_desactives_avant(cutoff)
+        nb_ok = 0
+        nb_echecs = 0
+        for user in candidats:
+            try:
+                self.anonymiser_utilisateur(str(user.id))
+                nb_ok += 1
+            except Exception:
+                nb_echecs += 1
+                logger.exception("Purge RGPD — échec de l'anonymisation automatique de l'utilisateur %s", user.id)
+        return nb_ok, nb_echecs
 
     def resend_credentials(self, user_id: str) -> User:
         """Renvoi manuel (déclenché par un admin) des identifiants d'accès.

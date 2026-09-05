@@ -300,6 +300,75 @@ class UserAdminMutationTests(SimpleTestCase):
         self.assertIsNone(result.errors)
         self.assertTrue(_data(result)["reactivateUser"]["isActive"])
 
+    def test_anonymiser_utilisateur_requires_admin_role(self) -> None:
+        with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="COMPTABLE")):
+            result = schema.execute_sync(
+                'mutation { anonymiserUtilisateur(id: "user-2") { username } }',
+                context_value=context(token="access-1"),
+            )
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("Accès non autorisé", str(result.errors))
+
+    def test_anonymiser_utilisateur_success_as_admin(self) -> None:
+        with patch.multiple(
+            auth_client,
+            validate_token=Mock(return_value=Mock(user_id="admin-1", role="ADMIN")),
+            anonymiser_utilisateur=Mock(
+                return_value=make_user_response(username="utilisateur-anonymise-user-2", is_active=False)
+            ),
+        ):
+            result = schema.execute_sync(
+                'mutation { anonymiserUtilisateur(id: "user-2") { username isActive } }',
+                context_value=context(token="access-1"),
+            )
+            auth_client.anonymiser_utilisateur.assert_called_once_with("user-2")  # type: ignore[attr-defined]
+
+        self.assertIsNone(result.errors)
+        self.assertEqual(_data(result)["anonymiserUtilisateur"]["username"], "utilisateur-anonymise-user-2")
+        self.assertFalse(_data(result)["anonymiserUtilisateur"]["isActive"])
+
+    def test_anonymiser_utilisateur_actif_returns_error(self) -> None:
+        """Auth Service refuse (ValueError -> INVALID_ARGUMENT) si le compte
+        est encore actif — relayé tel quel côté GraphQL."""
+        with patch.multiple(
+            auth_client,
+            validate_token=Mock(return_value=Mock(user_id="admin-1", role="ADMIN")),
+            anonymiser_utilisateur=Mock(side_effect=FakeRpcError("Seul un utilisateur désactivé peut être anonymisé")),
+        ):
+            result = schema.execute_sync(
+                'mutation { anonymiserUtilisateur(id: "user-2") { username } }',
+                context_value=context(token="access-1"),
+            )
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("désactivé", str(result.errors))
+
+    def test_exporter_donnees_utilisateur_requires_admin_role(self) -> None:
+        with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="AGENT")):
+            result = schema.execute_sync(
+                'mutation { exporterDonneesUtilisateur(id: "user-2") }',
+                context_value=context(token="access-1"),
+            )
+
+        self.assertIsNotNone(result.errors)
+        self.assertIn("Accès non autorisé", str(result.errors))
+
+    def test_exporter_donnees_utilisateur_success_as_admin(self) -> None:
+        with patch.multiple(
+            auth_client,
+            validate_token=Mock(return_value=Mock(user_id="admin-1", role="ADMIN")),
+            exporter_donnees_utilisateur=Mock(return_value=Mock(json_export='{"user_id": "user-2"}')),
+        ):
+            result = schema.execute_sync(
+                'mutation { exporterDonneesUtilisateur(id: "user-2") }',
+                context_value=context(token="access-1"),
+            )
+            auth_client.exporter_donnees_utilisateur.assert_called_once_with("user-2")  # type: ignore[attr-defined]
+
+        self.assertIsNone(result.errors)
+        self.assertEqual(_data(result)["exporterDonneesUtilisateur"], '{"user_id": "user-2"}')
+
     def test_reset_user_password_requires_admin_role(self) -> None:
         with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="COMPTABLE")):
             result = schema.execute_sync(

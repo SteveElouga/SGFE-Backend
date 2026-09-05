@@ -23,6 +23,18 @@ service AuthService {
   // Activation et reset par OTP WhatsApp (tous les rôles)
   rpc RequestPhoneOtp (PhoneRequest) returns (StatusResponse);
   rpc VerifyOtpAndSetPassword (VerifyOtpRequest) returns (StatusResponse);
+  // RGPD — droit à l'effacement. N'anonymise QUE l'identité nominative
+  // (username, e-mail, téléphone) d'un utilisateur interne ; refuse si le
+  // compte est encore actif (is_active=true). Ne touche jamais à l'AuditLog
+  // (chantier séparé, feat/piste-audit-auth) ni au rôle. Idempotent :
+  // ré-appeler sur un utilisateur déjà anonymisé réapplique les mêmes
+  // valeurs sans erreur.
+  rpc AnonymiserUtilisateur (UserIdRequest) returns (UserResponse);
+  // RGPD — droit à la portabilité. Export JSON structuré des données
+  // personnelles d'un utilisateur interne (identité, cycle de vie du
+  // compte, historique de connexion si trackable). Dégradation gracieuse
+  // par section : voir comptes/export.py.
+  rpc ExporterDonneesUtilisateur (UserIdRequest) returns (ExportDonneesUtilisateurResponse);
 }
 
 message LoginRequest {
@@ -120,3 +132,13 @@ message StatusResponse {
 }
 
 message EmptyRequest {}
+
+// Export RGPD synchrone : les données d'un utilisateur interne (identité,
+// cycle de vie du compte, historique de connexion) restent d'un volume
+// négligeable — pas besoin d'un mécanisme de référence/job asynchrone
+// (même choix que ExportDonneesAbonneResponse, proto/abonne_service.proto).
+message ExportDonneesUtilisateurResponse {
+  // JSON structuré (UTF-8) — voir comptes/export.py::ExportService pour le
+  // schéma exact des sections.
+  string json_export = 1;
+}
