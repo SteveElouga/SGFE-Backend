@@ -84,3 +84,54 @@ class ConfigParam(models.Model):
 
     def __str__(self) -> str:
         return f"{self.cle}={self.valeur}"
+
+
+class AuditLog(models.Model):
+    """Journal d'audit append-only des mutations du Config Service.
+
+    Voir AUDIT_SGFE.md §10.7 (« Conception — propagation d'identité → journal
+    d'audit immuable »). Une ligne par mutation métier, écrite par
+    `parametres.audit.enregistrer_audit` DANS LA MÊME transaction Django que
+    le changement qu'elle documente — jamais un appel réseau séparé après coup.
+
+    Immuabilité :
+    - applicative : aucun code de ce dépôt ne fait d'UPDATE ni de DELETE sur
+      ce modèle (`enregistrer_audit` ne fait qu'un `create`) ;
+    - défense en profondeur, niveau base : la migration
+      `0004_audit_log_immutable` révoque UPDATE/DELETE sur cette table pour
+      le rôle applicatif Postgres.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Verbe métier de la mutation (ex. "CONFIG_PARAM_MODIFIE", "INFOS_SOCIETE_MODIFIEES").
+    action = models.CharField(max_length=100)
+    # Type de l'objet métier concerné (ex. "ConfigParam", "InfosSociete").
+    objet_type = models.CharField(max_length=100)
+    # Identifiant de l'objet métier concerné (la clé pour un ConfigParam, "1"
+    # pour le singleton InfosSociete).
+    objet_id = models.CharField(max_length=100)
+    # Identité de l'appelant (voir `get_caller()`, grpc_interceptors.py) — vide
+    # si aucune identité n'a été propagée par la gateway (ne doit plus arriver
+    # une fois l'étape 1 déployée partout, mais l'audit ne doit jamais faire
+    # échouer la mutation qu'il documente : champs vides plutôt qu'exception).
+    acteur_id = models.CharField(max_length=100, blank=True, default="")
+    acteur_nom = models.CharField(max_length=150, blank=True, default="")
+    acteur_role = models.CharField(max_length=50, blank=True, default="")
+    horodatage = models.DateTimeField(auto_now_add=True)
+    # Détail libre, lisible par un humain (ancienne/nouvelle valeur...) — pas
+    # de structure imposée : ce journal sert la preuve « qui a fait quoi
+    # quand », pas une reconstruction programmatique de l'état.
+    detail = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "audit_log"
+        indexes = [
+            models.Index(fields=["objet_type", "objet_id"]),
+            models.Index(fields=["horodatage"]),
+        ]
+        ordering = ["-horodatage"]
+
+    def __str__(self) -> str:
+        return (
+            f"[{self.horodatage}] {self.action} {self.objet_type}={self.objet_id} par {self.acteur_nom or '(inconnu)'}"
+        )
