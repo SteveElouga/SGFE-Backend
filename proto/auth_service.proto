@@ -35,6 +35,16 @@ service AuthService {
   // compte, historique de connexion si trackable). Dégradation gracieuse
   // par section : voir comptes/export.py.
   rpc ExporterDonneesUtilisateur (UserIdRequest) returns (ExportDonneesUtilisateurResponse);
+  // Centralise un événement de sécurité poussé par un composant tiers (la
+  // gateway aujourd'hui : refus de rôle `require_role`, échec de validation
+  // de jeton `require_auth`) dans l'AuditLog de ce service — voir
+  // AUDIT_SGFE.md §J, "Journalisation de sécurité centralisée et
+  // inviolable". Écriture seule, sans mutation métier associée. Appelé en
+  // BEST-EFFORT par l'appelant : un échec de ce RPC (ce service indisponible,
+  // par exemple) ne doit jamais faire échouer la requête qui a déclenché
+  // l'événement de sécurité d'origine — le logger local dédié reste alors le
+  // seul filet (voir gateway/schema/context.py).
+  rpc EnregistrerEvenementSecurite (EnregistrerEvenementSecuriteRequest) returns (StatusResponse);
 }
 
 message LoginRequest {
@@ -141,4 +151,20 @@ message ExportDonneesUtilisateurResponse {
   // JSON structuré (UTF-8) — voir comptes/export.py::ExportService pour le
   // schéma exact des sections.
   string json_export = 1;
+}
+
+message EnregistrerEvenementSecuriteRequest {
+  // Ex. "ROLE_REFUSE", "TOKEN_INVALIDE" — voir gateway/schema/context.py
+  // pour la liste des valeurs émises aujourd'hui.
+  string type_evenement = 1;
+  // Détail lisible par un humain (rôle requis/obtenu, message d'erreur...).
+  string detail = 2;
+  // Identité de l'acteur si elle est connue au moment de l'événement — vide
+  // pour un jeton invalide (aucune identité n'a pu être résolue).
+  string acteur_id = 3;
+  string acteur_nom = 4;
+  string acteur_role = 5;
+  // Identifiant de corrélation de la requête gateway d'origine (voir
+  // schema/identity_context.py::get_request_id).
+  string request_id = 6;
 }

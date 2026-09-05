@@ -9,7 +9,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from comptes.grpc_server import AuthServiceServicer
-from comptes.models import PasswordSetupToken, Role, User
+from comptes.models import AuditLog, PasswordSetupToken, Role, User
 from comptes.services import AuthenticationError
 
 # Le fichier _grpc.py généré fait un `import auth_service_pb2` bare — il faut
@@ -166,6 +166,25 @@ class AuthServiceServicerTests(TestCase):
         donnees = json.loads(response.json_export)
         self.assertEqual(donnees["user_id"], str(self.user.id))
         self.assertEqual(donnees["identite"]["donnees"]["username"], "comptable_grpc")
+
+    def test_enregistrer_evenement_securite_ecrit_dans_l_audit_log(self) -> None:
+        response = self.servicer.EnregistrerEvenementSecurite(
+            pb.EnregistrerEvenementSecuriteRequest(
+                type_evenement="ROLE_REFUSE",
+                detail="rôle AGENT insuffisant",
+                acteur_id="u-9",
+                acteur_nom="agent9",
+                acteur_role="AGENT",
+                request_id="req-9",
+            ),
+            self.context,
+        )
+
+        self.assertTrue(response.success)
+        entree = AuditLog.objects.get(action="ROLE_REFUSE")
+        self.assertEqual(entree.objet_type, "EvenementSecuriteGateway")
+        self.assertEqual(entree.acteur_nom, "agent9")
+        self.assertEqual(entree.objet_id, "req-9")
 
     def test_reset_user_password_admin_activated_sends_email(self) -> None:
         admin = User.objects.create_user(

@@ -52,6 +52,21 @@ class AuthServiceClientTests(SimpleTestCase):
         request = self.grpc_client._stub.SetPasswordWithToken.call_args[0][0]
         self.assertEqual((request.token, request.new_password), ("tok", "newpass"))
 
+    def test_enregistrer_evenement_securite(self) -> None:
+        self.grpc_client.enregistrer_evenement_securite(
+            type_evenement="ROLE_REFUSE",
+            detail="rôle insuffisant",
+            acteur_id="u-1",
+            acteur_nom="bob",
+            acteur_role="AGENT",
+            request_id="req-1",
+        )
+        request = self.grpc_client._stub.EnregistrerEvenementSecurite.call_args[0][0]
+        self.assertEqual(
+            (request.type_evenement, request.detail, request.acteur_id, request.acteur_nom, request.request_id),
+            ("ROLE_REFUSE", "rôle insuffisant", "u-1", "bob", "req-1"),
+        )
+
 
 class AbonneServiceClientTests(SimpleTestCase):
     def setUp(self) -> None:

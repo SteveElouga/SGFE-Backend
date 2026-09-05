@@ -12,7 +12,7 @@ from unittest.mock import patch
 from django.db import transaction
 from django.test import TestCase
 
-from comptes.audit import enregistrer_audit
+from comptes.audit import enregistrer_audit, enregistrer_evenement_securite
 from comptes.grpc_interceptors import CallerIdentity, caller_identity
 from comptes.models import AuditLog, Role, User
 from comptes.services import UserAdminService
@@ -131,6 +131,59 @@ class UserAdminServiceAuditTests(TestCase):
 
         entree = AuditLog.objects.get(action="IDENTIFIANTS_RENVOYES", objet_id=str(created.id))
         self.assertIn("réinitialisation de mot de passe demandée", entree.detail)
+
+
+class EnregistrerEvenementSecuriteTests(TestCase):
+    """Tests de la centralisation des événements de sécurité de la gateway
+    (voir AUDIT_SGFE.md §J, "Journalisation de sécurité centralisée")."""
+
+    def test_ecrit_une_entree_avec_l_acteur_explicite(self) -> None:
+        enregistrer_evenement_securite(
+            type_evenement="ROLE_REFUSE",
+            detail="Accès refusé : rôle AGENT insuffisant (requis : ADMIN)",
+            acteur_id="u-1",
+            acteur_nom="bob",
+            acteur_role="AGENT",
+            request_id="req-123",
+        )
+
+        entree = AuditLog.objects.get(action="ROLE_REFUSE")
+        self.assertEqual(entree.objet_type, "EvenementSecuriteGateway")
+        self.assertEqual(entree.objet_id, "req-123")
+        self.assertEqual(entree.acteur_id, "u-1")
+        self.assertEqual(entree.acteur_nom, "bob")
+        self.assertEqual(entree.acteur_role, "AGENT")
+        self.assertIn("rôle AGENT insuffisant", entree.detail)
+
+    def test_ignore_get_caller_meme_si_une_identite_est_posee(self) -> None:
+        """L'acteur vient des paramètres explicites, jamais de `get_caller()`
+        — contrairement à `enregistrer_audit` — pour rester correct même si
+        l'identité gRPC propagée ne correspond pas à l'acteur de l'événement."""
+        jeton = caller_identity.set(CallerIdentity(user_id="autre", username="autre-nom", role="COMPTABLE"))
+        try:
+            enregistrer_evenement_securite(type_evenement="TOKEN_INVALIDE", detail="jeton expiré")
+        finally:
+            caller_identity.reset(jeton)
+
+        entree = AuditLog.objects.get(action="TOKEN_INVALIDE")
+        self.assertEqual(entree.acteur_id, "")
+        self.assertEqual(entree.acteur_nom, "")
+        self.assertEqual(entree.acteur_role, "")
+
+    def test_type_evenement_vide_leve_value_error(self) -> None:
+        with self.assertRaises(ValueError):
+            enregistrer_evenement_securite(type_evenement="")
+
+        self.assertEqual(AuditLog.objects.count(), 0)
+
+    def test_appels_multiples_n_ecrivent_jamais_dans_la_meme_transaction_qu_une_mutation(self) -> None:
+        """Chaque appel ouvre sa propre transaction dédiée (pas de mutation
+        métier associée) : un échec APRÈS l'écriture ne doit rien annuler,
+        contrairement à `enregistrer_audit` qui, elle, doit être annulable."""
+        enregistrer_evenement_securite(type_evenement="TOKEN_INVALIDE", detail="premier appel")
+        enregistrer_evenement_securite(type_evenement="TOKEN_INVALIDE", detail="second appel")
+
+        self.assertEqual(AuditLog.objects.filter(action="TOKEN_INVALIDE").count(), 2)
 
 
 class AuditImmuabiliteEtAtomiciteTests(TestCase):
