@@ -7,7 +7,7 @@
 """
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from paiements.models import Paiement, SoldeFacture
@@ -18,6 +18,9 @@ C_ALPHA = str(uuid.uuid5(NS, "camp-alpha"))
 C_BETA = str(uuid.uuid5(NS, "camp-beta"))
 C_GAMMA = str(uuid.uuid5(NS, "camp-gamma"))
 
+# Retard simulé (en jours) des soldes IMPAYES de démo — voir date_limite() ci-dessous.
+JOURS_RETARD_IMPAYE = 10
+
 
 def mois_decale(d: date, k: int) -> tuple[int, int]:
     total = d.year * 12 + (d.month - 1) - k
@@ -26,6 +29,30 @@ def mois_decale(d: date, k: int) -> tuple[int, int]:
 
 def le_15(annee: int, mois: int) -> date:
     return date(annee, mois, 15)
+
+
+def date_limite(statut: str, annee: int, mois: int) -> date:
+    """Date limite de paiement d'un solde de démo.
+
+    BUG CORRIGÉ (repéré depuis SGFE-frontend#169, paiement-encaissement.spec.ts) :
+    `date_limite_paiement` était fixée pour TOUS les soldes à `le_15(A0, M0)`
+    (le 15 du mois COURANT), y compris pour les soldes IMPAYES. Or
+    `list_impayes()` (services/paiement/paiements/repositories.py) filtre sur
+    `date_limite_paiement__lt=date.today()` : avant le 16 de chaque mois,
+    AUCUN solde ne matchait jamais ce filtre — `/impayes` restait vide et le
+    bouton « + Paiement » que ce spec attend n'apparaissait jamais. Un bug
+    dépendant du calendrier d'exécution du seed, pas un vrai signal métier.
+
+    Un solde IMPAYE de démo reçoit désormais TOUJOURS une date limite dans le
+    passé par rapport à `date.today()` (`date.today() - JOURS_RETARD_IMPAYE`
+    jours), quel que soit le jour d'exécution du script. Les soldes déjà
+    PAYES gardent la date de facturation « normale » (le 15 du mois de la
+    campagne) : `list_impayes()` les exclut de toute façon par leur statut,
+    donc cette date n'a jamais d'incidence sur le bug ci-dessus pour eux.
+    """
+    if statut == "IMPAYEE":
+        return date.today() - timedelta(days=JOURS_RETARD_IMPAYE)
+    return le_15(annee, mois)
 
 
 def fid(cle: str) -> str:
@@ -60,7 +87,7 @@ for cle, campagne_id, total, paye, statut in SOLDES:
             "montant_paye": paye_d,
             "solde_restant": total_d - paye_d,
             "statut": statut,
-            "date_limite_paiement": le_15(A0, M0),
+            "date_limite_paiement": date_limite(statut, A0, M0),
         },
     )
 

@@ -26,18 +26,62 @@ Mot de passe commun : **`Demo1234!`** — connexion par `username` (`identifier`
 | `demo_superviseur` | SUPERVISEUR |
 | `demo_agent` | AGENT |
 
+## Abonnés
+
+6 abonnés (`scripts/seed/abonne.py`), statuts variés :
+
+| numéro | nom | statut | zone |
+|---|---|---|---|
+| `AB-9001` | Mballa Jean | ACTIF | Nkolbisson, camp 12 — rattaché à la campagne Delta (relevé A_RELEVER) |
+| `AB-9002` | Etoundi Marie | ACTIF | Nkolbisson, camp 12 — rattaché à la campagne Delta (relevé A_RELEVER) |
+| `AB-9003` | Ngono Paul | ACTIF | Mvog-Ada, camp 4 — réservé à la recherche e2e (voir plus bas) |
+| `AB-9004` | Fouda Alice | SUSPENDU | Mvog-Ada, camp 4 |
+| `AB-9005` | Biya Eric | RESILIE | Essos, camp 7 (compteur désactivé) |
+| `AB-9006` | Nkolo Sarah | ACTIF | Essos, camp 7 |
+
+Numérotation en plage réservée (`AB-90xx`/`900xx`) : ne collisionne jamais
+avec la suite naturelle (`AB-0001…`) que l'API attribue aux créations
+normales sur un environnement déjà peuplé.
+
 ## Données (mois relatifs à la date d'exécution ; M0 = mois courant)
 
-3 campagnes :
+4 campagnes :
 
-| campagne | mois | created_by |
-|---|---|---|
-| Démo Alpha | M-2 | superviseur |
-| Démo Beta | M-1 | superviseur |
-| Démo Gamma | M0 | admin |
+| campagne | statut | mois | created_by |
+|---|---|---|---|
+| Démo Alpha | CLOTUREE | M-2 | superviseur |
+| Démo Beta | CLOTUREE | M-1 | superviseur |
+| Démo Gamma | CLOTUREE | M0 | admin |
+| Démo Delta (en cours — terrain) | EN_COURS | M0 | superviseur, `demo_agent` affecté |
+
+Delta porte 2 relevés `A_RELEVER` (abonnés `AB-9001`/`AB-9002`) — nécessaire à
+`terrain-saisie-index.spec.ts` (frontend), qui a besoin d'une campagne
+EN_COURS avec au moins un abonné « à relever » dans la tournée de l'AGENT
+connecté. Elle n'a ni facture ni paiement : sans effet sur les valeurs
+`statsParMois` ci-dessous (calculées uniquement à partir de Facture/Paiement
+par campagne, jamais du nombre de campagnes).
 
 5 factures backdatées + 4 paiements, dont **pay-1 dissocié** (encaissé en M0 pour
 une facture générée en M-2) et **pay-4 annulé** (doit être exclu de l'encaissé).
+Les soldes IMPAYES (`fact-a2`, `fact-c2`) reçoivent une `date_limite_paiement`
+toujours dans le passé (`date.today() - 10 jours`, voir `scripts/seed/paiement.py`) —
+et non plus le 15 du mois courant, qui rendait `/impayes` vide avant le 16 de
+chaque mois (bug corrigé, voir le commentaire de `date_limite()` dans ce
+script).
+
+## Variables e2e recommandées (`E2E_LIVE_BACKEND=1`, dépôt frontend)
+
+Valeurs à poser une fois ce seed exécuté (voir `SGFE-frontend/e2e/README.md`) :
+
+```bash
+E2E_AGENT_USER=demo_agent
+E2E_AGENT_PASSWORD='Demo1234!'
+E2E_ADMIN_USER=demo_admin
+E2E_ADMIN_PASSWORD='Demo1234!'
+E2E_COMPTABLE_USER=demo_comptable
+E2E_COMPTABLE_PASSWORD='Demo1234!'
+E2E_ABONNE_RECHERCHE=AB-9003
+```
 
 ## Valeurs attendues de `statsParMois(nbMois: 3)` — sur base vide
 
