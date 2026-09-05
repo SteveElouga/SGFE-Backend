@@ -14,6 +14,35 @@ name: Publier et signer une image multi-architecture
 # amd64 reste publié : les développeurs travaillent sur Mac Intel et sur des
 # postes x86, et les tests de fumée de `cd-prod.yml` tournent sur un runner amd64.
 # Ne publier que de l'arm64 casserait les deux.
+#
+# ── Provenance SLSA isolée du build (item #12 du plan de remédiation) ─────────
+#
+# Jusqu'ici, `docker/build-push-action` auto-attestait sa propre provenance
+# (`provenance: true`) et `cosign` la signait, dans CE MÊME job, avec le même
+# jeton OIDC accessible pendant tout le job — y compris pendant les étapes de
+# build elles-mêmes. SLSA Build L3 refuse précisément ce schéma : une
+# provenance qu'un job peut se délivrer à lui-même ne prouve rien qu'une étape
+# de build compromise n'aurait pu falsifier.
+#
+# Le job `provenance` ci-dessous appelle le générateur officiel
+# `slsa-framework/slsa-github-generator` (générateur "container", stable
+# depuis sa v1.4.0) : un job séparé, un jeton OIDC séparé, dont TOUTES les
+# étapes sont définies par ce projet tiers — rien de ce que ce dépôt écrit
+# dans ses propres étapes de build ne peut l'influencer. Il reçoit uniquement
+# le digest d'une image DÉJÀ poussée par le job `publish`, jamais le contexte
+# de build ni le code source.
+#
+# ⚠️ `slsa-github-generator` n'est plus activement maintenu depuis 2025 (dernière
+# version : v2.1.0, février 2025) ; le projet lui-même recommande désormais les
+# « GitHub artifact attestations » natives pour les nouveaux projets. Mais ces
+# dernières s'exécutent comme une étape ordinaire DANS le job appelant — donc
+# avec le même défaut d'isolation que le `provenance: true` retiré ici — et ne
+# répondent donc pas, à ma connaissance à la date de cette migration, à
+# l'exigence d'isolation propre à L3. `slsa-github-generator` reste la seule
+# option identifiée qui isole réellement la génération dans un job distinct ;
+# ses provenances déjà émises restent valides et le générateur continue de
+# fonctionner (« stable », pas retiré). À réévaluer si un successeur isolé
+# apparaît.
 
 on:
   workflow_call:
@@ -38,13 +67,26 @@ jobs:
       packages: write
       # Signature cosign sans clé : le jeton OIDC du job EST l'identité signée.
       id-token: write
+    # Consommés par le job `provenance` ci-dessous : le nom d'image (sans tag
+    # ni digest) et le digest de la liste de manifestes tout juste poussée.
+    # C'est tout ce que le générateur externe reçoit de ce job — jamais le
+    # contexte de build.
+    outputs:
+      image: ${{ steps.repo.outputs.image }}
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Mettre le nom du dépôt en minuscules
         # GHCR refuse les majuscules dans un nom d'image, et `GITHUB_REPOSITORY`
-        # en contient.
-        run: echo "REPO_LC=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+        # en contient. `image` est aussi émis en sortie de job (`outputs.image`
+        # ci-dessus) pour le job `provenance`, qui a besoin du nom complet de
+        # l'image SANS tag ni digest (exigence du générateur).
+        id: repo
+        run: |
+          repo_lc="${GITHUB_REPOSITORY,,}"
+          echo "REPO_LC=$repo_lc" >> "$GITHUB_ENV"
+          echo "image=ghcr.io/$repo_lc/${{ inputs.service }}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
@@ -74,7 +116,11 @@ jobs:
           cache-from: type=gha,scope=${{ inputs.service }}-multi
           cache-to: type=gha,mode=max,scope=${{ inputs.service }}-multi
           sbom: true
-          provenance: true
+          # Provenance retirée d'ici : elle serait auto-attestée par ce job
+          # même, exactement ce que SLSA Build L3 refuse. Le job `provenance`
+          # ci-dessous, isolé, la génère à partir du digest publié ligne
+          # au-dessus (`steps.build.outputs.digest`) une fois ce job terminé.
+          provenance: false
 
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
@@ -89,3 +135,58 @@ jobs:
         # C'est le genre de trou qui ne se voit pas : la vérification passe, et
         # ne prouve rien de ce qui tourne.
         run: cosign sign --recursive --yes "ghcr.io/${REPO_LC}/${{ inputs.service }}@${{ steps.build.outputs.digest }}"
+
+  # ── Provenance SLSA — job séparé, hors de portée du build (SLSA Build L3) ──
+  #
+  # Voir le commentaire en tête de fichier. Ce job n'a AUCUNE étape définie
+  # par ce dépôt : `uses:` délègue entièrement l'exécution au générateur
+  # officiel, dans SON dépôt, à SA version épinglée. Il ne fait ni checkout,
+  # ni build — il reçoit uniquement `image`/`digest` en entrée et pousse
+  # lui-même l'attestation vers GHCR avec ses propres identifiants.
+  provenance:
+    name: Générer la provenance SLSA (générateur officiel, job isolé)
+    needs: publish
+    # Permissions du job qui APPELLE le générateur — documentées par le
+    # générateur lui-même (internal/builders/container/README.md) :
+    #   - actions: read   → détection de l'environnement GitHub Actions
+    #   - id-token: write → jeton OIDC pour la signature keyless (Fulcio)
+    #   - packages: write → envoi de l'attestation vers GHCR
+    # Aucune permission n'est élevée au niveau du workflow entier : ce bloc
+    # ne s'applique qu'à ce job, comme partout ailleurs dans ce dépôt. En
+    # contrepartie, les jobs `publish-*` de `ci.yml` qui appellent CE fichier
+    # doivent désormais accorder `actions: read` en plus de l'existant — un
+    # job appelé ne peut jamais recevoir plus que ce que son appelant détient.
+    permissions:
+      actions: read
+      id-token: write
+      packages: write
+    # ⚠️ Doit être un tag complet `vX.Y.Z` — le générateur échoue avec un tag
+    # court (`@v2`) ou un SHA, contrainte documentée explicitement par le
+    # projet (internal/builders/container/README.md). Dérogation délibérée à
+    # la convention d'épinglage au SHA de ce dépôt : imposée par la conception
+    # du générateur (framework BYOB), pas un oubli.
+    #
+    # Si cette version change, mettre AUSSI à jour le motif
+    # `--certificate-identity-regexp` dans `cd-prod.yml` (job
+    # `verifier-signatures`) : l'identité OIDC signée porte ce numéro de
+    # version, pas seulement le nom du fichier.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
+    with:
+      image: ${{ needs.publish.outputs.image }}
+      digest: ${{ needs.publish.outputs.digest }}
+      registry-username: ${{ github.actor }}
+      # Ce dépôt est privé (voir le commentaire sur les runners arm64
+      # ci-dessus). Par défaut, le générateur refuse de tourner sur un dépôt
+      # privé — la publication d'une entrée dans le journal de transparence
+      # PUBLIC Rekor (rekor.sigstore.dev) révélerait le nom du dépôt, et il
+      # préfère échouer plutôt que de le faire silencieusement. `cosign sign`
+      # ci-dessus le fait déjà (signature keyless via l'instance publique
+      # Sigstore, voir le commentaire de `ci.yml` sur les jobs `publish-*`) :
+      # ce dépôt a donc déjà accepté cette fuite du nom de dépôt pour la
+      # signature d'image. Ce drapeau aligne la provenance sur le même choix
+      # déjà fait, plutôt que d'en faire un nouveau sans le dire.
+      private-repository: true
+    secrets:
+      # Le jeton du job, pas un secret dédié — mêmes identifiants que
+      # `docker/login-action` ci-dessus (`packages: write` suffit pour GHCR).
+      registry-password: ${{ secrets.GITHUB_TOKEN }}
