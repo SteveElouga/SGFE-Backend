@@ -61,6 +61,17 @@ class User(AbstractBaseUser, PermissionsMixin):
     phone_number = models.CharField(max_length=20, unique=True)
     role = models.CharField(max_length=20, choices=Role.choices)
     is_active = models.BooleanField(default=True)
+
+    # RGPD — instant de désactivation du compte (posé par
+    # UserAdminService.deactivate_user, effacé par reactivate_user). Point de
+    # départ de la purge automatique après 3 ans (comptes/schedulers.py) —
+    # durée de rétention validée explicitement par le porteur du projet. Nul
+    # pour un compte jamais désactivé, y compris un compte créé mais encore
+    # en attente de sa toute première activation (is_active=False dès la
+    # création : ce n'est pas une "désactivation" au sens RGPD du terme, la
+    # minuterie de purge ne doit donc pas s'appliquer à lui).
+    date_desactivation = models.DateTimeField(null=True, blank=True)
+
     failed_attempts = models.IntegerField(default=0)
     locked_until = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -92,6 +103,17 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self) -> str:
         return self.username
+
+
+# RGPD — préfixes explicites d'un compte anonymisé (voir
+# comptes/services.py::UserAdminService.anonymiser_utilisateur). Vivent ici
+# (pas dans services.py) pour rester importables par repositories.py sans
+# dépendance circulaire (repositories.py -> services.py existe déjà dans
+# l'autre sens). `username`/`phone_number` sont uniques en base : chaque
+# valeur anonymisée intègre l'identifiant de l'utilisateur pour rester
+# distincte d'un compte à l'autre (voir anonymiser_utilisateur pour le détail).
+PREFIXE_USERNAME_ANONYMISE = "utilisateur-anonymise-"
+PREFIXE_TELEPHONE_ANONYMISE = "+000"
 
 
 class RevokedToken(models.Model):
@@ -181,3 +203,52 @@ class PhoneOtpToken(models.Model):
         if self.attempts >= max_attempts:
             self.used_at = timezone.now()
         self.save(update_fields=["attempts", "used_at"])
+
+
+class AuditLog(models.Model):
+    """Journal d'audit append-only des mutations du Auth Service.
+
+    Voir AUDIT_SGFE.md §10.7 (« Conception — propagation d'identité → journal
+    d'audit immuable »). Une ligne par mutation métier, écrite par
+    `comptes.audit.enregistrer_audit` DANS LA MÊME transaction Django que le
+    changement qu'elle documente — jamais un appel réseau séparé après coup.
+
+    Immuabilité :
+    - applicative : aucun code de ce dépôt ne fait d'UPDATE ni de DELETE sur
+      ce modèle (`enregistrer_audit` ne fait qu'un `create`) ;
+    - défense en profondeur, niveau base : la migration
+      `0007_audit_log_immutable` révoque UPDATE/DELETE sur cette table pour
+      le rôle applicatif Postgres.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Verbe métier de la mutation (ex. "UTILISATEUR_CREE", "UTILISATEUR_DESACTIVE").
+    action = models.CharField(max_length=100)
+    # Type de l'objet métier concerné (ex. "User").
+    objet_type = models.CharField(max_length=100)
+    # Identifiant de l'objet métier concerné (UUID le plus souvent, en texte).
+    objet_id = models.CharField(max_length=100)
+    # Identité de l'appelant (voir `get_caller()`, grpc_interceptors.py) — vide
+    # si aucune identité n'a été propagée par la gateway (l'audit ne doit
+    # jamais faire échouer la mutation qu'il documente).
+    acteur_id = models.CharField(max_length=100, blank=True, default="")
+    acteur_nom = models.CharField(max_length=150, blank=True, default="")
+    acteur_role = models.CharField(max_length=50, blank=True, default="")
+    horodatage = models.DateTimeField(auto_now_add=True)
+    # Détail libre, lisible par un humain (rôle, contact...) — pas de
+    # structure imposée : ce journal sert la preuve « qui a fait quoi
+    # quand », pas une reconstruction programmatique de l'état.
+    detail = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "audit_log"
+        indexes = [
+            models.Index(fields=["objet_type", "objet_id"]),
+            models.Index(fields=["horodatage"]),
+        ]
+        ordering = ["-horodatage"]
+
+    def __str__(self) -> str:
+        return (
+            f"[{self.horodatage}] {self.action} {self.objet_type}={self.objet_id} par {self.acteur_nom or '(inconnu)'}"
+        )

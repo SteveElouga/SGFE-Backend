@@ -8,8 +8,22 @@ from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken as RefreshTokenJWT
 
 from comptes.email_client import EmailDeliveryError
-from comptes.models import PasswordSetupToken, PhoneOtpToken, Role, User
-from comptes.services import AuthenticationError, AuthService, PasswordSetupService, PhoneOtpService, UserAdminService
+from comptes.models import (
+    PREFIXE_TELEPHONE_ANONYMISE,
+    PREFIXE_USERNAME_ANONYMISE,
+    PasswordSetupToken,
+    PhoneOtpToken,
+    Role,
+    User,
+)
+from comptes.services import (
+    DUREE_RETENTION_UTILISATEUR_DESACTIVE,
+    AuthenticationError,
+    AuthService,
+    PasswordSetupService,
+    PhoneOtpService,
+    UserAdminService,
+)
 from comptes.throttle import ThrottleError
 
 
@@ -313,11 +327,30 @@ class UserAdminServiceTests(TestCase):
         deactivated = self.user_admin.deactivate_user(str(created.id))
         self.assertFalse(deactivated.is_active)
 
+    def test_deactivate_user_sets_date_desactivation(self) -> None:
+        """RGPD — point de départ de la purge automatique après 3 ans (voir
+        purger_utilisateurs_desactives)."""
+        created = self.user_admin.create_user(username="agent7f", phone_number="+237690000040", role=Role.AGENT)
+        self.assertIsNone(created.date_desactivation)
+        before = timezone.now()
+        deactivated = self.user_admin.deactivate_user(str(created.id))
+        self.assertIsNotNone(deactivated.date_desactivation)
+        assert deactivated.date_desactivation is not None
+        self.assertGreaterEqual(deactivated.date_desactivation, before)
+
     def test_reactivate_user(self) -> None:
         created = self.user_admin.create_user(username="agent7d", phone_number="+237690000027", role=Role.AGENT)
         self.user_admin.deactivate_user(str(created.id))
         reactivated = self.user_admin.reactivate_user(str(created.id))
         self.assertTrue(reactivated.is_active)
+
+    def test_reactivate_user_clears_date_desactivation(self) -> None:
+        """La minuterie de purge RGPD n'a plus lieu d'être une fois le compte
+        réactivé — une désactivation future en posera une nouvelle."""
+        created = self.user_admin.create_user(username="agent7g", phone_number="+237690000041", role=Role.AGENT)
+        self.user_admin.deactivate_user(str(created.id))
+        reactivated = self.user_admin.reactivate_user(str(created.id))
+        self.assertIsNone(reactivated.date_desactivation)
 
     def test_deactivate_own_account_raises(self) -> None:
         admin = User.objects.create_user(
@@ -410,6 +443,224 @@ class UserAdminServiceTests(TestCase):
         usernames = {u.username for u in self.user_admin.list_users()}
         self.assertIn("agent8", usernames)
         self.assertIn("agent9", usernames)
+
+
+class AnonymiserUtilisateurTests(TestCase):
+    """RGPD — droit à l'effacement (UserAdminService.anonymiser_utilisateur).
+
+    Même esprit que abonnes/tests/test_services.py::AbonneServiceTests (PR
+    #179) : refuse sur un compte encore actif, anonymise l'identité
+    nominative sur un compte désactivé, jamais les autres tables.
+    """
+
+    def setUp(self) -> None:
+        self.user_admin = UserAdminService()
+        # E-mail/WhatsApp mockés — la création déclenche un envoi (hors sujet ici).
+        self.send_patcher = patch("comptes.services.email_client.send")
+        self.mock_send = self.send_patcher.start()
+        self.addCleanup(self.send_patcher.stop)
+        self.whatsapp_patcher = patch("comptes.services.whatsapp_client.send")
+        self.mock_whatsapp = self.whatsapp_patcher.start()
+        self.addCleanup(self.whatsapp_patcher.stop)
+
+    def test_anonymiser_refuse_si_compte_actif(self) -> None:
+        actif = User.objects.create_user(
+            username="actif1",
+            email="actif1@example.com",
+            password="S3cr3t!",
+            role=Role.AGENT,
+            phone_number="+237690000070",
+        )
+        with self.assertRaisesMessage(ValueError, "désactivé"):
+            self.user_admin.anonymiser_utilisateur(str(actif.id))
+        actif.refresh_from_db()
+        self.assertEqual(actif.username, "actif1")
+
+    def test_anonymiser_reussit_si_compte_desactive(self) -> None:
+        created = self.user_admin.create_user(username="agent_rgpd1", phone_number="+237690000071", role=Role.AGENT)
+        self.user_admin.deactivate_user(str(created.id))
+
+        anonymise = self.user_admin.anonymiser_utilisateur(str(created.id))
+
+        self.assertTrue(anonymise.username.startswith(PREFIXE_USERNAME_ANONYMISE))
+        self.assertIsNone(anonymise.email)
+        self.assertTrue(anonymise.phone_number.startswith(PREFIXE_TELEPHONE_ANONYMISE))
+        # user_id, rôle et statut ne sont PAS touchés par l'anonymisation.
+        self.assertEqual(anonymise.id, created.id)
+        self.assertEqual(anonymise.role, Role.AGENT)
+        self.assertFalse(anonymise.is_active)
+
+    def test_anonymiser_utilisateur_inconnu_leve_une_exception(self) -> None:
+        from django.core.exceptions import ObjectDoesNotExist
+
+        with self.assertRaises(ObjectDoesNotExist):
+            self.user_admin.anonymiser_utilisateur("00000000-0000-0000-0000-000000000000")
+
+    def test_anonymiser_est_idempotent(self) -> None:
+        created = self.user_admin.create_user(username="agent_rgpd2", phone_number="+237690000072", role=Role.AGENT)
+        self.user_admin.deactivate_user(str(created.id))
+
+        premiere = self.user_admin.anonymiser_utilisateur(str(created.id))
+        seconde = self.user_admin.anonymiser_utilisateur(str(created.id))
+
+        self.assertEqual(premiere.username, seconde.username)
+        self.assertEqual(premiere.phone_number, seconde.phone_number)
+
+    def test_anonymiser_deux_utilisateurs_ne_collisionne_pas(self) -> None:
+        """`username`/`phone_number` sont uniques en base — l'anonymisation de
+        deux comptes distincts ne doit jamais lever d'IntegrityError."""
+        u1 = self.user_admin.create_user(username="agent_rgpd3", phone_number="+237690000073", role=Role.AGENT)
+        u2 = self.user_admin.create_user(username="agent_rgpd4", phone_number="+237690000074", role=Role.AGENT)
+        self.user_admin.deactivate_user(str(u1.id))
+        self.user_admin.deactivate_user(str(u2.id))
+
+        a1 = self.user_admin.anonymiser_utilisateur(str(u1.id))
+        a2 = self.user_admin.anonymiser_utilisateur(str(u2.id))
+
+        self.assertNotEqual(a1.username, a2.username)
+        self.assertNotEqual(a1.phone_number, a2.phone_number)
+
+    def test_anonymiser_ne_touche_pas_les_autres_tables(self) -> None:
+        """L'anonymisation ne modifie que la ligne User elle-même — jamais les
+        autres tables qui la référencent (même principe que « jamais les
+        factures/paiements » côté Abonné Service : ici, jamais l'AuditLog du
+        chantier séparé feat/piste-audit-auth, ni les jetons existants)."""
+        created = self.user_admin.create_user(username="agent_rgpd5", phone_number="+237690000075", role=Role.AGENT)
+        otp_token = PhoneOtpToken.objects.filter(user=created).first()
+        self.assertIsNotNone(otp_token)
+        assert otp_token is not None
+        otp_hash_avant = otp_token.otp_hash
+
+        self.user_admin.deactivate_user(str(created.id))
+        self.user_admin.anonymiser_utilisateur(str(created.id))
+
+        otp_token.refresh_from_db()
+        self.assertEqual(otp_token.otp_hash, otp_hash_avant)
+        self.assertEqual(otp_token.user_id, created.id)
+
+
+class PurgerUtilisateursDesactivesTests(TestCase):
+    """RGPD — job de purge automatique (UserAdminService.purger_utilisateurs_desactives).
+
+    Durée de rétention validée par le porteur du projet : 3 ans après
+    `date_desactivation` (DUREE_RETENTION_UTILISATEUR_DESACTIVE).
+    """
+
+    def setUp(self) -> None:
+        self.user_admin = UserAdminService()
+        self.send_patcher = patch("comptes.services.email_client.send")
+        self.addCleanup(self.send_patcher.stop)
+        self.send_patcher.start()
+        self.whatsapp_patcher = patch("comptes.services.whatsapp_client.send")
+        self.addCleanup(self.whatsapp_patcher.stop)
+        self.whatsapp_patcher.start()
+
+    def _creer_utilisateur_desactive_depuis(self, jours: int, username: str, phone_suffix: str) -> User:
+        """Crée un agent désactivé, avec sa `date_desactivation` rétro-datée
+        de `jours` jours (contourne `deactivate_user`, qui pose toujours
+        `timezone.now()`, pour simuler une désactivation ancienne)."""
+        user = self.user_admin.create_user(
+            username=username, phone_number=f"+2376900001{phone_suffix}", role=Role.AGENT
+        )
+        self.user_admin.deactivate_user(str(user.id))
+        user.date_desactivation = timezone.now() - timedelta(days=jours)
+        user.save(update_fields=["date_desactivation"])
+        return user
+
+    def test_purge_anonymise_les_comptes_desactives_depuis_plus_de_3_ans(self) -> None:
+        ancien = self._creer_utilisateur_desactive_depuis(jours=3 * 365 + 1, username="purge_ancien", phone_suffix="80")
+
+        nb_ok, nb_echecs = self.user_admin.purger_utilisateurs_desactives()
+
+        self.assertEqual((nb_ok, nb_echecs), (1, 0))
+        ancien.refresh_from_db()
+        self.assertTrue(ancien.username.startswith(PREFIXE_USERNAME_ANONYMISE))
+
+    def test_purge_ignore_les_comptes_desactives_depuis_moins_de_3_ans(self) -> None:
+        recent = self._creer_utilisateur_desactive_depuis(
+            jours=3 * 365 - 30, username="purge_recent", phone_suffix="81"
+        )
+
+        nb_ok, nb_echecs = self.user_admin.purger_utilisateurs_desactives()
+
+        self.assertEqual((nb_ok, nb_echecs), (0, 0))
+        recent.refresh_from_db()
+        self.assertEqual(recent.username, "purge_recent")
+
+    def test_purge_ignore_les_comptes_encore_actifs(self) -> None:
+        actif = User.objects.create_user(
+            username="purge_actif",
+            email="purge_actif@example.com",
+            password="S3cr3t!",
+            role=Role.AGENT,
+            phone_number="+237690000182",
+        )
+        nb_ok, nb_echecs = self.user_admin.purger_utilisateurs_desactives()
+
+        self.assertEqual((nb_ok, nb_echecs), (0, 0))
+        actif.refresh_from_db()
+        self.assertEqual(actif.username, "purge_actif")
+
+    def test_purge_ignore_les_comptes_jamais_desactives_explicitement(self) -> None:
+        """Un compte créé mais jamais activé (`is_active=False` dès la
+        création, `date_desactivation` nul) n'est pas une « désactivation »
+        au sens RGPD — la minuterie ne s'applique pas à lui."""
+        jamais_active = self.user_admin.create_user(
+            username="purge_jamais_active", phone_number="+237690000183", role=Role.AGENT
+        )
+        self.assertIsNone(jamais_active.date_desactivation)
+
+        nb_ok, nb_echecs = self.user_admin.purger_utilisateurs_desactives()
+
+        self.assertEqual((nb_ok, nb_echecs), (0, 0))
+        jamais_active.refresh_from_db()
+        self.assertEqual(jamais_active.username, "purge_jamais_active")
+
+    def test_purge_est_idempotente(self) -> None:
+        self._creer_utilisateur_desactive_depuis(jours=3 * 365 + 10, username="purge_idem", phone_suffix="84")
+
+        premier_passage = self.user_admin.purger_utilisateurs_desactives()
+        second_passage = self.user_admin.purger_utilisateurs_desactives()
+
+        self.assertEqual(premier_passage, (1, 0))
+        # Déjà anonymisé : le filtre de sélection l'exclut du second passage
+        # (voir UserRepository.list_desactives_avant).
+        self.assertEqual(second_passage, (0, 0))
+
+    def test_purge_respecte_la_duree_de_retention_configuree(self) -> None:
+        """Utilise une durée de rétention personnalisée plutôt que la valeur
+        par défaut (3 ans) — vérifie que le paramètre est bien pris en compte."""
+        utilisateur = self._creer_utilisateur_desactive_depuis(jours=10, username="purge_custom", phone_suffix="85")
+
+        nb_ok, nb_echecs = self.user_admin.purger_utilisateurs_desactives(retention=timedelta(days=5))
+
+        self.assertEqual((nb_ok, nb_echecs), (1, 0))
+        utilisateur.refresh_from_db()
+        self.assertTrue(utilisateur.username.startswith(PREFIXE_USERNAME_ANONYMISE))
+
+    def test_purge_utilise_3_ans_par_defaut(self) -> None:
+        self.assertEqual(DUREE_RETENTION_UTILISATEUR_DESACTIVE, timedelta(days=3 * 365))
+
+    def test_purge_best_effort_un_echec_ne_bloque_pas_les_autres(self) -> None:
+        """Un échec d'anonymisation sur UN utilisateur ne doit jamais empêcher
+        le traitement des autres candidats du même passage."""
+        ok_user = self._creer_utilisateur_desactive_depuis(jours=4 * 365, username="purge_ok", phone_suffix="86")
+        echec_user = self._creer_utilisateur_desactive_depuis(jours=4 * 365, username="purge_echec", phone_suffix="87")
+        original = UserAdminService.anonymiser_utilisateur
+
+        def side_effect(user_id: str) -> User:
+            if user_id == str(echec_user.id):
+                raise RuntimeError("panne simulée")
+            return original(self.user_admin, user_id)
+
+        with patch.object(UserAdminService, "anonymiser_utilisateur", side_effect=side_effect):
+            nb_ok, nb_echecs = self.user_admin.purger_utilisateurs_desactives()
+
+        self.assertEqual((nb_ok, nb_echecs), (1, 1))
+        ok_user.refresh_from_db()
+        echec_user.refresh_from_db()
+        self.assertTrue(ok_user.username.startswith(PREFIXE_USERNAME_ANONYMISE))
+        self.assertEqual(echec_user.username, "purge_echec")
 
 
 class PasswordSetupServiceTests(TestCase):

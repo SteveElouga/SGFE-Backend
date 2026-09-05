@@ -1,0 +1,46 @@
+"""Écriture du journal d'audit (`AuditLog`) — voir AUDIT_SGFE.md §10.7.
+
+Ce module ne fait qu'écrire ; jamais de lecture, de mise à jour ni de
+suppression (immuabilité applicative — renforcée niveau base par la migration
+`0007_audit_log_immutable`, qui révoque UPDATE/DELETE sur `audit_log` pour le
+rôle applicatif Postgres).
+"""
+
+from __future__ import annotations
+
+from .models import AuditLog
+
+
+def enregistrer_audit(action: str, objet_type: str, objet_id: str, detail: str = "") -> None:
+    """Écrit une entrée d'audit pour la mutation métier en cours.
+
+    À appeler DANS LA MÊME transaction Django (`transaction.atomic()`) que le
+    changement métier qu'elle documente — jamais un appel séparé après coup :
+    c'est cette même transaction ambiante qui garantit que l'écriture d'audit
+    et le changement métier commitent, ou échouent, ensemble.
+
+    L'acteur est lu depuis `get_caller()` (identité propagée par la gateway
+    via les métadonnées gRPC posées par `IdentityClientInterceptor`, voir
+    `grpc_interceptors.py`) — une identité vide (appel sans identité propagée,
+    ex. tâche de fond) journalise un acteur vide plutôt que de lever : l'audit
+    ne doit jamais faire échouer la mutation qu'il documente.
+
+    Import différé de `get_caller` : contrairement à Paiement/Facturation,
+    `comptes.grpc_interceptors` importe `comptes.services` (pour le mapping
+    des exceptions métier vers les codes gRPC, `ErrorHandlingInterceptor`) —
+    or `comptes.services` importe ce module. Un import en tête de fichier
+    créerait un cycle (services -> audit -> grpc_interceptors -> services) ;
+    différé, il est résolu au premier appel, une fois tous les modules chargés.
+    """
+    from .grpc_interceptors import get_caller
+
+    caller = get_caller()
+    AuditLog.objects.create(
+        action=action,
+        objet_type=objet_type,
+        objet_id=objet_id,
+        acteur_id=caller.user_id,
+        acteur_nom=caller.username,
+        acteur_role=caller.role,
+        detail=detail,
+    )

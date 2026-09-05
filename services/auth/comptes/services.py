@@ -1,14 +1,18 @@
+import logging
 from datetime import datetime, timedelta
+from uuid import UUID
 
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.exceptions import ObjectDoesNotExist
+from django.db import transaction
 from django.utils import timezone
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken, Token
 
+from comptes.audit import enregistrer_audit
 from comptes.email_client import email_client
-from comptes.models import User, _generate_otp
+from comptes.models import PREFIXE_TELEPHONE_ANONYMISE, PREFIXE_USERNAME_ANONYMISE, User, _generate_otp
 from comptes.repositories import (
     PasswordSetupTokenRepository,
     PhoneOtpTokenRepository,
@@ -19,8 +23,17 @@ from comptes.throttle import verifier_throttle
 from comptes.validators import validate_phone_cameroon
 from comptes.whatsapp_client import whatsapp_client
 
+logger = logging.getLogger(__name__)
 
 _MSG_INVALID_CREDENTIALS = "Identifiants invalides"
+
+# RGPD — durée de rétention après désactivation d'un compte utilisateur
+# interne, avant purge automatique (anonymisation) par
+# UserAdminService.purger_utilisateurs_desactives. Validée EXPLICITEMENT par
+# le porteur du projet (voir corps de la PR d'introduction de cette
+# constante) : 3 ans après `date_desactivation`, pas après la création du
+# compte ni sa dernière connexion.
+DUREE_RETENTION_UTILISATEUR_DESACTIVE = timedelta(days=3 * 365)
 
 # Hash factice servant à égaliser le temps de réponse du login quand
 # l'identifiant est inconnu : on exécute quand même un check_password (coût
@@ -202,16 +215,31 @@ class UserAdminService:
 
         ADMIN : activation par e-mail (lien de définition du mot de passe).
         Autres rôles : activation par OTP WhatsApp.
+
+        La création et l'écriture d'audit commitent ensemble
+        (`transaction.atomic()`) ; l'envoi de l'e-mail/OTP a lieu après coup,
+        hors transaction — un échec d'envoi ne doit pas faire disparaître le
+        compte déjà créé (rejouable via `resend_credentials`).
         """
         phone = validate_phone_cameroon(phone_number)
+        if role == "ADMIN" and not email:
+            raise ValueError("L'e-mail est obligatoire pour le rôle ADMIN")
+
+        with transaction.atomic():
+            if role == "ADMIN":
+                user = self.users.create(username=username, email=email, phone_number=phone, role=role)
+            else:
+                user = self.users.create(username=username, phone_number=phone, role=role)
+            enregistrer_audit(
+                action="UTILISATEUR_CREE",
+                objet_type="User",
+                objet_id=str(user.id),
+                detail=f"username={username!r} — role={role}",
+            )
 
         if role == "ADMIN":
-            if not email:
-                raise ValueError("L'e-mail est obligatoire pour le rôle ADMIN")
-            user = self.users.create(username=username, email=email, phone_number=phone, role=role)
             self.password_setup.send_activation_email(user)
         else:
-            user = self.users.create(username=username, phone_number=phone, role=role)
             self.phone_otp.send_otp(user)
 
         return user
@@ -229,13 +257,26 @@ class UserAdminService:
         user = self.users.get_by_id(user_id)
         old_phone = user.phone_number
         old_email = user.email
+        old_role = user.role
         if email:
             user.email = email
         if role:
             user.role = role
         if phone_number:
             user.phone_number = validate_phone_cameroon(phone_number)
-        saved_user = self.users.save(user)
+
+        with transaction.atomic():
+            saved_user = self.users.save(user)
+            enregistrer_audit(
+                action="UTILISATEUR_MODIFIE",
+                objet_type="User",
+                objet_id=str(saved_user.id),
+                detail=(
+                    f"role={old_role}->{saved_user.role} — "
+                    f"email={old_email or ''}->{saved_user.email or ''} — "
+                    f"telephone={old_phone}->{saved_user.phone_number}"
+                ),
+            )
 
         phone_changed = phone_number and saved_user.phone_number != old_phone
         email_changed = email and saved_user.email != old_email
@@ -260,13 +301,104 @@ class UserAdminService:
         if user.role == "ADMIN" and user.is_active and self.users.count_active_admins(exclude_id=user.id) == 0:
             raise ValueError("Impossible de désactiver le dernier administrateur actif")
 
-        user.is_active = False
-        return self.users.save(user)
+        with transaction.atomic():
+            user.is_active = False
+            # RGPD — point de départ de la purge automatique après 3 ans (voir
+            # purger_utilisateurs_desactives). Posé même si le compte était déjà
+            # inactif (rien à ce niveau n'empêche cet appel, il reste
+            # idempotent — la date est simplement rafraîchie).
+            user.date_desactivation = timezone.now()
+            saved_user = self.users.save(user)
+            enregistrer_audit(
+                action="UTILISATEUR_DESACTIVE",
+                objet_type="User",
+                objet_id=str(saved_user.id),
+                detail=f"username={saved_user.username!r} — role={saved_user.role}",
+            )
+        return saved_user
 
     def reactivate_user(self, user_id: str) -> User:
+        """Réactive un compte désactivé.
+
+        Écriture d'audit dans la même transaction que le changement de statut
+        — symétrique de `deactivate_user`.
+        """
         user = self.users.get_by_id(user_id)
-        user.is_active = True
+        with transaction.atomic():
+            user.is_active = True
+            # Le compte redevient actif : la minuterie de purge RGPD n'a plus lieu
+            # d'être, une désactivation future en posera une nouvelle le moment venu.
+            user.date_desactivation = None
+            saved_user = self.users.save(user)
+            enregistrer_audit(
+                action="UTILISATEUR_REACTIVE",
+                objet_type="User",
+                objet_id=str(saved_user.id),
+                detail=f"username={saved_user.username!r} — role={saved_user.role}",
+            )
+        return saved_user
+
+    def _telephone_anonymise(self, user_id: UUID) -> str:
+        """Numéro placeholder unique par utilisateur, RGPD — dans la limite des
+        20 caractères du champ `phone_number` (contrainte du modèle), trop
+        court pour un UUID complet (36 caractères). 16 caractères hexadécimaux
+        (64 bits d'entropie dérivés de `user_id`, déjà unique) rendent une
+        collision entre deux utilisateurs anonymisés négligeable à l'échelle
+        de ce système (quelques centaines de comptes, jamais des milliards)."""
+        return f"{PREFIXE_TELEPHONE_ANONYMISE}{user_id.hex[:16]}"
+
+    def anonymiser_utilisateur(self, user_id: str) -> User:
+        """RGPD — droit à l'effacement, restreint aux comptes désactivés.
+
+        N'anonymise QUE l'identité nominative (username, e-mail, téléphone) :
+        `user_id` et `role` sont préservés, ainsi que tout ce que ce service ne
+        possède pas ou ne doit jamais toucher — notamment l'`AuditLog`
+        (chantier séparé, feat/piste-audit-auth), jamais réécrit ni supprimé
+        ici, même principe que « jamais les factures/paiements » côté Abonné
+        Service (abonnes/services.py::AbonneService.anonymiser_abonne, PR #179).
+
+        Refuse sur un compte encore actif (`is_active=True`) : anonymiser
+        l'identité d'un utilisateur qui utilise encore le système lui
+        retirerait son propre accès (username/téléphone servent à se
+        connecter) sans qu'aucune demande RGPD ne le justifie avant la fin de
+        son habilitation.
+
+        Idempotent : ré-appeler sur un utilisateur déjà anonymisé réapplique
+        les mêmes valeurs sans erreur (dérivées de `user.id`, stable).
+        """
+        user = self.users.get_by_id(user_id)
+        if user.is_active:
+            raise ValueError(f"Seul un utilisateur désactivé peut être anonymisé (RGPD) — compte {user.username} actif")
+        user.username = f"{PREFIXE_USERNAME_ANONYMISE}{user.id}"
+        user.email = None
+        user.phone_number = self._telephone_anonymise(user.id)
         return self.users.save(user)
+
+    def purger_utilisateurs_desactives(
+        self, retention: timedelta = DUREE_RETENTION_UTILISATEUR_DESACTIVE
+    ) -> tuple[int, int]:
+        """RGPD — anonymise automatiquement tout utilisateur interne désactivé
+        depuis plus de `retention` (3 ans par défaut, durée validée par le
+        porteur du projet — voir DUREE_RETENTION_UTILISATEUR_DESACTIVE).
+
+        Best-effort PAR UTILISATEUR : l'échec de l'anonymisation de l'un
+        n'empêche jamais le traitement des autres (voir
+        comptes/schedulers.py::purge_rgpd_job pour le déclenchement planifié).
+
+        Retourne (nb_anonymises, nb_echecs).
+        """
+        cutoff = timezone.now() - retention
+        candidats = self.users.list_desactives_avant(cutoff)
+        nb_ok = 0
+        nb_echecs = 0
+        for user in candidats:
+            try:
+                self.anonymiser_utilisateur(str(user.id))
+                nb_ok += 1
+            except Exception:
+                nb_echecs += 1
+                logger.exception("Purge RGPD — échec de l'anonymisation automatique de l'utilisateur %s", user.id)
+        return nb_ok, nb_echecs
 
     def resend_credentials(self, user_id: str) -> User:
         """Renvoi manuel (déclenché par un admin) des identifiants d'accès.
@@ -276,9 +408,30 @@ class UserAdminService:
         aussi bien pour « Renvoyer le lien d'activation » que pour
         « Réinitialiser le mot de passe » côté frontend, ces deux actions
         partageant le même mécanisme sous-jacent (voir PasswordSetupService).
+
+        Note d'honnêteté : l'écriture d'audit ci-dessous ne partage PAS la
+        transaction du token créé par `send_activation_email`/
+        `send_password_reset_email`/`send_otp` — ces méthodes sont aussi le
+        chemin du flux self-service (activation à la création du compte) et
+        ne devaient pas être restructurées pour ce seul appelant. Le geste
+        déclencheur (décision de l'admin de renvoyer des identifiants) est
+        néanmoins tracé au moment même de l'appel, avant l'envoi.
         """
         user = self.users.get_by_id(user_id)
         pending_activation = not user.has_usable_password()
+
+        with transaction.atomic():
+            enregistrer_audit(
+                action="IDENTIFIANTS_RENVOYES",
+                objet_type="User",
+                objet_id=str(user.id),
+                detail=(
+                    f"username={user.username!r} — lien d'activation renvoyé"
+                    if pending_activation
+                    else f"username={user.username!r} — réinitialisation de mot de passe demandée"
+                ),
+            )
+
         if user.role == "ADMIN":
             if pending_activation:
                 self.password_setup.send_activation_email(user)
@@ -373,8 +526,6 @@ class PasswordSetupService:
         if not setup_token.is_valid():
             raise AuthenticationError("Token invalide ou expiré")
 
-        from django.db import transaction
-
         user = setup_token.user
         with transaction.atomic():
             user.set_password(new_password)
@@ -456,8 +607,6 @@ class PhoneOtpService:
             # la fenêtre de validité (aucun verrou côté vérification OTP).
             otp_token.register_failed_attempt(settings.MAX_OTP_ATTEMPTS)
             raise AuthenticationError("Code OTP invalide ou expiré")
-
-        from django.db import transaction
 
         with transaction.atomic():
             user.set_password(new_password)
