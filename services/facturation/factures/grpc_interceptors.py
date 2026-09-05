@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 import grpc
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.utils.translation import gettext_lazy as _
 
 from .exceptions import PreconditionError
 
@@ -20,7 +21,7 @@ _STATUS_BY_EXCEPTION = (
     (PreconditionError, grpc.StatusCode.FAILED_PRECONDITION, None),
     (ObjectDoesNotExist, grpc.StatusCode.NOT_FOUND, None),
     (ValidationError, grpc.StatusCode.INVALID_ARGUMENT, None),
-    (grpc.RpcError, grpc.StatusCode.UNAVAILABLE, "Service en amont indisponible, réessayez plus tard"),
+    (grpc.RpcError, grpc.StatusCode.UNAVAILABLE, _("Service en amont indisponible, réessayez plus tard")),
     (FileNotFoundError, grpc.StatusCode.INTERNAL, None),
 )
 
@@ -33,7 +34,7 @@ def _abort_for(exc: Exception, context: grpc.ServicerContext, handler_call_detai
         if isinstance(exc, exc_type):
             if message:
                 logger.warning("%s: %s", exc_type.__name__, exc)
-            context.abort(status_code, message or str(exc))
+            context.abort(status_code, str(message) if message else str(exc))
             return
     method = getattr(handler_call_details, "method", "?")
     logger.exception("Exception non gérée dans %s", method)

@@ -7,6 +7,7 @@ from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 
 class Role(models.TextChoices):
@@ -28,9 +29,9 @@ class UserManager(BaseUserManager["User"]):
         **extra_fields: bool | str,
     ) -> "User":
         if not username:
-            raise ValueError("Le username est obligatoire")
+            raise ValueError(_("Le username est obligatoire"))
         if not role:
-            raise ValueError("Le rôle est obligatoire")
+            raise ValueError(_("Le rôle est obligatoire"))
         normalized_email = self.normalize_email(email) if email else None
         user: User = self.model(username=username, email=normalized_email, role=role, **extra_fields)
         if password:

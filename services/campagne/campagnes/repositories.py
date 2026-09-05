@@ -4,6 +4,7 @@ from typing import Optional
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 from .models import (
     AffectationZone,
@@ -49,7 +50,7 @@ class CampagneRepository:
         try:
             return Campagne.objects.get(pk=campagne_id)
         except Campagne.DoesNotExist:
-            raise ObjectDoesNotExist(f"Campagne introuvable : {campagne_id}")
+            raise ObjectDoesNotExist(_("Campagne introuvable : {campagne_id}").format(campagne_id=campagne_id))
 
     def list_all(self, created_by: str = "", agent_id: str = "") -> list[Campagne]:
         qs = Campagne.objects.all()
@@ -115,7 +116,7 @@ class ReleveRepository:
         try:
             return Releve.objects.select_related("campagne").get(pk=releve_id)
         except Releve.DoesNotExist:
-            raise ObjectDoesNotExist(f"Relevé introuvable : {releve_id}")
+            raise ObjectDoesNotExist(_("Relevé introuvable : {releve_id}").format(releve_id=releve_id))
 
     def list_by_campagne(self, campagne_id: str) -> list[Releve]:
         return list(

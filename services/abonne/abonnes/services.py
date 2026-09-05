@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.utils.translation import gettext_lazy as _
 
 from abonnes.audit import enregistrer_audit
 from abonnes.dtos import ZoneStatDict
@@ -135,7 +136,7 @@ class AbonneService:
     def suspendre_abonne(self, abonne_id: str) -> Abonne:
         abonne = self.abonnes.get_by_id(abonne_id)
         if abonne.statut != StatutAbonne.ACTIF:
-            raise ValidationError(f"Un abonné {abonne.statut} ne peut pas être suspendu")
+            raise ValidationError(_("Un abonné {statut} ne peut pas être suspendu").format(statut=abonne.statut))
         abonne.statut = StatutAbonne.SUSPENDU
         with transaction.atomic():
             abonne = self.abonnes.save(abonne)
@@ -150,7 +151,7 @@ class AbonneService:
     def reactiver_abonne(self, abonne_id: str) -> Abonne:
         abonne = self.abonnes.get_by_id(abonne_id)
         if abonne.statut != StatutAbonne.SUSPENDU:
-            raise ValidationError(f"Un abonné {abonne.statut} ne peut pas être réactivé")
+            raise ValidationError(_("Un abonné {statut} ne peut pas être réactivé").format(statut=abonne.statut))
         abonne.statut = StatutAbonne.ACTIF
         with transaction.atomic():
             abonne = self.abonnes.save(abonne)
@@ -165,7 +166,7 @@ class AbonneService:
     def resilier_abonne(self, abonne_id: str) -> Abonne:
         abonne = self.abonnes.get_by_id(abonne_id)
         if abonne.statut == StatutAbonne.RESILIE:
-            raise ValidationError("Cet abonné est déjà résilié")
+            raise ValidationError(_("Cet abonné est déjà résilié"))
         with transaction.atomic():
             abonne.statut = StatutAbonne.RESILIE
             self.abonnes.save(abonne)
@@ -208,7 +209,9 @@ class AbonneService:
         abonne = self.abonnes.get_by_id(abonne_id)
         if abonne.statut != StatutAbonne.RESILIE:
             raise ValidationError(
-                f"Seul un abonné RESILIE peut être anonymisé (RGPD) — statut actuel : {abonne.statut}"
+                _("Seul un abonné RESILIE peut être anonymisé (RGPD) — statut actuel : {statut}").format(
+                    statut=abonne.statut
+                )
             )
         abonne.nom = self.NOM_ANONYMISE
         abonne.prenom = self.PRENOM_ANONYMISE
@@ -290,7 +293,7 @@ class CompteurService:
         ancien_compteur = self.compteurs.get_actif(abonne_id)
 
         if index_fermeture < float(ancien_compteur.index_initial):
-            raise ValidationError("L'index de fermeture ne peut pas être inférieur à l'index initial")
+            raise ValidationError(_("L'index de fermeture ne peut pas être inférieur à l'index initial"))
 
         with transaction.atomic():
             ancien_compteur.statut = StatutCompteur.REMPLACE

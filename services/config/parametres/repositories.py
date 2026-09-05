@@ -1,3 +1,5 @@
+from django.utils.translation import gettext_lazy as _
+
 from parametres.models import CONFIG_DEFAULTS, ConfigParam, InfosSociete
 
 
@@ -26,9 +28,9 @@ class ConfigParamRepository:
         if cle not in CONFIG_DEFAULTS:
             from django.core.exceptions import ObjectDoesNotExist
 
-            raise ObjectDoesNotExist(f"Clé de configuration inconnue : {cle!r}")
+            raise ObjectDoesNotExist(_("Clé de configuration inconnue : {cle!r}").format(cle=cle))
         valeur_defaut, description = CONFIG_DEFAULTS[cle]
-        obj, _ = ConfigParam.objects.get_or_create(
+        obj, _created = ConfigParam.objects.get_or_create(
             cle=cle,
             defaults={"valeur": valeur_defaut, "description": description},
         )

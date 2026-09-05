@@ -9,6 +9,7 @@ import grpc
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import IntegrityError
+from django.utils.translation import gettext_lazy as _
 
 # Le fichier _grpc.py généré fait un `import campagne_service_pb2` bare —
 # il faut que le dossier proto/ soit dans sys.path avant l'import.
@@ -234,7 +235,7 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):  # type: ignore[misc]
         """
         campagne = self._campagne_svc.get_campagne(request.campagne_id)
         if campagne.statut == StatutCampagne.CLOTUREE:
-            raise ValidationError("Impossible d'ajouter des abonnés à une campagne clôturée.")
+            raise ValidationError(_("Impossible d'ajouter des abonnés à une campagne clôturée."))
 
         nb_ajoutes = 0
         nb_ignores = 0
@@ -314,7 +315,9 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):  # type: ignore[misc]
         """
         releve = self._releve_repo.get_by_campagne_abonne(request.campagne_id, request.abonne_id)
         if releve is None:
-            raise ObjectDoesNotExist(f"Relevé introuvable pour l'abonné {request.abonne_id} dans la campagne.")
+            raise ObjectDoesNotExist(
+                _("Relevé introuvable pour l'abonné {abonne_id} dans la campagne.").format(abonne_id=request.abonne_id)
+            )
         releve = self._releve_svc.corriger_releve(
             releve_id=str(releve.id),
             nouveau_index=Decimal(str(request.nouveau_index)),
@@ -345,7 +348,9 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):  # type: ignore[misc]
         """Marque un relevé comme NON_RELEVE ou ESTIME."""
         releve = self._releve_repo.get_by_campagne_abonne(request.campagne_id, request.abonne_id)
         if releve is None:
-            raise ObjectDoesNotExist(f"Relevé introuvable pour l'abonné {request.abonne_id} dans la campagne.")
+            raise ObjectDoesNotExist(
+                _("Relevé introuvable pour l'abonné {abonne_id} dans la campagne.").format(abonne_id=request.abonne_id)
+            )
         releve = self._releve_svc.marquer_non_releve(
             str(releve.id),
             statut=request.statut or "NON_RELEVE",
