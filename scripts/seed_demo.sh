@@ -8,8 +8,10 @@
 #
 # Crée 4 comptes (mot de passe commun : Demo1234!) :
 #   demo_admin (ADMIN) · demo_comptable (COMPTABLE) · demo_superviseur (SUPERVISEUR) · demo_agent (AGENT)
-# + 3 campagnes (2 au superviseur, 1 à l'admin), 5 factures sur 3 mois,
-#   4 paiements (dont 1 dissocié dans le temps et 1 annulé).
+# + 6 abonnés (statuts ACTIF/SUSPENDU/RESILIE), 4 campagnes (3 CLOTUREE dont
+#   2 au superviseur/1 à l'admin, + 1 EN_COURS avec 2 abonnés à relever et
+#   demo_agent affecté), 5 factures sur 3 mois, 4 paiements (dont 1 dissocié
+#   dans le temps et 1 annulé).
 #
 # On passe chaque script via `manage.py shell -c "$(cat …)"` (exec en un bloc :
 # robuste aux lignes vides et aux def, contrairement au pipe stdin du REPL).
@@ -22,6 +24,7 @@ run() {  # run <service-compose> <script.py>
 }
 
 run auth-service        scripts/seed/auth.py
+run abonne-service      scripts/seed/abonne.py
 run campagne-service    scripts/seed/campagne.py
 run facturation-service scripts/seed/facturation.py
 run paiement-service    scripts/seed/paiement.py
