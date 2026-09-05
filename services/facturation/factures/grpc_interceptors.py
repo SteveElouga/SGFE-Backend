@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 import grpc
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.utils.translation import gettext_lazy as _
 
 from .exceptions import PreconditionError
 
@@ -20,7 +21,7 @@ _STATUS_BY_EXCEPTION = (
     (PreconditionError, grpc.StatusCode.FAILED_PRECONDITION, None),
     (ObjectDoesNotExist, grpc.StatusCode.NOT_FOUND, None),
     (ValidationError, grpc.StatusCode.INVALID_ARGUMENT, None),
-    (grpc.RpcError, grpc.StatusCode.UNAVAILABLE, "Service en amont indisponible, réessayez plus tard"),
+    (grpc.RpcError, grpc.StatusCode.UNAVAILABLE, _("Service en amont indisponible, réessayez plus tard")),
     (FileNotFoundError, grpc.StatusCode.INTERNAL, None),
 )
 

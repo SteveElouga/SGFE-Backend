@@ -9,6 +9,7 @@ from typing import Any, Callable
 import grpc
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError
+from django.utils.translation import gettext_lazy as _
 
 from comptes.email_client import EmailDeliveryError
 from comptes.services import AuthenticationError
@@ -32,9 +33,9 @@ _STATUS_BY_EXCEPTION = (
     (ObjectDoesNotExist, grpc.StatusCode.NOT_FOUND, None),
     (ThrottleError, grpc.StatusCode.RESOURCE_EXHAUSTED, None),
     (ValueError, grpc.StatusCode.INVALID_ARGUMENT, None),
-    (IntegrityError, grpc.StatusCode.ALREADY_EXISTS, "Cette ressource existe déjà"),
-    (EmailDeliveryError, grpc.StatusCode.UNAVAILABLE, "Échec de l'envoi de l'e-mail, réessayez plus tard"),
-    (WhatsAppDeliveryError, grpc.StatusCode.UNAVAILABLE, "Échec de l'envoi WhatsApp, réessayez plus tard"),
+    (IntegrityError, grpc.StatusCode.ALREADY_EXISTS, _("Cette ressource existe déjà")),
+    (EmailDeliveryError, grpc.StatusCode.UNAVAILABLE, _("Échec de l'envoi de l'e-mail, réessayez plus tard")),
+    (WhatsAppDeliveryError, grpc.StatusCode.UNAVAILABLE, _("Échec de l'envoi WhatsApp, réessayez plus tard")),
 )
 
 

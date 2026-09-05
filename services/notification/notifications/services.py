@@ -12,6 +12,7 @@ import grpc
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 from notifications.brevo_client import envoyer_email_admin
 from notifications.grpc_clients import (
@@ -168,7 +169,7 @@ class EnvoiService:
                 numéro invalide, service injoignable).
         """
         if not phone_number:
-            raise ValueError("Le numéro de téléphone est obligatoire")
+            raise ValueError(_("Le numéro de téléphone est obligatoire"))
         whatsapp_client.send(
             phone_number,
             "✅ Test SGFE : la connexion WhatsApp fonctionne. "
@@ -349,7 +350,9 @@ class EnvoiService:
             ValidationError: Si l'étape est hors de la plage [0, 6].
         """
         if etape not in _ETAPE_TO_TYPE:
-            raise ValidationError(f"Étape de relance invalide : {etape}. Les étapes valides sont 0 à 6.")
+            raise ValidationError(
+                _("Étape de relance invalide : {etape}. Les étapes valides sont 0 à 6.").format(etape=etape)
+            )
 
         # Même dégradation gracieuse que envoyer_facture : un service amont
         # injoignable donne un Envoi ECHEC, pas une RpcError brute.
@@ -384,7 +387,7 @@ class EnvoiService:
         # chacune muette sur les deux autres — alors que le message de facture
         # initiale, lui, annonce déjà le solde antérieur avec `get_dette_abonne`.
         # Même source, même exclusion de la facture courante.
-        autres_du, autres_nb, _ = (
+        autres_du, autres_nb, _echeance = (
             paiement_client.get_dette_abonne(abonne_id, hors_facture_id=facture_id) if 1 <= etape <= 3 else (0.0, 0, "")
         )
 
@@ -456,7 +459,7 @@ class EnvoiService:
                 telephone_societe = ""
             # La SUSPENSION doit dire quoi payer pour être rétabli — et depuis
             # RS-005, c'est la dette TOTALE, pas le montant d'une facture.
-            total_du, _, _ = paiement_client.get_dette_abonne(abonne_id)
+            total_du, _nb_factures, _echeance = paiement_client.get_dette_abonne(abonne_id)
             message = build_message_relance_4(
                 prenom_nom=prenom_nom,
                 montant=total_du if total_du > 0 else None,
@@ -739,10 +742,10 @@ class TokenService:
         token = self._tokens.get_by_token(token_str)
 
         if not token.is_active:
-            raise ValueError("Ce token d'accès a été révoqué.")
+            raise ValueError(_("Ce token d'accès a été révoqué."))
 
         if token.date_expiration < date.today():
-            raise ValueError("Ce token d'accès a expiré.")
+            raise ValueError(_("Ce token d'accès a expiré."))
 
         # Mise à jour de la dernière visite
         token.date_derniere_visite = timezone.now()
