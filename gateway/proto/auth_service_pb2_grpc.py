@@ -119,6 +119,11 @@ class AuthServiceStub:
                 request_serializer=auth__service__pb2.UserIdRequest.SerializeToString,
                 response_deserializer=auth__service__pb2.ExportDonneesUtilisateurResponse.FromString,
                 _registered_method=True)
+        self.EnregistrerEvenementSecurite = channel.unary_unary(
+                '/auth.AuthService/EnregistrerEvenementSecurite',
+                request_serializer=auth__service__pb2.EnregistrerEvenementSecuriteRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.StatusResponse.FromString,
+                _registered_method=True)
 
 
 class AuthServiceServicer:
@@ -242,6 +247,21 @@ class AuthServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def EnregistrerEvenementSecurite(self, request, context):
+        """Centralise un événement de sécurité poussé par un composant tiers (la
+        gateway aujourd'hui : refus de rôle `require_role`, échec de validation
+        de jeton `require_auth`) dans l'AuditLog de ce service — voir
+        AUDIT_SGFE.md §J, "Journalisation de sécurité centralisée et
+        inviolable". Écriture seule, sans mutation métier associée. Appelé en
+        BEST-EFFORT par l'appelant : un échec de ce RPC (ce service indisponible,
+        par exemple) ne doit jamais faire échouer la requête qui a déclenché
+        l'événement de sécurité d'origine — le logger local dédié reste alors le
+        seul filet (voir gateway/schema/context.py).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AuthServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -329,6 +349,11 @@ def add_AuthServiceServicer_to_server(servicer, server):
                     servicer.ExporterDonneesUtilisateur,
                     request_deserializer=auth__service__pb2.UserIdRequest.FromString,
                     response_serializer=auth__service__pb2.ExportDonneesUtilisateurResponse.SerializeToString,
+            ),
+            'EnregistrerEvenementSecurite': grpc.unary_unary_rpc_method_handler(
+                    servicer.EnregistrerEvenementSecurite,
+                    request_deserializer=auth__service__pb2.EnregistrerEvenementSecuriteRequest.FromString,
+                    response_serializer=auth__service__pb2.StatusResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -790,6 +815,33 @@ class AuthService:
             '/auth.AuthService/ExporterDonneesUtilisateur',
             auth__service__pb2.UserIdRequest.SerializeToString,
             auth__service__pb2.ExportDonneesUtilisateurResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def EnregistrerEvenementSecurite(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/EnregistrerEvenementSecurite',
+            auth__service__pb2.EnregistrerEvenementSecuriteRequest.SerializeToString,
+            auth__service__pb2.StatusResponse.FromString,
             options,
             channel_credentials,
             insecure,

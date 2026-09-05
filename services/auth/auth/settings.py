@@ -241,7 +241,11 @@ if not TESTING:
         "when": "midnight",
         "utc": True,
         "backupCount": LOG_RETENTION_DAYS,
-        "formatter": "iso8601",
+        # Chaînage de hash tamper-evident (voir comptes/log_integrity.py,
+        # AUDIT_SGFE.md §J "Journalisation de sécurité centralisée et
+        # inviolable") — UNIQUEMENT sur ce handler fichier, jamais "console"
+        # (voir la docstring de ChainedHashFormatter pour la raison).
+        "formatter": "iso8601_chained",
     }
 
 LOGGING: dict[str, object] = {
@@ -249,6 +253,11 @@ LOGGING: dict[str, object] = {
     "disable_existing_loggers": False,
     "formatters": {
         "iso8601": {
+            "format": "%(asctime)s.%(msecs)03dZ %(levelname)s %(name)s %(message)s",
+            "datefmt": "%Y-%m-%dT%H:%M:%S",
+        },
+        "iso8601_chained": {
+            "()": "comptes.log_integrity.ChainedHashFormatter",
             "format": "%(asctime)s.%(msecs)03dZ %(levelname)s %(name)s %(message)s",
             "datefmt": "%Y-%m-%dT%H:%M:%S",
         },

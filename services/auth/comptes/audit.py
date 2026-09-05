@@ -8,6 +8,8 @@ rôle applicatif Postgres).
 
 from __future__ import annotations
 
+from django.db import transaction
+
 from .models import AuditLog
 
 
@@ -44,3 +46,50 @@ def enregistrer_audit(action: str, objet_type: str, objet_id: str, detail: str =
         acteur_role=caller.role,
         detail=detail,
     )
+
+
+def enregistrer_evenement_securite(
+    type_evenement: str,
+    detail: str = "",
+    acteur_id: str = "",
+    acteur_nom: str = "",
+    acteur_role: str = "",
+    request_id: str = "",
+) -> None:
+    """Centralise un événement de sécurité poussé par un composant tiers (la
+    gateway aujourd'hui — refus de rôle, échec de validation de jeton) dans
+    l'`AuditLog` de ce service. Voir AUDIT_SGFE.md §J, "Journalisation de
+    sécurité centralisée et inviolable" : la conception §10.7 prévoyait de
+    « logger via AuditLog si un service concerné est impliqué, sinon un
+    logger dédié » — Auth est ce service pour TOUS les événements de
+    sécurité de la gateway (propriétaire naturel de l'identité).
+
+    Contrairement à `enregistrer_audit`, cet événement n'accompagne AUCUNE
+    mutation métier de ce service : il n'y a donc rien d'autre à committer
+    avec lui, et cette fonction ouvre sa PROPRE transaction dédiée plutôt que
+    de supposer une transaction ambiante ouverte par un appelant.
+
+    L'acteur est fourni EXPLICITEMENT par l'appelant (pas relu depuis
+    `get_caller()`/l'identité propagée par les métadonnées gRPC) : l'appelant
+    (la gateway) documente ici un événement qui a eu lieu CÔTÉ GATEWAY,
+    parfois avant même qu'une identité complète soit résolue (un jeton
+    invalide n'a par définition aucune identité à propager). S'appuyer sur
+    l'identité propagée par gRPC serait en outre redondant avec les limites
+    déjà documentées de ce mécanisme (souscriptions GraphQL, appels
+    anonymes — voir `identity_context.py` côté gateway).
+
+    Lève `ValueError` si `type_evenement` est vide — un événement de sécurité
+    sans type n'est pas exploitable par un futur auditeur.
+    """
+    if not type_evenement:
+        raise ValueError("type_evenement est obligatoire")
+    with transaction.atomic():
+        AuditLog.objects.create(
+            action=type_evenement,
+            objet_type="EvenementSecuriteGateway",
+            objet_id=request_id,
+            acteur_id=acteur_id,
+            acteur_nom=acteur_nom,
+            acteur_role=acteur_role,
+            detail=detail,
+        )

@@ -92,3 +92,58 @@ class SecurityLoggingTests(TestCase):
         # aucun message ne doit remonter sur le logger `security`.
         with self.assertNoLogs("security", level="WARNING"):
             require_role(_info({"Authorization": "Bearer tok-123"}), "ADMIN")
+        mock_auth_client.enregistrer_evenement_securite.assert_not_called()
+
+
+class CentralisationEvenementSecuriteTests(TestCase):
+    """Centralisation des événements de sécurité dans l'`AuditLog` de Auth
+    (voir AUDIT_SGFE.md §J) — best-effort, jamais bloquant."""
+
+    def tearDown(self) -> None:
+        reset_identity()
+
+    @patch("schema.context.auth_client")
+    def test_echec_de_validation_de_jeton_relaie_vers_auth_client(self, mock_auth_client: MagicMock) -> None:
+        mock_auth_client.validate_token.side_effect = grpc.RpcError("jeton invalide")
+
+        with self.assertRaises(grpc.RpcError):
+            require_auth(_info({"Authorization": "Bearer tok-invalide"}))
+
+        mock_auth_client.enregistrer_evenement_securite.assert_called_once()
+        kwargs = mock_auth_client.enregistrer_evenement_securite.call_args.kwargs
+        self.assertEqual(kwargs["type_evenement"], "TOKEN_INVALIDE")
+        self.assertEqual(kwargs["acteur_id"], "")
+
+    @patch("schema.context.auth_client")
+    def test_refus_de_role_relaie_vers_auth_client_avec_l_acteur(self, mock_auth_client: MagicMock) -> None:
+        mock_auth_client.validate_token.return_value = MagicMock(user_id="u-1", username="bob", role="AGENT")
+
+        with self.assertRaises(AuthError):
+            require_role(_info({"Authorization": "Bearer tok-123"}), "ADMIN", "COMPTABLE")
+
+        mock_auth_client.enregistrer_evenement_securite.assert_called_once()
+        kwargs = mock_auth_client.enregistrer_evenement_securite.call_args.kwargs
+        self.assertEqual(kwargs["type_evenement"], "ROLE_REFUSE")
+        self.assertEqual((kwargs["acteur_id"], kwargs["acteur_nom"], kwargs["acteur_role"]), ("u-1", "bob", "AGENT"))
+
+    @patch("schema.context.auth_client")
+    def test_echec_de_la_centralisation_ne_bloque_jamais_la_requete(self, mock_auth_client: MagicMock) -> None:
+        """Auth-service indisponible pour ce RPC précis : `require_role` doit
+        quand même lever `AuthError` (le refus de rôle reste effectif), pas
+        une exception liée à l'échec de la centralisation elle-même."""
+        mock_auth_client.validate_token.return_value = MagicMock(user_id="u-1", username="bob", role="AGENT")
+        mock_auth_client.enregistrer_evenement_securite.side_effect = RuntimeError("auth-service indisponible")
+
+        with self.assertLogs("security", level="WARNING"):
+            with self.assertRaises(AuthError):
+                require_role(_info({"Authorization": "Bearer tok-123"}), "ADMIN")
+
+    @patch("schema.context.auth_client")
+    def test_echec_de_la_centralisation_pour_jeton_invalide_ne_bloque_jamais(self, mock_auth_client: MagicMock) -> None:
+        mock_auth_client.validate_token.side_effect = grpc.RpcError("jeton invalide")
+        mock_auth_client.enregistrer_evenement_securite.side_effect = RuntimeError("auth-service indisponible")
+
+        # L'exception d'origine (grpc.RpcError) doit toujours être celle qui
+        # remonte — pas la RuntimeError de l'appel de centralisation échoué.
+        with self.assertRaises(grpc.RpcError):
+            require_auth(_info({"Authorization": "Bearer tok-invalide"}))

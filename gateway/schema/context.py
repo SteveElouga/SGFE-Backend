@@ -11,11 +11,47 @@ from schema.identity_context import get_request_id, set_identity
 logger = logging.getLogger(__name__)
 
 # Journal de sécurité dédié (voir AUDIT_SGFE.md §J) : refus de rôle et échecs
-# de validation de jeton, en écriture seule (jamais mis à jour). Aucun service
-# concerné n'est identifiable ici (la gateway n'a pas de base de données et
-# l'échec précède tout appel métier) — c'est le cas prévu par la conception
-# pour retomber sur ce logger Python plutôt que sur le mécanisme `AuditLog`.
+# de validation de jeton, en écriture seule (jamais mis à jour). Reste
+# alimenté dans TOUS les cas, en plus de la centralisation ci-dessous — c'est
+# le filet de secours si l'appel vers l'AuditLog du service Auth échoue
+# (service indisponible, etc.), exactement le principe "sinon un logger
+# dédié" de la conception §10.7.
 security_logger = logging.getLogger("security")
+
+
+def _signaler_evenement_securite(
+    type_evenement: str,
+    detail: str,
+    user_id: str = "",
+    username: str = "",
+    role: str = "",
+) -> None:
+    """Relaie un événement de sécurité vers l'`AuditLog` centralisé du
+    service Auth (voir AUDIT_SGFE.md §J, "Journalisation de sécurité
+    centralisée et inviolable" — Auth est le propriétaire naturel de
+    l'identité, donc le "service concerné" pour TOUS les événements de
+    sécurité de la gateway, quel que soit le domaine métier visé par la
+    requête d'origine).
+
+    BEST-EFFORT et NON BLOQUANT, à l'identique de `publish_user_event`
+    (`comptes/event_publisher.py`) : un échec de cet appel (auth-service
+    indisponible, timeout...) ne doit JAMAIS faire échouer la requête
+    GraphQL en cours qui a déclenché l'événement de sécurité d'origine —
+    l'exception est capturée et journalisée en avertissement, jamais
+    relevée. `security_logger` (ci-dessus) reste alimenté indépendamment de
+    cet appel, avant même qu'il soit tenté : c'est lui le filet, pas l'inverse.
+    """
+    try:
+        auth_client.enregistrer_evenement_securite(
+            type_evenement=type_evenement,
+            detail=detail,
+            acteur_id=user_id,
+            acteur_nom=username,
+            acteur_role=role,
+            request_id=get_request_id(),
+        )
+    except Exception as exc:
+        logger.warning("enregistrer_evenement_securite ignoré (auth-service indisponible) : %s", exc)
 
 
 class AuthError(Exception):
@@ -114,6 +150,9 @@ def require_auth(info: strawberry.types.Info) -> Any:
         # d'origine (grpc.RpcError) est relevée telle quelle — GrpcErrorExtension
         # la traduit déjà en GraphQLError pour le frontend.
         security_logger.warning("Échec de validation de jeton", extra={"request_id": get_request_id()})
+        # Centralisation best-effort (voir _signaler_evenement_securite) —
+        # aucune identité à transmettre : l'échec précède toute résolution.
+        _signaler_evenement_securite("TOKEN_INVALIDE", "Échec de validation de jeton")
         raise
     # Pose l'identité de la requête courante — lue par `IdentityClientInterceptor`
     # (grpc_clients.py) pour propager x-user-id/x-user-name/x-user-role sur
@@ -126,6 +165,7 @@ def require_role(info: strawberry.types.Info, *roles: str) -> Any:
     """Valide le token ET vérifie que le rôle de l'utilisateur fait partie de `roles`."""
     user_payload = require_auth(info)
     if user_payload.role not in roles:
+        detail = f"Accès refusé : rôle {user_payload.role} insuffisant (requis : {'/'.join(roles)})"
         security_logger.warning(
             "Accès refusé : rôle %s insuffisant (requis : %s)",
             user_payload.role,
@@ -135,6 +175,15 @@ def require_role(info: strawberry.types.Info, *roles: str) -> Any:
                 "username": user_payload.username,
                 "request_id": get_request_id(),
             },
+        )
+        # Centralisation best-effort (voir _signaler_evenement_securite) —
+        # l'identité est connue ici (token valide, rôle insuffisant).
+        _signaler_evenement_securite(
+            "ROLE_REFUSE",
+            detail,
+            user_id=user_payload.user_id,
+            username=user_payload.username,
+            role=user_payload.role,
         )
         raise AuthError("Accès non autorisé", code="PERMISSION_DENIED")
     return user_payload

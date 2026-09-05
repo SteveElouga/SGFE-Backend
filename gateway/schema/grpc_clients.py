@@ -142,6 +142,34 @@ class AuthServiceClient:
         comptes/export.py côté Auth Service pour le détail des sections)."""
         return self._stub.ExporterDonneesUtilisateur(auth_pb.UserIdRequest(user_id=user_id))
 
+    def enregistrer_evenement_securite(
+        self,
+        type_evenement: str,
+        detail: str = "",
+        acteur_id: str = "",
+        acteur_nom: str = "",
+        acteur_role: str = "",
+        request_id: str = "",
+    ) -> auth_pb.StatusResponse:
+        """Centralise un événement de sécurité gateway (refus de rôle, jeton
+        invalide) dans l'`AuditLog` du service Auth (voir AUDIT_SGFE.md §J).
+
+        Relais direct de l'appel gRPC — ne capture AUCUNE exception ici :
+        c'est à l'appelant (`context.py::_signaler_evenement_securite`) de
+        décider que cet appel est best-effort et de ne jamais laisser un
+        échec remonter jusqu'à la requête GraphQL en cours.
+        """
+        return self._stub.EnregistrerEvenementSecurite(
+            auth_pb.EnregistrerEvenementSecuriteRequest(
+                type_evenement=type_evenement,
+                detail=detail,
+                acteur_id=acteur_id,
+                acteur_nom=acteur_nom,
+                acteur_role=acteur_role,
+                request_id=request_id,
+            )
+        )
+
     def reset_user_password(self, user_id: str) -> auth_pb.UserResponse:
         return self._stub.ResetUserPassword(auth_pb.UserIdRequest(user_id=user_id))
 

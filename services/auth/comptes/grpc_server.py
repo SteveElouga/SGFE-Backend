@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(settings.BASE_DIR) / "proto"))
 import auth_service_pb2 as pb
 import auth_service_pb2_grpc as pb_grpc
 
+from comptes.audit import enregistrer_evenement_securite
 from comptes.event_publisher import publish_user_event
 from comptes.export import ExportService
 from comptes.grpc_interceptors import ErrorHandlingInterceptor, IdentityInterceptor, get_caller
@@ -148,6 +149,19 @@ class AuthServiceServicer(pb_grpc.AuthServiceServicer):  # type: ignore[misc]
     ) -> pb.ExportDonneesUtilisateurResponse:
         json_export = json.dumps(self.export_service.exporter(request.user_id), ensure_ascii=False, indent=2)
         return pb.ExportDonneesUtilisateurResponse(json_export=json_export)
+
+    def EnregistrerEvenementSecurite(
+        self, request: pb.EnregistrerEvenementSecuriteRequest, context: grpc.ServicerContext
+    ) -> pb.StatusResponse:
+        enregistrer_evenement_securite(
+            type_evenement=request.type_evenement,
+            detail=request.detail,
+            acteur_id=request.acteur_id,
+            acteur_nom=request.acteur_nom,
+            acteur_role=request.acteur_role,
+            request_id=request.request_id,
+        )
+        return pb.StatusResponse(success=True, message="Événement de sécurité enregistré")
 
     def ResetUserPassword(self, request: pb.UserIdRequest, context: grpc.ServicerContext) -> pb.UserResponse:
         user = self.user_admin_service.resend_credentials(request.user_id)
