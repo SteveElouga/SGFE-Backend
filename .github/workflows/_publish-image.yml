@@ -15,6 +15,36 @@ name: Publier et signer une image multi-architecture
 # postes x86, et les tests de fumée de `cd-prod.yml` tournent sur un runner amd64.
 # Ne publier que de l'arm64 casserait les deux.
 #
+# ── Image scannée = image publiée (item #1 du plan de remédiation) ───────────
+#
+# Ce job (`publish-*` dans `ci.yml`) a toujours dépendu de `docker-build-*`
+# (`_build-scan.yml`) — même commit, même run, le scan Trivy doit passer avant
+# toute publication. Mais les deux jobs RECONSTRUISAIENT chacun leur image
+# séparément, avec des scopes de cache distincts (`{service}-amd64`/
+# `{service}-arm64` côté scan, `{service}-multi` ici) : rien ne garantissait
+# que les couches produites ici soient celles qui avaient été scannées, juste
+# le même Dockerfile/contexte au même commit — l'écart nommé par
+# `docs/CONFORMITE_CICD.md` (CICD-SEC-9) et non résolu par PR #197.
+#
+# Le `cache-from` ci-dessous lit maintenant AUSSI les scopes par architecture
+# que `docker-build-*` vient de remplir dans CE MÊME run, en plus du scope
+# `{service}-multi` de ce job. Le build multi-plateforme retombe donc sur un
+# cache-hit total pour chaque architecture — les couches réellement publiées
+# sont celles que Trivy a scannées quelques instants plus tôt dans le même
+# workflow, pas une reconstruction indépendante. Un `docker/build-push-action`
+# en cache-hit ne ré-exécute aucune instruction du Dockerfile ; seul l'emballage
+# en liste de manifestes et le push sont nouveaux ici.
+#
+# Limite honnête : ceci garantit l'identité des couches EN CAS DE cache-hit
+# (à confirmer empiriquement au prochain run réel — voir le commentaire de la
+# PR). Si le cache GitHub Actions expirait ou était invalidé entre les deux
+# jobs (fenêtre de quelques minutes dans la même exécution — cas non observé,
+# mais pas mathématiquement impossible), ce build ré-exécuterait le Dockerfile
+# sans un nouveau scan avant le push. Fermer ce résidu demanderait de scanner
+# l'image multi-plateformes elle-même après publication (bloquant, avec
+# rollback) — hors périmètre de ce correctif, noté pour une itération future
+# si jamais observé.
+#
 # ── Provenance SLSA isolée du build (item #12 du plan de remédiation) ─────────
 #
 # Jusqu'ici, `docker/build-push-action` auto-attestait sa propre provenance
@@ -109,11 +139,19 @@ jobs:
           tags: |
             ghcr.io/${{ env.REPO_LC }}/${{ inputs.service }}:${{ github.ref_name }}
             ghcr.io/${{ env.REPO_LC }}/${{ inputs.service }}:${{ github.sha }}
-          # Scope distinct de celui des jobs de PR, qui construisent une
-          # architecture à la fois. Un build multi-plateformes gère lui-même les
-          # entrées par architecture à l'intérieur d'un seul scope ; le mélanger
-          # avec les scopes mono-plateforme ne ferait qu'aligner à moitié.
-          cache-from: type=gha,scope=${{ inputs.service }}-multi
+          # `{service}-multi` : cache propre à ce job, pour les appels où
+          # `docker-build-*` n'a pas tourné juste avant (aucun cas connu
+          # aujourd'hui, mais ce fichier reste un workflow réutilisable
+          # générique). `{service}-amd64`/`{service}-arm64` : les scopes que
+          # `docker-build-*` (`_build-scan.yml`) vient de remplir dans CE MÊME
+          # run, sur le MÊME commit — voir le commentaire en tête de fichier
+          # (« Image scannée = image publiée »). Buildx choisit lui-même, par
+          # plateforme cible, la source qui matche ; lister le scope par
+          # architecture EN PREMIER lui donne la priorité sur `-multi`.
+          cache-from: |
+            type=gha,scope=${{ inputs.service }}-amd64
+            type=gha,scope=${{ inputs.service }}-arm64
+            type=gha,scope=${{ inputs.service }}-multi
           cache-to: type=gha,mode=max,scope=${{ inputs.service }}-multi
           sbom: true
           # Provenance retirée d'ici : elle serait auto-attestée par ce job
