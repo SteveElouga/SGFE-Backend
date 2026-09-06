@@ -16,10 +16,11 @@
 # Contrairement à sync-grpc-lib.sh (neuf destinations fixes, un composant
 # gRPC = un besoin d'auth interne), la liste ci-dessous ne contient QUE les
 # services qui ont effectivement une table à rendre immuable niveau base
-# (aujourd'hui : paiement, facturation). Un futur service (campagne, abonné,
-# auth, config — voir AUDIT_SGFE.md §8·J) ajoute sa propre ligne à
-# DESTINATIONS quand il adopte ce mécanisme pour sa propre AuditLog — voir
-# le "Comment un futur service adopte ce mécanisme" dans db_hardening.py.
+# (paiement, facturation — puis campagne, abonné, auth, config, étendus à
+# leur tour — voir AUDIT_SGFE.md §8·J). Un futur service ajoute sa propre
+# ligne à DESTINATIONS quand il adopte ce mécanisme pour sa propre
+# AuditLog — voir le "Comment un futur service adopte ce mécanisme" dans
+# db_hardening.py.
 #
 # Usage :
 #   ./scripts/sync-db-hardening-lib.sh            # recopie la source vers les destinations
@@ -32,6 +33,10 @@ CANONICAL="$ROOT_DIR/libs/sgfe_common/sgfe_common/db_hardening.py"
 DESTINATIONS=(
   "services/paiement/paiements/db_hardening.py"
   "services/facturation/factures/db_hardening.py"
+  "services/campagne/campagnes/db_hardening.py"
+  "services/abonne/abonnes/db_hardening.py"
+  "services/auth/comptes/db_hardening.py"
+  "services/config/parametres/db_hardening.py"
 )
 
 BANNER=$'# ─────────────────────────────────────────────────────────────────────────\n# Fichier synchronisé — NE PAS ÉDITER DIRECTEMENT.\n#\n# Source canonique : libs/sgfe_common/sgfe_common/db_hardening.py\n# Après modification de la source, relancer : ./scripts/sync-db-hardening-lib.sh\n# Vérifier l\x27absence de dérive       : ./scripts/sync-db-hardening-lib.sh --check\n# ─────────────────────────────────────────────────────────────────────────\n'

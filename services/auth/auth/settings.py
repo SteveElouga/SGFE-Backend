@@ -78,6 +78,15 @@ else:
         }
     }
 
+# Isolation Postgres du trafic applicatif derrière un rôle `_runtime` non
+# superutilisateur (voir `comptes/db_hardening.py` — copie synchronisée
+# depuis `libs/sgfe_common/`, AUDIT_SGFE.md §8·J). Sans effet sur SQLite
+# (le receiver vérifie `connection.vendor` lui-même) : sûr à connecter
+# inconditionnellement ici plutôt que sous le `else` ci-dessus.
+from comptes.db_hardening import connecter_isolement_runtime  # noqa: E402
+
+connecter_isolement_runtime()
+
 AUTH_USER_MODEL = "comptes.User"
 
 AUTH_PASSWORD_VALIDATORS = [
