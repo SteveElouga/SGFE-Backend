@@ -15,11 +15,11 @@
 #
 # Contrairement à sync-grpc-lib.sh (neuf destinations fixes), et comme
 # sync-db-hardening-lib.sh, la liste ci-dessous ne contient QUE les
-# composants effectivement câblés à ce mécanisme aujourd'hui : Auth et
-# Gateway, les deux points d'entrée les plus sensibles pour la sécurité
-# (voir AUDIT_SGFE.md §J). Étendre aux 7 autres composants est une simple
-# répétition du même câblage — ajouter sa propre ligne à DESTINATIONS quand
-# un futur composant l'adopte.
+# composants effectivement câblés à ce mécanisme — Auth et Gateway au
+# départ (les deux points d'entrée les plus sensibles pour la sécurité,
+# voir AUDIT_SGFE.md §J), puis les 7 autres composants Django, étendus à
+# leur tour. Un futur composant ajoute sa propre ligne à DESTINATIONS quand
+# il adopte ce mécanisme.
 #
 # Usage :
 #   ./scripts/sync-log-integrity-lib.sh            # recopie la source vers les destinations
@@ -32,6 +32,13 @@ CANONICAL="$ROOT_DIR/libs/sgfe_common/sgfe_common/log_integrity.py"
 DESTINATIONS=(
   "services/auth/comptes/log_integrity.py"
   "gateway/schema/log_integrity.py"
+  "services/abonne/abonnes/log_integrity.py"
+  "services/campagne/campagnes/log_integrity.py"
+  "services/facturation/factures/log_integrity.py"
+  "services/paiement/paiements/log_integrity.py"
+  "services/notification/notifications/log_integrity.py"
+  "services/config/parametres/log_integrity.py"
+  "services/reporting/stats/log_integrity.py"
 )
 
 BANNER=$'# ─────────────────────────────────────────────────────────────────────────\n# Fichier synchronisé — NE PAS ÉDITER DIRECTEMENT.\n#\n# Source canonique : libs/sgfe_common/sgfe_common/log_integrity.py\n# Après modification de la source, relancer : ./scripts/sync-log-integrity-lib.sh\n# Vérifier l\x27absence de dérive       : ./scripts/sync-log-integrity-lib.sh --check\n# ─────────────────────────────────────────────────────────────────────────\n'
