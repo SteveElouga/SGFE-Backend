@@ -416,6 +416,20 @@
 > SOC 2 Type II aujourd'hui. Décompte inchangé (recompté par script) : 97
 > items, 83 faits (86 %), 2 partiels, 6 incertains, 6 non faits.
 
+> **Complément du 06/09/2026 (soir)** : nouvel item ajouté — **alerte admin
+> de déconnexion WhatsApp** (bandeau permanent + rappel toutes les 10
+> minutes), hors périmètre de l'audit initial, demandée et livrée le jour
+> même (PR #179 + #180, frontend). Réutilise l'infrastructure temps réel
+> existante (subscription `whatsappStatus`, réservée ADMIN) ; couvre
+> `rupture` (service injoignable) **et** `qr` (disponible mais jamais lié —
+> trouvé manquant en testant PR #179 en conditions réelles, corrigé par PR
+> #180), jamais `demarrage` (transitoire). Un vrai bug de mise en page
+> trouvé et corrigé au passage (PR #179, révélé par l'e2e CI, pas en
+> local) : le nouveau bandeau, même vide, recevait `flex:1` d'un sélecteur
+> CSS global trop large et compressait la page routée de moitié. Détail
+> complet en §8·N. Décompte : **98 items, 84 faits (86 %)**, 2 partiels, 6
+> incertains, 6 non faits.
+
 ## 1. Synthèse exécutive
 
 Le SGFE est un projet d'une **maturité technique remarquable pour son stade** : architecture microservices propre et cohérente, backend rigoureux (gestion monétaire en `Decimal`, transactions, verrous de concurrence, règles métier codées en défense en profondeur), frontend Angular ultra‑moderne (zoneless, signals, offline‑first sur l'interface terrain), et une chaîne d'intégration continue de niveau professionnel (SAST, scan de dépendances, gate de couverture 80 %, SBOM + signature d'images). Le contrat d'API entre le front et le back est **aligné à un niveau inhabituel** (61 opérations GraphQL concordantes).
@@ -884,6 +898,7 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 - [x] **TLS partout**. *(M)* — **✅ Fait côté backend — PR #173.** Certificat auto-signé en dev, prod alignée sur le plan CloudFront + Let's Encrypt déjà documenté. `nginx -t` validé, redirection HTTP→HTTPS testée.
 - [ ] Environnement de **staging iso‑prod**. *(M)* — **Non traité — oubli de planification, pas une limite technique.** Cet item n'a été assigné à aucun des chantiers du 3 septembre ; à reprendre séparément.
 - [x] **Chiffrement au repos** des PII abonné. *(M)* — **✅ Fait — PR #173.** `nom`/`prenom`/`telephone_whatsapp`/`adresse` chiffrés (Fernet, clé dédiée fail-fast). Aucun filtre `__exact`/`__icontains` existant sur ces champs — pas de régression.
+- [x] **Alerte admin de déconnexion WhatsApp** (bandeau permanent + rappel). *(S)* — **✅ Fait — PR #179 + #180 (frontend, fusionnées 06/09/2026).** Nouvel item, hors périmètre de l'audit initial — jusqu'ici, rien ne signalait un admin en dehors de l'écran Configuration si la liaison WhatsApp tombait. `WhatsappSurveillanceService` (`core/whatsapp/`) réutilise l'infrastructure temps réel existante (subscription `whatsappStatus`, réservée ADMIN côté gateway, watchdog 6s + secours 20s déjà éprouvés par `WhatsappLinkComponent`) : bandeau permanent visible sur tout écran + toast immédiat à la rupture (non auto-fermant), répété toutes les 10 minutes tant qu'elle persiste. Couvre les deux phases qui bloquent réellement l'envoi — `rupture` (service injoignable) **et** `qr` (disponible mais aucun appareil jamais lié, trouvé manquant en testant PR #179 en conditions réelles — l'environnement local était en `qr` depuis le début, pas en `rupture` — corrigé par PR #180) — jamais `demarrage` (transitoire, quelques secondes à chaque démarrage de l'appli). Un vrai bug de mise en page trouvé et corrigé au passage (PR #179, révélé par l'e2e CI — `abonnes-gestion`/`paiement-encaissement` — pas en local) : `.shell__content > *:not(router-outlet)` (`global.scss`) donnait `flex:1`/`display:flex` au nouveau bandeau même vide (`@if` faux), le faisant partager la hauteur disponible à parts égales avec la page routée au lieu de la lui laisser tout entière — corrigé en ajoutant `:not(app-whatsapp-banner)` au sélecteur. Vérifié en conditions réelles dans le navigateur (arrêt/redémarrage du conteneur `whatsapp-service`), pas seulement par les 14 tests dédiés (10 service + 4 bannière).
 
 ### 🟢 P3 — Évolution (métier avancé, conformité, documentation)
 
@@ -932,9 +947,9 @@ Cette checklist décline la feuille de route (§7) en **tâches unitaires cochab
 |---|:---:|:---:|:---:|:---:|:---:|---|
 | 🔴 P0 | 27 | 26 | 0 | 1 | 0 | S/M (+ 2 L : mTLS fait — PR #168, déploiement fait) |
 | 🟠 P1 | 34 | 27 | 2 | 0 | 5 | M (+ 2 L : paiement en ligne fait (sandbox) — PR #192, outbox fait — PR #191, périmètre facturation→paiement uniquement ; avoir/rectification fait ; piste d'audit sur 6/6 services + immuabilité réelle paiement/facturation — PR #205/#208/#210/#212/#215 ; journalisation de sécurité centralisée et chaînée ; vérification dynamique de sécurité — `docs/PENTEST_LITE.md`, pas un pentest professionnel ; vrais tests e2e Playwright confirmés en direct — SGFE-frontend#175, dont un vrai bug de production `/impayes` trouvé et corrigé) |
-| 🟡 P2 | 21 | 20 | 0 | 0 | 1 | S/M (+ 1 L : réplication PostgreSQL, fait en PoC — PR #173) |
+| 🟡 P2 | 22 | 21 | 0 | 0 | 1 | S/M (+ 1 L : réplication PostgreSQL, fait en PoC — PR #173 ; nouvel item S — alerte admin déconnexion WhatsApp, PR #179/#180) |
 | 🟢 P3 | 15 | 10 | 0 | 5 | 0 | M/L (RGPD étendu aux utilisateurs internes + rétention 3 ans — PR #213 ; i18n backend externalisée — 113 littéraux sur 8 services, pas de traduction fournie) |
-| **Total** | **97** | **83 (86 %)** | **2 (2 %)** | **6 (6 %)** | **6 (6 %)** | — |
+| **Total** | **98** | **84 (86 %)** | **2 (2 %)** | **6 (6 %)** | **6 (6 %)** | — |
 
 > **Mise à jour du 4 septembre 2026** : quatre chantiers distincts livrés le même jour, puis deux écarts trouvés à la vérification croisée. **Retry automatique des notifications en échec** (§8·O, PR #190) porte le total à 73 (P3 : 7→8 faits, 2→1 non fait). **Piste d'audit §J entamée** (identité propagée + `AuditLog` paiement/facturation + rétention/horodatage + logger sécurité gateway, voir ci-dessus) déplace 3 items de non-fait à partiel dans P1, sans changer le total de faits. **Transactional outbox** (§F, PR #191, périmètre facturation→paiement uniquement) et **paiement en ligne** (§8·H, PR #192, sandbox/mock exclusivement) portent chacun un item de P1 de non-fait à fait, portant le total à 76. Puis, à la lecture de `docs/CONFORMITE_CICD.md` et `docs/CONFORMITE_SOC2_OWASP.md` (5e revue de fraîcheur ci-dessus) : **externalisation des secrets** (§8·A, P0) et **Trivy frontend** (§8·K, P1) repassent chacun de fait à partiel — valeurs de repli de secrets réels dans `docker-compose.yml` d'un côté, image scannée jamais déployée de l'autre — ramenant le total à **74**.
 >
