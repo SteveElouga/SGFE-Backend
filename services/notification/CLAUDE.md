@@ -11,13 +11,15 @@ Envoi de messages WhatsApp aux abonnés (factures, relances, suspensions) et ges
 ```
 services/notification/
 ├── notification/      # Projet Django (settings, urls, wsgi)
-├── notifications/     # App métier : Envoi, TokenAcces, services, grpc_server
-│   ├── models.py      # Envoi, TokenAcces
-│   ├── services.py    # EnvoiService, TokenService
+├── notifications/     # App métier : Envoi, TokenAcces, Diffusion, services, grpc_server
+│   ├── models.py      # Envoi, TokenAcces, Diffusion, DiffusionEnvoi
+│   ├── services.py    # EnvoiService, TokenService, DiffusionService
 │   ├── grpc_server.py # Servicer gRPC
 │   ├── grpc_clients.py # Clients vers Facturation, Abonné, Config, Paiement
 │   ├── whatsapp_client.py  # HTTP vers whatsapp-web.js
 │   ├── message_builder.py  # Constructeurs de messages WhatsApp
+│   ├── event_publisher.py  # Publication Redis (canal "diffusion:events")
+│   ├── schedulers.py       # APScheduler : diffusion_processor (15s), retry WhatsApp (15 min)
 │   └── management/commands/grpc_server.py
 ├── proto/             # Stubs générés depuis proto/*.proto — NE PAS MODIFIER
 ```
@@ -39,6 +41,33 @@ services/notification/
   Durée configurable via Config Service (clé `token_validite_jours`, défaut 20 jours).
 - **ValiderToken** : ne lève jamais d'erreur gRPC — retourne `is_valid=False`
   si le token est expiré, révoqué ou inexistant.
+- **Diffusion** : message libre (`CreerDiffusion`) envoyé à un ensemble
+  d'abonnés déjà résolu côté gateway (le filtrage quartier/camp/statut se fait
+  côté frontend, jamais ici). `DiffusionService.creer_diffusion` résout le
+  téléphone de chaque abonné via Abonné Service, avec dégradation **par
+  abonné** : un abonné introuvable ou injoignable ne bloque pas les autres, sa
+  ligne est simplement omise. `nb_total`/`nb_envoyes`/`nb_echecs` ne sont
+  jamais stockés — recalculés par agrégation sur `DiffusionEnvoi` à chaque
+  lecture (`GetDiffusion`/`ListDiffusions`), pour ne jamais afficher un
+  compteur qui a dérivé de l'état réel.
+
+## Jobs de fond (APScheduler, `schedulers.py`)
+
+Contrairement aux crons Paiement/Campagne (une passe quotidienne à heure
+fixe), ces deux jobs tournent en continu par petits lots (`IntervalTrigger`,
+pas `CronTrigger`) — verrou consultatif PostgreSQL par job (anti double-envoi
+en réplication), même patron que les autres services.
+
+- **`diffusion_processor_job`** (15s, `id="diffusion_processor"`) : envoie un
+  lot de 5 `DiffusionEnvoi` `EN_ATTENTE` (throttle délibéré — pas une limite
+  technique de whatsapp-service, mais pour ne pas ressembler à du spam sur le
+  compte WhatsApp Web partagé par tout le système), puis referme (`TERMINEE`)
+  toute `Diffusion` dont il ne reste plus de ligne `EN_ATTENTE` et publie sur
+  Redis (`diffusion:events`) — écouté par la subscription GraphQL
+  `diffusionProgressionUpdated` côté gateway.
+- **`retry_envois_echec_job`** (15 min) : retente les `Envoi` en `ECHEC` sous
+  le plafond `MAX_TENTATIVES_AUTO`, en rejouant `Envoi.dernier_message` à
+  l'identique (jamais recalculé).
 
 ## Démarrage local
 
