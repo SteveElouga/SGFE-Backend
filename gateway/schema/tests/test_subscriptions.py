@@ -34,11 +34,11 @@ class SubscriptionAbonneUpdatedTests(IsolatedAsyncioTestCase):
         with self.assertRaises(AuthError):
             await agen.__anext__()
 
-    @patch("redis.asyncio.Redis")
+    @patch("schema.redis_sentinel.get_redis_master")
     @patch("schema.subscriptions.abonne_client")
     @patch("schema.subscriptions.require_role")
     async def test_abonne_updated_admin_recoit_les_mises_a_jour(
-        self, mock_require_role: MagicMock, mock_abonne_client: MagicMock, mock_redis_cls: MagicMock
+        self, mock_require_role: MagicMock, mock_abonne_client: MagicMock, mock_get_redis_master: MagicMock
     ) -> None:
         """Une fois authentifié ADMIN, le flux Redis -> gRPC -> yield doit
         continuer à fonctionner normalement (pas de régression fonctionnelle)."""
@@ -55,7 +55,7 @@ class SubscriptionAbonneUpdatedTests(IsolatedAsyncioTestCase):
         mock_redis_instance = MagicMock()
         mock_redis_instance.pubsub.return_value = mock_pubsub
         mock_redis_instance.aclose = AsyncMock()
-        mock_redis_cls.from_url.return_value = mock_redis_instance
+        mock_get_redis_master.return_value = mock_redis_instance
 
         abonne_response = MagicMock()
         abonne_response.HasField.return_value = False
@@ -92,11 +92,11 @@ class SubscriptionWhatsappStatusTests(IsolatedAsyncioTestCase):
 
         mock_require_role.assert_called_once_with(info, "ADMIN")
 
-    @patch("redis.asyncio.Redis")
+    @patch("schema.redis_sentinel.get_redis_master")
     @patch("schema.subscriptions.notification_client")
     @patch("schema.subscriptions.require_role")
     async def test_whatsapp_status_admin_snapshot_puis_evenements(
-        self, mock_require_role: MagicMock, mock_notification_client: MagicMock, mock_redis_cls: MagicMock
+        self, mock_require_role: MagicMock, mock_notification_client: MagicMock, mock_get_redis_master: MagicMock
     ) -> None:
         """ADMIN reçoit d'abord un snapshot initial de l'état courant, puis
         chaque changement publié sur Redis (nouveau QR, connexion…)."""
@@ -121,7 +121,7 @@ class SubscriptionWhatsappStatusTests(IsolatedAsyncioTestCase):
         mock_redis_instance = MagicMock()
         mock_redis_instance.pubsub.return_value = mock_pubsub
         mock_redis_instance.aclose = AsyncMock()
-        mock_redis_cls.from_url.return_value = mock_redis_instance
+        mock_get_redis_master.return_value = mock_redis_instance
 
         info = MagicMock()
         agen = Subscription().whatsapp_status(info=info)
@@ -138,7 +138,7 @@ class SubscriptionWhatsappStatusTests(IsolatedAsyncioTestCase):
         mock_pubsub.subscribe.assert_awaited_once_with("whatsapp:events")
 
 
-def _mock_redis(listen_gen: Any, mock_redis_cls: MagicMock) -> MagicMock:
+def _mock_redis(listen_gen: Any, mock_get_redis_master: MagicMock) -> MagicMock:
     """Câble un pubsub Redis mocké dont listen() renvoie l'async-gen fourni."""
     pubsub = MagicMock()
     pubsub.subscribe = AsyncMock()
@@ -147,7 +147,7 @@ def _mock_redis(listen_gen: Any, mock_redis_cls: MagicMock) -> MagicMock:
     instance = MagicMock()
     instance.pubsub.return_value = pubsub
     instance.aclose = AsyncMock()
-    mock_redis_cls.from_url.return_value = instance
+    mock_get_redis_master.return_value = instance
     return pubsub
 
 
@@ -164,18 +164,18 @@ class SubscriptionFactureUpdatedTests(IsolatedAsyncioTestCase):
             await agen.__anext__()
         mock_require_role.assert_called_once_with(info, "ADMIN", "COMPTABLE")
 
-    @patch("redis.asyncio.Redis")
+    @patch("schema.redis_sentinel.get_redis_master")
     @patch("schema.subscriptions.facturation_client")
     @patch("schema.subscriptions.require_role")
     async def test_factureupdated_admin_pousse_la_facture(
-        self, mock_require_role: MagicMock, mock_facturation_client: MagicMock, mock_redis_cls: MagicMock
+        self, mock_require_role: MagicMock, mock_facturation_client: MagicMock, mock_get_redis_master: MagicMock
     ) -> None:
         mock_require_role.return_value = MagicMock()
 
         async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": '{"facture_id": "fac-1", "campagne_id": "camp-1"}'}
 
-        _mock_redis(_listen, mock_redis_cls)
+        _mock_redis(_listen, mock_get_redis_master)
 
         facture = MagicMock()
         facture.facture_id = "fac-1"
@@ -201,11 +201,11 @@ class SubscriptionFactureUpdatedTests(IsolatedAsyncioTestCase):
         self.assertEqual(result.statut, "PARTIELLE")
         mock_facturation_client.get_facture.assert_called_once_with("fac-1")
 
-    @patch("redis.asyncio.Redis")
+    @patch("schema.redis_sentinel.get_redis_master")
     @patch("schema.subscriptions.facturation_client")
     @patch("schema.subscriptions.require_role")
     async def test_factureupdated_filtre_campagne_ecarte_les_autres(
-        self, mock_require_role: MagicMock, mock_facturation_client: MagicMock, mock_redis_cls: MagicMock
+        self, mock_require_role: MagicMock, mock_facturation_client: MagicMock, mock_get_redis_master: MagicMock
     ) -> None:
         """Un événement d'une autre campagne ne doit rien pousser (ni re-fetch)."""
         mock_require_role.return_value = MagicMock()
@@ -213,7 +213,7 @@ class SubscriptionFactureUpdatedTests(IsolatedAsyncioTestCase):
         async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": '{"facture_id": "fac-1", "campagne_id": "AUTRE"}'}
 
-        _mock_redis(_listen, mock_redis_cls)
+        _mock_redis(_listen, mock_get_redis_master)
 
         agen = Subscription().facture_updated(info=MagicMock(), campagne_id="camp-1")
         with self.assertRaises(StopAsyncIteration):
@@ -234,11 +234,11 @@ class SubscriptionPaiementCreeTests(IsolatedAsyncioTestCase):
             await agen.__anext__()
         mock_require_role.assert_called_once_with(info, "ADMIN", "COMPTABLE")
 
-    @patch("redis.asyncio.Redis")
+    @patch("schema.redis_sentinel.get_redis_master")
     @patch("schema.subscriptions.auth_client")
     @patch("schema.subscriptions.require_role")
     async def test_paiementcree_admin_pousse_le_paiement(
-        self, mock_require_role: MagicMock, mock_auth_client: MagicMock, mock_redis_cls: MagicMock
+        self, mock_require_role: MagicMock, mock_auth_client: MagicMock, mock_get_redis_master: MagicMock
     ) -> None:
         """Sans filtre : le paiement est reconstruit depuis l'événement, avec le
         statut de facture et l'opérateur résolu (aucun re-fetch de facture)."""
@@ -255,7 +255,7 @@ class SubscriptionPaiementCreeTests(IsolatedAsyncioTestCase):
         async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": data}
 
-        pubsub = _mock_redis(_listen, mock_redis_cls)
+        pubsub = _mock_redis(_listen, mock_get_redis_master)
 
         agen = Subscription().paiement_cree(info=MagicMock())
         result = await agen.__anext__()
@@ -292,11 +292,11 @@ class SubscriptionUtilisateurUpdatedTests(IsolatedAsyncioTestCase):
         with self.assertRaises(AuthError):
             await agen.__anext__()
 
-    @patch("redis.asyncio.Redis")
+    @patch("schema.redis_sentinel.get_redis_master")
     @patch("schema.subscriptions.auth_client")
     @patch("schema.subscriptions.require_auth")
     async def test_non_admin_sur_son_propre_id_recoit_son_compte(
-        self, mock_require_auth: MagicMock, mock_auth_client: MagicMock, mock_redis_cls: MagicMock
+        self, mock_require_auth: MagicMock, mock_auth_client: MagicMock, mock_get_redis_master: MagicMock
     ) -> None:
         """Cas profil : un COMPTABLE peut suivre son propre id (déconnexion forcée
         si un admin le désactive / change son rôle)."""
@@ -306,18 +306,18 @@ class SubscriptionUtilisateurUpdatedTests(IsolatedAsyncioTestCase):
         async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": '{"event_type": "USER_UPDATED", "user_id": "u-1"}'}
 
-        _mock_redis(_listen, mock_redis_cls)
+        _mock_redis(_listen, mock_get_redis_master)
 
         agen = Subscription().utilisateur_updated(info=MagicMock(), utilisateur_id="u-1")
         result = await agen.__anext__()
         self.assertEqual(result.id, "u-1")
         mock_auth_client.get_user.assert_called_once_with("u-1")
 
-    @patch("redis.asyncio.Redis")
+    @patch("schema.redis_sentinel.get_redis_master")
     @patch("schema.subscriptions.auth_client")
     @patch("schema.subscriptions.require_auth")
     async def test_admin_flux_global_recoit_les_autres(
-        self, mock_require_auth: MagicMock, mock_auth_client: MagicMock, mock_redis_cls: MagicMock
+        self, mock_require_auth: MagicMock, mock_auth_client: MagicMock, mock_get_redis_master: MagicMock
     ) -> None:
         mock_require_auth.return_value = MagicMock(role="ADMIN", user_id="admin-1")
         mock_auth_client.get_user.return_value = _mock_user("u-2")
@@ -325,7 +325,7 @@ class SubscriptionUtilisateurUpdatedTests(IsolatedAsyncioTestCase):
         async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": '{"event_type": "USER_CREATED", "user_id": "u-2"}'}
 
-        _mock_redis(_listen, mock_redis_cls)
+        _mock_redis(_listen, mock_get_redis_master)
 
         agen = Subscription().utilisateur_updated(info=MagicMock())
         result = await agen.__anext__()
@@ -344,18 +344,18 @@ class SubscriptionConfigUpdatedTests(IsolatedAsyncioTestCase):
             await agen.__anext__()
         mock_require_role.assert_called_once_with(info, "ADMIN")
 
-    @patch("redis.asyncio.Redis")
+    @patch("schema.redis_sentinel.get_redis_master")
     @patch("schema.subscriptions.config_client")
     @patch("schema.subscriptions.require_role")
     async def test_admin_pousse_le_parametre(
-        self, mock_require_role: MagicMock, mock_config_client: MagicMock, mock_redis_cls: MagicMock
+        self, mock_require_role: MagicMock, mock_config_client: MagicMock, mock_get_redis_master: MagicMock
     ) -> None:
         mock_require_role.return_value = MagicMock()
 
         async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": '{"cle": "delai_paiement_jours"}'}
 
-        _mock_redis(_listen, mock_redis_cls)
+        _mock_redis(_listen, mock_get_redis_master)
 
         param = MagicMock()
         param.cle = "delai_paiement_jours"
@@ -382,18 +382,18 @@ class SubscriptionTarifUpdatedTests(IsolatedAsyncioTestCase):
             await agen.__anext__()
         mock_require_role.assert_called_once_with(info, "ADMIN", "COMPTABLE")
 
-    @patch("redis.asyncio.Redis")
+    @patch("schema.redis_sentinel.get_redis_master")
     @patch("schema.subscriptions.facturation_client")
     @patch("schema.subscriptions.require_role")
     async def test_pousse_le_tarif_actif(
-        self, mock_require_role: MagicMock, mock_facturation_client: MagicMock, mock_redis_cls: MagicMock
+        self, mock_require_role: MagicMock, mock_facturation_client: MagicMock, mock_get_redis_master: MagicMock
     ) -> None:
         mock_require_role.return_value = MagicMock()
 
         async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": '{"event_type": "TARIF_UPDATED"}'}
 
-        _mock_redis(_listen, mock_redis_cls)
+        _mock_redis(_listen, mock_get_redis_master)
 
         tarif = MagicMock()
         tarif.tarif_id = "t-1"
@@ -430,7 +430,7 @@ class SubscriptionProgressionUpdatedTests(IsolatedAsyncioTestCase):
         with self.assertRaises(PermissionError):
             await agen.__anext__()
 
-    @patch("redis.asyncio.Redis")
+    @patch("schema.redis_sentinel.get_redis_master")
     @patch("schema.subscriptions.campagne_client")
     @patch("schema.subscriptions._verifier_acces_campagne")
     @patch("schema.subscriptions.require_role")
@@ -439,7 +439,7 @@ class SubscriptionProgressionUpdatedTests(IsolatedAsyncioTestCase):
         mock_require_role: MagicMock,
         mock_verifier: MagicMock,
         mock_campagne_client: MagicMock,
-        mock_redis_cls: MagicMock,
+        mock_get_redis_master: MagicMock,
     ) -> None:
         mock_require_role.return_value = MagicMock(role="SUPERVISEUR", user_id="s-1")
         mock_verifier.return_value = None  # accès autorisé
@@ -447,7 +447,7 @@ class SubscriptionProgressionUpdatedTests(IsolatedAsyncioTestCase):
         async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": '{"campagne_id": "c-1"}'}
 
-        _mock_redis(_listen, mock_redis_cls)
+        _mock_redis(_listen, mock_get_redis_master)
 
         prog = MagicMock()
         prog.campagne_id = "c-1"
@@ -491,7 +491,7 @@ class SubscriptionDiffusionProgressionUpdatedTests(IsolatedAsyncioTestCase):
         with self.assertRaises(AuthError):
             await agen.__anext__()
 
-    @patch("redis.asyncio.Redis")
+    @patch("schema.redis_sentinel.get_redis_master")
     @patch("schema.subscriptions.auth_client")
     @patch("schema.subscriptions.notification_client")
     @patch("schema.subscriptions.require_role")
@@ -500,14 +500,14 @@ class SubscriptionDiffusionProgressionUpdatedTests(IsolatedAsyncioTestCase):
         mock_require_role: MagicMock,
         mock_notification_client: MagicMock,
         mock_auth_client: MagicMock,
-        mock_redis_cls: MagicMock,
+        mock_get_redis_master: MagicMock,
     ) -> None:
         mock_require_role.return_value = MagicMock(role="ADMIN")
 
         async def _listen() -> AsyncGenerator[dict[str, str], None]:
             yield {"type": "message", "data": '{"diffusion_id": "diff-1"}'}
 
-        _mock_redis(_listen, mock_redis_cls)
+        _mock_redis(_listen, mock_get_redis_master)
 
         mock_notification_client.get_diffusion.return_value = _diffusion_response()
         mock_auth_client.get_user.return_value = MagicMock(username="demo_admin")
@@ -521,7 +521,7 @@ class SubscriptionDiffusionProgressionUpdatedTests(IsolatedAsyncioTestCase):
         # le nom d'utilisateur affiché au chargement par l'identifiant brut.
         self.assertEqual(result.created_by, "demo_admin")
 
-    @patch("redis.asyncio.Redis")
+    @patch("schema.redis_sentinel.get_redis_master")
     @patch("schema.subscriptions.auth_client")
     @patch("schema.subscriptions.notification_client")
     @patch("schema.subscriptions.require_role")
@@ -530,7 +530,7 @@ class SubscriptionDiffusionProgressionUpdatedTests(IsolatedAsyncioTestCase):
         mock_require_role: MagicMock,
         mock_notification_client: MagicMock,
         mock_auth_client: MagicMock,
-        mock_redis_cls: MagicMock,
+        mock_get_redis_master: MagicMock,
     ) -> None:
         mock_require_role.return_value = MagicMock(role="ADMIN")
 
@@ -538,7 +538,7 @@ class SubscriptionDiffusionProgressionUpdatedTests(IsolatedAsyncioTestCase):
             yield {"type": "message", "data": '{"diffusion_id": "autre-diffusion"}'}
             yield {"type": "message", "data": '{"diffusion_id": "diff-1"}'}
 
-        _mock_redis(_listen, mock_redis_cls)
+        _mock_redis(_listen, mock_get_redis_master)
 
         mock_notification_client.get_diffusion.return_value = _diffusion_response()
         mock_auth_client.get_user.return_value = MagicMock(username="demo_admin")
