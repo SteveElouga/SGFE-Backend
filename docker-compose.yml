@@ -158,6 +158,14 @@ services:
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY requis (jamais de valeur par défaut pour un secret Django — voir .env.example)}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:?INTERNAL_GRPC_KEY requis (authentification gRPC interne — voir .env.example)}
+      # Doit être une variable d'environnement réelle, pas seulement le
+      # `os.environ.setdefault(...)` de manage.py : `opentelemetry-instrument`
+      # importe les settings Django pour s'auto-instrumenter AVANT que
+      # manage.py ne s'exécute — sans elle, Django s'initialise sans l'app
+      # `comptes`, et `grpc_server` (commande custom de cette app) devient
+      # introuvable ("Unknown command"). Trouvé en conditions réelles (phase 2
+      # de l'observabilité) en testant, pas en le supposant.
+      DJANGO_SETTINGS_MODULE: auth.settings
       DJANGO_DEBUG: "True"
       AUTH_DB_HOST: auth-postgres
       AUTH_DB_PORT: "5432"
@@ -182,7 +190,24 @@ services:
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key
-    command: sh -c "python manage.py migrate && python manage.py grpc_server"
+      # Observabilité, phase 2 : voir gateway ci-dessous pour le détail de
+      # chaque variable. OTEL_LOGS_EXPORTER=none : les logs partent par stdout
+      # JSON (Alloy les scrape), pas par l'exportateur OTLP natif.
+      OTEL_SERVICE_NAME: auth-service
+      OTEL_RESOURCE_ATTRIBUTES: "service.namespace=sgfe,deployment.environment=dev"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_LOGS_EXPORTER: none
+    # `migrate` n'est pas instrumenté (voir Dockerfile) : seule la commande
+    # longue-vivante l'est, ici passée en override de compose plutôt que de
+    # dupliquer le CMD du Dockerfile.
+    command: sh -c "python manage.py migrate && opentelemetry-instrument python manage.py grpc_server"
+    # Le raccordement à la plateforme d'observabilité (réseau `obs-edge`) vit
+    # dans `docker-compose.observability.yml`, un fichier séparé et optionnel
+    # — PAS ici (régression CI du 07/09/2026, voir le commentaire sur le
+    # service `gateway` plus bas pour le détail).
     volumes:
       # Clés JWT RS256 (gitignorées) : à générer via ./scripts/gen-jwt-keys.sh en
       # local, fournies par le secrets manager en prod. Sans elles, l'auth-service
@@ -821,6 +846,10 @@ services:
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY requis (jamais de valeur par défaut pour un secret Django — voir .env.example)}
       INTERNAL_GRPC_KEY: ${INTERNAL_GRPC_KEY:?INTERNAL_GRPC_KEY requis (authentification gRPC interne — voir .env.example)}
+      # Doit être une variable d'environnement réelle (voir le même
+      # commentaire sur auth-service) : `opentelemetry-instrument` importe les
+      # settings Django pour s'auto-instrumenter avant que Daphne ne démarre.
+      DJANGO_SETTINGS_MODULE: gateway.settings
       DJANGO_DEBUG: "True"
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
       AUTH_GRPC_HOST: auth-service
@@ -850,6 +879,20 @@ services:
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key
+      # Observabilité, phase 2 (voir artefact "Brancher SGFE sur
+      # l'observabilité") : le Collector écoute sur obs-edge (réseau partagé,
+      # phase 1, déjà déclaré plus bas pour ce service), jamais un accès
+      # direct à Tempo/Prometheus. service.namespace=sgfe : cloisonnement du
+      # projet côté plateforme, posé une fois pour toutes. OTEL_LOGS_EXPORTER
+      # à none : les logs partent par stdout JSON (voir settings.py), pas par
+      # cet exportateur.
+      OTEL_SERVICE_NAME: gateway
+      OTEL_RESOURCE_ATTRIBUTES: "service.namespace=sgfe,deployment.environment=dev"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_LOGS_EXPORTER: none
     volumes:
       - ./certs:/app/certs:ro
     expose:

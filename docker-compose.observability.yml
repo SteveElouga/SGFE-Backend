@@ -18,6 +18,10 @@
 # Sans cette deuxième commande (juste `docker compose up -d`), la pile démarre
 # normalement, sans télémétrie — c'est le mode par défaut, celui que CI/e2e
 # utilisent, et qui ne doit jamais dépendre de cette plateforme externe.
+#
+# Phase 2 du plan d'intégration : `gateway` et `auth-service` sont
+# instrumentés (traces + logs structurés) — les 7 autres services suivront au
+# fur et à mesure, chacun ajouté ici au moment de son instrumentation.
 
 networks:
   obs-edge:
@@ -28,4 +32,9 @@ services:
     networks:
       - default
       - edge
+      - obs-edge
+
+  auth-service:
+    networks:
+      - default
       - obs-edge
