@@ -98,7 +98,7 @@ E-mail           Brevo API (activation de compte, réinitialisation de mot de pa
 Orchestration    Docker Compose (21 services)
 Conteneurs       Docker — 12 Dockerfiles, images de base épinglées au SHA
 Frontend         Angular 22 + PrimeNG 21 + PWA
-Observabilité    ⚠️ AUCUNE aujourd'hui — dépendances présentes, 0 fichier instrumenté
+Observabilité    ⚠️ 0 fichier instrumenté — réseau `obs-edge` vers une plateforme externe posé (07/09)
 Déploiement      Compose ; cible AWS — voir docs/INFRASTRUCTURE_AWS.md
 Serveur          local ; cible EC2 t4g.medium en eu-west-3
 Auth             JWT (SimpleJWT) — access 15 min par défaut (cookie HttpOnly pour le refresh, 7j)
@@ -467,10 +467,33 @@ et relayé via le paramètre `created_by` de `ListCampagnesRequest` côté
 > expose `/metrics`, et le dossier `observability/` n'existe pas. Un incident
 > en production se diagnostique aujourd'hui par `docker compose logs`.
 
+> ✅ **Précisé le 7 septembre 2026.** Ce projet ne porte et ne portera pas sa
+> propre pile d'observabilité — le principe reste : brancher un outil externe
+> déjà construit, pas en réinventer une. Cette pile vit dans son propre projet
+> Compose, hors de ce dépôt : `~/Documents/Architecture cible/observability/`
+> (LGTM + Pyroscope + GlitchTip + Uptime Kuma, détail dans son propre
+> `README.md`). Le raccordement réseau est fait : cette pile crée et nomme le
+> réseau Docker `obs-edge` (méthode « réseau partagé », voir son
+> `docker-compose.yml`), déclaré `external: true` ici et rejoint pour l'instant
+> par le seul service `gateway` — connectivité vérifiée en direct (`docker
+> compose exec gateway` → `http://otel-collector:4318` → HTTP 404, attendu :
+> c'est la racine du récepteur OTLP, pas un endpoint GET). **Rien n'est encore
+> instrumenté** : ce raccordement réseau est un préalable (« phase 1 »), pas
+> une télémétrie qui circule — la plateforme doit tourner (`docker compose up
+> -d` dans son propre dossier) **avant** celle-ci, sinon `obs-edge` n'existe pas
+> encore et le `docker compose up` d'ici échoue en le disant clairement (même
+> logique que `sgfe-edge` avec le frontend, dans l'autre sens).
+
 Ce qui reste à faire (points 58 à 60 du registre), chaque service devant :
 1. Produire des logs JSON structurés avec `trace_id`
 2. Exposer `/metrics` pour Prometheus
 3. Être instrumenté avec OpenTelemetry SDK
+
+Variables d'environnement prévues par service une fois instrumenté (`OTEL_SERVICE_NAME`,
+`OTEL_RESOURCE_ATTRIBUTES=service.namespace=sgfe,...`, `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`)
+et démarrage via `opentelemetry-instrument gunicorn ...` : voir le plan d'intégration complet
+(artefact publié, phases 2 à 5 — logs structurés, métriques métier, frontend Faro/GlitchTip,
+durcissement avant exposition réelle).
 
 ---
 

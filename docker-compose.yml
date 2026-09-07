@@ -814,9 +814,16 @@ services:
     # `default` doit être répété : dès qu'un service déclare `networks`, il perd
     # son adhésion implicite au réseau du projet — et le gateway ne parlerait plus
     # à aucun des huit services gRPC ni à Redis.
+    #
+    # `obs-edge` : raccordement à la plateforme d'observabilité (projet Compose
+    # séparé, ~/Documents/Architecture cible/observability/), qui le crée et le
+    # nomme. Pour l'instant posé seulement ici, pour le smoke test de connectivité
+    # au Collector (`docker compose exec gateway curl ...`) — sera ajouté aux huit
+    # services métier au fur et à mesure de leur instrumentation (phase 2 du plan).
     networks:
       - default
       - edge
+      - obs-edge
     restart: unless-stopped
     deploy:
       resources:
@@ -902,6 +909,13 @@ services:
 networks:
   edge:
     name: sgfe-edge
+  # Créé par le projet Compose de la plateforme d'observabilité (méthode 2,
+  # réseau partagé) — cette pile s'y raccroche seulement, elle ne le crée pas.
+  # La plateforme doit donc être démarrée AVANT `docker compose up` ici, sans
+  # quoi Compose échoue en disant que le réseau n'existe pas (même logique que
+  # sgfe-edge ci-dessus, dans l'autre sens).
+  obs-edge:
+    external: true
 
 volumes:
   auth_postgres_data:
