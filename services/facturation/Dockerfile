@@ -11,7 +11,14 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --default-timeout=120 --retries 5 --user -r requirements.txt
+RUN pip install --no-cache-dir --default-timeout=120 --retries 5 --user -r requirements.txt \
+    # Observabilité, phase 2 : détecte les paquets déjà installés ci-dessus
+    # (Django, psycopg2, redis, grpcio, requests) et installe leurs
+    # instrumenteurs OpenTelemetry correspondants — sans ça, `grpcio` par
+    # exemple ne produirait aucun span sur les appels gRPC entrants/sortants.
+    # Chemin complet : ce stage n'a pas encore le PATH de `/root/.local/bin`
+    # (ENV n'est posé que dans le stage final, sur /home/appuser/.local/bin).
+    && /root/.local/bin/opentelemetry-bootstrap -a install
 
 FROM python:3.12-slim@sha256:7a8b475003c4fe15a2cd4e55e5cfc2f3560bdc9333d624f24cdd6d4340fd7a17
 
@@ -71,4 +78,6 @@ EXPOSE 50054
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD python -c "import socket; socket.create_connection(('localhost', 50054), timeout=2)" || exit 1
 
-CMD ["python", "manage.py", "grpc_server"]
+# opentelemetry-instrument : initialise le SDK OTel (traces/métriques) avant
+# que Django ne démarre, à partir des variables OTEL_* (docker-compose.yml).
+CMD ["opentelemetry-instrument", "python", "manage.py", "grpc_server"]

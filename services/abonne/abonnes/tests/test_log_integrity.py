@@ -70,4 +70,5 @@ class LoggingSettingsWiringTests(SimpleTestCase):
         assert isinstance(handlers, dict)
         handler_console = handlers["console"]
         assert isinstance(handler_console, dict)
-        self.assertEqual(handler_console["formatter"], "iso8601")
+        self.assertEqual(handler_console["formatter"], "json")
+        self.assertNotEqual(handler_console["formatter"], "iso8601_chained")

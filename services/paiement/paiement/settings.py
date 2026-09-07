@@ -158,9 +158,19 @@ LOG_DIR = Path(env("LOG_DIR", default=str(BASE_DIR / "logs")))
 
 _LOGGING_HANDLERS: list[str] = ["console"]
 _LOGGING_HANDLER_CONFIG: dict[str, dict[str, object]] = {
+    # Phase 2 de l'observabilité : ce flux (stdout du conteneur) est celui
+    # qu'Alloy scrape et pousse vers Loki — voir OTEL_LOGS_EXPORTER=none dans
+    # docker-compose.yml, décision déjà actée : les logs partent par stdout
+    # JSON, pas par l'exportateur OTLP natif. D'où le format JSON ici plutôt
+    # que le texte lisible "iso8601" d'avant — c'est ce format-là qu'un humain
+    # lira via Grafana/Loki une fois la plateforme branchée, pas
+    # `docker compose logs` en brut. Le handler "file" ci-dessous (hash
+    # chaîné, preuve d'intégrité SOC2) n'est PAS ce flux et reste inchangé —
+    # les deux coexistent, l'un n'est pas une copie de l'autre.
     "console": {
         "class": "logging.StreamHandler",
-        "formatter": "iso8601",
+        "formatter": "json",
+        "filters": ["trace_context"],
     },
 }
 # Pas de fichier pendant les tests : évite d'écrire sur disque à chaque
@@ -185,14 +195,19 @@ if not TESTING:
 LOGGING: dict[str, object] = {
     "version": 1,
     "disable_existing_loggers": False,
+    "filters": {
+        "trace_context": {"()": "paiements.logging_utils.TraceContextFilter"},
+    },
     "formatters": {
-        "iso8601": {
-            "format": "%(asctime)s.%(msecs)03dZ %(levelname)s %(name)s %(message)s",
-            "datefmt": "%Y-%m-%dT%H:%M:%S",
-        },
         "iso8601_chained": {
             "()": "paiements.log_integrity.ChainedHashFormatter",
             "format": "%(asctime)s.%(msecs)03dZ %(levelname)s %(name)s %(message)s",
+            "datefmt": "%Y-%m-%dT%H:%M:%S",
+        },
+        # trace_id/span_id : voir paiements/logging_utils.py::TraceContextFilter.
+        "json": {
+            "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
+            "format": "%(asctime)s %(levelname)s %(name)s %(message)s %(trace_id)s %(span_id)s",
             "datefmt": "%Y-%m-%dT%H:%M:%S",
         },
     },
