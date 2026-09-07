@@ -81,9 +81,9 @@ def throttle_whatsapp_send() -> None:
 
 
 def _throttle_via_redis(min_interval: float) -> None:
-    import redis
+    from notifications.redis_sentinel import get_redis_master
 
-    client = redis.Redis.from_url(settings.REDIS_URL, socket_connect_timeout=1, socket_timeout=1)
+    client = get_redis_master(socket_timeout=1)
     interval_ms = max(1, int(min_interval * 1000))
     deadline = time.monotonic() + _MAX_WAIT_SECONDS
     try:
@@ -99,8 +99,8 @@ def _throttle_via_redis(min_interval: float) -> None:
                 return
             # `: Any` — les stubs redis-py typent pttl/close en Awaitable[Any] | Any
             # (client sync ET async partagent la même signature de stub) ; sans
-            # rapport avec un vrai bug, `redis.Redis.from_url` renvoie bien un
-            # client synchrone ici.
+            # rapport avec un vrai bug, `get_redis_master` renvoie bien un
+            # client synchrone ici (voir redis_sentinel.py).
             ttl_ms: Any = client.pttl(_REDIS_KEY)
             wait_seconds = (ttl_ms / 1000.0) if ttl_ms and ttl_ms > 0 else 0.05
             time.sleep(min(wait_seconds, min_interval))

@@ -19,10 +19,9 @@ def publish_diffusion_event(diffusion_id: str) -> None:
     diffusion terminée). Best-effort : un Redis indisponible ne fait jamais
     échouer le traitement du lot."""
     try:
-        from django.conf import settings
-        import redis
+        from notifications.redis_sentinel import get_redis_master
 
-        r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=1)
+        r = get_redis_master(decode_responses=True)
         r.publish(CHANNEL, json.dumps({"diffusion_id": diffusion_id}))
         r.close()  # type: ignore[no-untyped-call]  # redis-py : Redis.close() n'est pas annoté
     except Exception as exc:

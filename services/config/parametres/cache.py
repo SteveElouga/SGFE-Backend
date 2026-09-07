@@ -22,9 +22,9 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    # Import réservé au typage : le code exécuté importe `redis` localement
-    # dans chaque fonction (voir `_redis_client`), pour que les tests puissent
-    # simuler son absence via `patch.dict(sys.modules, {"redis": None})`.
+    # Import réservé au typage : le code exécuté importe `get_redis_master`
+    # localement dans `_redis_client` (voir redis_sentinel.py), import différé
+    # comme le reste des accès Redis de ce service.
     import redis
 
 logger = logging.getLogger(__name__)
@@ -40,10 +40,9 @@ _INFOS_SOCIETE_KEY = "config:cache:infos_societe"
 
 
 def _redis_client() -> redis.Redis:
-    from django.conf import settings
-    import redis
+    from parametres.redis_sentinel import get_redis_master
 
-    return redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=1)
+    return get_redis_master(decode_responses=True)
 
 
 def get_cached_param(cle: str) -> dict[str, str] | None:
@@ -52,8 +51,8 @@ def get_cached_param(cle: str) -> dict[str, str] | None:
         r = _redis_client()
         # `: Any` — les stubs redis-py typent get() en Awaitable[Any] | Any
         # (client sync ET async partagent la même signature de stub) ; sans
-        # rapport avec un vrai bug, `redis.Redis.from_url` renvoie bien un
-        # client synchrone ici.
+        # rapport avec un vrai bug, `get_redis_master` renvoie bien un client
+        # synchrone ici (voir redis_sentinel.py).
         raw: Any = r.get(_CONFIG_KEY_PREFIX + cle)
         r.close()  # type: ignore[no-untyped-call]  # redis-py : Redis.close() n'est pas annoté
         return json.loads(raw) if raw else None

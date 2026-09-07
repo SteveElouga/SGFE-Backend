@@ -15,10 +15,9 @@ def publish_config_event(cle: str, event_type: str = "CONFIG_UPDATED") -> None:
     abonnes/event_publisher.py).
     """
     try:
-        from django.conf import settings
-        import redis
+        from parametres.redis_sentinel import get_redis_master
 
-        r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=1)
+        r = get_redis_master(decode_responses=True)
         payload = json.dumps({"event_type": event_type, "cle": cle})
         r.publish(CHANNEL, payload)
         r.close()  # type: ignore[no-untyped-call]  # redis-py : Redis.close() n'est pas annoté

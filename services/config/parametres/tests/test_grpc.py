@@ -1,6 +1,5 @@
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.conf import settings
@@ -12,10 +11,6 @@ import config_service_pb2 as pb
 
 from parametres.grpc_server import ConfigServiceServicer
 from parametres.models import InfosSociete
-
-
-def _fake_redis_module(client: MagicMock) -> SimpleNamespace:
-    return SimpleNamespace(Redis=SimpleNamespace(from_url=MagicMock(return_value=client)))
 
 
 def _redis_store_backed_client() -> tuple[MagicMock, dict[str, str]]:
@@ -103,7 +98,7 @@ class ConfigServiceServicerTests(TestCase):
         """Une modification en base après le premier appel ne doit pas être vue
         tant que le cache n'est pas invalidé — c'est bien lui qui sert la 2e lecture."""
         client, _ = _redis_store_backed_client()
-        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+        with patch("parametres.redis_sentinel.get_redis_master", return_value=client):
             premiere = self.servicer.GetConfig(pb.ConfigKeyRequest(cle="delai_paiement_jours"), self.context)
             self.assertEqual(premiere.valeur, "5")
 
@@ -119,7 +114,7 @@ class ConfigServiceServicerTests(TestCase):
         l'ancienne valeur mise en cache — invalidation explicite, jamais de
         valeur strictement obsolète après une modification volontaire."""
         client, _ = _redis_store_backed_client()
-        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+        with patch("parametres.redis_sentinel.get_redis_master", return_value=client):
             self.servicer.GetConfig(pb.ConfigKeyRequest(cle="delai_paiement_jours"), self.context)
             self.servicer.UpdateConfig(pb.UpdateConfigRequest(cle="delai_paiement_jours", valeur="10"), self.context)
             apres = self.servicer.GetConfig(pb.ConfigKeyRequest(cle="delai_paiement_jours"), self.context)
@@ -128,7 +123,7 @@ class ConfigServiceServicerTests(TestCase):
     def test_get_infos_societe_sert_le_cache_sans_retourner_en_base(self) -> None:
         client, _ = _redis_store_backed_client()
         InfosSociete.objects.create(pk=1, nom="Eau SA", adresse="Yaoundé", telephone="+237")
-        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+        with patch("parametres.redis_sentinel.get_redis_master", return_value=client):
             premiere = self.servicer.GetInfosSociete(pb.EmptyRequest(), self.context)
             self.assertEqual(premiere.nom, "Eau SA")
 
@@ -139,7 +134,7 @@ class ConfigServiceServicerTests(TestCase):
 
     def test_update_infos_societe_invalide_le_cache(self) -> None:
         client, _ = _redis_store_backed_client()
-        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+        with patch("parametres.redis_sentinel.get_redis_master", return_value=client):
             self.servicer.GetInfosSociete(pb.EmptyRequest(), self.context)
             self.servicer.UpdateInfosSociete(pb.UpdateInfosRequest(nom="Nouvelle Société"), self.context)
             apres = self.servicer.GetInfosSociete(pb.EmptyRequest(), self.context)

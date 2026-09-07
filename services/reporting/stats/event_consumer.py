@@ -14,7 +14,6 @@ import time
 from typing import Any, Protocol
 
 import redis
-from django.conf import settings
 from django.db import transaction
 
 from stats.models import ProcessedEvent
@@ -96,7 +95,9 @@ def apply_event(agg: AgregateurDashboard, event: dict[str, Any]) -> None:
 
 
 def _connect() -> redis.Redis:
-    return redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=2)
+    from stats.redis_sentinel import get_redis_master
+
+    return get_redis_master(decode_responses=True, socket_connect_timeout=2)
 
 
 def _ensure_group(r: redis.Redis) -> None:
