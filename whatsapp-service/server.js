@@ -472,9 +472,24 @@ process.on('SIGINT', () => shutdown('SIGINT'));
  * On la lui donne ici. Le rejet est journalisé tel quel : le masquer serait
  * pire que le plantage, puisqu'il deviendrait invisible.
  */
-process.on('unhandledRejection', (raison) => {
+process.on('unhandledRejection', async (raison) => {
     const message = raison instanceof Error ? raison.message : String(raison);
     console.error('[WhatsApp] Rejet non traité — reconnexion plutôt que mort du processus :', message);
+    // Les trois autres chemins qui déclenchent une reconnexion (auth_failure,
+    // disconnected, initialize().catch()) posent tous `isReady = false` avant
+    // d'appeler scheduleRestart — celui-ci ne le faisait pas. Résultat observé
+    // en direct : `isReady` restait vrai pendant toute la reconnexion, /send
+    // et /send-with-pdf laissaient donc passer des appels vers un client dont
+    // la page Puppeteer était déjà détruite (`Cannot read properties of
+    // undefined (reading 'getChat')`) au lieu de répondre 503 « non connecté ».
+    isReady = false;
+    // `phaseCourante()` ne lit pas `isReady` seul : sans `alerteEnvoyee` posé
+    // ici (comme le fait déjà `auth_failure`), elle retombe sur `demarrage`
+    // (currentQr est vide, la session étant déjà authentifiée) — pas
+    // `rupture`. Le bandeau/rappel admin (WhatsappSurveillanceService,
+    // frontend) ne réagit qu'à `rupture`/`qr` : sans cet appel, une rupture
+    // par rejet non traité restait invisible pour l'admin, silencieusement.
+    await alerterRupture(`rejet non traité : ${message}`);
     if (activeClient) scheduleRestart(activeClient);
 });
 
