@@ -45,7 +45,22 @@ name: Publier et signer une image multi-architecture
 # rollback) — hors périmètre de ce correctif, noté pour une itération future
 # si jamais observé.
 #
-# ── Provenance SLSA isolée du build (item #12 du plan de remédiation) ─────────
+# ── Signature et provenance SLSA isolées du build (SLSA Build L3) ────────────
+#
+# Écart trouvé le 07/09/2026 en revérifiant le tableau SLSA de Verdict SGFE :
+# la provenance était déjà isolée (voir plus bas), mais la signature cosign
+# tournait encore DANS le job `publish`, avec le même jeton OIDC accessible
+# pendant tout le job — y compris pendant les étapes de build elles-mêmes.
+# SLSA Build L3 refuse précisément ce schéma : une signature qu'un job peut
+# se délivrer à lui-même ne prouve rien qu'une étape de build compromise
+# n'aurait pu falsifier. Le job `sign` ci-dessous, comme `provenance`, ne
+# reçoit que `image`/`digest` — jamais le contexte de build — et obtient son
+# propre jeton OIDC, distinct de celui de `publish`.
+#
+# `job_workflow_ref` (ce dont Fulcio dérive l'identité du certificat) pointe
+# sur le FICHIER de workflow qui exécute le job, pas sur le nom du job — ce
+# déplacement ne change donc rien à l'identité `_publish-image.yml@…` déjà
+# vérifiée par `cd-prod.yml` (job `verifier-signatures`).
 #
 # Jusqu'ici, `docker/build-push-action` auto-attestait sa propre provenance
 # (`provenance: true`) et `cosign` la signait, dans CE MÊME job, avec le même
@@ -95,11 +110,9 @@ jobs:
     permissions:
       contents: read
       packages: write
-      # Signature cosign sans clé : le jeton OIDC du job EST l'identité signée.
-      id-token: write
-    # Consommés par le job `provenance` ci-dessous : le nom d'image (sans tag
+    # Consommés par les jobs `sign`/`provenance` ci-dessous : le nom d'image (sans tag
     # ni digest) et le digest de la liste de manifestes tout juste poussée.
-    # C'est tout ce que le générateur externe reçoit de ce job — jamais le
+    # C'est tout ce que ces deux jobs isolés reçoivent de celui-ci — jamais le
     # contexte de build.
     outputs:
       image: ${{ steps.repo.outputs.image }}
@@ -160,19 +173,32 @@ jobs:
           # au-dessus (`steps.build.outputs.digest`) une fois ce job terminé.
           provenance: false
 
+  # ── Signature cosign — job séparé, hors de portée du build (SLSA Build L3) ──
+  #
+  # Voir le commentaire en tête de fichier. Anciennement la fin du job
+  # `publish` : mêmes étapes, déplacées telles quelles, avec leur propre
+  # jeton OIDC (`id-token: write` retiré de `publish`, posé ici seulement).
+  sign:
+    name: Signer l'image (keyless, OIDC GitHub, job isolé)
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      id-token: write
+    steps:
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Signer l'image et ses variantes (keyless, OIDC GitHub)
         # `--recursive` n'est pas décoratif.
         #
-        # `steps.build.outputs.digest` est celui de la LISTE de manifestes. Sans
-        # ce drapeau, cosign ne signe que la liste — et la vérification de
+        # `needs.publish.outputs.digest` est celui de la LISTE de manifestes.
+        # Sans ce drapeau, cosign ne signe que la liste — et la vérification de
         # `cd-prod.yml` porterait sur un index, pas sur l'image arm64 réellement
         # tirée et exécutée sur la machine.
         #
         # C'est le genre de trou qui ne se voit pas : la vérification passe, et
         # ne prouve rien de ce qui tourne.
-        run: cosign sign --recursive --yes "ghcr.io/${REPO_LC}/${{ inputs.service }}@${{ steps.build.outputs.digest }}"
+        run: cosign sign --recursive --yes "${{ needs.publish.outputs.image }}@${{ needs.publish.outputs.digest }}"
 
   # ── Provenance SLSA — job séparé, hors de portée du build (SLSA Build L3) ──
   #
