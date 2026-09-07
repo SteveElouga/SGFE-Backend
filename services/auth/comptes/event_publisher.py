@@ -16,10 +16,9 @@ def publish_user_event(user_id: str, event_type: str = "USER_UPDATED") -> None:
     (même contrat que abonnes/event_publisher.py).
     """
     try:
-        from django.conf import settings
-        import redis
+        from comptes.redis_sentinel import get_redis_master
 
-        r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=1)
+        r = get_redis_master(decode_responses=True)
         payload = json.dumps({"event_type": event_type, "user_id": user_id})
         r.publish(CHANNEL, payload)
         r.close()  # type: ignore[no-untyped-call]

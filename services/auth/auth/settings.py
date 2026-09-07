@@ -123,6 +123,13 @@ INTERNAL_GRPC_KEY = env("INTERNAL_GRPC_KEY", default="")
 # --- Redis (pub/sub : notifie la gateway des mutations utilisateur) ---
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 
+# Sentinel (voir redis/README.md à la racine) : résout le maître courant au
+# lieu de l'hôte fixe ci-dessus, qui devient une réplique en lecture seule
+# après une bascule. Vide par défaut (repli sur REDIS_URL) : Sentinel n'est
+# pas forcément démarré en développement local hors Docker Compose.
+REDIS_SENTINELS = env("REDIS_SENTINELS", default="")
+REDIS_SENTINEL_MASTER = env("REDIS_SENTINEL_MASTER", default="mymaster")
+
 # --- JWT (RS256 asymétrique) ---
 # auth signe avec la clé PRIVÉE et valide avec la PUBLIQUE. La gateway et les
 # autres services ne décodent jamais le token : ils délèguent la validation à

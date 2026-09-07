@@ -124,6 +124,13 @@ PDF_STORAGE_DIR = env("PDF_STORAGE_DIR", default=str(BASE_DIR / "pdfs"))
 # --- Redis (pub/sub : notifie la gateway des mutations de facture) ---
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 
+# Sentinel (voir redis/README.md à la racine) : résout le maître courant au
+# lieu de l'hôte fixe ci-dessus, qui devient une réplique en lecture seule
+# après une bascule. Vide par défaut (repli sur REDIS_URL) : Sentinel n'est
+# pas forcément démarré en développement local hors Docker Compose.
+REDIS_SENTINELS = env("REDIS_SENTINELS", default="")
+REDIS_SENTINEL_MASTER = env("REDIS_SENTINEL_MASTER", default="mymaster")
+
 # --- Délai de paiement par défaut (en jours) si Config Service est indisponible ---
 DEFAULT_DELAI_PAIEMENT_JOURS = 5
 

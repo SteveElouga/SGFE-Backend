@@ -1,8 +1,6 @@
 """Tests du publisher d'événements Redis du Campagne Service."""
 
 import json
-import sys
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
@@ -10,14 +8,10 @@ from django.test import SimpleTestCase
 from campagnes.event_publisher import CHANNEL, publish_progression_event
 
 
-def _fake_redis_module(client: MagicMock) -> SimpleNamespace:
-    return SimpleNamespace(Redis=SimpleNamespace(from_url=MagicMock(return_value=client)))
-
-
 class PublishProgressionEventTests(SimpleTestCase):
     def test_publie_le_bon_payload_sur_le_bon_canal(self) -> None:
         client = MagicMock()
-        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+        with patch("campagnes.redis_sentinel.get_redis_master", return_value=client):
             publish_progression_event("camp-1", agent_id="agent-1")
 
         channel, payload = client.publish.call_args.args
@@ -31,5 +25,5 @@ class PublishProgressionEventTests(SimpleTestCase):
     def test_best_effort_sur_echec_redis(self) -> None:
         client = MagicMock()
         client.publish.side_effect = RuntimeError("redis down")
-        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+        with patch("campagnes.redis_sentinel.get_redis_master", return_value=client):
             publish_progression_event("camp-1")  # ne doit pas lever

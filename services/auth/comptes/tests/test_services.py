@@ -1,6 +1,4 @@
-import sys
 from datetime import timedelta
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, override_settings
@@ -25,12 +23,6 @@ from comptes.services import (
     UserAdminService,
 )
 from comptes.throttle import ThrottleError
-
-
-def _fake_redis_module(client: MagicMock) -> SimpleNamespace:
-    """Même patron que `comptes/tests/test_throttle.py` : simule le module
-    `redis` pour que ces tests d'intégration ne touchent jamais un vrai Redis."""
-    return SimpleNamespace(Redis=SimpleNamespace(from_url=MagicMock(return_value=client)))
 
 
 class AuthServiceTests(TestCase):
@@ -766,7 +758,7 @@ class PasswordSetupServiceThrottleTests(TestCase):
         # 1re demande : SET NX réussit. 2e immédiate : échoue (clé déjà posée).
         # 3e (après expiration simulée de la fenêtre côté Redis) : réussit à nouveau.
         client.set.side_effect = [True, False, True]
-        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+        with patch("comptes.redis_sentinel.get_redis_master", return_value=client):
             self.service.request_password_reset("admin_throttle@example.com")
             self.assertEqual(self.mock_send.call_count, 1)
 
@@ -943,7 +935,7 @@ class PhoneOtpServiceThrottleTests(TestCase):
         # 1re demande : SET NX réussit. 2e immédiate : échoue (clé déjà posée).
         # 3e (après expiration simulée de la fenêtre côté Redis) : réussit à nouveau.
         client.set.side_effect = [True, False, True]
-        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+        with patch("comptes.redis_sentinel.get_redis_master", return_value=client):
             self.service.request_otp_by_phone("+237690000050")
             self.assertEqual(self.mock_whatsapp.call_count, 1)
 
@@ -960,7 +952,7 @@ class PhoneOtpServiceThrottleTests(TestCase):
         attaquant pourrait bomber n'importe quel numéro, enregistré ou non."""
         client = MagicMock()
         client.set.side_effect = [True, False]
-        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+        with patch("comptes.redis_sentinel.get_redis_master", return_value=client):
             self.service.request_otp_by_phone("+237600000000")  # 1re : silencieuse mais acceptée
             with self.assertRaises(ThrottleError):
                 self.service.request_otp_by_phone("+237600000000")  # 2e immédiate : bloquée

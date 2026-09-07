@@ -19,10 +19,9 @@ def publish_reporting_event(event_type: str, **payload: object) -> None:
     consumer de dédupliquer (idempotence). Best-effort : un échec Redis ne fait
     jamais échouer l'opération métier (Redis est supposé disponible en prod)."""
     try:
-        from django.conf import settings
-        import redis
+        from factures.redis_sentinel import get_redis_master
 
-        r = redis.Redis.from_url(settings.REDIS_URL, socket_connect_timeout=1)
+        r = get_redis_master()
         event = {"event_id": str(uuid.uuid4()), "type": event_type, **payload}
         r.xadd(REPORTING_STREAM, {"data": json.dumps(event)})
         r.close()  # type: ignore[no-untyped-call]  # redis-py : Redis.close() n'est pas annoté
@@ -44,10 +43,9 @@ def publish_facture_event(
     prochaine requête (même contrat que abonnes/event_publisher.py).
     """
     try:
-        from django.conf import settings
-        import redis
+        from factures.redis_sentinel import get_redis_master
 
-        r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=1)
+        r = get_redis_master(decode_responses=True)
         payload = json.dumps({"event_type": event_type, "facture_id": facture_id, "campagne_id": campagne_id})
         r.publish(CHANNEL, payload)
         r.close()  # type: ignore[no-untyped-call]  # redis-py : Redis.close() n'est pas annoté
@@ -62,10 +60,9 @@ def publish_tarif_event(event_type: str = "TARIF_UPDATED") -> None:
     la gateway re-fetch le tarif courant via GetTarifActuel. Best-effort.
     """
     try:
-        from django.conf import settings
-        import redis
+        from factures.redis_sentinel import get_redis_master
 
-        r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=1)
+        r = get_redis_master(decode_responses=True)
         r.publish(TARIF_CHANNEL, json.dumps({"event_type": event_type}))
         r.close()  # type: ignore[no-untyped-call]  # redis-py : Redis.close() n'est pas annoté
     except Exception as exc:

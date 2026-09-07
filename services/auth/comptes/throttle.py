@@ -80,9 +80,9 @@ def verifier_throttle(cle: str, fenetre_secondes: int = FENETRE_THROTTLE_SECONDE
 
 def _verifier_via_redis(cle: str, fenetre_secondes: int) -> None:
     """Réserve la fenêtre de cooldown dans Redis via un `SET NX EX` atomique."""
-    import redis
+    from comptes.redis_sentinel import get_redis_master
 
-    client = redis.Redis.from_url(settings.REDIS_URL, socket_connect_timeout=1, socket_timeout=1)
+    client = get_redis_master(socket_timeout=1)
     try:
         # `: Any` — les stubs redis-py typent set() en Awaitable[Any] | Any
         # (client sync ET async partagent la même signature de stub) ; sans

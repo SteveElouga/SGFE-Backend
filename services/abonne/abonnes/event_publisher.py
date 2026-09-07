@@ -14,10 +14,9 @@ def publish_abonne_event(abonne_id: str, event_type: str = "ABONNE_UPDATED") -> 
     les données à jour à leur prochain poll.
     """
     try:
-        from django.conf import settings
-        import redis
+        from abonnes.redis_sentinel import get_redis_master
 
-        r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=1)
+        r = get_redis_master(decode_responses=True)
         payload = json.dumps({"event_type": event_type, "abonne_id": abonne_id})
         r.publish(CHANNEL, payload)
         r.close()  # type: ignore[no-untyped-call]  # redis-py : Redis.close() n'est pas annoté

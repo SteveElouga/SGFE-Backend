@@ -153,6 +153,13 @@ DEFAULT_TOKEN_VALIDITE_JOURS = env.int("DEFAULT_TOKEN_VALIDITE_JOURS", default=2
 # --- Redis (notification de progression des diffusions à la gateway) ---
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 
+# Sentinel (voir redis/README.md à la racine) : résout le maître courant au
+# lieu de l'hôte fixe ci-dessus, qui devient une réplique en lecture seule
+# après une bascule. Vide par défaut (repli sur REDIS_URL) : Sentinel n'est
+# pas forcément démarré en développement local hors Docker Compose.
+REDIS_SENTINELS = env("REDIS_SENTINELS", default="")
+REDIS_SENTINEL_MASTER = env("REDIS_SENTINEL_MASTER", default="mymaster")
+
 # --- Limite de débit globale des envois WhatsApp (voir rate_limiter.py) ---
 # Délai minimum (secondes) entre deux envois WhatsApp consécutifs, tous
 # déclencheurs confondus (diffusion en lot ET envois individuels immédiats).

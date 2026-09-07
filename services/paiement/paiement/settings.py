@@ -86,6 +86,12 @@ PAIEMENT_GRPC_PORT = env.int("PAIEMENT_GRPC_PORT", default=50055)
 
 # --- Redis (pub/sub : notifie la gateway des paiements enregistrés) ---
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
+# Sentinel (voir redis/README.md à la racine) : résout le maître courant au
+# lieu de l'hôte fixe ci-dessus, qui devient une réplique en lecture seule
+# après une bascule. Vide par défaut (repli sur REDIS_URL) : Sentinel n'est
+# pas forcément démarré en développement local hors Docker Compose.
+REDIS_SENTINELS = env("REDIS_SENTINELS", default="")
+REDIS_SENTINEL_MASTER = env("REDIS_SENTINEL_MASTER", default="mymaster")
 
 # --- Services gRPC consommés ---
 FACTURATION_GRPC_HOST = env("FACTURATION_GRPC_HOST", default="localhost")

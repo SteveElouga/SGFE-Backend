@@ -5,8 +5,6 @@ Redis est entièrement mocké (même patron que
 `notifications/tests/test_rate_limiter.py` côté service Notification).
 """
 
-import sys
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase, override_settings
@@ -15,16 +13,12 @@ from comptes import throttle
 from comptes.throttle import ThrottleError, verifier_throttle
 
 
-def _fake_redis_module(client: MagicMock) -> SimpleNamespace:
-    return SimpleNamespace(Redis=SimpleNamespace(from_url=MagicMock(return_value=client)))
-
-
 class ThrottleDisabledInTestingTests(SimpleTestCase):
     def test_noop_en_environnement_de_test(self) -> None:
         """settings.TESTING est déjà True dans ce process (`manage.py test`) :
         le throttle doit être un no-op, sans jamais toucher Redis."""
         client = MagicMock()
-        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+        with patch("comptes.redis_sentinel.get_redis_master", return_value=client):
             verifier_throttle("otp-throttle:+237690000000")
             verifier_throttle("otp-throttle:+237690000000")  # jamais bloqué non plus
         client.set.assert_not_called()
@@ -36,7 +30,7 @@ class ThrottleViaRedisTests(SimpleTestCase):
         """Le SET NX EX réussit : la demande est acceptée sans lever."""
         client = MagicMock()
         client.set.return_value = True
-        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+        with patch("comptes.redis_sentinel.get_redis_master", return_value=client):
             verifier_throttle("otp-throttle:+237690000000")
         client.set.assert_called_once_with("otp-throttle:+237690000000", "1", nx=True, ex=60)
         client.close.assert_called_once()
@@ -45,7 +39,7 @@ class ThrottleViaRedisTests(SimpleTestCase):
         """Le SET NX échoue (clé déjà posée par la 1re demande) : ThrottleError."""
         client = MagicMock()
         client.set.return_value = False
-        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+        with patch("comptes.redis_sentinel.get_redis_master", return_value=client):
             with self.assertRaises(ThrottleError):
                 verifier_throttle("otp-throttle:+237690000000")
 
@@ -55,7 +49,7 @@ class ThrottleViaRedisTests(SimpleTestCase):
         simulé ici par un deuxième appel à `set` qui réussit de nouveau."""
         client = MagicMock()
         client.set.side_effect = [True, False, True]
-        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+        with patch("comptes.redis_sentinel.get_redis_master", return_value=client):
             verifier_throttle("otp-throttle:+237690000000")  # 1re demande : passe
             with self.assertRaises(ThrottleError):
                 verifier_throttle("otp-throttle:+237690000000")  # 2e immédiate : bloquée
@@ -65,15 +59,14 @@ class ThrottleViaRedisTests(SimpleTestCase):
     def test_fenetre_personnalisee_est_transmise_a_redis(self) -> None:
         client = MagicMock()
         client.set.return_value = True
-        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+        with patch("comptes.redis_sentinel.get_redis_master", return_value=client):
             verifier_throttle("password-reset-throttle:admin@example.com", fenetre_secondes=30)
         client.set.assert_called_once_with("password-reset-throttle:admin@example.com", "1", nx=True, ex=30)
 
     def test_redis_indisponible_replie_sur_verrou_local(self) -> None:
         """Si Redis lève une exception, le throttle ne doit ni crasher ni
         laisser passer indéfiniment — il retombe sur un verrou local."""
-        fake_redis = SimpleNamespace(Redis=SimpleNamespace(from_url=MagicMock(side_effect=ConnectionError("down"))))
-        with patch.dict(sys.modules, {"redis": fake_redis}):
+        with patch("comptes.redis_sentinel.get_redis_master", side_effect=ConnectionError("down")):
             with patch("comptes.throttle._verifier_local") as mock_local:
                 verifier_throttle("otp-throttle:+237690000000")
         mock_local.assert_called_once_with("otp-throttle:+237690000000", 60)
