@@ -388,10 +388,21 @@ services:
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key
+      # Observabilité, phase 2 : voir auth-service ci-dessus pour le détail
+      # de chaque variable. OTEL_LOGS_EXPORTER=none : les logs partent par
+      # stdout JSON (Alloy les scrape), pas par l'exportateur OTLP natif.
+      DJANGO_SETTINGS_MODULE: facturation.settings
+      OTEL_SERVICE_NAME: facturation-service
+      OTEL_RESOURCE_ATTRIBUTES: "service.namespace=sgfe,deployment.environment=dev"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_LOGS_EXPORTER: none
     volumes:
       - facturation_pdfs:/app/pdfs
       - ./certs:/app/certs:ro
-    command: sh -c "python manage.py migrate && python manage.py grpc_server"
+    command: sh -c "python manage.py migrate && opentelemetry-instrument python manage.py grpc_server"
     restart: unless-stopped
     deploy:
       resources:
@@ -471,9 +482,20 @@ services:
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key
+      # Observabilité, phase 2 : voir auth-service ci-dessus pour le détail
+      # de chaque variable. OTEL_LOGS_EXPORTER=none : les logs partent par
+      # stdout JSON (Alloy les scrape), pas par l'exportateur OTLP natif.
+      DJANGO_SETTINGS_MODULE: paiement.settings
+      OTEL_SERVICE_NAME: paiement-service
+      OTEL_RESOURCE_ATTRIBUTES: "service.namespace=sgfe,deployment.environment=dev"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_LOGS_EXPORTER: none
     volumes:
       - ./certs:/app/certs:ro
-    command: sh -c "python manage.py migrate && python manage.py grpc_server"
+    command: sh -c "python manage.py migrate && opentelemetry-instrument python manage.py grpc_server"
     restart: unless-stopped
     deploy:
       resources:
@@ -556,6 +578,17 @@ services:
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key
+      # Observabilité, phase 2 : voir auth-service ci-dessus pour le détail
+      # de chaque variable. OTEL_LOGS_EXPORTER=none : les logs partent par
+      # stdout JSON (Alloy les scrape), pas par l'exportateur OTLP natif.
+      DJANGO_SETTINGS_MODULE: notification.settings
+      OTEL_SERVICE_NAME: notification-service
+      OTEL_RESOURCE_ATTRIBUTES: "service.namespace=sgfe,deployment.environment=dev"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_LOGS_EXPORTER: none
       # Délai minimum (s) entre deux envois WhatsApp consécutifs, tous
       # déclencheurs confondus — protège le compte WhatsApp Web partagé
       # d'un risque de bannissement en cas de pic (voir rate_limiter.py).
@@ -569,7 +602,7 @@ services:
       # notification-service <commande>`.
     volumes:
       - ./certs:/app/certs:ro
-    command: sh -c "python manage.py migrate && python manage.py grpc_server"
+    command: sh -c "python manage.py migrate && opentelemetry-instrument python manage.py grpc_server"
     restart: unless-stopped
     deploy:
       resources:
@@ -618,13 +651,24 @@ services:
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key
+      # Observabilité, phase 2 : voir auth-service ci-dessus pour le détail
+      # de chaque variable. OTEL_LOGS_EXPORTER=none : les logs partent par
+      # stdout JSON (Alloy les scrape), pas par l'exportateur OTLP natif.
+      DJANGO_SETTINGS_MODULE: abonne.settings
+      OTEL_SERVICE_NAME: abonne-service
+      OTEL_RESOURCE_ATTRIBUTES: "service.namespace=sgfe,deployment.environment=dev"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_LOGS_EXPORTER: none
       # Chiffrement au repos des PII abonné (nom, prénom, téléphone WhatsApp,
       # adresse — abonnes/fields.py). Placeholder dev uniquement : une vraie
       # clé (secrets manager) est requise en production, jamais celle-ci.
       PII_ENCRYPTION_KEY: ${PII_ENCRYPTION_KEY:?PII_ENCRYPTION_KEY requis (clé Fernet de chiffrement des données personnelles — voir .env.example)}
     volumes:
       - ./certs:/app/certs:ro
-    command: sh -c "python manage.py migrate && python manage.py grpc_server"
+    command: sh -c "python manage.py migrate && opentelemetry-instrument python manage.py grpc_server"
     restart: unless-stopped
     deploy:
       resources:
@@ -673,9 +717,20 @@ services:
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key
+      # Observabilité, phase 2 : voir auth-service ci-dessus pour le détail
+      # de chaque variable. OTEL_LOGS_EXPORTER=none : les logs partent par
+      # stdout JSON (Alloy les scrape), pas par l'exportateur OTLP natif.
+      DJANGO_SETTINGS_MODULE: campagne.settings
+      OTEL_SERVICE_NAME: campagne-service
+      OTEL_RESOURCE_ATTRIBUTES: "service.namespace=sgfe,deployment.environment=dev"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_LOGS_EXPORTER: none
     volumes:
       - ./certs:/app/certs:ro
-    command: sh -c "python manage.py migrate && python manage.py grpc_server"
+    command: sh -c "python manage.py migrate && opentelemetry-instrument python manage.py grpc_server"
     restart: unless-stopped
     deploy:
       resources:
@@ -735,9 +790,20 @@ services:
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key
+      # Observabilité, phase 2 : voir auth-service ci-dessus pour le détail
+      # de chaque variable. OTEL_LOGS_EXPORTER=none : les logs partent par
+      # stdout JSON (Alloy les scrape), pas par l'exportateur OTLP natif.
+      DJANGO_SETTINGS_MODULE: config.settings
+      OTEL_SERVICE_NAME: config-service
+      OTEL_RESOURCE_ATTRIBUTES: "service.namespace=sgfe,deployment.environment=dev"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_LOGS_EXPORTER: none
     volumes:
       - ./certs:/app/certs:ro
-    command: sh -c "python manage.py migrate && python manage.py grpc_server"
+    command: sh -c "python manage.py migrate && opentelemetry-instrument python manage.py grpc_server"
     restart: unless-stopped
     deploy:
       resources:
@@ -806,9 +872,20 @@ services:
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key
+      # Observabilité, phase 2 : voir auth-service ci-dessus pour le détail
+      # de chaque variable. OTEL_LOGS_EXPORTER=none : les logs partent par
+      # stdout JSON (Alloy les scrape), pas par l'exportateur OTLP natif.
+      DJANGO_SETTINGS_MODULE: reporting.settings
+      OTEL_SERVICE_NAME: reporting-service
+      OTEL_RESOURCE_ATTRIBUTES: "service.namespace=sgfe,deployment.environment=dev"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_LOGS_EXPORTER: none
     volumes:
       - ./certs:/app/certs:ro
-    command: sh -c "python manage.py migrate && python manage.py grpc_server"
+    command: sh -c "python manage.py migrate && opentelemetry-instrument python manage.py grpc_server"
     restart: unless-stopped
     deploy:
       resources:
