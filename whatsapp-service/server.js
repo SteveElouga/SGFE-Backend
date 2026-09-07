@@ -13,6 +13,13 @@ const PORT = process.env.PORT || 3000;
 const SESSION_PATH = process.env.SESSION_PATH || '/app/session';
 const INTERNAL_API_KEY = process.env.WHATSAPP_INTERNAL_API_KEY || '';
 const REDIS_URL = process.env.REDIS_URL || 'redis://redis:6379/0';
+// Sentinel (voir redis/README.md à la racine du dépôt) : résout le maître
+// courant au lieu de l'hôte fixe ci-dessus, qui devient une réplique en
+// lecture seule après une bascule. Vide par défaut (repli sur REDIS_URL) :
+// Sentinel n'est pas forcément démarré en développement local hors Docker
+// Compose. Format : "host1:port1,host2:port2,...".
+const REDIS_SENTINELS = process.env.REDIS_SENTINELS || '';
+const REDIS_SENTINEL_MASTER = process.env.REDIS_SENTINEL_MASTER || 'mymaster';
 // Intervalle de sauvegarde périodique de la session vers Redis (minimum 60000 ms
 // imposé par RemoteAuth). La toute première sauvegarde a lieu 60 s après le scan
 // du QR ; au-delà, la session persistée survit à tout redémarrage du container.
@@ -72,11 +79,26 @@ const ALERTE_APRES_MS = Number(process.env.WHATSAPP_ALERTE_APRES_MS) || 180000;
 // Client Redis partagé : coffre-fort de la session WhatsApp (RemoteAuth y stocke
 // un zip du profil, restauré au démarrage). C'est ce qui permet de survivre à un
 // redémarrage/rebuild du container sans re-scanner le QR code.
-const redis = new Redis(REDIS_URL, {
+//
+// Sentinel-aware quand REDIS_SENTINELS est défini : ioredis redemande alors
+// l'adresse du maître à Sentinel à chaque (re)connexion au lieu de coder en
+// dur l'hôte "redis", qui devient une réplique en lecture seule après une
+// bascule (bug réel constaté le 07/09/2026 — voir redis/README.md).
+const redisOptions = {
     // La session doit pouvoir être restaurée même si Redis vient lui-même de
     // redémarrer : on laisse ioredis retenter indéfiniment plutôt qu'échouer.
     maxRetriesPerRequest: null,
-});
+};
+const redis = REDIS_SENTINELS
+    ? new Redis({
+          sentinels: REDIS_SENTINELS.split(',').map((pair) => {
+              const [host, port] = pair.split(':');
+              return { host, port: Number(port) };
+          }),
+          name: REDIS_SENTINEL_MASTER,
+          ...redisOptions,
+      })
+    : new Redis(REDIS_URL, redisOptions);
 redis.on('error', (err) => console.error('[WhatsApp] Erreur Redis :', err.message));
 
 const sessionStore = new RedisStore({ redis, dataPath: SESSION_PATH });

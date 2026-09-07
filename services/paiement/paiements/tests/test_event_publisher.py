@@ -1,7 +1,6 @@
 """Tests du publisher d'événements Redis du Paiement Service."""
 
 import json
-import sys
 from datetime import date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
@@ -10,10 +9,6 @@ from unittest.mock import MagicMock, patch
 from django.test import SimpleTestCase
 
 from paiements.event_publisher import CHANNEL, publish_paiement_event
-
-
-def _fake_redis_module(client: MagicMock) -> SimpleNamespace:
-    return SimpleNamespace(Redis=SimpleNamespace(from_url=MagicMock(return_value=client)))
 
 
 def _fake_paiement() -> SimpleNamespace:
@@ -32,7 +27,7 @@ def _fake_paiement() -> SimpleNamespace:
 class PublishPaiementEventTests(SimpleTestCase):
     def test_payload_auto_porteur_complet(self) -> None:
         client = MagicMock()
-        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+        with patch("paiements.redis_sentinel.get_redis_master", return_value=client):
             publish_paiement_event(_fake_paiement(), statut_facture="PARTIELLE")
 
         channel, payload = client.publish.call_args.args
@@ -57,5 +52,5 @@ class PublishPaiementEventTests(SimpleTestCase):
     def test_best_effort_sur_echec_redis(self) -> None:
         client = MagicMock()
         client.publish.side_effect = RuntimeError("redis down")
-        with patch.dict(sys.modules, {"redis": _fake_redis_module(client)}):
+        with patch("paiements.redis_sentinel.get_redis_master", return_value=client):
             publish_paiement_event(_fake_paiement(), statut_facture="PAYEE")  # ne doit pas lever

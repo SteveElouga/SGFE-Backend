@@ -4,7 +4,6 @@ import logging
 from typing import AsyncGenerator
 
 import strawberry
-from django.conf import settings
 from strawberry.types import Info
 
 from schema.abonne_types import Abonne, abonne_from_grpc
@@ -107,11 +106,11 @@ class Subscription:
         """
         await asyncio.to_thread(require_role, info, "ADMIN")
 
-        from redis.asyncio import Redis
+        from schema.redis_sentinel import get_redis_master
 
         filter_id = str(abonne_id) if abonne_id and abonne_id is not strawberry.UNSET else None
 
-        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        redis = await get_redis_master(decode_responses=True)
         pubsub = redis.pubsub()
         await pubsub.subscribe("abonne:events")
 
@@ -158,7 +157,7 @@ class Subscription:
         """
         await asyncio.to_thread(require_role, info, "ADMIN")
 
-        from redis.asyncio import Redis
+        from schema.redis_sentinel import get_redis_master
 
         # On s'abonne AVANT de prendre le snapshot.
         #
@@ -168,7 +167,7 @@ class Subscription:
         # « le service démarre » jusqu'au QR suivant, une vingtaine de secondes
         # plus tard — assez long pour qu'on recharge la page en croyant à une
         # panne. S'abonner d'abord ne coûte rien et ne perd rien.
-        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        redis = await get_redis_master(decode_responses=True)
         pubsub = redis.pubsub()
         await pubsub.subscribe("whatsapp:events")
 
@@ -220,11 +219,11 @@ class Subscription:
         """
         await asyncio.to_thread(require_role, info, "ADMIN", "COMPTABLE")
 
-        from redis.asyncio import Redis
+        from schema.redis_sentinel import get_redis_master
 
         filter_id = str(campagne_id) if campagne_id and campagne_id is not strawberry.UNSET else None
 
-        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        redis = await get_redis_master(decode_responses=True)
         pubsub = redis.pubsub()
         await pubsub.subscribe("facture:events")
 
@@ -271,11 +270,11 @@ class Subscription:
         """
         await asyncio.to_thread(require_role, info, "ADMIN", "COMPTABLE")
 
-        from redis.asyncio import Redis
+        from schema.redis_sentinel import get_redis_master
 
         filter_id = str(campagne_id) if campagne_id and campagne_id is not strawberry.UNSET else None
 
-        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        redis = await get_redis_master(decode_responses=True)
         pubsub = redis.pubsub()
         await pubsub.subscribe("paiement:events")
 
@@ -320,9 +319,9 @@ class Subscription:
         filter_id = str(utilisateur_id) if utilisateur_id and utilisateur_id is not strawberry.UNSET else None
         await _autoriser_acces_utilisateur(info, filter_id)
 
-        from redis.asyncio import Redis
+        from schema.redis_sentinel import get_redis_master
 
-        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        redis = await get_redis_master(decode_responses=True)
         pubsub = redis.pubsub()
         await pubsub.subscribe("user:events")
 
@@ -362,11 +361,11 @@ class Subscription:
         """
         await asyncio.to_thread(require_role, info, "ADMIN")
 
-        from redis.asyncio import Redis
+        from schema.redis_sentinel import get_redis_master
 
         filter_cle = str(cle) if cle and cle is not strawberry.UNSET else None
 
-        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        redis = await get_redis_master(decode_responses=True)
         pubsub = redis.pubsub()
         await pubsub.subscribe("config:events")
 
@@ -402,9 +401,9 @@ class Subscription:
         """
         await asyncio.to_thread(require_role, info, "ADMIN", "COMPTABLE")
 
-        from redis.asyncio import Redis
+        from schema.redis_sentinel import get_redis_master
 
-        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        redis = await get_redis_master(decode_responses=True)
         pubsub = redis.pubsub()
         await pubsub.subscribe("tarif:events")
 
@@ -439,9 +438,9 @@ class Subscription:
         filter_id = str(campagne_id) if campagne_id and campagne_id is not strawberry.UNSET else None
         await _autoriser_acces_progression(info, filter_id)
 
-        from redis.asyncio import Redis
+        from schema.redis_sentinel import get_redis_master
 
-        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        redis = await get_redis_master(decode_responses=True)
         pubsub = redis.pubsub()
         await pubsub.subscribe("progression:events")
 
@@ -490,9 +489,9 @@ class Subscription:
         await asyncio.to_thread(require_role, info, "ADMIN")
         filter_id = str(diffusion_id) if diffusion_id and diffusion_id is not strawberry.UNSET else None
 
-        from redis.asyncio import Redis
+        from schema.redis_sentinel import get_redis_master
 
-        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        redis = await get_redis_master(decode_responses=True)
         pubsub = redis.pubsub()
         await pubsub.subscribe("diffusion:events")
 

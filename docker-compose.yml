@@ -127,6 +127,11 @@ services:
       WHATSAPP_INTERNAL_API_KEY: ${WHATSAPP_INTERNAL_API_KEY:?WHATSAPP_INTERNAL_API_KEY requis (authentification interne whatsapp-service — voir .env.example)}
       # RemoteAuth persiste la session WhatsApp dans Redis (voir whatsapp-service/redis-store.js)
       REDIS_URL: "redis://redis:6379/0"
+      # Sentinel (voir redis/README.md) : résout le maître courant plutôt que
+      # l'hôte fixe ci-dessus, qui devient une réplique en lecture seule après
+      # une bascule.
+      REDIS_SENTINELS: "redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379"
+      REDIS_SENTINEL_MASTER: "mymaster"
     ports:
       - "3000:3000"
     volumes:
@@ -161,6 +166,11 @@ services:
       AUTH_DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis (mot de passe des bases PostgreSQL — voir .env.example)}
       AUTH_GRPC_PORT: "50051"
       REDIS_URL: "redis://redis:6379/0"
+      # Sentinel (voir redis/README.md) : résout le maître courant plutôt que
+      # l'hôte fixe ci-dessus, qui devient une réplique en lecture seule après
+      # une bascule.
+      REDIS_SENTINELS: "redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379"
+      REDIS_SENTINEL_MASTER: "mymaster"
       JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
       BREVO_API_KEY: ${BREVO_API_KEY:-dev-fake-key}
       BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-SGFE}
@@ -345,6 +355,11 @@ services:
       JWT_SECRET_KEY: jwt-dev-placeholder-do-not-use-in-production
       PDF_STORAGE_DIR: /app/pdfs
       REDIS_URL: "redis://redis:6379/0"
+      # Sentinel (voir redis/README.md) : résout le maître courant plutôt que
+      # l'hôte fixe ci-dessus, qui devient une réplique en lecture seule après
+      # une bascule.
+      REDIS_SENTINELS: "redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379"
+      REDIS_SENTINEL_MASTER: "mymaster"
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key
@@ -411,6 +426,11 @@ services:
       PAIEMENT_DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis (mot de passe des bases PostgreSQL — voir .env.example)}
       PAIEMENT_GRPC_PORT: "50055"
       REDIS_URL: "redis://redis:6379/0"
+      # Sentinel (voir redis/README.md) : résout le maître courant plutôt que
+      # l'hôte fixe ci-dessus, qui devient une réplique en lecture seule après
+      # une bascule.
+      REDIS_SENTINELS: "redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379"
+      REDIS_SENTINEL_MASTER: "mymaster"
       FACTURATION_GRPC_HOST: facturation-service
       FACTURATION_GRPC_PORT: "50054"
       NOTIFICATION_GRPC_HOST: notification-service
@@ -503,6 +523,11 @@ services:
       PII_ENCRYPTION_KEY: ${PII_ENCRYPTION_KEY:?PII_ENCRYPTION_KEY requis (clé Fernet de chiffrement des données personnelles — voir .env.example)}
       FRONTEND_URL: http://localhost:4321
       REDIS_URL: "redis://redis:6379/0"
+      # Sentinel (voir redis/README.md) : résout le maître courant plutôt que
+      # l'hôte fixe ci-dessus, qui devient une réplique en lecture seule après
+      # une bascule.
+      REDIS_SENTINELS: "redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379"
+      REDIS_SENTINEL_MASTER: "mymaster"
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key
@@ -551,6 +576,11 @@ services:
       ABONNE_DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis (mot de passe des bases PostgreSQL — voir .env.example)}
       ABONNE_GRPC_PORT: "50052"
       REDIS_URL: "redis://redis:6379/0"
+      # Sentinel (voir redis/README.md) : résout le maître courant plutôt que
+      # l'hôte fixe ci-dessus, qui devient une réplique en lecture seule après
+      # une bascule.
+      REDIS_SENTINELS: "redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379"
+      REDIS_SENTINEL_MASTER: "mymaster"
       # Clients gRPC sortants — export RGPD uniquement (abonnes/export.py).
       CAMPAGNE_GRPC_HOST: campagne-service
       CAMPAGNE_GRPC_PORT: "50053"
@@ -601,6 +631,11 @@ services:
       CAMPAGNE_DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis (mot de passe des bases PostgreSQL — voir .env.example)}
       CAMPAGNE_GRPC_PORT: "50053"
       REDIS_URL: "redis://redis:6379/0"
+      # Sentinel (voir redis/README.md) : résout le maître courant plutôt que
+      # l'hôte fixe ci-dessus, qui devient une réplique en lecture seule après
+      # une bascule.
+      REDIS_SENTINELS: "redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379"
+      REDIS_SENTINEL_MASTER: "mymaster"
       NOTIFICATION_GRPC_HOST: notification-service
       NOTIFICATION_GRPC_PORT: "50056"
       ABONNE_GRPC_HOST: abonne-service
@@ -667,6 +702,11 @@ services:
       CONFIG_DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis (mot de passe des bases PostgreSQL — voir .env.example)}
       CONFIG_GRPC_PORT: "50058"
       REDIS_URL: "redis://redis:6379/0"
+      # Sentinel (voir redis/README.md) : résout le maître courant plutôt que
+      # l'hôte fixe ci-dessus, qui devient une réplique en lecture seule après
+      # une bascule.
+      REDIS_SENTINELS: "redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379"
+      REDIS_SENTINEL_MASTER: "mymaster"
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key
@@ -733,6 +773,11 @@ services:
       PAIEMENT_GRPC_HOST: paiement-service
       PAIEMENT_GRPC_PORT: "50055"
       REDIS_URL: "redis://redis:6379/0"
+      # Sentinel (voir redis/README.md) : résout le maître courant plutôt que
+      # l'hôte fixe ci-dessus, qui devient une réplique en lecture seule après
+      # une bascule.
+      REDIS_SENTINELS: "redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379"
+      REDIS_SENTINEL_MASTER: "mymaster"
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key
@@ -797,6 +842,11 @@ services:
       GATEWAY_HTTP_PORT: "8000"
       COOKIE_SECURE: "False"
       REDIS_URL: "redis://redis:6379/0"
+      # Sentinel (voir redis/README.md) : résout le maître courant plutôt que
+      # l'hôte fixe ci-dessus, qui devient une réplique en lecture seule après
+      # une bascule.
+      REDIS_SENTINELS: "redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379"
+      REDIS_SENTINEL_MASTER: "mymaster"
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key
