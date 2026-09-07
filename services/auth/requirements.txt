@@ -19,5 +19,15 @@ APScheduler==3.10.4
 opentelemetry-api==1.43.0
 opentelemetry-sdk==1.43.0
 opentelemetry-instrumentation-django==0.64b0
+# `opentelemetry-bootstrap` ne détecte pas grpcio dans sa carte de détection
+# pour ce service — constaté en conditions réelles (aucune trace produite sur
+# les appels gRPC tant qu'il manquait), pas supposé à l'avance. Ce service ne
+# sert que du gRPC (pas de WSGI) : instrumentation-django reste utile pour
+# l'ORM/signals, mais ne couvre aucune requête entrante ici.
+opentelemetry-instrumentation-grpc==0.64b0
 opentelemetry-exporter-otlp==1.43.0
+# opentelemetry-bootstrap (Dockerfile) : détecte psycopg2/redis/grpcio/requests
+# déjà listés ci-dessus et installe leurs instrumenteurs — pas à lister ici.
+opentelemetry-distro==0.64b0
+python-json-logger==4.2.0
 prometheus-client==0.20.0

@@ -7,7 +7,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --default-timeout=120 --retries 5 --user -r requirements.txt
+RUN pip install --no-cache-dir --default-timeout=120 --retries 5 --user -r requirements.txt \
+    # Observabilité, phase 2 : détecte Django/grpcio/redis/requests déjà
+    # installés et ajoute leurs instrumenteurs OpenTelemetry — sans ça, les 8
+    # appels gRPC sortants vers les microservices ne produiraient aucun span.
+    && /root/.local/bin/opentelemetry-bootstrap -a install
 
 FROM python:3.12-slim@sha256:7a8b475003c4fe15a2cd4e55e5cfc2f3560bdc9333d624f24cdd6d4340fd7a17
 
@@ -63,4 +67,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD python -c "import json,urllib.request; r=urllib.request.urlopen(urllib.request.Request('http://localhost:8000/graphql', data=json.dumps({'query':'{__typename}'}).encode(), headers={'Content-Type':'application/json'}), timeout=2); exit(0 if r.status==200 else 1)" || exit 1
 
-CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "gateway.asgi:application"]
+# opentelemetry-instrument : initialise le SDK OTel avant que Daphne (et donc
+# Django/Strawberry) ne démarre, à partir des variables OTEL_* (docker-compose.yml).
+CMD ["opentelemetry-instrument", "daphne", "-b", "0.0.0.0", "-p", "8000", "gateway.asgi:application"]

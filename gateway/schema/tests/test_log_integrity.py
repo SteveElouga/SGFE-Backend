@@ -67,8 +67,15 @@ class LoggingSettingsWiringTests(SimpleTestCase):
         # seulement `if not TESTING`) — non testable ici pour cette raison.
         # Câblage vérifié manuellement en mode non-test (voir la description
         # de la PR) : le handler "file" utilise bien "iso8601_chained".
+        #
+        # "console" utilise "json" depuis la phase 2 de l'observabilité (voir
+        # schema/logging_utils.py::TraceContextFilter) — plus "iso8601". Le
+        # fond de ce test reste inchangé : "console" ne doit JAMAIS pointer
+        # vers "iso8601_chained", quel que soit le format lisible qu'il
+        # utilise par ailleurs.
         handlers = settings.LOGGING["handlers"]
         assert isinstance(handlers, dict)
         handler_console = handlers["console"]
         assert isinstance(handler_console, dict)
-        self.assertEqual(handler_console["formatter"], "iso8601")
+        self.assertEqual(handler_console["formatter"], "json")
+        self.assertNotEqual(handler_console["formatter"], "iso8601_chained")
