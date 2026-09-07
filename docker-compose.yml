@@ -865,15 +865,18 @@ services:
     # son adhésion implicite au réseau du projet — et le gateway ne parlerait plus
     # à aucun des huit services gRPC ni à Redis.
     #
-    # `obs-edge` : raccordement à la plateforme d'observabilité (projet Compose
-    # séparé, ~/Documents/Architecture cible/observability/), qui le crée et le
-    # nomme. Pour l'instant posé seulement ici, pour le smoke test de connectivité
-    # au Collector (`docker compose exec gateway curl ...`) — sera ajouté aux huit
-    # services métier au fur et à mesure de leur instrumentation (phase 2 du plan).
+    # Le raccordement à la plateforme d'observabilité (réseau `obs-edge`) vit
+    # dans `docker-compose.observability.yml`, un fichier séparé et optionnel —
+    # PAS ici. Un `obs-edge: external: true` posé dans ce fichier-ci a cassé
+    # `docker compose up` partout où cette plateforme externe ne tourne pas
+    # (CI, e2e, tout poste qui ne l'a pas démarrée) : Compose refuse de
+    # démarrer TOUT le projet si un seul réseau externe déclaré est introuvable,
+    # même pour un service qu'on n'utilise pas. Régression réelle trouvée le
+    # 07/09/2026 via l'e2e du dépôt frontend. Voir docker-compose.observability.yml
+    # pour la marche à suivre.
     networks:
       - default
       - edge
-      - obs-edge
     restart: unless-stopped
     deploy:
       resources:
@@ -959,13 +962,9 @@ services:
 networks:
   edge:
     name: sgfe-edge
-  # Créé par le projet Compose de la plateforme d'observabilité (méthode 2,
-  # réseau partagé) — cette pile s'y raccroche seulement, elle ne le crée pas.
-  # La plateforme doit donc être démarrée AVANT `docker compose up` ici, sans
-  # quoi Compose échoue en disant que le réseau n'existe pas (même logique que
-  # sgfe-edge ci-dessus, dans l'autre sens).
-  obs-edge:
-    external: true
+  # `obs-edge` (plateforme d'observabilité) N'EST PLUS déclaré ici — voir
+  # docker-compose.observability.yml et le commentaire sur le service
+  # `gateway` ci-dessus pour la raison (régression CI du 07/09/2026).
 
 volumes:
   auth_postgres_data:

@@ -1,0 +1,31 @@
+# Surcouche OPTIONNELLE — raccorde cette pile à la plateforme d'observabilité
+# externe (projet Compose séparé, ~/Documents/Architecture cible/observability/).
+#
+# Pourquoi un fichier séparé et pas dans docker-compose.yml directement : un
+# réseau `external: true` doit exister AVANT `docker compose up`, sinon
+# Compose refuse de démarrer TOUT le projet — pas seulement le service qui en
+# a besoin. Posé dans le fichier principal, ça cassait `docker compose up`
+# partout où cette plateforme externe ne tourne pas (CI, e2e, un poste qui ne
+# l'a pas démarrée) — régression réelle trouvée le 07/09/2026 via l'e2e du
+# dépôt frontend, alors que seuls `gateway`/`auth-service` en avaient besoin.
+#
+# Usage :
+#   1. Démarrer la plateforme (crée et nomme le réseau `obs-edge`) :
+#      cd ~/Documents/Architecture\ cible/observability && docker compose up -d
+#   2. Démarrer SGFE-backend avec cette surcouche EN PLUS du fichier principal :
+#      docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
+#
+# Sans cette deuxième commande (juste `docker compose up -d`), la pile démarre
+# normalement, sans télémétrie — c'est le mode par défaut, celui que CI/e2e
+# utilisent, et qui ne doit jamais dépendre de cette plateforme externe.
+
+networks:
+  obs-edge:
+    external: true
+
+services:
+  gateway:
+    networks:
+      - default
+      - edge
+      - obs-edge
