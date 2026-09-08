@@ -30,8 +30,10 @@ env:
   # aléatoires en base64) — même factice, un littéral commité de cette forme
   # déclenche à raison le scanner de secrets (gitleaks) qui ne peut pas
   # distinguer "vraie clé" de "clé de test qui a la même forme". Générée à la
-  # volée dans chaque job qui en a besoin — test-abonne et test-notification
-  # (voir plus bas) — jamais partagée entre jobs.
+  # volée dans chaque job qui en a besoin — matrice `test`, combinaisons
+  # auth, abonne et notification (voir plus bas) — jamais partagée entre
+  # jobs. Même raison pour PII_LOOKUP_HMAC_KEY (combinaison auth uniquement,
+  # voir services/auth/comptes/fields.py) : haute entropie elle aussi.
   # Même raison, pour auth-service et notification-service : DJANGO_DEBUG
   # n'étant pas positionné ici, ces settings tournent en DEBUG=False, ce qui
   # exige FRONTEND_URL sans repli (le service refuse un défaut silencieux sur
@@ -56,6 +58,18 @@ jobs:
       config: ${{ steps.filter.outputs.config }}
       nginx: ${{ steps.filter.outputs.nginx }}
       whatsapp: ${{ steps.filter.outputs.whatsapp }}
+      # Matrice du job `test` (ci-dessous) : un élément par service dont le
+      # path-filter est 'true'. Construite ici, PAS via un `if:` de job
+      # indexé par `matrix.service` — vérifié avec actionlint que le contexte
+      # `matrix` est refusé dans un `if:` de job ("available contexts are
+      # github, inputs, needs, vars"), avant même de pousser une seule fois.
+      # C'est le job `test` entier qui est sauté (`if: outputs.test_matrix !=
+      # '[]'`) quand aucun des 8 services n'a changé, et sinon la matrice ne
+      # contient QUE les services concernés — la sélectivité par service est
+      # ainsi équivalente à l'ancien `needs.changes.outputs.<svc> == 'true'`
+      # par job, sans qu'aucune combinaison inutile ne soit même créée (donc
+      # rien à sauter : moins de bruit qu'un SKIPPED par combinaison).
+      test_matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
@@ -105,6 +119,52 @@ jobs:
               - 'nginx/**'
             whatsapp:
               - 'whatsapp-service/**'
+      - name: Construit la matrice du job `test` (un élément par service modifié)
+        id: matrix
+        env:
+          FILTER_JSON: ${{ toJSON(steps.filter.outputs) }}
+        run: |
+          python3 - <<'PYEOF'
+          import json
+          import os
+
+          # Dossier Django du domaine métier — ne se déduit pas du nom du
+          # service (ex. "auth" -> "comptes") : voir les 8 anciens jobs
+          # test-<svc> remplacés par cette matrice.
+          apps = {
+              "auth": "comptes",
+              "abonne": "abonnes",
+              "campagne": "campagnes",
+              "facturation": "factures",
+              "paiement": "paiements",
+              "notification": "notifications",
+              "config": "parametres",
+              "reporting": "stats",
+          }
+          needs_jwt_keys = {"auth"}
+          needs_pii_key = {"auth", "abonne", "notification"}
+          # HMAC du hash de recherche (email_hash/phone_number_hash, voir
+          # comptes/fields.py) : auth uniquement — abonne/notification
+          # chiffrent une PII sans contrainte d'unicité ni lookup exact,
+          # donc pas de colonne de hash compagnon à alimenter.
+          needs_pii_hmac_key = {"auth"}
+
+          filters = json.loads(os.environ["FILTER_JSON"])
+          matrix = [
+              {
+                  "service": service,
+                  "app": app,
+                  "needs_jwt_keys": service in needs_jwt_keys,
+                  "needs_pii_key": service in needs_pii_key,
+                  "needs_pii_hmac_key": service in needs_pii_hmac_key,
+              }
+              for service, app in apps.items()
+              if filters.get(service) == "true"
+          ]
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"matrix={json.dumps(matrix)}\n")
+          PYEOF
 
   secrets-scan:
     runs-on: ubuntu-latest
@@ -196,60 +256,117 @@ jobs:
           # changées.
           filter_mode: nofilter
 
-  test-auth:
+  # Matrice remplaçant 8 jobs test-<svc> quasi identiques (auth, abonne,
+  # campagne, facturation, paiement, notification, config, reporting) —
+  # gateway reste un job séparé (test-gateway, ci-dessous) : ni base Postgres,
+  # ni working-directory sous services/, sa forme diffère trop pour entrer
+  # dans cette matrice sans y ajouter des branches conditionnelles inutiles.
+  #
+  # Sélectivité par service PRÉSERVÉE À L'IDENTIQUE, mais PAS via un `if:` de
+  # job indexé par `matrix.service` comme envisagé initialement : actionlint
+  # refuse `needs.changes.outputs[matrix.service]` dans un `if:` de job
+  # ("context matrix is not allowed here — available contexts are github,
+  # inputs, needs, vars"), erreur confirmée avant tout push — le contexte
+  # matrix n'existe qu'une fois la matrice déjà instanciée, donc pas encore
+  # disponible au moment où le `if:` du job lui-même est évalué. La matrice
+  # est donc construite dynamiquement par le job `changes` (étape
+  # "Construit la matrice...", sortie `test_matrix`, un objet JSON par
+  # service dont le path-filter est 'true') et injectée ici via
+  # `fromJSON(...)` : un push qui ne touche que services/paiement/ crée une
+  # matrice à un seul élément — les 7 autres services n'ont AUCUNE
+  # combinaison créée pour eux, pas même une combinaison SKIPPED.
+  #
+  # `app` est le nom du dossier Django du domaine métier (ex. `comptes` pour
+  # le service `auth`) — il ne se déduit pas de `service`, d'où la liste
+  # `include` construite par le job `changes` plutôt qu'un simple tableau
+  # `service: [...]`. Le préfixe des variables d'environnement de connexion
+  # Postgres (`AUTH_DB_HOST`, etc.) se déduit lui bien de `service`
+  # (identique en majuscules) : calculé en shell (`tr` — GitHub Actions n'a
+  # pas de fonction upper() dans ses expressions) plutôt que dupliqué comme
+  # champ de matrice.
+  #
+  # Ordre des étapes unifié : la génération de PII_ENCRYPTION_KEY (abonne,
+  # notification) est placée AVANT mypy pour les deux, alors qu'elle suivait
+  # pip-audit/bandit sur l'ancien job test-abonne. Nécessaire pour abonne :
+  # son mypy importe settings.py, qui exige la clé Fernet déjà en place (même
+  # raison que la paire de clés JWT ci-dessous pour auth). Sans effet sur
+  # notification, dont le mypy ne dépend pas de cette clé (l'ancien job
+  # l'exécutait déjà avant de la générer). pip-audit/bandit passent après
+  # mypy pour tous : ce sont des vérifications indépendantes du code déjà
+  # présent sur le disque, leur ordre relatif ne change ni le résultat final
+  # du job ni les vérifications réellement exécutées en cas de succès.
+  test:
     needs: changes
-    if: needs.changes.outputs.auth == 'true'
+    if: needs.changes.outputs.test_matrix != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.changes.outputs.test_matrix) }}
     defaults:
       run:
-        working-directory: services/auth
+        working-directory: services/${{ matrix.service }}
     # PostgreSQL 16 — même moteur qu'en production (docker-compose.yml utilise
     # postgres:16-alpine) plutôt que le SQLite en mémoire des tests locaux.
     # settings.py bascule sur Postgres quand FORCE_POSTGRES_TESTS est vrai ;
-    # par défaut (dev local) il reste sur SQLite pour un cycle rapide.
+    # par défaut (dev local) il reste sur SQLite pour un cycle rapide. Nom de
+    # base/utilisateur : `<service>_db`/`<service>_user` pour les 8 — vérifié
+    # ligne à ligne sur les jobs remplacés, aucune exception.
     services:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: auth_db
-          POSTGRES_USER: auth_user
+          POSTGRES_DB: ${{ matrix.service }}_db
+          POSTGRES_USER: ${{ matrix.service }}_user
           POSTGRES_PASSWORD: ci-postgres-password
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U auth_user -d auth_db"
+          --health-cmd "pg_isready -U ${{ matrix.service }}_user -d ${{ matrix.service }}_db"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
       FORCE_POSTGRES_TESTS: "True"
-      AUTH_DB_HOST: localhost
-      AUTH_DB_PORT: "5432"
-      AUTH_DB_NAME: auth_db
-      AUTH_DB_USER: auth_user
-      AUTH_DB_PASSWORD: ci-postgres-password
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: services/auth/requirements.txt
+          cache-dependency-path: services/${{ matrix.service }}/requirements.txt
+      - name: Variables de connexion Postgres (préfixe = service en MAJUSCULES)
+        run: |
+          prefix=$(echo "${{ matrix.service }}" | tr '[:lower:]' '[:upper:]')
+          {
+            echo "${prefix}_DB_HOST=localhost"
+            echo "${prefix}_DB_PORT=5432"
+            echo "${prefix}_DB_NAME=${{ matrix.service }}_db"
+            echo "${prefix}_DB_USER=${{ matrix.service }}_user"
+            echo "${prefix}_DB_PASSWORD=ci-postgres-password"
+          } >> "$GITHUB_ENV"
       - run: pip install -r requirements.txt -r requirements-dev.txt ruff==0.15.20 coverage pip-audit bandit
       - name: Lint (ruff)
         run: ruff check .
       - name: Génère une paire de clés JWT RS256 éphémère (mypy importe settings.py hors du mode TESTING de manage.py test, qui génère la sienne en mémoire — sans ce fichier, l'import échoue en CI où keys/ n'existe pas)
+        if: matrix.needs_jwt_keys
         run: ../../scripts/gen-jwt-keys.sh keys
+      - name: Génère une clé Fernet éphémère (CI uniquement, jamais committée)
+        if: matrix.needs_pii_key
+        run: echo "PII_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
+      - name: Génère une clé HMAC éphémère pour le hash de recherche PII (CI uniquement, jamais committée — voir comptes/fields.py)
+        if: matrix.needs_pii_hmac_key
+        run: echo "PII_LOOKUP_HMAC_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
       - name: Vérification des types (mypy --strict)
-        run: mypy --strict --show-traceback comptes/
+        run: mypy --strict --show-traceback ${{ matrix.app }}/
       - name: Audit des dépendances (pip-audit)
         run: pip-audit -r requirements.txt
       - name: Analyse statique de sécurité (bandit)
-        run: bandit -r . --exclude ./proto,./comptes/migrations -ll
+        run: bandit -r . --exclude ./proto,./${{ matrix.app }}/migrations -ll
       - name: Tests + couverture
         run: |
-          coverage run --source=comptes manage.py test comptes
+          coverage run --source=${{ matrix.app }} manage.py test ${{ matrix.app }}
           coverage report -m --fail-under=80
 
   test-gateway:
@@ -279,367 +396,6 @@ jobs:
       - name: Tests + couverture
         run: |
           coverage run --source=schema manage.py test schema
-          coverage report -m --fail-under=80
-
-  test-abonne:
-    needs: changes
-    if: needs.changes.outputs.abonne == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: services/abonne
-    # PostgreSQL 16 — voir le commentaire équivalent sur test-auth.
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: abonne_db
-          POSTGRES_USER: abonne_user
-          POSTGRES_PASSWORD: ci-postgres-password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U abonne_user -d abonne_db"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      FORCE_POSTGRES_TESTS: "True"
-      ABONNE_DB_HOST: localhost
-      ABONNE_DB_PORT: "5432"
-      ABONNE_DB_NAME: abonne_db
-      ABONNE_DB_USER: abonne_user
-      ABONNE_DB_PASSWORD: ci-postgres-password
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: services/abonne/requirements.txt
-      - run: pip install -r requirements.txt -r requirements-dev.txt ruff==0.15.20 coverage pip-audit bandit
-      - name: Lint (ruff)
-        run: ruff check .
-      - name: Audit des dépendances (pip-audit)
-        run: pip-audit -r requirements.txt
-      - name: Analyse statique de sécurité (bandit)
-        run: bandit -r . --exclude ./proto,./abonnes/migrations -ll
-      - name: Génère une clé Fernet éphémère (CI uniquement, jamais committée)
-        run: echo "PII_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
-      - name: Vérification des types (mypy --strict)
-        run: mypy --strict --show-traceback abonnes/
-      - name: Tests + couverture
-        run: |
-          coverage run --source=abonnes manage.py test abonnes
-          coverage report -m --fail-under=80
-
-  test-campagne:
-    needs: changes
-    if: needs.changes.outputs.campagne == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: services/campagne
-    # PostgreSQL 16 — voir le commentaire équivalent sur test-auth.
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: campagne_db
-          POSTGRES_USER: campagne_user
-          POSTGRES_PASSWORD: ci-postgres-password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U campagne_user -d campagne_db"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      FORCE_POSTGRES_TESTS: "True"
-      CAMPAGNE_DB_HOST: localhost
-      CAMPAGNE_DB_PORT: "5432"
-      CAMPAGNE_DB_NAME: campagne_db
-      CAMPAGNE_DB_USER: campagne_user
-      CAMPAGNE_DB_PASSWORD: ci-postgres-password
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: services/campagne/requirements.txt
-      - run: pip install -r requirements.txt -r requirements-dev.txt ruff==0.15.20 coverage pip-audit bandit
-      - name: Lint (ruff)
-        run: ruff check .
-      - name: Vérification des types (mypy --strict)
-        run: mypy --strict --show-traceback campagnes/
-      - name: Audit des dépendances (pip-audit)
-        run: pip-audit -r requirements.txt
-      - name: Analyse statique de sécurité (bandit)
-        run: bandit -r . --exclude ./proto,./campagnes/migrations -ll
-      - name: Tests + couverture
-        run: |
-          coverage run --source=campagnes manage.py test campagnes
-          coverage report -m --fail-under=80
-
-  test-facturation:
-    needs: changes
-    if: needs.changes.outputs.facturation == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: services/facturation
-    # PostgreSQL 16 — voir le commentaire équivalent sur test-auth.
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: facturation_db
-          POSTGRES_USER: facturation_user
-          POSTGRES_PASSWORD: ci-postgres-password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U facturation_user -d facturation_db"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      FORCE_POSTGRES_TESTS: "True"
-      FACTURATION_DB_HOST: localhost
-      FACTURATION_DB_PORT: "5432"
-      FACTURATION_DB_NAME: facturation_db
-      FACTURATION_DB_USER: facturation_user
-      FACTURATION_DB_PASSWORD: ci-postgres-password
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: services/facturation/requirements.txt
-      - run: pip install -r requirements.txt -r requirements-dev.txt ruff==0.15.20 coverage pip-audit bandit
-      - name: Lint (ruff)
-        run: ruff check .
-      - name: Vérification des types (mypy --strict)
-        run: mypy --strict --show-traceback factures/
-      - name: Audit des dépendances (pip-audit)
-        run: pip-audit -r requirements.txt
-      - name: Analyse statique de sécurité (bandit)
-        run: bandit -r . --exclude ./proto,./factures/migrations -ll
-      - name: Tests + couverture
-        run: |
-          coverage run --source=factures manage.py test factures
-          coverage report -m --fail-under=80
-
-  test-paiement:
-    needs: changes
-    if: needs.changes.outputs.paiement == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: services/paiement
-    # PostgreSQL 16 — voir le commentaire équivalent sur test-auth.
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: paiement_db
-          POSTGRES_USER: paiement_user
-          POSTGRES_PASSWORD: ci-postgres-password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U paiement_user -d paiement_db"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      FORCE_POSTGRES_TESTS: "True"
-      PAIEMENT_DB_HOST: localhost
-      PAIEMENT_DB_PORT: "5432"
-      PAIEMENT_DB_NAME: paiement_db
-      PAIEMENT_DB_USER: paiement_user
-      PAIEMENT_DB_PASSWORD: ci-postgres-password
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: services/paiement/requirements.txt
-      - run: pip install -r requirements.txt -r requirements-dev.txt ruff==0.15.20 coverage pip-audit bandit
-      - name: Lint (ruff)
-        run: ruff check .
-      - name: Vérification des types (mypy --strict)
-        run: mypy --strict --show-traceback paiements/
-      - name: Audit des dépendances (pip-audit)
-        run: pip-audit -r requirements.txt
-      - name: Analyse statique de sécurité (bandit)
-        run: bandit -r . --exclude ./proto,./paiements/migrations -ll
-      - name: Tests + couverture
-        run: |
-          coverage run --source=paiements manage.py test paiements
-          coverage report -m --fail-under=80
-
-  test-notification:
-    needs: changes
-    if: needs.changes.outputs.notification == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: services/notification
-    # PostgreSQL 16 — voir le commentaire équivalent sur test-auth.
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: notification_db
-          POSTGRES_USER: notification_user
-          POSTGRES_PASSWORD: ci-postgres-password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U notification_user -d notification_db"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      FORCE_POSTGRES_TESTS: "True"
-      NOTIFICATION_DB_HOST: localhost
-      NOTIFICATION_DB_PORT: "5432"
-      NOTIFICATION_DB_NAME: notification_db
-      NOTIFICATION_DB_USER: notification_user
-      NOTIFICATION_DB_PASSWORD: ci-postgres-password
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: services/notification/requirements.txt
-      - run: pip install -r requirements.txt -r requirements-dev.txt ruff==0.15.20 coverage pip-audit bandit
-      - name: Lint (ruff)
-        run: ruff check .
-      - name: Vérification des types (mypy --strict)
-        run: mypy --strict --show-traceback notifications/
-      - name: Audit des dépendances (pip-audit)
-        run: pip-audit -r requirements.txt
-      - name: Analyse statique de sécurité (bandit)
-        run: bandit -r . --exclude ./proto,./notifications/migrations -ll
-      - name: Génère une clé Fernet éphémère (CI uniquement, jamais committée)
-        run: echo "PII_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
-      - name: Tests + couverture
-        run: |
-          coverage run --source=notifications manage.py test notifications
-          coverage report -m --fail-under=80
-
-  test-config:
-    needs: changes
-    if: needs.changes.outputs.config == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: services/config
-    # PostgreSQL 16 — voir le commentaire équivalent sur test-auth.
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: config_db
-          POSTGRES_USER: config_user
-          POSTGRES_PASSWORD: ci-postgres-password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U config_user -d config_db"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      FORCE_POSTGRES_TESTS: "True"
-      CONFIG_DB_HOST: localhost
-      CONFIG_DB_PORT: "5432"
-      CONFIG_DB_NAME: config_db
-      CONFIG_DB_USER: config_user
-      CONFIG_DB_PASSWORD: ci-postgres-password
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: services/config/requirements.txt
-      - run: pip install -r requirements.txt -r requirements-dev.txt ruff==0.15.20 coverage pip-audit bandit
-      - name: Lint (ruff)
-        run: ruff check .
-      - name: Vérification des types (mypy --strict)
-        run: mypy --strict --show-traceback parametres/
-      - name: Audit des dépendances (pip-audit)
-        run: pip-audit -r requirements.txt
-      - name: Analyse statique de sécurité (bandit)
-        run: bandit -r . --exclude ./proto,./parametres/migrations -ll
-      - name: Tests + couverture
-        run: |
-          coverage run --source=parametres manage.py test parametres
-          coverage report -m --fail-under=80
-
-  test-reporting:
-    needs: changes
-    if: needs.changes.outputs.reporting == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: services/reporting
-    # PostgreSQL 16 — voir le commentaire équivalent sur test-auth.
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: reporting_db
-          POSTGRES_USER: reporting_user
-          POSTGRES_PASSWORD: ci-postgres-password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U reporting_user -d reporting_db"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      FORCE_POSTGRES_TESTS: "True"
-      REPORTING_DB_HOST: localhost
-      REPORTING_DB_PORT: "5432"
-      REPORTING_DB_NAME: reporting_db
-      REPORTING_DB_USER: reporting_user
-      REPORTING_DB_PASSWORD: ci-postgres-password
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: services/reporting/requirements.txt
-      - run: pip install -r requirements.txt -r requirements-dev.txt ruff==0.15.20 coverage pip-audit bandit
-      - name: Lint (ruff)
-        run: ruff check .
-      - name: Vérification des types (mypy --strict)
-        run: mypy --strict --show-traceback stats/
-      - name: Audit des dépendances (pip-audit)
-        run: pip-audit -r requirements.txt
-      - name: Analyse statique de sécurité (bandit)
-        run: bandit -r . --exclude ./proto,./stats/migrations -ll
-      - name: Tests + couverture
-        run: |
-          coverage run --source=stats manage.py test stats
           coverage report -m --fail-under=80
 
   docker-build-auth:
@@ -730,13 +486,17 @@ jobs:
       service: whatsapp-service
       context: whatsapp-service
   # Job agrégateur : seul check à déclarer "required" dans la protection de
-  # branche. Les jobs test-auth/test-gateway sont conditionnels (skip si le
+  # branche. Les jobs test/test-gateway sont conditionnels (skip si le
   # service n'a pas changé) — les déclarer "required" individuellement
   # bloquerait indéfiniment toute PR qui ne les déclenche pas.
   ci-status:
     if: always()
-    needs: [secrets-scan, check-grpc-lib-drift, check-db-hardening-lib-drift, check-log-integrity-lib-drift, lint-workflows, test-auth, test-gateway, test-abonne, test-campagne, test-facturation, test-paiement, test-notification, test-reporting, test-config]
+    # `test` (matrice) remplace les 8 anciens jobs test-auth/test-abonne/
+    # .../test-config — un seul job id, la matrice couvre ses combinaisons
+    # en interne (voir le job `test` ci-dessus).
+    needs: [secrets-scan, check-grpc-lib-drift, check-db-hardening-lib-drift, check-log-integrity-lib-drift, lint-workflows, test, test-gateway]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       # `contains(needs.*.result, 'failure')` seul laisse passer un job
       # `cancelled` (ex. un timeout) : constaté en réel côté frontend (même
@@ -758,7 +518,7 @@ jobs:
   # SBOM + attestation de provenance, et signe l'image en keyless via
   # l'identité OIDC de GitHub Actions (cosign, sigstore public good instance).
   publish-auth:
-    needs: [changes, test-auth, secrets-scan, docker-build-auth]
+    needs: [changes, test, secrets-scan, docker-build-auth]
     if: needs.changes.outputs.auth == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -775,7 +535,7 @@ jobs:
       context: services/auth
 
   publish-config:
-    needs: [changes, test-config, secrets-scan, docker-build-config]
+    needs: [changes, test, secrets-scan, docker-build-config]
     if: needs.changes.outputs.config == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -792,7 +552,7 @@ jobs:
       context: services/config
 
   publish-reporting:
-    needs: [changes, test-reporting, secrets-scan, docker-build-reporting]
+    needs: [changes, test, secrets-scan, docker-build-reporting]
     if: needs.changes.outputs.reporting == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -826,7 +586,7 @@ jobs:
       context: gateway
 
   publish-abonne:
-    needs: [changes, test-abonne, secrets-scan, docker-build-abonne]
+    needs: [changes, test, secrets-scan, docker-build-abonne]
     if: needs.changes.outputs.abonne == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -843,7 +603,7 @@ jobs:
       context: services/abonne
 
   publish-facturation:
-    needs: [changes, test-facturation, secrets-scan, docker-build-facturation]
+    needs: [changes, test, secrets-scan, docker-build-facturation]
     if: needs.changes.outputs.facturation == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -860,7 +620,7 @@ jobs:
       context: services/facturation
 
   publish-campagne:
-    needs: [changes, test-campagne, secrets-scan, docker-build-campagne]
+    needs: [changes, test, secrets-scan, docker-build-campagne]
     if: needs.changes.outputs.campagne == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -877,7 +637,7 @@ jobs:
       context: services/campagne
 
   publish-paiement:
-    needs: [changes, test-paiement, secrets-scan, docker-build-paiement]
+    needs: [changes, test, secrets-scan, docker-build-paiement]
     if: needs.changes.outputs.paiement == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -894,7 +654,7 @@ jobs:
       context: services/paiement
 
   publish-notification:
-    needs: [changes, test-notification, secrets-scan, docker-build-notification]
+    needs: [changes, test, secrets-scan, docker-build-notification]
     if: needs.changes.outputs.notification == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read

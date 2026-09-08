@@ -119,6 +119,19 @@ AUTH_GRPC_PORT = env.int("AUTH_GRPC_PORT", default=50051)
 # ne protège rien.
 INTERNAL_GRPC_KEY = env("INTERNAL_GRPC_KEY", default="")
 
+# Chiffrement au repos des PII utilisateur (email, phone_number — voir
+# comptes/fields.py). Même pattern que INTERNAL_GRPC_KEY : pas de valeur par
+# défaut silencieuse ici, la vérification fail-fast a lieu au premier
+# chiffrement/déchiffrement (comptes/fields.py::_fernet).
+PII_ENCRYPTION_KEY = env("PII_ENCRYPTION_KEY", default="")
+
+# Clé HMAC DÉDIÉE au hash de recherche déterministe de email/phone_number
+# (comptes/fields.py::compute_lookup_hash) — DISTINCTE de PII_ENCRYPTION_KEY,
+# jamais la même valeur (voir comptes/fields.py, tête de module, pour la
+# justification). Même fail-fast que PII_ENCRYPTION_KEY, au premier calcul de
+# hash (comptes/fields.py::_hmac_key).
+PII_LOOKUP_HMAC_KEY = env("PII_LOOKUP_HMAC_KEY", default="")
+
 
 # --- Redis (pub/sub : notifie la gateway des mutations utilisateur) ---
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")

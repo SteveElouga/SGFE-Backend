@@ -187,6 +187,18 @@ services:
       WHATSAPP_SERVICE_URL: http://whatsapp-service:3000
       WHATSAPP_INTERNAL_API_KEY: ${WHATSAPP_INTERNAL_API_KEY:?WHATSAPP_INTERNAL_API_KEY requis (authentification interne whatsapp-service — voir .env.example)}
       PHONE_OTP_VALIDITY_MINUTES: "10"
+      # Chiffrement des PII utilisateur (email, phone_number — voir
+      # comptes/fields.py). Même clé partagée que abonne-service/
+      # notification-service (un seul secret pour tous les champs PII du
+      # système, pas un par service).
+      PII_ENCRYPTION_KEY: ${PII_ENCRYPTION_KEY:?PII_ENCRYPTION_KEY requis (clé Fernet de chiffrement des données personnelles — voir .env.example)}
+      # Clé HMAC DÉDIÉE au hash de recherche déterministe de email/phone_number
+      # (comptes/fields.py::compute_lookup_hash) — DISTINCTE de
+      # PII_ENCRYPTION_KEY, jamais la même valeur (chiffrement symétrique vs.
+      # authentification de message, deux primitives cryptographiques
+      # différentes). Propre à auth-service : aucun autre service de ce dépôt
+      # n'a de champ PII à la fois chiffré ET unique/recherché exactement.
+      PII_LOOKUP_HMAC_KEY: ${PII_LOOKUP_HMAC_KEY:?PII_LOOKUP_HMAC_KEY requis (clé HMAC du hash de recherche des données personnelles — voir .env.example)}
       GRPC_TLS_CA: /app/certs/ca.crt
       GRPC_TLS_CERT: /app/certs/server.crt
       GRPC_TLS_KEY: /app/certs/server.key
