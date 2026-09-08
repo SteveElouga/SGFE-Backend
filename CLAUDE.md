@@ -98,7 +98,7 @@ E-mail           Brevo API (activation de compte, réinitialisation de mot de pa
 Orchestration    Docker Compose (21 services)
 Conteneurs       Docker — 12 Dockerfiles, images de base épinglées au SHA
 Frontend         Angular 22 + PrimeNG 21 + PWA
-Observabilité    ⚠️ 0 fichier instrumenté — réseau `obs-edge` vers une plateforme externe posé (07/09)
+Observabilité    ✅ 9/9 composants instrumentés OTel (traces/métriques/logs) — reste métriques métier + frontend
 Déploiement      Compose ; cible AWS — voir docs/INFRASTRUCTURE_AWS.md
 Serveur          local ; cible EC2 t4g.medium en eu-west-3
 Auth             JWT (SimpleJWT) — access 15 min par défaut (cookie HttpOnly pour le refresh, 7j)
@@ -484,16 +484,34 @@ et relayé via le paramètre `created_by` de `ListCampagnesRequest` côté
 > encore et le `docker compose up` d'ici échoue en le disant clairement (même
 > logique que `sgfe-edge` avec le frontend, dans l'autre sens).
 
-Ce qui reste à faire (points 58 à 60 du registre), chaque service devant :
-1. Produire des logs JSON structurés avec `trace_id`
-2. Exposer `/metrics` pour Prometheus
-3. Être instrumenté avec OpenTelemetry SDK
+> ✅ **Corrigé le 8 septembre 2026.** Les deux notes ci-dessus (28 août, 7
+> septembre) étaient devenues périmées sans jamais avoir été mises à jour
+> après coup — trouvé en revérifiant ce fichier indépendamment des PR du
+> jour, pas en lien avec elles. Les 9 composants backend (gateway, auth,
+> abonné, campagne, facturation, paiement, notification, reporting, config)
+> sont réellement instrumentés OpenTelemetry sur les trois piliers depuis les
+> PR #234 (auth+gateway) et #236 (les 7 autres) : `OTEL_SERVICE_NAME` +
+> `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318` sont posés pour
+> les 9 dans `docker-compose.yml` (ex. `docker-compose.yml:208-210` pour
+> `auth-service`, `:1034-1036` pour `gateway`), et chaque `command:` lance
+> réellement `opentelemetry-instrument python manage.py grpc_server` (ex.
+> `docker-compose.yml:225`) — vérifié en conditions réelles pour chacun
+> individuellement (traces Tempo, `target_info` Prometheus, logs JSON Loki
+> pour 7/9), voir l'artefact de conformité publié pour le détail service par
+> service. Le profiling continu Pyroscope est venu s'y ajouter le même jour
+> (PR #240) sur les 9 services, en plus des trois piliers OTel.
 
-Variables d'environnement prévues par service une fois instrumenté (`OTEL_SERVICE_NAME`,
+Ce qui reste à faire, chaque point nécessitant une discussion avec le porteur
+du projet plutôt qu'une simple exécution mécanique :
+1. Métriques métier custom (compteurs `sgfe.<domaine>.<événement>` — PR
+   backend #241, code écrit sur 7 services mais **pas encore fusionné**)
+2. Instrumentation du frontend (Faro/GlitchTip, phase 3 — pas commencée)
+
+Variables d'environnement posées par service (`OTEL_SERVICE_NAME`,
 `OTEL_RESOURCE_ATTRIBUTES=service.namespace=sgfe,...`, `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`)
-et démarrage via `opentelemetry-instrument gunicorn ...` : voir le plan d'intégration complet
-(artefact publié, phases 2 à 5 — logs structurés, métriques métier, frontend Faro/GlitchTip,
-durcissement avant exposition réelle).
+et démarrage via `opentelemetry-instrument python manage.py grpc_server` :
+voir le plan d'intégration complet (artefact publié, phases 3 à 5 — métriques
+métier, frontend Faro/GlitchTip, durcissement avant exposition réelle).
 
 ---
 
