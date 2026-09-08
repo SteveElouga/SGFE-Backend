@@ -200,6 +200,13 @@ services:
       OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: otlp
       OTEL_LOGS_EXPORTER: none
+      # Profiling continu (pyroscope-io). Dégradation gracieuse en settings.py
+      # si absente — un bonus d'observabilité, pas un contrôle de sécurité (pas
+      # fail-fast comme les secrets ci-dessus). Raccordement réseau obs-edge
+      # dans docker-compose.observability.yml, pas ici (même régression CI que
+      # les OTEL_* juste au-dessus).
+      PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
+    cap_add: ["SYS_PTRACE"]            # py-spy (Pyroscope) doit lire la pile du processus dans le conteneur
     # `migrate` n'est pas instrumenté (voir Dockerfile) : seule la commande
     # longue-vivante l'est, ici passée en override de compose plutôt que de
     # dupliquer le CMD du Dockerfile.
@@ -399,6 +406,13 @@ services:
       OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: otlp
       OTEL_LOGS_EXPORTER: none
+      # Profiling continu (pyroscope-io). Dégradation gracieuse en settings.py
+      # si absente — un bonus d'observabilité, pas un contrôle de sécurité (pas
+      # fail-fast comme les secrets ci-dessus). Raccordement réseau obs-edge
+      # dans docker-compose.observability.yml, pas ici (même régression CI que
+      # les OTEL_* juste au-dessus).
+      PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
+    cap_add: ["SYS_PTRACE"]            # py-spy (Pyroscope) doit lire la pile du processus dans le conteneur
     volumes:
       - facturation_pdfs:/app/pdfs
       - ./certs:/app/certs:ro
@@ -493,6 +507,13 @@ services:
       OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: otlp
       OTEL_LOGS_EXPORTER: none
+      # Profiling continu (pyroscope-io). Dégradation gracieuse en settings.py
+      # si absente — un bonus d'observabilité, pas un contrôle de sécurité (pas
+      # fail-fast comme les secrets ci-dessus). Raccordement réseau obs-edge
+      # dans docker-compose.observability.yml, pas ici (même régression CI que
+      # les OTEL_* juste au-dessus).
+      PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
+    cap_add: ["SYS_PTRACE"]            # py-spy (Pyroscope) doit lire la pile du processus dans le conteneur
     volumes:
       - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && opentelemetry-instrument python manage.py grpc_server"
@@ -589,6 +610,12 @@ services:
       OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: otlp
       OTEL_LOGS_EXPORTER: none
+      # Profiling continu (pyroscope-io). Dégradation gracieuse en settings.py
+      # si absente — un bonus d'observabilité, pas un contrôle de sécurité (pas
+      # fail-fast comme les secrets ci-dessus). Raccordement réseau obs-edge
+      # dans docker-compose.observability.yml, pas ici (même régression CI que
+      # les OTEL_* juste au-dessus).
+      PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
       # Délai minimum (s) entre deux envois WhatsApp consécutifs, tous
       # déclencheurs confondus — protège le compte WhatsApp Web partagé
       # d'un risque de bannissement en cas de pic (voir rate_limiter.py).
@@ -600,6 +627,7 @@ services:
       # de test — jamais dans cette configuration de base — ou lancer
       # ponctuellement `docker compose run -e WHATSAPP_DISABLE_SEND_FOR_TESTS=1
       # notification-service <commande>`.
+    cap_add: ["SYS_PTRACE"]            # py-spy (Pyroscope) doit lire la pile du processus dans le conteneur
     volumes:
       - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && opentelemetry-instrument python manage.py grpc_server"
@@ -662,10 +690,17 @@ services:
       OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: otlp
       OTEL_LOGS_EXPORTER: none
+      # Profiling continu (pyroscope-io). Dégradation gracieuse en settings.py
+      # si absente — un bonus d'observabilité, pas un contrôle de sécurité (pas
+      # fail-fast comme les secrets ci-dessus). Raccordement réseau obs-edge
+      # dans docker-compose.observability.yml, pas ici (même régression CI que
+      # les OTEL_* juste au-dessus).
+      PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
       # Chiffrement au repos des PII abonné (nom, prénom, téléphone WhatsApp,
       # adresse — abonnes/fields.py). Placeholder dev uniquement : une vraie
       # clé (secrets manager) est requise en production, jamais celle-ci.
       PII_ENCRYPTION_KEY: ${PII_ENCRYPTION_KEY:?PII_ENCRYPTION_KEY requis (clé Fernet de chiffrement des données personnelles — voir .env.example)}
+    cap_add: ["SYS_PTRACE"]            # py-spy (Pyroscope) doit lire la pile du processus dans le conteneur
     volumes:
       - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && opentelemetry-instrument python manage.py grpc_server"
@@ -728,6 +763,13 @@ services:
       OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: otlp
       OTEL_LOGS_EXPORTER: none
+      # Profiling continu (pyroscope-io). Dégradation gracieuse en settings.py
+      # si absente — un bonus d'observabilité, pas un contrôle de sécurité (pas
+      # fail-fast comme les secrets ci-dessus). Raccordement réseau obs-edge
+      # dans docker-compose.observability.yml, pas ici (même régression CI que
+      # les OTEL_* juste au-dessus).
+      PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
+    cap_add: ["SYS_PTRACE"]            # py-spy (Pyroscope) doit lire la pile du processus dans le conteneur
     volumes:
       - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && opentelemetry-instrument python manage.py grpc_server"
@@ -801,6 +843,13 @@ services:
       OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: otlp
       OTEL_LOGS_EXPORTER: none
+      # Profiling continu (pyroscope-io). Dégradation gracieuse en settings.py
+      # si absente — un bonus d'observabilité, pas un contrôle de sécurité (pas
+      # fail-fast comme les secrets ci-dessus). Raccordement réseau obs-edge
+      # dans docker-compose.observability.yml, pas ici (même régression CI que
+      # les OTEL_* juste au-dessus).
+      PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
+    cap_add: ["SYS_PTRACE"]            # py-spy (Pyroscope) doit lire la pile du processus dans le conteneur
     volumes:
       - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && opentelemetry-instrument python manage.py grpc_server"
@@ -883,6 +932,13 @@ services:
       OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: otlp
       OTEL_LOGS_EXPORTER: none
+      # Profiling continu (pyroscope-io). Dégradation gracieuse en settings.py
+      # si absente — un bonus d'observabilité, pas un contrôle de sécurité (pas
+      # fail-fast comme les secrets ci-dessus). Raccordement réseau obs-edge
+      # dans docker-compose.observability.yml, pas ici (même régression CI que
+      # les OTEL_* juste au-dessus).
+      PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
+    cap_add: ["SYS_PTRACE"]            # py-spy (Pyroscope) doit lire la pile du processus dans le conteneur
     volumes:
       - ./certs:/app/certs:ro
     command: sh -c "python manage.py migrate && opentelemetry-instrument python manage.py grpc_server"
@@ -970,6 +1026,13 @@ services:
       OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: otlp
       OTEL_LOGS_EXPORTER: none
+      # Profiling continu (pyroscope-io). Dégradation gracieuse en settings.py
+      # si absente — un bonus d'observabilité, pas un contrôle de sécurité (pas
+      # fail-fast comme les secrets ci-dessus). Raccordement réseau obs-edge
+      # dans docker-compose.observability.yml, pas ici (même régression CI que
+      # les OTEL_* juste au-dessus).
+      PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
+    cap_add: ["SYS_PTRACE"]            # py-spy (Pyroscope) doit lire la pile du processus dans le conteneur
     volumes:
       - ./certs:/app/certs:ro
     expose:

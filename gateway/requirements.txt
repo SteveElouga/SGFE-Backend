@@ -23,3 +23,4 @@ opentelemetry-exporter-otlp==1.43.0
 # listés ci-dessus et installe leurs instrumenteurs — pas à lister ici.
 opentelemetry-distro==0.64b0
 python-json-logger==4.2.0
+pyroscope-io==1.2.2      # profiling continu — py-spy embarqué (cap_add SYS_PTRACE requis, voir docker-compose.yml)
