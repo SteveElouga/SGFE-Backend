@@ -21,6 +21,11 @@ from notifications.grpc_clients import (
     facturation_client,
     paiement_client,
 )
+from notifications.metrics import (
+    notification_diffusion_envoi_total,
+    notification_envoi_total,
+    notification_retry_total,
+)
 from notifications.message_builder import (
     build_message_facture,
     build_message_recu,
@@ -554,6 +559,7 @@ class EnvoiService:
                     "type_envoi": envoi.type_envoi,
                 },
             )
+            notification_envoi_total.add(1, {"type_envoi": envoi.type_envoi, "statut": StatutEnvoi.ENVOYE.value})
         except WhatsAppDeliveryError as exc:
             envoi.statut = StatutEnvoi.ECHEC
             envoi.erreur = str(exc)
@@ -565,6 +571,7 @@ class EnvoiService:
                     "erreur": str(exc),
                 },
             )
+            notification_envoi_total.add(1, {"type_envoi": envoi.type_envoi, "statut": StatutEnvoi.ECHEC.value})
             # EF-NOTIF-005 — Notifier les admins de chaque échec WhatsApp
             notifier_admins(
                 evenement="ECHEC_WHATSAPP",
@@ -657,6 +664,7 @@ class EnvoiService:
                 pdf_bytes=pdf_bytes,
                 pdf_filename=envoi.pdf_filename or pdf_filename_regenere,
             )
+            notification_retry_total.add(1)
             if envoi.statut == StatutEnvoi.ECHEC and envoi.tentatives >= MAX_TENTATIVES_AUTO:
                 logger.warning(
                     "Abandon définitif après %d tentatives automatiques",
@@ -845,6 +853,7 @@ class DiffusionService:
                 whatsapp_client.send(envoi.telephone, envoi.diffusion.message)
                 envoi.statut = StatutDiffusionEnvoi.ENVOYE
                 envoi.date_envoi = timezone.now()
+                notification_diffusion_envoi_total.add(1, {"statut": StatutDiffusionEnvoi.ENVOYE.value})
             except WhatsAppDeliveryError as exc:
                 envoi.statut = StatutDiffusionEnvoi.ECHEC
                 envoi.erreur = str(exc)
@@ -852,6 +861,7 @@ class DiffusionService:
                     "Échec envoi diffusion",
                     extra={"diffusion_id": str(envoi.diffusion_id), "abonne_id": envoi.abonne_id, "erreur": str(exc)},
                 )
+                notification_diffusion_envoi_total.add(1, {"statut": StatutDiffusionEnvoi.ECHEC.value})
             self._diffusions.save_envoi(envoi)
 
         diffusion_ids_touchees.update(self._diffusions.terminer_si_completes())

@@ -1,6 +1,7 @@
 from django.db import transaction
 
 from parametres.audit import enregistrer_audit
+from parametres.metrics import config_modifie_total
 from parametres.models import ConfigParam, InfosSociete
 from parametres.repositories import ConfigParamRepository, InfosSocieteRepository
 
@@ -78,6 +79,7 @@ class ConfigService:
                 objet_id=cle,
                 detail=f"valeur : {valeur_avant!r} → {valeur!r}",
             )
+            config_modifie_total.add(1, {"cle": cle})
         return param
 
     def list_all(self) -> list[ConfigParam]:
