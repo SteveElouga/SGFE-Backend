@@ -10,6 +10,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 
+from . import metrics
 from .audit import enregistrer_audit
 from .dtos import AgentAffecteDict, StatsReportingDict, ZoneAgentDict
 from .grpc_clients import AbonneServiceClient, FacturationServiceClient
@@ -148,6 +149,7 @@ class CampagneService:
                 objet_id=str(campagne.id),
                 detail=f"nom={campagne.nom!r}",
             )
+            metrics.campagne_demarree_total.add(1)
         return campagne
 
     def cloturer_campagne(self, campagne_id: str) -> Campagne:
@@ -166,6 +168,7 @@ class CampagneService:
                 objet_id=str(campagne.id),
                 detail=f"nom={campagne.nom!r}",
             )
+            metrics.campagne_cloturee_total.add(1)
         return campagne
 
     def get_campagne(self, campagne_id: str) -> Campagne:
@@ -283,6 +286,7 @@ class CampagneService:
                 try:
                     updated = self._repo.update_statut(campagne, StatutCampagne.EN_COURS)
                     demarrees.append(updated)
+                    metrics.campagne_demarree_total.add(1)
                 except Exception:
                     # Ne pas bloquer les autres campagnes du lot, mais ne plus
                     # avaler l'échec silencieusement (diagnostic du cron 7h).
@@ -573,6 +577,7 @@ class ReleveService:
                 objet_id=str(releve.id),
                 detail=f"ancien_index={releve.ancien_index} — nouveau_index={nouveau_index}",
             )
+            metrics.releve_saisi_total.add(1)
         return releve
 
     def corriger_releve(
@@ -626,6 +631,7 @@ class ReleveService:
                 objet_id=str(releve.id),
                 detail=f"ancien_index={index_avant_correction} — nouveau_index={nouveau_index}",
             )
+            metrics.releve_corrige_total.add(1)
         return releve
 
     def marquer_non_releve(
