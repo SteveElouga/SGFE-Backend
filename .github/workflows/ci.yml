@@ -398,9 +398,18 @@ jobs:
           coverage run --source=schema manage.py test schema
           coverage report -m --fail-under=80
 
+  # Scan seul, sans publication — porte de PR (et de tout push qui ne va PAS
+  # publier). Sur le chemin de publication (push develop/main), ce job est
+  # désormais SAUTÉ pour le service concerné : `publish-<svc>`
+  # (`_publish-image.yml`) scanne lui-même chaque architecture avant de
+  # pousser, dans son propre job — le faire tourner ici EN PLUS reconstruirait
+  # une troisième fois la même image, en parallèle, sans plus rien garantir
+  # (CICD-SEC-9, plan de remédiation CI/CD #1 ; voir le commentaire en tête de
+  # `_publish-image.yml`). La condition ajoutée à chacun des `if:` ci-dessous
+  # est exactement celle de son `publish-<svc>` correspondant, en négatif.
   docker-build-auth:
     needs: changes
-    if: needs.changes.outputs.auth == 'true'
+    if: needs.changes.outputs.auth == 'true' && !(github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'))
     uses: ./.github/workflows/_build-scan.yml
     with:
       service: auth-service
@@ -408,7 +417,7 @@ jobs:
 
   docker-build-config:
     needs: changes
-    if: needs.changes.outputs.config == 'true'
+    if: needs.changes.outputs.config == 'true' && !(github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'))
     uses: ./.github/workflows/_build-scan.yml
     with:
       service: config-service
@@ -416,7 +425,7 @@ jobs:
 
   docker-build-reporting:
     needs: changes
-    if: needs.changes.outputs.reporting == 'true'
+    if: needs.changes.outputs.reporting == 'true' && !(github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'))
     uses: ./.github/workflows/_build-scan.yml
     with:
       service: reporting-service
@@ -424,7 +433,7 @@ jobs:
 
   docker-build-gateway:
     needs: changes
-    if: needs.changes.outputs.gateway == 'true'
+    if: needs.changes.outputs.gateway == 'true' && !(github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'))
     uses: ./.github/workflows/_build-scan.yml
     with:
       service: gateway
@@ -432,7 +441,7 @@ jobs:
 
   docker-build-abonne:
     needs: changes
-    if: needs.changes.outputs.abonne == 'true'
+    if: needs.changes.outputs.abonne == 'true' && !(github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'))
     uses: ./.github/workflows/_build-scan.yml
     with:
       service: abonne-service
@@ -440,7 +449,7 @@ jobs:
 
   docker-build-facturation:
     needs: changes
-    if: needs.changes.outputs.facturation == 'true'
+    if: needs.changes.outputs.facturation == 'true' && !(github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'))
     uses: ./.github/workflows/_build-scan.yml
     with:
       service: facturation-service
@@ -448,7 +457,7 @@ jobs:
 
   docker-build-campagne:
     needs: changes
-    if: needs.changes.outputs.campagne == 'true'
+    if: needs.changes.outputs.campagne == 'true' && !(github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'))
     uses: ./.github/workflows/_build-scan.yml
     with:
       service: campagne-service
@@ -456,7 +465,7 @@ jobs:
 
   docker-build-paiement:
     needs: changes
-    if: needs.changes.outputs.paiement == 'true'
+    if: needs.changes.outputs.paiement == 'true' && !(github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'))
     uses: ./.github/workflows/_build-scan.yml
     with:
       service: paiement-service
@@ -464,7 +473,7 @@ jobs:
 
   docker-build-notification:
     needs: changes
-    if: needs.changes.outputs.notification == 'true'
+    if: needs.changes.outputs.notification == 'true' && !(github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'))
     uses: ./.github/workflows/_build-scan.yml
     with:
       service: notification-service
@@ -472,7 +481,7 @@ jobs:
 
   docker-build-nginx:
     needs: changes
-    if: needs.changes.outputs.nginx == 'true'
+    if: needs.changes.outputs.nginx == 'true' && !(github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'))
     uses: ./.github/workflows/_build-scan.yml
     with:
       service: nginx
@@ -480,7 +489,7 @@ jobs:
 
   docker-build-whatsapp:
     needs: changes
-    if: needs.changes.outputs.whatsapp == 'true'
+    if: needs.changes.outputs.whatsapp == 'true' && !(github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'))
     uses: ./.github/workflows/_build-scan.yml
     with:
       service: whatsapp-service
@@ -513,12 +522,17 @@ jobs:
           fi
 
   # Publication des images sur GHCR : uniquement sur main/develop (jamais sur
-  # les PR/feature branches), une fois les tests/scans passés. Réutilise le
-  # cache GHA du job docker-build-* correspondant (même scope), génère un
-  # SBOM + attestation de provenance, et signe l'image en keyless via
-  # l'identité OIDC de GitHub Actions (cosign, sigstore public good instance).
+  # les PR/feature branches), une fois les tests/scans passés. `docker-build-*`
+  # n'apparaît plus dans les `needs:` ci-dessous : `_publish-image.yml` scanne
+  # désormais lui-même chaque architecture (amd64 puis arm64) AVANT de pousser,
+  # dans son propre job `publish` — le scan qui bloque la publication est une
+  # étape de CE job, pas un job séparé dont le succès était jusqu'ici supposé
+  # transférable via le cache GHA (CICD-SEC-9, plan de remédiation CI/CD #1 ;
+  # voir le commentaire en tête de `_publish-image.yml`). Génère un SBOM +
+  # attestation de provenance, et signe l'image en keyless via l'identité OIDC
+  # de GitHub Actions (cosign, sigstore public good instance).
   publish-auth:
-    needs: [changes, test, secrets-scan, docker-build-auth]
+    needs: [changes, test, secrets-scan]
     if: needs.changes.outputs.auth == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -535,7 +549,7 @@ jobs:
       context: services/auth
 
   publish-config:
-    needs: [changes, test, secrets-scan, docker-build-config]
+    needs: [changes, test, secrets-scan]
     if: needs.changes.outputs.config == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -552,7 +566,7 @@ jobs:
       context: services/config
 
   publish-reporting:
-    needs: [changes, test, secrets-scan, docker-build-reporting]
+    needs: [changes, test, secrets-scan]
     if: needs.changes.outputs.reporting == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -569,7 +583,7 @@ jobs:
       context: services/reporting
 
   publish-gateway:
-    needs: [changes, test-gateway, secrets-scan, docker-build-gateway]
+    needs: [changes, test-gateway, secrets-scan]
     if: needs.changes.outputs.gateway == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -586,7 +600,7 @@ jobs:
       context: gateway
 
   publish-abonne:
-    needs: [changes, test, secrets-scan, docker-build-abonne]
+    needs: [changes, test, secrets-scan]
     if: needs.changes.outputs.abonne == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -603,7 +617,7 @@ jobs:
       context: services/abonne
 
   publish-facturation:
-    needs: [changes, test, secrets-scan, docker-build-facturation]
+    needs: [changes, test, secrets-scan]
     if: needs.changes.outputs.facturation == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -620,7 +634,7 @@ jobs:
       context: services/facturation
 
   publish-campagne:
-    needs: [changes, test, secrets-scan, docker-build-campagne]
+    needs: [changes, test, secrets-scan]
     if: needs.changes.outputs.campagne == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -637,7 +651,7 @@ jobs:
       context: services/campagne
 
   publish-paiement:
-    needs: [changes, test, secrets-scan, docker-build-paiement]
+    needs: [changes, test, secrets-scan]
     if: needs.changes.outputs.paiement == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -654,7 +668,7 @@ jobs:
       context: services/paiement
 
   publish-notification:
-    needs: [changes, test, secrets-scan, docker-build-notification]
+    needs: [changes, test, secrets-scan]
     if: needs.changes.outputs.notification == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -671,7 +685,7 @@ jobs:
       context: services/notification
 
   publish-nginx:
-    needs: [changes, secrets-scan, docker-build-nginx]
+    needs: [changes, secrets-scan]
     if: needs.changes.outputs.nginx == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
@@ -688,7 +702,7 @@ jobs:
       context: nginx
 
   publish-whatsapp:
-    needs: [changes, secrets-scan, docker-build-whatsapp]
+    needs: [changes, secrets-scan]
     if: needs.changes.outputs.whatsapp == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
