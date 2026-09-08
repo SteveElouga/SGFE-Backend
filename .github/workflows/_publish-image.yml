@@ -17,33 +17,46 @@ name: Publier et signer une image multi-architecture
 #
 # ── Image scannée = image publiée (item #1 du plan de remédiation) ───────────
 #
-# Ce job (`publish-*` dans `ci.yml`) a toujours dépendu de `docker-build-*`
-# (`_build-scan.yml`) — même commit, même run, le scan Trivy doit passer avant
-# toute publication. Mais les deux jobs RECONSTRUISAIENT chacun leur image
-# séparément, avec des scopes de cache distincts (`{service}-amd64`/
-# `{service}-arm64` côté scan, `{service}-multi` ici) : rien ne garantissait
-# que les couches produites ici soient celles qui avaient été scannées, juste
-# le même Dockerfile/contexte au même commit — l'écart nommé par
-# `docs/CONFORMITE_CICD.md` (CICD-SEC-9) et non résolu par PR #197.
+# Écart initial (CICD-SEC-9, non résolu par PR #197) : ce job (`publish-*`
+# dans `ci.yml`) dépendait de `docker-build-*` (`_build-scan.yml`) — même
+# commit, même run, le scan Trivy devait passer avant toute publication —
+# mais les deux jobs RECONSTRUISAIENT chacun leur image séparément, dans des
+# JOBS DIFFÉRENTS, avec l'espoir que le cache GHA (`{service}-amd64`/
+# `{service}-arm64` côté scan, `{service}-multi` ici) produise des couches
+# identiques. Rien ne le garantissait cryptographiquement : un cache GHA
+# expiré ou invalidé entre les deux jobs aurait fait rejouer le Dockerfile
+# sans nouveau scan avant le push.
 #
-# Le `cache-from` ci-dessous lit maintenant AUSSI les scopes par architecture
-# que `docker-build-*` vient de remplir dans CE MÊME run, en plus du scope
-# `{service}-multi` de ce job. Le build multi-plateforme retombe donc sur un
-# cache-hit total pour chaque architecture — les couches réellement publiées
-# sont celles que Trivy a scannées quelques instants plus tôt dans le même
-# workflow, pas une reconstruction indépendante. Un `docker/build-push-action`
-# en cache-hit ne ré-exécute aucune instruction du Dockerfile ; seul l'emballage
-# en liste de manifestes et le push sont nouveaux ici.
+# Correctif : le scan des deux architectures est désormais une étape DE CE
+# JOB, avant le build final `push: true` plus bas — pas un job séparé.
+# `linux/amd64` puis `linux/arm64` sont d'abord construits localement
+# (`load: true, push: false`, une architecture à la fois — Trivy ne sait
+# scanner qu'une plateforme chargée localement, voir le commentaire de
+# `_build-scan.yml`) et scannés ; une CVE CRITICAL/HIGH fait échouer l'étape,
+# donc le job, avant que le build final n'existe. Le build multi-plateforme
+# qui pousse ensuite tourne sur le MÊME builder buildx que les deux builds de
+# scan (une seule fois `docker/setup-buildx-action`, plus bas, pour tout le
+# job) : son cache de couches BuildKit est un cache **local, en mémoire du
+# job**, pas un aller-retour par l'API de cache GHA entre deux jobs distincts.
+# Une instruction déjà construite dans ce même job, sur ce même builder,
+# n'est jamais rejouée — elle est réutilisée telle quelle. Les octets
+# poussés sont donc, par construction et pas par supposition, ceux que
+# Trivy vient de scanner quelques étapes plus tôt.
 #
-# Limite honnête : ceci garantit l'identité des couches EN CAS DE cache-hit
-# (à confirmer empiriquement au prochain run réel — voir le commentaire de la
-# PR). Si le cache GitHub Actions expirait ou était invalidé entre les deux
-# jobs (fenêtre de quelques minutes dans la même exécution — cas non observé,
-# mais pas mathématiquement impossible), ce build ré-exécuterait le Dockerfile
-# sans un nouveau scan avant le push. Fermer ce résidu demanderait de scanner
-# l'image multi-plateformes elle-même après publication (bloquant, avec
-# rollback) — hors périmètre de ce correctif, noté pour une itération future
-# si jamais observé.
+# `cache-from`/`cache-to: type=gha,scope=...` restent posés sur les trois
+# builds (mêmes scopes qu'avant : `{service}-amd64`, `{service}-arm64`,
+# `{service}-multi`) — mais leur rôle change : ils ne sont plus le mécanisme
+# qui garantit l'identité des couches (c'est désormais le cache local du
+# builder, dans ce même job, qui le fait), seulement un accélérateur pour
+# les FUTURS runs (un `docker-build-*` de PR qui retrouve un cache déjà
+# chaud, ou une publication ultérieure sans changement de Dockerfile).
+#
+# `docker-build-*` (`_build-scan.yml`) n'est plus invoqué du tout sur le
+# chemin de publication (voir `ci.yml`, `if:` des jobs `docker-build-*`) :
+# le faire tourner en plus aurait reconstruit une troisième fois la même
+# image, en parallèle, sans plus rien garantir — exactement la duplication
+# que ce correctif retire. Il reste inchangé, et seul, sur le chemin PR
+# (scan sans publication).
 #
 # ── Signature et provenance SLSA isolées du build (SLSA Build L3) ────────────
 #
@@ -104,9 +117,16 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    # Deux architectures dont une émulée : plus long qu'un build simple, mais
-    # très loin des 6 heures par défaut. Le plafond reste un garde-fou de coût.
-    timeout-minutes: 45
+    # Ce job construit désormais CHAQUE architecture deux fois : une fois
+    # localement pour le scan (amd64 puis arm64, plus bas), une fois dans le
+    # build multi-plateforme final — ce dernier étant normalement un
+    # cache-hit quasi total (voir le commentaire en tête de fichier), donc
+    # rapide. Budget : jusqu'à 30 min par architecture scannée (même plafond
+    # que le job `build` de `_build-scan.yml` pour un seul arch, qui faisait
+    # ce travail dans un job séparé) + une marge pour le build final et le
+    # push de la liste de manifestes. Loin des 6 heures par défaut ; le
+    # plafond reste un garde-fou de coût, pas un chronomètre serré.
+    timeout-minutes: 75
     permissions:
       contents: read
       packages: write
@@ -140,6 +160,66 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # ── Scan avant publication : une architecture à la fois ────────────────
+      #
+      # Même contrainte que `_build-scan.yml` (voir son commentaire de tête,
+      # inchangé) : `aquasecurity/trivy-action` n'a pas d'option `--platform`,
+      # donc pas moyen de lui faire scanner autre chose que l'image chargée
+      # localement par défaut. Une image par architecture, construite
+      # `load: true, push: false` et scannée sous son propre nom local, avant
+      # que le build final ne pousse quoi que ce soit.
+      #
+      # `docker/setup-buildx-action` ci-dessus n'a tourné qu'une fois pour
+      # tout ce job : les deux builds ci-dessous ET le build final plus bas
+      # partagent le MÊME builder, donc le même cache BuildKit local — voir
+      # le commentaire en tête de fichier pour pourquoi c'est la garantie qui
+      # compte, `cache-from`/`cache-to: type=gha` n'étant ici qu'un
+      # accélérateur pour les runs futurs.
+      - name: Build linux/amd64 (scan avant publication)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ${{ inputs.context }}
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: ${{ inputs.service }}:prepublish-amd64-${{ github.sha }}
+          cache-from: type=gha,scope=${{ inputs.service }}-amd64
+          cache-to: type=gha,mode=max,scope=${{ inputs.service }}-amd64
+
+      - name: Scanner linux/amd64 (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ inputs.service }}:prepublish-amd64-${{ github.sha }}
+          severity: CRITICAL,HIGH
+          scanners: vuln
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Build linux/arm64 (scan avant publication)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ${{ inputs.context }}
+          platforms: linux/arm64
+          push: false
+          load: true
+          tags: ${{ inputs.service }}:prepublish-arm64-${{ github.sha }}
+          cache-from: type=gha,scope=${{ inputs.service }}-arm64
+          cache-to: type=gha,mode=max,scope=${{ inputs.service }}-arm64
+
+      - name: Scanner linux/arm64 (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ inputs.service }}:prepublish-arm64-${{ github.sha }}
+          severity: CRITICAL,HIGH
+          scanners: vuln
+          exit-code: "1"
+          ignore-unfixed: true
+
+      # ── Build final : seulement si les deux scans ci-dessus sont passés ────
+      #
+      # Une étape qui échoue arrête le job — ni ce build, ni la signature, ni
+      # la provenance ne peuvent donc être atteints si un scan a échoué plus
+      # haut.
       - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         id: build
         with:
@@ -152,15 +232,19 @@ jobs:
           tags: |
             ghcr.io/${{ env.REPO_LC }}/${{ inputs.service }}:${{ github.ref_name }}
             ghcr.io/${{ env.REPO_LC }}/${{ inputs.service }}:${{ github.sha }}
-          # `{service}-multi` : cache propre à ce job, pour les appels où
-          # `docker-build-*` n'a pas tourné juste avant (aucun cas connu
-          # aujourd'hui, mais ce fichier reste un workflow réutilisable
-          # générique). `{service}-amd64`/`{service}-arm64` : les scopes que
-          # `docker-build-*` (`_build-scan.yml`) vient de remplir dans CE MÊME
-          # run, sur le MÊME commit — voir le commentaire en tête de fichier
-          # (« Image scannée = image publiée »). Buildx choisit lui-même, par
-          # plateforme cible, la source qui matche ; lister le scope par
-          # architecture EN PREMIER lui donne la priorité sur `-multi`.
+          # `{service}-amd64`/`{service}-arm64` : les scopes que les deux
+          # builds de scan ci-dessus viennent de remplir, à l'instant, DANS
+          # CE MÊME job — voir le commentaire en tête de fichier (« Image
+          # scannée = image publiée »). `{service}-multi` : cache propre à ce
+          # dernier build, pour les couches qui lui sont propres (l'emballage
+          # en liste de manifestes) et pour les appels où les deux builds de
+          # scan auraient été sautés (aucun cas connu aujourd'hui, mais ce
+          # fichier reste un workflow réutilisable générique). Buildx choisit
+          # lui-même, par plateforme cible, la source qui matche ; lister le
+          # scope par architecture EN PREMIER lui donne la priorité sur
+          # `-multi`. Le cache qui compte réellement ici reste néanmoins le
+          # cache BuildKit local du builder partagé par les trois builds de
+          # ce job (voir plus haut) — ceci n'est qu'une garantie de secours.
           cache-from: |
             type=gha,scope=${{ inputs.service }}-amd64
             type=gha,scope=${{ inputs.service }}-arm64
@@ -183,7 +267,7 @@ jobs:
     needs: publish
     runs-on: ubuntu-latest
     # Seul job réel de ce fichier sans plafond (audit §11.4/§11.9 point 1) :
-    # `publish` en a un (45 min), `provenance` appelle un workflow réutilisable
+    # `publish` en a un (75 min), `provenance` appelle un workflow réutilisable
     # externe qui porte le sien. Une commande `cosign sign` qui pend ne doit
     # pas immobiliser le runner 6 heures.
     timeout-minutes: 10
