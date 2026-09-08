@@ -1,6 +1,6 @@
 import secrets
 import uuid
-from typing import cast
+from typing import Any, cast
 
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.hashers import check_password, make_password
@@ -8,6 +8,8 @@ from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+
+from comptes.fields import EncryptedCharField, hash_email, hash_phone
 
 
 class Role(models.TextChoices):
@@ -56,10 +58,30 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     username = models.CharField(max_length=100, unique=True)
-    # Obligatoire pour ADMIN (activation e-mail + reset e-mail). Vide pour les autres rôles.
-    email = models.EmailField(max_length=255, unique=True, null=True, blank=True)
-    # Obligatoire pour tous les rôles (activation et reset par OTP WhatsApp).
-    phone_number = models.CharField(max_length=20, unique=True)
+    # Chiffré au repos (Fernet, voir comptes/fields.py — OWASP A02). Obligatoire
+    # pour ADMIN (activation e-mail + reset e-mail), vide pour les autres rôles.
+    # `unique=True` a migré vers `email_hash` ci-dessous : Fernet est un
+    # chiffrement non déterministe, une contrainte d'unicité sur CE champ ne
+    # protégerait plus rien (voir comptes/fields.py, tête de module).
+    email = EncryptedCharField(max_length=255, null=True, blank=True)
+    # Hash de recherche déterministe (HMAC-SHA256) de `email`, calculé
+    # automatiquement à l'écriture par `save()` ci-dessous — jamais assigné à
+    # la main. Nullable comme `email` (compte non-ADMIN sans e-mail) ; deux
+    # valeurs NULL ne violent pas `unique=True` (PostgreSQL comme SQLite
+    # traitent NULL comme distinct de toute autre valeur, y compris une autre
+    # NULL).
+    email_hash = models.CharField(max_length=64, unique=True, null=True, blank=True, editable=False, db_index=True)
+    # Chiffré au repos (Fernet, voir comptes/fields.py — OWASP A02). Obligatoire
+    # pour tous les rôles (activation et reset par OTP WhatsApp). Même
+    # remarque que `email` : `unique=True` a migré vers `phone_number_hash`.
+    phone_number = EncryptedCharField(max_length=20)
+    # Hash de recherche déterministe (HMAC-SHA256) de `phone_number`, calculé
+    # automatiquement à l'écriture par `save()` ci-dessous — jamais assigné à
+    # la main. Porte la contrainte d'unicité réelle (voir comptes/fields.py) :
+    # deux utilisateurs avec le même numéro produisent le même hash, donc une
+    # violation `IntegrityError` à la création/mise à jour du second, comme
+    # avant ce changement sur le champ en clair.
+    phone_number_hash = models.CharField(max_length=64, unique=True, editable=False, db_index=True)
     role = models.CharField(max_length=20, choices=Role.choices)
     is_active = models.BooleanField(default=True)
 
@@ -104,6 +126,34 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self) -> str:
         return self.username
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """Calcule `email_hash`/`phone_number_hash` avant chaque écriture.
+
+        Recalculés inconditionnellement à partir de `self.email`/
+        `self.phone_number` (jamais lus depuis la base) : le hash doit
+        toujours refléter la valeur en clair qui va réellement être écrite,
+        que ce champ vienne de changer ou non — recalculer inutilement un
+        HMAC est sans coût notable, alors qu'un hash resté périmé après une
+        mise à jour directe de `user.email`/`user.phone_number` (voir
+        `UserAdminService.update_user`/`anonymiser_utilisateur`,
+        comptes/services.py, qui font `user.email = ...` sans passer par un
+        setter dédié) casserait silencieusement tout lookup ultérieur.
+
+        Voir comptes/fields.py pour la justification complète du mécanisme
+        (pourquoi un hash séparé, pourquoi HMAC plutôt qu'un sha256 nu).
+        """
+        # `phone_number_hash` n'est PAS nullable (comme `phone_number`,
+        # obligatoire pour tous les rôles) : toujours recalculé, y compris sur
+        # une chaîne vide (cas défensif qui ne devrait jamais se produire en
+        # usage normal — `phone_number` est requis à la création comme à la
+        # mise à jour, voir comptes/repositories.py/services.py).
+        self.phone_number_hash = hash_phone(self.phone_number)
+        # `email`, lui, est nullable (vide pour les rôles non-ADMIN) :
+        # `email_hash` doit rester NULL dans ce cas (deux comptes sans e-mail
+        # ne doivent jamais entrer en collision sur `unique=True`).
+        self.email_hash = hash_email(self.email) if self.email else None
+        super().save(*args, **kwargs)
 
 
 # RGPD — préfixes explicites d'un compte anonymisé (voir

@@ -3,11 +3,19 @@ from uuid import UUID
 
 from django.db.models import Q
 
+from comptes.fields import hash_email, hash_phone
 from comptes.models import PREFIXE_USERNAME_ANONYMISE, PasswordSetupToken, PhoneOtpToken, RevokedToken, User
 
 
 class UserRepository:
-    """Accès base de données pour les utilisateurs."""
+    """Accès base de données pour les utilisateurs.
+
+    `email`/`phone_number` sont chiffrés au repos (Fernet, non déterministe —
+    voir comptes/fields.py) : tout lookup exact passe par le champ de hash
+    compagnon (`email_hash`/`phone_number_hash`), jamais par le champ chiffré
+    lui-même (`User.objects.get(email=...)` lèverait `FieldError`, voir
+    `_EncryptedFieldMixin.get_lookup`).
+    """
 
     def get_by_id(self, user_id: str) -> User:
         return User.objects.get(id=user_id)
@@ -16,14 +24,14 @@ class UserRepository:
         return User.objects.get(username=username)
 
     def get_by_email(self, email: str) -> User:
-        return User.objects.get(email=email)
+        return User.objects.get(email_hash=hash_email(email))
 
     def get_by_phone(self, phone_number: str) -> User:
-        return User.objects.get(phone_number=phone_number)
+        return User.objects.get(phone_number_hash=hash_phone(phone_number))
 
     def get_by_username_or_phone(self, identifier: str) -> User:
         """Résout un identifiant qui peut être un username ou un numéro de téléphone."""
-        return User.objects.get(Q(username=identifier) | Q(phone_number=identifier))
+        return User.objects.get(Q(username=identifier) | Q(phone_number_hash=hash_phone(identifier)))
 
     def list_all(self) -> list[User]:
         return list(User.objects.all().order_by("-created_at"))
