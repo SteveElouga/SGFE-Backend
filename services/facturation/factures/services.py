@@ -16,6 +16,7 @@ from django.utils.translation import gettext_lazy as _
 from .audit import enregistrer_audit
 from .event_publisher import publish_reporting_event
 from .exceptions import PreconditionError
+from .metrics import facture_annulee_total, facture_generee_total, facture_regeneree_total
 from .models import (
     Facture,
     NatureFacture,
@@ -381,6 +382,11 @@ class FactureService:
             extra={"campagne_id": campagne_id, "count": len(factures)},
         )
 
+        # Une facture réellement générée = une unité, même granularité que le
+        # log ci-dessus (un seul événement pour tout le lot du batch).
+        if factures:
+            facture_generee_total.add(len(factures))
+
         # Pousse les stats de facturation au Reporting Service (read model aval,
         # dégradation gracieuse — voir ADR-019). Une seule mise à jour agrégée
         # pour tout le lot généré.
@@ -635,6 +641,7 @@ class FactureService:
             "Facture annulée",
             extra={"facture_id": facture_id, "numero": facture.numero_facture, "par": annule_par},
         )
+        facture_annulee_total.add(1)
 
         # Une facture annulée n'a jamais existé pour le lecteur des stats : la
         # retirer du total facturé et de son compteur (impayées ou payées,
@@ -790,6 +797,7 @@ class FactureService:
                 "abonne_id": nouvelle.abonne_id,
             },
         )
+        facture_regeneree_total.add(1)
         return annulee, nouvelle
 
     def _relire_releve(self, campagne_id: str, abonne_id: str) -> dict[str, Any] | None:
