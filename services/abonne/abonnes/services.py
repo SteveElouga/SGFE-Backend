@@ -1,6 +1,7 @@
 from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 
+from abonnes import metrics
 from abonnes.audit import enregistrer_audit
 from abonnes.dtos import ZoneStatDict
 from abonnes.models import Abonne, Compteur, HistoriqueCompteur, StatutAbonne, StatutCompteur
@@ -105,6 +106,7 @@ class AbonneService:
                     f"numero_abonne={numero_abonne} — compteur={numero_compteur} (quartier={quartier}, camp={camp})"
                 ),
             )
+        metrics.abonne_cree_total.add(1)
         return abonne
 
     def update_abonne(self, abonne_id: str, nom: str, prenom: str, telephone_whatsapp: str, adresse: str) -> Abonne:
@@ -146,6 +148,7 @@ class AbonneService:
                 objet_id=str(abonne.id),
                 detail=f"numero_abonne={abonne.numero_abonne}",
             )
+        metrics.abonne_suspendu_total.add(1)
         return abonne
 
     def reactiver_abonne(self, abonne_id: str) -> Abonne:
@@ -161,6 +164,7 @@ class AbonneService:
                 objet_id=str(abonne.id),
                 detail=f"numero_abonne={abonne.numero_abonne}",
             )
+        metrics.abonne_reactive_total.add(1)
         return abonne
 
     def resilier_abonne(self, abonne_id: str) -> Abonne:
@@ -185,6 +189,7 @@ class AbonneService:
                 objet_id=str(abonne.id),
                 detail=f"numero_abonne={abonne.numero_abonne}",
             )
+        metrics.abonne_resilie_total.add(1)
         return abonne
 
     def anonymiser_abonne(self, abonne_id: str) -> Abonne:
@@ -328,5 +333,6 @@ class CompteurService:
                     f"motif={motif!r}"
                 ),
             )
+        metrics.abonne_compteur_remplace_total.add(1)
 
         return nouveau_compteur
