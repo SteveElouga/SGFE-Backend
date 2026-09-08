@@ -40,9 +40,15 @@ def _insert_plaintext_user(username: str, email: str | None, phone_number: str) 
     now = datetime.now(UTC).isoformat()
     with connection.cursor() as cursor:
         cursor.execute(
+            # is_superuser/is_active/is_staff sont de vraies colonnes booléennes sous
+            # PostgreSQL (utilisé en CI, FORCE_POSTGRES_TESTS=True) : contrairement à
+            # SQLite (affinité entière, 0/1 acceptés partout), Postgres refuse de
+            # caster silencieusement un littéral entier en boolean dans un INSERT
+            # (« column "is_superuser" is of type boolean but expression is of type
+            # integer ») — d'où FALSE/TRUE plutôt que 0/1 ci-dessous.
             "INSERT INTO users (id, password, is_superuser, username, email, email_hash, phone_number, "
             "phone_number_hash, role, is_active, failed_attempts, is_staff, created_at, updated_at) VALUES "
-            "(%s, '', 0, %s, %s, NULL, %s, %s, 'AGENT', 1, 0, 0, %s, %s)",
+            "(%s, '', FALSE, %s, %s, NULL, %s, %s, 'AGENT', TRUE, 0, FALSE, %s, %s)",
             [user_id, username, email, phone_number, f"placeholder-{username}", now, now],
         )
     return user_id
