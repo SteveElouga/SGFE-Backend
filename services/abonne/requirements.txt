@@ -26,3 +26,4 @@ opentelemetry-distro==0.64b0
 python-json-logger==4.2.0
 prometheus-client==0.20.0
 redis[hiredis]==5.2.1
+pyroscope-io==1.2.2      # profiling continu — py-spy embarqué (cap_add SYS_PTRACE requis, voir docker-compose.yml)

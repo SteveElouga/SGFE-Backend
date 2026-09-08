@@ -312,3 +312,19 @@ LOGGING: dict[str, object] = {
         "level": env("DJANGO_LOG_LEVEL", default="INFO"),
     },
 }
+
+
+# Profiling continu (Pyroscope, phase suivante du plan d'observabilité — voir
+# CLAUDE.md §Observabilité). Contrairement aux secrets exigés via `${VAR:?...}`
+# dans docker-compose.yml (DJANGO_SECRET_KEY, INTERNAL_GRPC_KEY, etc. —
+# fail-fast), PYROSCOPE_SERVER_ADDRESS reste optionnelle : dégradation
+# gracieuse, jamais un motif d'échec au démarrage du service. Le profiling est
+# un bonus d'observabilité, pas un contrôle de sécurité.
+if env("PYROSCOPE_SERVER_ADDRESS", default=""):
+    import pyroscope  # type: ignore[import-untyped]  # pas de stubs publiés pour pyroscope-io
+
+    pyroscope.configure(
+        application_name="auth-service",
+        server_address=env("PYROSCOPE_SERVER_ADDRESS", default=""),
+        tags={"service": "auth-service"},
+    )
