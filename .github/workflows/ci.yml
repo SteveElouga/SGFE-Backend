@@ -31,7 +31,9 @@ env:
   # déclenche à raison le scanner de secrets (gitleaks) qui ne peut pas
   # distinguer "vraie clé" de "clé de test qui a la même forme". Générée à la
   # volée dans chaque job qui en a besoin — matrice `test`, combinaisons
-  # abonne et notification (voir plus bas) — jamais partagée entre jobs.
+  # auth, abonne et notification (voir plus bas) — jamais partagée entre
+  # jobs. Même raison pour PII_LOOKUP_HMAC_KEY (combinaison auth uniquement,
+  # voir services/auth/comptes/fields.py) : haute entropie elle aussi.
   # Même raison, pour auth-service et notification-service : DJANGO_DEBUG
   # n'étant pas positionné ici, ces settings tournent en DEBUG=False, ce qui
   # exige FRONTEND_URL sans repli (le service refuse un défaut silencieux sur
@@ -140,7 +142,12 @@ jobs:
               "reporting": "stats",
           }
           needs_jwt_keys = {"auth"}
-          needs_pii_key = {"abonne", "notification"}
+          needs_pii_key = {"auth", "abonne", "notification"}
+          # HMAC du hash de recherche (email_hash/phone_number_hash, voir
+          # comptes/fields.py) : auth uniquement — abonne/notification
+          # chiffrent une PII sans contrainte d'unicité ni lookup exact,
+          # donc pas de colonne de hash compagnon à alimenter.
+          needs_pii_hmac_key = {"auth"}
 
           filters = json.loads(os.environ["FILTER_JSON"])
           matrix = [
@@ -149,6 +156,7 @@ jobs:
                   "app": app,
                   "needs_jwt_keys": service in needs_jwt_keys,
                   "needs_pii_key": service in needs_pii_key,
+                  "needs_pii_hmac_key": service in needs_pii_hmac_key,
               }
               for service, app in apps.items()
               if filters.get(service) == "true"
@@ -347,6 +355,9 @@ jobs:
       - name: Génère une clé Fernet éphémère (CI uniquement, jamais committée)
         if: matrix.needs_pii_key
         run: echo "PII_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
+      - name: Génère une clé HMAC éphémère pour le hash de recherche PII (CI uniquement, jamais committée — voir comptes/fields.py)
+        if: matrix.needs_pii_hmac_key
+        run: echo "PII_LOOKUP_HMAC_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
       - name: Vérification des types (mypy --strict)
         run: mypy --strict --show-traceback ${{ matrix.app }}/
       - name: Audit des dépendances (pip-audit)
