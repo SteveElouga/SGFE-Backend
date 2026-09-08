@@ -13,6 +13,7 @@ from rest_framework_simplejwt.tokens import AccessToken, RefreshToken, Token
 
 from comptes.audit import enregistrer_audit
 from comptes.email_client import email_client
+from comptes.metrics import auth_connexion_total, utilisateur_cree_total, utilisateur_desactive_total
 from comptes.models import PREFIXE_TELEPHONE_ANONYMISE, PREFIXE_USERNAME_ANONYMISE, User, _generate_otp
 from comptes.repositories import (
     PasswordSetupTokenRepository,
@@ -108,23 +109,28 @@ class AuthService:
             # Égalise le temps de réponse avec le cas « compte connu, mauvais
             # mot de passe » (pas d'oracle temporel d'énumération).
             check_password(password, _DUMMY_PASSWORD_HASH)
+            auth_connexion_total.add(1, {"resultat": "echec"})
             raise AuthenticationError(_MSG_INVALID_CREDENTIALS) from exc
 
         if user.locked_until and user.locked_until > timezone.now():
             # Verrou actif : on bloque sans révéler l'état « verrouillé ».
+            auth_connexion_total.add(1, {"resultat": "echec"})
             raise AuthenticationError(_MSG_INVALID_CREDENTIALS)
 
         if not check_password(password, user.password):
             self._enregistrer_echec(user)
+            auth_connexion_total.add(1, {"resultat": "echec"})
             raise AuthenticationError(_MSG_INVALID_CREDENTIALS)
 
         if not user.is_active:
+            auth_connexion_total.add(1, {"resultat": "echec"})
             raise AuthenticationError(_("Compte désactivé"))
 
         user.failed_attempts = 0
         user.locked_until = None
         self.users.save(user)
 
+        auth_connexion_total.add(1, {"resultat": "succes"})
         return self._generer_tokens(user)
 
     def _enregistrer_echec(self, user: User) -> None:
@@ -237,6 +243,7 @@ class UserAdminService:
                 objet_id=str(user.id),
                 detail=f"username={username!r} — role={role}",
             )
+            utilisateur_cree_total.add(1)
 
         if role == "ADMIN":
             self.password_setup.send_activation_email(user)
@@ -316,6 +323,7 @@ class UserAdminService:
                 objet_id=str(saved_user.id),
                 detail=f"username={saved_user.username!r} — role={saved_user.role}",
             )
+            utilisateur_desactive_total.add(1)
         return saved_user
 
     def reactivate_user(self, user_id: str) -> User:
