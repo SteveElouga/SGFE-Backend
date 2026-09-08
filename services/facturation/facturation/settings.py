@@ -221,7 +221,7 @@ LOGGING: dict[str, object] = {
 # gracieuse, jamais un motif d'échec au démarrage du service. Le profiling est
 # un bonus d'observabilité, pas un contrôle de sécurité.
 if env("PYROSCOPE_SERVER_ADDRESS", default=""):
-    import pyroscope
+    import pyroscope  # type: ignore[import-untyped]  # pas de stubs publiés pour pyroscope-io
 
     pyroscope.configure(
         application_name="facturation-service",
