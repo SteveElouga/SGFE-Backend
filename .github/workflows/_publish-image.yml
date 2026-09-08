@@ -182,6 +182,11 @@ jobs:
     name: Signer l'image (keyless, OIDC GitHub, job isolé)
     needs: publish
     runs-on: ubuntu-latest
+    # Seul job réel de ce fichier sans plafond (audit §11.4/§11.9 point 1) :
+    # `publish` en a un (45 min), `provenance` appelle un workflow réutilisable
+    # externe qui porte le sien. Une commande `cosign sign` qui pend ne doit
+    # pas immobiliser le runner 6 heures.
+    timeout-minutes: 10
     permissions:
       packages: write
       id-token: write
