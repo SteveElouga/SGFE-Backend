@@ -1,4 +1,9 @@
-"""Configuration Django du Config Service."""
+"""Configuration Django du Config Service.
+
+(Commentaire ajouté pour déclencher un vrai run publish-config — vérification
+du nouveau job publish qui scanne chaque architecture avant de la pousser,
+PR #244.)
+"""
 
 import logging
 import sys
