@@ -1,4 +1,9 @@
 # syntax=docker/dockerfile:1
+#
+# Changement no-op (commentaire) : déclenche `docker-build-nginx` sur cette
+# PR pour vérifier en conditions réelles que le job garde son comportement
+# de scan-seul-sans-publication après le correctif CICD-SEC-9 de
+# `_publish-image.yml`/`ci.yml` (voir la PR).
 FROM nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de
 
 # apk upgrade en plus du digest pinné : applique les correctifs de sécurité
