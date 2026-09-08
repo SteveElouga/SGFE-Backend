@@ -109,6 +109,11 @@ class AbonneServiceStub:
                 request_serializer=abonne__service__pb2.EmptyRequest.SerializeToString,
                 response_deserializer=abonne__service__pb2.ListZonesResponse.FromString,
                 _registered_method=True)
+        self.ImporterCoordonneesCompteurs = channel.unary_unary(
+                '/abonne.AbonneService/ImporterCoordonneesCompteurs',
+                request_serializer=abonne__service__pb2.ImporterCoordonneesRequest.SerializeToString,
+                response_deserializer=abonne__service__pb2.ImporterCoordonneesResponse.FromString,
+                _registered_method=True)
 
 
 class AbonneServiceServicer:
@@ -218,6 +223,18 @@ class AbonneServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ImporterCoordonneesCompteurs(self, request, context):
+        """Import CSV en masse des coordonnées GPS (rapprochement par
+        numero_compteur, voir docs/ARCHITECTURE.md — carte interactive des
+        compteurs). Dégradation gracieuse par ligne : un numéro introuvable ou
+        une coordonnée invalide n'interrompt pas les autres lignes, chacune
+        atterrit soit dans le compte importé, soit dans `erreurs` (jamais les
+        deux, jamais aucun des deux).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AbonneServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -295,6 +312,11 @@ def add_AbonneServiceServicer_to_server(servicer, server):
                     servicer.ListZones,
                     request_deserializer=abonne__service__pb2.EmptyRequest.FromString,
                     response_serializer=abonne__service__pb2.ListZonesResponse.SerializeToString,
+            ),
+            'ImporterCoordonneesCompteurs': grpc.unary_unary_rpc_method_handler(
+                    servicer.ImporterCoordonneesCompteurs,
+                    request_deserializer=abonne__service__pb2.ImporterCoordonneesRequest.FromString,
+                    response_serializer=abonne__service__pb2.ImporterCoordonneesResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -702,6 +724,33 @@ class AbonneService:
             '/abonne.AbonneService/ListZones',
             abonne__service__pb2.EmptyRequest.SerializeToString,
             abonne__service__pb2.ListZonesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ImporterCoordonneesCompteurs(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/abonne.AbonneService/ImporterCoordonneesCompteurs',
+            abonne__service__pb2.ImporterCoordonneesRequest.SerializeToString,
+            abonne__service__pb2.ImporterCoordonneesResponse.FromString,
             options,
             channel_credentials,
             insecure,

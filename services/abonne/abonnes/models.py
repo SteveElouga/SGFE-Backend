@@ -58,6 +58,22 @@ class Compteur(models.Model):
     # compteurs existants n'en ont pas.
     position = models.CharField(max_length=255, blank=True, default="")
     statut = models.CharField(max_length=20, choices=StatutCompteur.choices, default=StatutCompteur.ACTIF)
+    # Géolocalisation — rattachée au COMPTEUR, pas à l'abonné : un compteur
+    # remplacé change de position physique, et un abonné qui change de
+    # compteur ne doit pas hériter d'une coordonnée qui n'est plus la
+    # sienne. `Decimal` (jamais `float`, même discipline que pour l'argent
+    # dans ce projet) — `max_digits=9, decimal_places=6` donne une précision
+    # d'environ 11 cm, largement suffisante pour localiser un compteur.
+    # `null=True` : la grande majorité des compteurs existants n'auront pas
+    # de coordonnée avant l'import initial en masse (voir
+    # `ImporterCoordonneesCompteurs`) — état transitoire attendu, pas une
+    # régression.
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    # Horodatage de la dernière mise à jour de la coordonnée (import CSV ou
+    # future saisie manuelle) — distinct de `created_at`, qui date la pose du
+    # compteur lui-même.
+    date_maj_position = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

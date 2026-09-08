@@ -28,6 +28,16 @@ class Compteur:
     date_pose: str
     statut: StatutCompteur
     position: str
+    # Géolocalisation (carte interactive, calcul d'itinéraire) — `None` tant
+    # qu'aucune coordonnée n'a été posée (import CSV en masse, voir
+    # ImporterCoordonneesCompteurs ci-dessous). `float`, pas `String` : ce
+    # champ rejoint `index_initial` ci-dessus dans ce même type, et ce
+    # service transporte déjà toutes ses valeurs `Decimal` (index, montants)
+    # en `float` côté GraphQL, sans exception — voir
+    # gateway/schema/facturation_types.py, gateway/schema/paiement_types.py.
+    latitude: float | None
+    longitude: float | None
+    date_maj_position: str | None
 
 
 @strawberry.type
@@ -86,6 +96,30 @@ class RemplacerCompteurInput:
     nouvelle_position: str = ""
 
 
+@strawberry.input
+class CoordonneeCompteurInput:
+    """Une ligne du CSV d'import de coordonnées. `numeroCompteur`, `latitude`
+    et `longitude` restent en `String!` — valeurs brutes telles que lues dans
+    le CSV ; une valeur mal formée produit une entrée dans `erreurs`, jamais
+    une erreur de validation GraphQL qui ferait échouer l'import entier."""
+
+    numero_compteur: str
+    latitude: str
+    longitude: str
+
+
+@strawberry.type
+class ImportErreur:
+    numero_compteur: str
+    message: str
+
+
+@strawberry.type
+class ImportCoordonneesResult:
+    nb_importees: int
+    erreurs: list[ImportErreur]
+
+
 @strawberry.type
 class HistoriqueCompteur:
     id: strawberry.ID
@@ -107,6 +141,21 @@ def compteur_from_grpc(compteur_response: Any) -> Compteur:
         date_pose=compteur_response.date_pose,
         statut=StatutCompteur(compteur_response.statut),
         position=compteur_response.position,
+        # `optional double`/`optional string` côté proto : `None` tant que
+        # `HasField` est faux (aucune coordonnée posée), jamais un sentinel
+        # 0.0 qui serait indiscernable d'un compteur réellement à (0, 0).
+        latitude=compteur_response.latitude if compteur_response.HasField("latitude") else None,
+        longitude=compteur_response.longitude if compteur_response.HasField("longitude") else None,
+        date_maj_position=(
+            compteur_response.date_maj_position if compteur_response.HasField("date_maj_position") else None
+        ),
+    )
+
+
+def import_coordonnees_result_from_grpc(response: Any) -> ImportCoordonneesResult:
+    return ImportCoordonneesResult(
+        nb_importees=response.nb_importees,
+        erreurs=[ImportErreur(numero_compteur=e.numero_compteur, message=e.message) for e in response.erreurs],
     )
 
 

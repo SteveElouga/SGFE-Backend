@@ -3,12 +3,15 @@ import strawberry
 from schema.abonne_types import (
     Abonne,
     Compteur,
+    CoordonneeCompteurInput,
     CreateAbonneInput,
+    ImportCoordonneesResult,
     RemplacerCompteurInput,
     UpdateAbonneInput,
     UpdateCompteurInput,
     abonne_from_grpc,
     compteur_from_grpc,
+    import_coordonnees_result_from_grpc,
 )
 from schema.context import require_role
 from schema.grpc_clients import abonne_client
@@ -119,3 +122,21 @@ class AbonneMutations:
             nouvelle_position=input.nouvelle_position,
         )
         return compteur_from_grpc(response)
+
+    @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
+    def importer_coordonnees_compteurs(
+        self, info: strawberry.types.Info, coordonnees: list[CoordonneeCompteurInput]
+    ) -> ImportCoordonneesResult:
+        """Import CSV en masse des coordonnées GPS de compteurs (carte
+        interactive), rapprochées par numero_compteur. ADMIN uniquement.
+        Dégradation gracieuse par ligne côté Abonné Service : une ligne
+        invalide n'empêche jamais les autres d'être importées — les erreurs
+        partielles sont relayées telles quelles dans `erreurs`."""
+        require_role(info, "ADMIN")
+        response = abonne_client.importer_coordonnees_compteurs(
+            [
+                {"numero_compteur": c.numero_compteur, "latitude": c.latitude, "longitude": c.longitude}
+                for c in coordonnees
+            ]
+        )
+        return import_coordonnees_result_from_grpc(response)

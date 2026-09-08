@@ -21,6 +21,13 @@ def compteur_to_response(compteur: Compteur) -> CompteurResponseDict:
         "date_pose": _date_to_str(compteur.date_pose),
         "statut": compteur.statut,
         "position": compteur.position,
+        # `None` (jamais 0.0) tant qu'aucune coordonnée n'a été posée — voir
+        # CompteurResponseDict. `pb.CompteurResponse(latitude=None, ...)`
+        # laisse le champ `optional` non défini côté protobuf (comportement
+        # documenté : passer `None` équivaut à omettre le champ).
+        "latitude": float(compteur.latitude) if compteur.latitude is not None else None,
+        "longitude": float(compteur.longitude) if compteur.longitude is not None else None,
+        "date_maj_position": compteur.date_maj_position.isoformat() if compteur.date_maj_position else None,
     }
 
 

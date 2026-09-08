@@ -58,6 +58,15 @@ class CompteurRepository:
     def get_actif(self, abonne_id: str) -> Compteur:
         return Compteur.objects.get(abonne_id=abonne_id, statut=StatutCompteur.ACTIF)
 
+    def get_by_numero(self, numero_compteur: int) -> Compteur:
+        """Résout un compteur par son numéro — clé de rapprochement de
+        l'import CSV de coordonnées (numero_compteur est `unique=True`).
+        Lève `Compteur.DoesNotExist` si aucun compteur ne correspond, quel
+        que soit son statut (ACTIF, REMPLACE ou DESACTIVE) : un compteur
+        remplacé garde sa position physique jusqu'à preuve du contraire, rien
+        ne justifie de restreindre l'import aux seuls compteurs ACTIFS."""
+        return Compteur.objects.get(numero_compteur=numero_compteur)
+
     def create(
         self,
         abonne: Abonne,
