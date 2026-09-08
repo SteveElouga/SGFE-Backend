@@ -290,3 +290,76 @@ class AbonneServiceServicerTests(TestCase):
             self.servicer.ExporterDonneesAbonne(
                 pb.AbonneIdRequest(abonne_id="00000000-0000-0000-0000-000000000000"), self.context
             )
+
+    def test_get_compteur_sans_coordonnee_ne_pose_pas_les_champs_optionnels(self) -> None:
+        created = self._create()
+        response = self.servicer.GetCompteur(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
+        self.assertFalse(response.HasField("latitude"))
+        self.assertFalse(response.HasField("longitude"))
+        self.assertFalse(response.HasField("date_maj_position"))
+
+    def test_importer_coordonnees_compteurs_succes(self) -> None:
+        self._create(numero_compteur=1)
+        response = self.servicer.ImporterCoordonneesCompteurs(
+            pb.ImporterCoordonneesRequest(
+                coordonnees=[pb.CoordonneeCompteur(numero_compteur="1", latitude="3.866667", longitude="11.516667")]
+            ),
+            self.context,
+        )
+        self.assertEqual(response.nb_importees, 1)
+        self.assertEqual(len(response.erreurs), 0)
+
+    def test_importer_coordonnees_compteurs_maj_bien_le_compteur(self) -> None:
+        created = self._create(numero_compteur=1)
+        self.servicer.ImporterCoordonneesCompteurs(
+            pb.ImporterCoordonneesRequest(
+                coordonnees=[pb.CoordonneeCompteur(numero_compteur="1", latitude="3.866667", longitude="11.516667")]
+            ),
+            self.context,
+        )
+        response = self.servicer.GetCompteur(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)
+        self.assertTrue(response.HasField("latitude"))
+        self.assertAlmostEqual(response.latitude, 3.866667)
+        self.assertAlmostEqual(response.longitude, 11.516667)
+        self.assertTrue(response.HasField("date_maj_position"))
+
+    def test_importer_coordonnees_compteurs_numero_introuvable_va_dans_les_erreurs(self) -> None:
+        self._create(numero_compteur=1)
+        response = self.servicer.ImporterCoordonneesCompteurs(
+            pb.ImporterCoordonneesRequest(
+                coordonnees=[pb.CoordonneeCompteur(numero_compteur="999", latitude="3.866667", longitude="11.516667")]
+            ),
+            self.context,
+        )
+        self.assertEqual(response.nb_importees, 0)
+        self.assertEqual(len(response.erreurs), 1)
+        self.assertEqual(response.erreurs[0].numero_compteur, "999")
+
+    def test_importer_coordonnees_compteurs_coordonnee_invalide_va_dans_les_erreurs(self) -> None:
+        self._create(numero_compteur=1)
+        response = self.servicer.ImporterCoordonneesCompteurs(
+            pb.ImporterCoordonneesRequest(
+                coordonnees=[pb.CoordonneeCompteur(numero_compteur="1", latitude="pas-un-nombre", longitude="11.5")]
+            ),
+            self.context,
+        )
+        self.assertEqual(response.nb_importees, 0)
+        self.assertEqual(len(response.erreurs), 1)
+        self.assertEqual(response.erreurs[0].numero_compteur, "1")
+
+    def test_importer_coordonnees_compteurs_import_partiel(self) -> None:
+        self._create(numero_compteur=1)
+        self._create(numero_compteur=2)
+        response = self.servicer.ImporterCoordonneesCompteurs(
+            pb.ImporterCoordonneesRequest(
+                coordonnees=[
+                    pb.CoordonneeCompteur(numero_compteur="1", latitude="3.866667", longitude="11.516667"),
+                    pb.CoordonneeCompteur(numero_compteur="999", latitude="3.866667", longitude="11.516667"),
+                    pb.CoordonneeCompteur(numero_compteur="2", latitude="200", longitude="11.516667"),
+                ]
+            ),
+            self.context,
+        )
+        self.assertEqual(response.nb_importees, 1)
+        self.assertEqual(len(response.erreurs), 2)
+        self.assertEqual({e.numero_compteur for e in response.erreurs}, {"999", "2"})

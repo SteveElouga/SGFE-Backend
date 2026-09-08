@@ -17,6 +17,31 @@ class CompteurResponseDict(TypedDict):
     date_pose: str
     statut: str
     position: str
+    # `None` tant qu'aucune coordonnée n'a été posée (import initial pas
+    # encore fait) — voir Compteur.latitude/longitude/date_maj_position.
+    latitude: float | None
+    longitude: float | None
+    date_maj_position: str | None
+
+
+class CoordonneeCompteurDict(TypedDict):
+    """Une ligne brute (non validée) du CSV d'import de coordonnées —
+    valeurs telles que reçues par `ImporterCoordonneesCompteurs`, avant toute
+    validation (voir `CompteurService.importer_coordonnees`)."""
+
+    numero_compteur: str
+    latitude: str
+    longitude: str
+
+
+class ImportErreurDict(TypedDict):
+    numero_compteur: str
+    message: str
+
+
+class ImportCoordonneesResultDict(TypedDict):
+    nb_importees: int
+    erreurs: list[ImportErreurDict]
 
 
 class HistoriqueResponseDict(TypedDict):

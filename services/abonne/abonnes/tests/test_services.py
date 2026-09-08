@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Any
 
 from django.db import IntegrityError
@@ -404,3 +405,93 @@ class CompteurServiceTests(TestCase):
         abonne = _create_abonne(self.abonne_service)
         historique = self.compteur_service.get_historique(str(abonne.id))
         self.assertEqual(historique, [])
+
+
+class ImporterCoordonneesTests(TestCase):
+    """Import CSV en masse des coordonnées GPS de compteurs
+    (CompteurService.importer_coordonnees) — rapprochement par
+    numero_compteur, dégradation gracieuse par ligne."""
+
+    def setUp(self) -> None:
+        self.abonne_service = AbonneService()
+        self.compteur_service = CompteurService()
+
+    def test_import_reussi_met_a_jour_latitude_longitude_et_date_maj(self) -> None:
+        abonne = _create_abonne(self.abonne_service, numero_compteur=1)
+        resultat = self.compteur_service.importer_coordonnees(
+            [{"numero_compteur": "1", "latitude": "3.866667", "longitude": "11.516667"}]
+        )
+        self.assertEqual(resultat["nb_importees"], 1)
+        self.assertEqual(resultat["erreurs"], [])
+        compteur = self.compteur_service.get_compteur_actif(str(abonne.id))
+        self.assertEqual(compteur.latitude, Decimal("3.866667"))
+        self.assertEqual(compteur.longitude, Decimal("11.516667"))
+        self.assertIsNotNone(compteur.date_maj_position)
+
+    def test_import_numero_introuvable_va_dans_les_erreurs_sans_lever(self) -> None:
+        _create_abonne(self.abonne_service, numero_compteur=1)
+        resultat = self.compteur_service.importer_coordonnees(
+            [{"numero_compteur": "999", "latitude": "3.866667", "longitude": "11.516667"}]
+        )
+        self.assertEqual(resultat["nb_importees"], 0)
+        self.assertEqual(len(resultat["erreurs"]), 1)
+        self.assertEqual(resultat["erreurs"][0]["numero_compteur"], "999")
+
+    def test_import_coordonnee_invalide_va_dans_les_erreurs_sans_lever(self) -> None:
+        _create_abonne(self.abonne_service, numero_compteur=1)
+        resultat = self.compteur_service.importer_coordonnees(
+            [{"numero_compteur": "1", "latitude": "pas-un-nombre", "longitude": "11.516667"}]
+        )
+        self.assertEqual(resultat["nb_importees"], 0)
+        self.assertEqual(len(resultat["erreurs"]), 1)
+        self.assertEqual(resultat["erreurs"][0]["numero_compteur"], "1")
+
+    def test_import_latitude_hors_bornes_va_dans_les_erreurs(self) -> None:
+        _create_abonne(self.abonne_service, numero_compteur=1)
+        resultat = self.compteur_service.importer_coordonnees(
+            [{"numero_compteur": "1", "latitude": "120", "longitude": "11.516667"}]
+        )
+        self.assertEqual(resultat["nb_importees"], 0)
+        self.assertEqual(len(resultat["erreurs"]), 1)
+
+    def test_import_longitude_hors_bornes_va_dans_les_erreurs(self) -> None:
+        _create_abonne(self.abonne_service, numero_compteur=1)
+        resultat = self.compteur_service.importer_coordonnees(
+            [{"numero_compteur": "1", "latitude": "3.866667", "longitude": "200"}]
+        )
+        self.assertEqual(resultat["nb_importees"], 0)
+        self.assertEqual(len(resultat["erreurs"]), 1)
+
+    def test_import_partiel_certaines_lignes_reussissent_dautres_echouent(self) -> None:
+        abonne_1 = _create_abonne(self.abonne_service, numero_compteur=1)
+        abonne_2 = _create_abonne(self.abonne_service, numero_compteur=2)
+        resultat = self.compteur_service.importer_coordonnees(
+            [
+                {"numero_compteur": "1", "latitude": "3.866667", "longitude": "11.516667"},
+                {"numero_compteur": "999", "latitude": "3.866667", "longitude": "11.516667"},
+                {"numero_compteur": "2", "latitude": "pas-un-nombre", "longitude": "11.516667"},
+            ]
+        )
+        self.assertEqual(resultat["nb_importees"], 1)
+        self.assertEqual(len(resultat["erreurs"]), 2)
+        self.assertEqual(
+            {e["numero_compteur"] for e in resultat["erreurs"]},
+            {"999", "2"},
+        )
+        compteur_1 = self.compteur_service.get_compteur_actif(str(abonne_1.id))
+        self.assertEqual(compteur_1.latitude, Decimal("3.866667"))
+        # La ligne en échec ne doit pas avoir touché le compteur 2.
+        compteur_2 = self.compteur_service.get_compteur_actif(str(abonne_2.id))
+        self.assertIsNone(compteur_2.latitude)
+
+    def test_import_numero_compteur_non_numerique_va_dans_les_erreurs(self) -> None:
+        _create_abonne(self.abonne_service, numero_compteur=1)
+        resultat = self.compteur_service.importer_coordonnees(
+            [{"numero_compteur": "abc", "latitude": "3.866667", "longitude": "11.516667"}]
+        )
+        self.assertEqual(resultat["nb_importees"], 0)
+        self.assertEqual(resultat["erreurs"][0]["numero_compteur"], "abc")
+
+    def test_import_liste_vide_renvoie_resultat_vide(self) -> None:
+        resultat = self.compteur_service.importer_coordonnees([])
+        self.assertEqual(resultat, {"nb_importees": 0, "erreurs": []})

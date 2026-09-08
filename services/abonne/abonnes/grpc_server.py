@@ -179,6 +179,22 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):  # type: ignore[misc
             zones=[pb.ZoneStat(quartier=z["quartier"], camp=z["camp"], nb_abonnes=z["nb_abonnes"]) for z in zones]
         )
 
+    def ImporterCoordonneesCompteurs(
+        self, request: pb.ImporterCoordonneesRequest, context: grpc.ServicerContext
+    ) -> pb.ImporterCoordonneesResponse:
+        # Dégradation gracieuse par ligne : `importer_coordonnees` ne lève
+        # jamais pour une ligne individuelle invalide, voir services.py.
+        resultat = self.compteur_service.importer_coordonnees(
+            [
+                {"numero_compteur": c.numero_compteur, "latitude": c.latitude, "longitude": c.longitude}
+                for c in request.coordonnees
+            ]
+        )
+        return pb.ImporterCoordonneesResponse(
+            nb_importees=resultat["nb_importees"],
+            erreurs=[pb.ImportErreur(**erreur) for erreur in resultat["erreurs"]],
+        )
+
 
 def serve() -> None:
     server = grpc.server(

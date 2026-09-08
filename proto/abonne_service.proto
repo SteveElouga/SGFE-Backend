@@ -31,6 +31,13 @@ service AbonneService {
   // Zones de relevé distinctes (quartier + camp) avec le nombre d'abonnés
   // actifs — sert à l'affectation des agents par zone (Campagne/Gateway).
   rpc ListZones (EmptyRequest) returns (ListZonesResponse);
+  // Import CSV en masse des coordonnées GPS (rapprochement par
+  // numero_compteur, voir docs/ARCHITECTURE.md — carte interactive des
+  // compteurs). Dégradation gracieuse par ligne : un numéro introuvable ou
+  // une coordonnée invalide n'interrompt pas les autres lignes, chacune
+  // atterrit soit dans le compte importé, soit dans `erreurs` (jamais les
+  // deux, jamais aucun des deux).
+  rpc ImporterCoordonneesCompteurs (ImporterCoordonneesRequest) returns (ImporterCoordonneesResponse);
 }
 
 message AbonneIdRequest { string abonne_id = 1; }
@@ -110,6 +117,22 @@ message CompteurResponse {
   string date_pose = 6;
   string statut = 7;
   string position = 8;
+  // Géolocalisation du compteur (carte interactive, calcul d'itinéraire) —
+  // `Decimal` côté modèle (max_digits=9, decimal_places=6, ~11 cm de
+  // précision). Transportées en `double` : ce service transporte déjà
+  // TOUTES ses valeurs Decimal (index_initial ci-dessus, index_fermeture,
+  // montant/prix_m3 dans les autres services de ce dépôt) en `double`, sans
+  // exception — voir proto/facturation_service.proto,
+  // proto/paiement_service.proto. `optional` (comme index_initial dans
+  // UpdateCompteurRequest ci-dessus) plutôt qu'un sentinel 0.0 : un compteur
+  // réellement posé à (0, 0) est distinct d'un compteur pas encore
+  // géolocalisé, et la grande majorité des compteurs existants n'auront pas
+  // de coordonnée avant l'import initial (voir ImporterCoordonneesCompteurs).
+  optional double latitude = 9;
+  optional double longitude = 10;
+  // Horodatage ISO 8601 de la dernière mise à jour de la coordonnée. Absent
+  // (`HasField` à false) tant qu'aucune coordonnée n'a jamais été posée.
+  optional string date_maj_position = 11;
 }
 
 message ListAbonnesResponse {
@@ -153,4 +176,30 @@ message ExportDonneesAbonneResponse {
   // JSON structuré (UTF-8) — voir abonnes/export.py::exporter_donnees_abonne
   // pour le schéma exact des sections.
   string json_export = 1;
+}
+
+// Une ligne du CSV d'import de coordonnées. `numero_compteur`, `latitude` et
+// `longitude` restent en `string` (valeurs brutes telles que lues dans le
+// CSV) — contrairement à CompteurResponse ci-dessus, où latitude/longitude
+// sont déjà validées et stockées : ici, une valeur mal formée doit produire
+// une entrée dans `erreurs`, jamais une exception de désérialisation gRPC
+// qui ferait échouer l'import entier.
+message CoordonneeCompteur {
+  string numero_compteur = 1;
+  string latitude = 2;
+  string longitude = 3;
+}
+
+message ImporterCoordonneesRequest {
+  repeated CoordonneeCompteur coordonnees = 1;
+}
+
+message ImporterCoordonneesResponse {
+  int32 nb_importees = 1;
+  repeated ImportErreur erreurs = 2;
+}
+
+message ImportErreur {
+  string numero_compteur = 1;
+  string message = 2;
 }

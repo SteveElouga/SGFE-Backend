@@ -266,6 +266,17 @@ class AbonneServiceClient:
     def get_historique_compteur(self, abonne_id: str) -> abonne_pb.ListHistoriqueResponse:
         return self._stub.GetHistoriqueCompteur(abonne_pb.AbonneIdRequest(abonne_id=abonne_id))
 
+    def importer_coordonnees_compteurs(
+        self, coordonnees: list[dict[str, str]]
+    ) -> abonne_pb.ImporterCoordonneesResponse:
+        """Import CSV en masse des coordonnées GPS de compteurs. Dégradation
+        gracieuse par ligne côté abonne-service (voir
+        proto/abonne_service.proto) : cet appel ne lève jamais pour une seule
+        ligne invalide, l'erreur atterrit dans `response.erreurs`."""
+        return self._stub.ImporterCoordonneesCompteurs(
+            abonne_pb.ImporterCoordonneesRequest(coordonnees=[abonne_pb.CoordonneeCompteur(**c) for c in coordonnees])
+        )
+
 
 class ConfigServiceClient:
     """Client gRPC vers config-service:50058 (voir proto/config_service.proto)."""

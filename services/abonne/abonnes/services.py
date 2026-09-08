@@ -1,12 +1,13 @@
 from django.db import transaction
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from abonnes import metrics
 from abonnes.audit import enregistrer_audit
-from abonnes.dtos import ZoneStatDict
+from abonnes.dtos import CoordonneeCompteurDict, ImportCoordonneesResultDict, ImportErreurDict, ZoneStatDict
 from abonnes.models import Abonne, Compteur, HistoriqueCompteur, StatutAbonne, StatutCompteur
 from abonnes.repositories import AbonneRepository, CompteurRepository, HistoriqueCompteurRepository
-from abonnes.validators import ValidationError, validate_telephone_whatsapp
+from abonnes.validators import ValidationError, validate_latitude, validate_longitude, validate_telephone_whatsapp
 
 __all__ = ["ValidationError", "NumerotationService", "AbonneService", "CompteurService"]
 
@@ -336,3 +337,60 @@ class CompteurService:
         metrics.abonne_compteur_remplace_total.add(1)
 
         return nouveau_compteur
+
+    def importer_coordonnees(self, coordonnees: list[CoordonneeCompteurDict]) -> ImportCoordonneesResultDict:
+        """Import CSV en masse des coordonnées GPS de compteurs, rapprochées
+        par `numero_compteur` (ADMIN uniquement — contrôlé côté Gateway).
+
+        Dégradation gracieuse PAR LIGNE (voir
+        proto/abonne_service.proto::ImporterCoordonneesCompteurs) : un numéro
+        de compteur introuvable ou une coordonnée hors des bornes plausibles
+        n'interrompt jamais les autres lignes — chacune est traitée dans sa
+        propre transaction, indépendamment des autres, et atterrit soit dans
+        le compte importé, soit dans `erreurs` (jamais les deux, jamais
+        aucun des deux). Aucune valeur n'est jamais écrite sans avoir été
+        validée (`validate_latitude`/`validate_longitude` : bornes
+        géographiques plausibles, `Decimal` bien formé).
+        """
+        nb_importees = 0
+        erreurs: list[ImportErreurDict] = []
+        for ligne in coordonnees:
+            try:
+                self._importer_une_coordonnee(ligne)
+            except (ValidationError, Compteur.DoesNotExist) as exc:
+                message = (
+                    str(_("Numéro de compteur introuvable")) if isinstance(exc, Compteur.DoesNotExist) else str(exc)
+                )
+                erreurs.append({"numero_compteur": ligne["numero_compteur"], "message": message})
+            else:
+                nb_importees += 1
+        return {"nb_importees": nb_importees, "erreurs": erreurs}
+
+    def _importer_une_coordonnee(self, ligne: CoordonneeCompteurDict) -> None:
+        """Traite une ligne du CSV d'import. Lève `ValidationError` (numéro
+        ou coordonnée mal formés/hors bornes) ou `Compteur.DoesNotExist`
+        (numéro inconnu) — jamais capturées ici : c'est `importer_coordonnees`
+        qui les convertit en entrée d'`erreurs`, pour que chaque ligne reste
+        indépendante des autres."""
+        numero_brut = ligne["numero_compteur"]
+        try:
+            numero_compteur = int(numero_brut)
+        except (TypeError, ValueError):
+            raise ValidationError(_("Numéro de compteur invalide : {numero!r}").format(numero=numero_brut)) from None
+        latitude = validate_latitude(ligne["latitude"])
+        longitude = validate_longitude(ligne["longitude"])
+        # Lève Compteur.DoesNotExist si le numéro ne correspond à aucun
+        # compteur — remontée telle quelle à l'appelant (importer_coordonnees).
+        compteur = self.compteurs.get_by_numero(numero_compteur)
+        compteur.latitude = latitude
+        compteur.longitude = longitude
+        compteur.date_maj_position = timezone.now()
+        with transaction.atomic():
+            self.compteurs.save(compteur)
+            enregistrer_audit(
+                action="COMPTEUR_POSITION_MAJ",
+                objet_type="Compteur",
+                objet_id=str(compteur.id),
+                detail=f"numero_compteur={numero_compteur} — latitude={latitude} — longitude={longitude}",
+            )
+        metrics.compteur_position_maj_total.add(1)

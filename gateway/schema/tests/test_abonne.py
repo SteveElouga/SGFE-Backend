@@ -8,8 +8,19 @@ from schema.schema import schema
 from schema.tests.test_auth import _data, context
 
 
-def make_compteur_response(numero_compteur: int = 1, statut: str = "ACTIF", position: str = "") -> Mock:
-    return Mock(
+def make_compteur_response(
+    numero_compteur: int = 1,
+    statut: str = "ACTIF",
+    position: str = "",
+    latitude: float | None = None,
+    longitude: float | None = None,
+    date_maj_position: str | None = None,
+) -> Mock:
+    # `latitude`/`longitude`/`date_maj_position` sont des champs `optional`
+    # côté proto : `None` par défaut (aucune coordonnée posée), reflété par
+    # `HasField` — comme le vrai message protobuf (voir abonne_types.py::
+    # compteur_from_grpc, qui lit `HasField` plutôt qu'un sentinel 0.0/"").
+    response = Mock(
         compteur_id="compteur-1",
         numero_compteur=numero_compteur,
         quartier="Centre",
@@ -18,7 +29,17 @@ def make_compteur_response(numero_compteur: int = 1, statut: str = "ACTIF", posi
         date_pose="2024-01-01",
         statut=statut,
         position=position,
+        latitude=latitude if latitude is not None else 0.0,
+        longitude=longitude if longitude is not None else 0.0,
+        date_maj_position=date_maj_position or "",
     )
+    presence = {
+        "latitude": latitude is not None,
+        "longitude": longitude is not None,
+        "date_maj_position": date_maj_position is not None,
+    }
+    response.HasField = Mock(side_effect=lambda nom: presence.get(nom, True))
+    return response
 
 
 def make_abonne_response(
@@ -471,6 +492,100 @@ class AbonneMutationTests(SimpleTestCase):
 
         self.assertIsNone(result.errors)
         self.assertEqual(_data(result)["remplacerCompteur"]["position"], "Près du portail bleu")
+
+    def test_compteur_expose_latitude_longitude_date_maj_position(self) -> None:
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(
+                abonne_client,
+                "update_compteur",
+                return_value=make_compteur_response(
+                    latitude=3.866667, longitude=11.516667, date_maj_position="2024-06-01T08:00:00"
+                ),
+            ),
+        ):
+            result = schema.execute_sync(
+                'mutation { updateCompteur(abonneId: "abonne-1", input: { quartier: "Bastos" }) '
+                "{ latitude longitude dateMajPosition } }",
+                context_value=self._admin_context(),
+            )
+
+        self.assertIsNone(result.errors)
+        self.assertAlmostEqual(_data(result)["updateCompteur"]["latitude"], 3.866667)
+        self.assertAlmostEqual(_data(result)["updateCompteur"]["longitude"], 11.516667)
+        self.assertEqual(_data(result)["updateCompteur"]["dateMajPosition"], "2024-06-01T08:00:00")
+
+    def test_compteur_sans_coordonnee_renvoie_null(self) -> None:
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(abonne_client, "update_compteur", return_value=make_compteur_response()),
+        ):
+            result = schema.execute_sync(
+                'mutation { updateCompteur(abonneId: "abonne-1", input: { quartier: "Bastos" }) '
+                "{ latitude longitude dateMajPosition } }",
+                context_value=self._admin_context(),
+            )
+
+        self.assertIsNone(result.errors)
+        self.assertIsNone(_data(result)["updateCompteur"]["latitude"])
+        self.assertIsNone(_data(result)["updateCompteur"]["longitude"])
+        self.assertIsNone(_data(result)["updateCompteur"]["dateMajPosition"])
+
+    def test_importer_coordonnees_compteurs_requires_admin_role(self) -> None:
+        for role in ("AGENT", "COMPTABLE", "SUPERVISEUR"):
+            with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role=role)):
+                result = schema.execute_sync(
+                    'mutation { importerCoordonneesCompteurs(coordonnees: [{numeroCompteur: "1", '
+                    'latitude: "3.86", longitude: "11.5"}]) { nbImportees } }',
+                    context_value=self._admin_context(),
+                )
+            self.assertIsNotNone(result.errors, f"rôle {role} aurait dû être refusé")
+            self.assertIn("Accès non autorisé", str(result.errors))
+
+    def test_importer_coordonnees_compteurs_success_as_admin(self) -> None:
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(
+                abonne_client,
+                "importer_coordonnees_compteurs",
+                return_value=Mock(nb_importees=1, erreurs=[]),
+            ) as mock_importer,
+        ):
+            result = schema.execute_sync(
+                'mutation { importerCoordonneesCompteurs(coordonnees: [{numeroCompteur: "1", '
+                'latitude: "3.86", longitude: "11.5"}]) { nbImportees erreurs { numeroCompteur message } } }',
+                context_value=self._admin_context(),
+            )
+            mock_importer.assert_called_once_with([{"numero_compteur": "1", "latitude": "3.86", "longitude": "11.5"}])
+
+        self.assertIsNone(result.errors)
+        self.assertEqual(_data(result)["importerCoordonneesCompteurs"]["nbImportees"], 1)
+        self.assertEqual(_data(result)["importerCoordonneesCompteurs"]["erreurs"], [])
+
+    def test_importer_coordonnees_compteurs_propage_les_erreurs_partielles(self) -> None:
+        erreur = Mock(numero_compteur="999", message="Numéro de compteur introuvable")
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(
+                abonne_client,
+                "importer_coordonnees_compteurs",
+                return_value=Mock(nb_importees=1, erreurs=[erreur]),
+            ),
+        ):
+            result = schema.execute_sync(
+                "mutation { importerCoordonneesCompteurs(coordonnees: ["
+                '{numeroCompteur: "1", latitude: "3.86", longitude: "11.5"}, '
+                '{numeroCompteur: "999", latitude: "3.86", longitude: "11.5"}'
+                "]) { nbImportees erreurs { numeroCompteur message } } }",
+                context_value=self._admin_context(),
+            )
+
+        self.assertIsNone(result.errors)
+        data = _data(result)["importerCoordonneesCompteurs"]
+        self.assertEqual(data["nbImportees"], 1)
+        self.assertEqual(len(data["erreurs"]), 1)
+        self.assertEqual(data["erreurs"][0]["numeroCompteur"], "999")
+        self.assertEqual(data["erreurs"][0]["message"], "Numéro de compteur introuvable")
 
 
 class AbonnesActifsQueryTests(SimpleTestCase):

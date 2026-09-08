@@ -51,3 +51,12 @@ abonne_compteur_remplace_total = _meter.create_counter(
     unit="1",
     description="Nombre de compteurs remplacés.",
 )
+
+compteur_position_maj_total = _meter.create_counter(
+    name="sgfe.abonne.compteur_position_maj",
+    unit="1",
+    description=(
+        "Nombre de coordonnées de compteur mises à jour (import CSV en masse, "
+        "voir CompteurService.importer_coordonnees) — une unité par ligne importée avec succès."
+    ),
+)
