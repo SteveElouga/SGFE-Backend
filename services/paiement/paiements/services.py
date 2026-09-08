@@ -16,6 +16,12 @@ from .grpc_clients import (
     ConfigServiceClient,
     NotificationServiceClient,
 )
+from .metrics import (
+    paiement_annule_total,
+    paiement_enregistre_total,
+    paiement_montant_encaisse_total,
+    relance_escaladee_total,
+)
 from .models import (
     AvoirAbonne,
     ModePaiement,
@@ -334,6 +340,8 @@ class PaiementService:
                 detail=f"facture={facture_id} — montant={montant_d} — mode={mode_paiement}",
             )
 
+        paiement_enregistre_total.add(1, {"mode_paiement": mode_paiement})
+        paiement_montant_encaisse_total.add(float(montant_d), {"mode_paiement": mode_paiement})
         return paiement, solde
 
     def _cascader_sur_impayes(
@@ -642,6 +650,7 @@ class PaiementService:
         # (même versement_id) donc de `actives` : la boucle ci-dessus lui
         # affecte forcément `solde_demande` une fois.
         assert solde_demande is not None
+        paiement_annule_total.add(1)
         return paiement, solde_demande
 
     def _reprendre_excedent(self, abonne_id: str, excedent: Decimal) -> None:
@@ -1036,6 +1045,7 @@ class ImpayeService:
         setattr(suivi, date_attr, timezone.now())
         suivi.etape_actuelle = max(suivi.etape_actuelle, etape)
         logger.info("Relance étape %d envoyée — facture %s", etape, solde.facture_id)
+        relance_escaladee_total.add(1, {"etape": str(etape)})
         return True
 
     def _effectuer_suspension(
@@ -1078,4 +1088,5 @@ class ImpayeService:
         suivi.date_suspension = timezone.now()
         suivi.etape_actuelle = max(suivi.etape_actuelle, 4)
         logger.info("Suspension effectuée — facture %s, abonné %s", solde.facture_id, solde.abonne_id)
+        relance_escaladee_total.add(1, {"etape": "4"})
         return True
