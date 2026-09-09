@@ -114,6 +114,11 @@ class NotificationServiceStub:
                 request_serializer=notification__service__pb2.EmptyRequest.SerializeToString,
                 response_deserializer=notification__service__pb2.ListDiffusionsResponse.FromString,
                 _registered_method=True)
+        self.AnonymiserEnvoisAbonne = channel.unary_unary(
+                '/notification.NotificationService/AnonymiserEnvoisAbonne',
+                request_serializer=notification__service__pb2.AbonneIdRequest.SerializeToString,
+                response_deserializer=notification__service__pb2.AnonymiserEnvoisAbonneResponse.FromString,
+                _registered_method=True)
 
 
 class NotificationServiceServicer:
@@ -219,6 +224,19 @@ class NotificationServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def AnonymiserEnvoisAbonne(self, request, context):
+        """RGPD — droit à l'effacement, propagé depuis Abonné Service (voir
+        abonne_service.proto::AnonymiserAbonne). Anonymise le téléphone et le
+        dernier message WhatsApp (peut embarquer le prénom/nom, voir
+        message_builder.py) de tous les `Envoi`/`DiffusionEnvoi` déjà enregistrés
+        pour cet abonné. Refuse si l'abonné n'est pas RESILIE côté Abonné
+        Service (vérifié à distance : ce service ne possède pas lui-même le
+        statut de l'abonné). Idempotent.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_NotificationServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -301,6 +319,11 @@ def add_NotificationServiceServicer_to_server(servicer, server):
                     servicer.ListDiffusions,
                     request_deserializer=notification__service__pb2.EmptyRequest.FromString,
                     response_serializer=notification__service__pb2.ListDiffusionsResponse.SerializeToString,
+            ),
+            'AnonymiserEnvoisAbonne': grpc.unary_unary_rpc_method_handler(
+                    servicer.AnonymiserEnvoisAbonne,
+                    request_deserializer=notification__service__pb2.AbonneIdRequest.FromString,
+                    response_serializer=notification__service__pb2.AnonymiserEnvoisAbonneResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -735,6 +758,33 @@ class NotificationService:
             '/notification.NotificationService/ListDiffusions',
             notification__service__pb2.EmptyRequest.SerializeToString,
             notification__service__pb2.ListDiffusionsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AnonymiserEnvoisAbonne(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/notification.NotificationService/AnonymiserEnvoisAbonne',
+            notification__service__pb2.AbonneIdRequest.SerializeToString,
+            notification__service__pb2.AnonymiserEnvoisAbonneResponse.FromString,
             options,
             channel_credentials,
             insecure,

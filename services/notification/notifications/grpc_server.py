@@ -8,6 +8,7 @@ Implémente les RPCs définis dans notification_service.proto :
   - ListEnvois
   - ValiderToken
   - RevoquerToken
+  - AnonymiserEnvoisAbonne (RGPD — droit à l'effacement)
 """
 
 import logging
@@ -209,6 +210,20 @@ class NotificationServiceServicer(pb_grpc.NotificationServiceServicer):  # type:
         diffusions = self._diffusion_service.list_diffusions()
         return pb.ListDiffusionsResponse(
             diffusions=[diffusion_to_proto(d, self._diffusion_service.compter(d)) for d in diffusions]
+        )
+
+    def AnonymiserEnvoisAbonne(
+        self, request: pb.AbonneIdRequest, context: grpc.ServicerContext
+    ) -> pb.AnonymiserEnvoisAbonneResponse:
+        """RGPD — droit à l'effacement, propagé depuis Abonné Service. Voir
+        `EnvoiService.anonymiser_envois_abonne` / `DiffusionService.anonymiser_envois_abonne`
+        pour le détail (refuse si l'abonné n'est pas RESILIE, via
+        ErrorHandlingInterceptor : ValueError → INVALID_ARGUMENT)."""
+        nb_envois = self._envoi_service.anonymiser_envois_abonne(request.abonne_id)
+        nb_diffusions = self._diffusion_service.anonymiser_envois_abonne(request.abonne_id)
+        return pb.AnonymiserEnvoisAbonneResponse(
+            nb_envois_anonymises=nb_envois,
+            nb_diffusions_anonymisees=nb_diffusions,
         )
 
 
