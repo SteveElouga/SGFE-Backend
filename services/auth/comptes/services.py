@@ -12,7 +12,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken, Token
 
 from comptes.audit import enregistrer_audit
-from comptes.email_client import email_client
+from comptes.email_client import EmailDeliveryError, email_client
 from comptes.metrics import auth_connexion_total, utilisateur_cree_total, utilisateur_desactive_total
 from comptes.models import PREFIXE_TELEPHONE_ANONYMISE, PREFIXE_USERNAME_ANONYMISE, User, _generate_otp
 from comptes.repositories import (
@@ -23,7 +23,7 @@ from comptes.repositories import (
 )
 from comptes.throttle import verifier_throttle
 from comptes.validators import validate_phone_cameroon
-from comptes.whatsapp_client import whatsapp_client
+from comptes.whatsapp_client import WhatsAppDeliveryError, whatsapp_client
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +227,18 @@ class UserAdminService:
         (`transaction.atomic()`) ; l'envoi de l'e-mail/OTP a lieu après coup,
         hors transaction — un échec d'envoi ne doit pas faire disparaître le
         compte déjà créé (rejouable via `resend_credentials`).
+
+        Cet échec est intercepté ici plutôt que laissé remonter tel quel :
+        sans ce `try/except`, l'exception traversait `CreateUser`
+        (grpc_server.py) jusqu'à l'appelant, qui voyait un ÉCHEC de création
+        alors que le compte existait déjà en base (`is_active=False`,
+        indiscernable d'un compte simplement pas encore activé) — un compte
+        orphelin invisible, que l'admin ne savait pas devoir renvoyer via
+        « Renvoyer les identifiants ». La création reste donc un succès du
+        point de vue de l'appelant même si l'envoi échoue ; seul un
+        avertissement est journalisé, sur le même modèle que la purge RGPD
+        ci-dessus (échec d'un envoi non bloquant, jamais une `logger.exception`
+        qui suggérerait un bug plutôt qu'un service externe indisponible).
         """
         phone = validate_phone_cameroon(phone_number)
         if role == "ADMIN" and not email:
@@ -245,10 +257,18 @@ class UserAdminService:
             )
             utilisateur_cree_total.add(1)
 
-        if role == "ADMIN":
-            self.password_setup.send_activation_email(user)
-        else:
-            self.phone_otp.send_otp(user)
+        try:
+            if role == "ADMIN":
+                self.password_setup.send_activation_email(user)
+            else:
+                self.phone_otp.send_otp(user)
+        except (WhatsAppDeliveryError, EmailDeliveryError) as exc:
+            logger.warning(
+                "Compte %s créé mais l'envoi des identifiants d'activation a échoué (%s) — "
+                "à renvoyer manuellement via « Renvoyer les identifiants ».",
+                user.id,
+                exc,
+            )
 
         return user
 
