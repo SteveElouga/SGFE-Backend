@@ -1,11 +1,12 @@
 from typing import Any
 from unittest.mock import Mock, patch
 
+import grpc
 from django.test import SimpleTestCase
 
-from schema.grpc_clients import abonne_client, auth_client
+from schema.grpc_clients import abonne_client, auth_client, notification_client
 from schema.schema import schema
-from schema.tests.test_auth import _data, context
+from schema.tests.test_auth import FakeRpcError, _data, context
 
 
 def make_compteur_response(
@@ -393,16 +394,45 @@ class AbonneMutationTests(SimpleTestCase):
                 "anonymiser_abonne",
                 return_value=make_abonne_response(statut="RESILIE", nom="Abonné anonymisé"),
             ) as mock_anonymiser,
+            patch.object(notification_client, "anonymiser_envois_abonne") as mock_anonymiser_envois,
         ):
             result = schema.execute_sync(
                 'mutation { anonymiserAbonne(abonneId: "abonne-1") { statut nom } }',
                 context_value=self._admin_context(),
             )
             mock_anonymiser.assert_called_once_with("abonne-1")
+            # Cascade RGPD — voir la docstring d'AbonneMutations.anonymiser_abonne :
+            # Notification Service est appelé après Abonné Service, avec le même id.
+            mock_anonymiser_envois.assert_called_once_with("abonne-1")
 
         self.assertIsNone(result.errors)
         self.assertEqual(_data(result)["anonymiserAbonne"]["statut"], "RESILIE")
         self.assertEqual(_data(result)["anonymiserAbonne"]["nom"], "Abonné anonymisé")
+
+    def test_anonymiser_abonne_cascade_notification_injoignable_degrade_gracieusement(self) -> None:
+        """Notification Service injoignable ne fait pas échouer la mutation :
+        l'abonné est déjà anonymisé côté Abonné Service à cet instant (voir
+        la docstring d'AbonneMutations.anonymiser_abonne)."""
+        with (
+            patch.object(auth_client, "validate_token", return_value=Mock(user_id="admin-1", role="ADMIN")),
+            patch.object(
+                abonne_client,
+                "anonymiser_abonne",
+                return_value=make_abonne_response(statut="RESILIE", nom="Abonné anonymisé"),
+            ),
+            patch.object(
+                notification_client,
+                "anonymiser_envois_abonne",
+                side_effect=FakeRpcError("Notification Service injoignable", grpc.StatusCode.UNAVAILABLE),
+            ),
+        ):
+            result = schema.execute_sync(
+                'mutation { anonymiserAbonne(abonneId: "abonne-1") { statut nom } }',
+                context_value=self._admin_context(),
+            )
+
+        self.assertIsNone(result.errors)
+        self.assertEqual(_data(result)["anonymiserAbonne"]["statut"], "RESILIE")
 
     def test_anonymiser_abonne_requires_admin_role(self) -> None:
         with patch.object(auth_client, "validate_token", return_value=Mock(user_id="user-1", role="COMPTABLE")):
