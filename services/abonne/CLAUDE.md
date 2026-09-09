@@ -4,7 +4,7 @@ Contexte spécifique à ce service. Voir le `CLAUDE.md` racine pour les règles 
 
 ## Rôle
 
-Gestion des abonnés et de leurs compteurs (EF-ABO-001 à EF-ABO-006). Dépendance directe de `campagne-service` (qui consomme `ListAbonnesActifs`) et `facturation-service`.
+Gestion des abonnés et de leurs compteurs (EF-ABO-001 à EF-ABO-006). Dépendance directe de `campagne-service` (GetAbonne, vérifie le statut ACTIF avant relevé), `facturation-service` (GetAbonne) et `paiement-service` (SuspendreAbonne, cron impayés). `ListAbonnesActifs` est consommé par la Gateway, pas par campagne-service.
 
 ## Structure
 
@@ -14,7 +14,7 @@ services/abonne/
 ├── abonnes/         # App métier : Abonne, Compteur, HistoriqueCompteur
 │   ├── services.py     # AbonneService, CompteurService, NumerotationService
 │   └── management/commands/grpc_server.py   # `python manage.py grpc_server`
-├── proto/           # Stubs générés depuis proto/abonne_service.proto — NE PAS MODIFIER
+├── proto/           # Stubs abonne_service.proto (servi) + campagne/facturation/paiement/notification_service.proto (consommés par grpc_clients.py pour l'export RGPD) — NE PAS MODIFIER
 ```
 
 ## Spécificités
@@ -24,14 +24,17 @@ services/abonne/
 - **Un seul compteur actif à la fois** : `CompteurService.get_compteur_actif` lève `ObjectDoesNotExist` s'il n'y en a aucun (ne devrait jamais arriver en usage normal).
 - **Remplacement de compteur** (`RemplacerCompteur`) : archive l'ancien (`statut=REMPLACE`), crée le nouveau (`statut=ACTIF`), trace l'opération dans `HistoriqueCompteur`. Valide que `index_fermeture >= index_initial` de l'ancien compteur (sinon `ValidationError` → gRPC `INVALID_ARGUMENT`).
 - Un abonné suspendu (`SuspendreAbonne`) n'apparaît plus dans `ListAbonnesActifs` (utilisé par `campagne-service` pour ne pas l'ajouter aux nouvelles campagnes).
-- Ce service n'appelle aucun autre service gRPC (pas de `grpc_clients.py`). Aucun contrôle de rôle ici : c'est la responsabilité de la Gateway (ce service ne vérifie que l'appelant est bien la Gateway, pas le rôle de l'utilisateur final).
+- Ce service appelle désormais les 4 autres services via `abonnes/grpc_clients.py` (ajouté pour l'export RGPD `ExporterDonneesAbonne`, voir `abonnes/export.py`) : Campagne, Facturation, Paiement, Notification — uniquement pour agréger les données d'un abonné (chemin froid, pas de dégradation gracieuse interne, les `grpc.RpcError` remontent tels quels). Aucun contrôle de rôle ici : c'est la responsabilité de la Gateway. L'authentification gRPC entrante (clé interne partagée `INTERNAL_GRPC_KEY`, voir `abonnes/grpc_auth.py`) vérifie seulement qu'il s'agit d'un composant interne autorisé — Gateway, mais aussi `campagne-service` (GetAbonne) et `paiement-service` (SuspendreAbonne), qui appellent ce service directement — jamais le rôle de l'utilisateur final.
 
 ## Démarrage local
 
 ```bash
 cd services/abonne
-source .venv/bin/activate
-python manage.py migrate
-python manage.py grpc_server      # démarre le serveur gRPC sur le port 50052
-python manage.py test abonnes     # tests (utilisent sqlite en mémoire)
+.venv/bin/python manage.py migrate
+.venv/bin/python manage.py grpc_server      # démarre le serveur gRPC sur le port 50052
+.venv/bin/python manage.py test abonnes     # tests (utilisent sqlite en mémoire)
 ```
+
+> `source .venv/bin/activate` ne fonctionne pas ici : le script fixe en dur l'ancien
+> chemin du dépôt avant son déplacement. Appeler le binaire du venv directement
+> (ci-dessus), ou recréer le venv à l'emplacement actuel.

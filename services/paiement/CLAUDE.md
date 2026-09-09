@@ -4,7 +4,8 @@ Contexte spécifique à ce service. Voir le `CLAUDE.md` racine pour les règles 
 
 ## Rôle
 
-Gestion des paiements, des soldes de factures et du suivi des impayés.
+Gestion des paiements, des soldes de factures, du suivi des impayés et du paiement en ligne
+(sandbox/mock exclusivement, espace abonné).
 
 ## Structure
 
@@ -20,9 +21,12 @@ services/paiement/
 ## Modèles
 
 - **Paiement** : un versement sur une facture (partiel ou total)
-- **SoldeFacture** : PK = facture_id (une ligne par facture), statut IMPAYEE/PARTIELLE/PAYEE
+- **SoldeFacture** : PK = facture_id (une ligne par facture), statut IMPAYEE/PARTIELLE/PAYEE/ANNULEE
+  (ANNULEE = facture annulée après paiement partiel/total, distincte de PAYEE — voir `annuler_solde`)
 - **SuiviImpaye** : suivi des étapes de relance (4 étapes)
 - **AvoirAbonne** + **MouvementAvoir** : crédit d'un abonné et son journal
+- **SessionPaiementEnLigne** : session de paiement en ligne (espace abonné, sandbox/mock exclusivement)
+- **AuditLog** : journal d'audit append-only des mutations (immuable, voir `paiements/audit.py`)
 
 ## Règles métier critiques
 
@@ -91,6 +95,7 @@ services/paiement/
 - `UpdateStatutFacture` → Facturation Service après chaque paiement
 - `EnvoyerRelance` → Notification Service (étapes 1-4)
 - `SuspendreAbonne` → Abonné Service (étape 4)
+- `EnvoyerRecu` → Notification Service (une fois par versement, après propagation via `_propager_versement`)
 
 ## Cron (8h00)
 
@@ -103,6 +108,10 @@ ImpayeCheckerJob :
     Étape 4 (J+10) : suspension + notification
   Délais configurables via Config Service.
 ```
+
+Une seule étape est envoyée par passage — la plus avancée que le retard réel justifie (les étapes
+sautées ne sont jamais rejouées). Sur une facture qui vieillit normalement le déroulé reste
+J+0→J+3→J+7→J+10, mais un arriéré déjà très en retard saute directement à l'étape la plus avancée.
 
 ## Démarrage local
 
