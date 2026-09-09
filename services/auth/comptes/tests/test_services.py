@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken as RefreshTokenJWT
 
 from comptes.email_client import EmailDeliveryError
+from comptes.whatsapp_client import WhatsAppDeliveryError
 from comptes.models import (
     PREFIXE_TELEPHONE_ANONYMISE,
     PREFIXE_USERNAME_ANONYMISE,
@@ -225,6 +226,27 @@ class UserAdminServiceTests(TestCase):
     def test_create_admin_without_email_raises(self) -> None:
         with self.assertRaises(ValueError):
             self.user_admin.create_user(username="admin4", phone_number="+237690000016", role=Role.ADMIN)
+
+    def test_create_agent_survives_whatsapp_delivery_failure(self) -> None:
+        """Régression : un OTP WhatsApp qui échoue ne doit plus laisser un
+        compte orphelin invisible — l'appelant doit voir la création comme
+        un succès (le compte existe réellement), pas comme un échec."""
+        self.mock_whatsapp.side_effect = WhatsAppDeliveryError("WhatsApp n'est pas connecté")
+        user = self.user_admin.create_user(username="agent_otp_ko", phone_number="+237690000017", role=Role.AGENT)
+        self.assertTrue(User.objects.filter(id=user.id).exists())
+        self.assertFalse(user.is_active)
+
+    def test_create_admin_survives_email_delivery_failure(self) -> None:
+        """Même régression côté ADMIN (e-mail Brevo indisponible)."""
+        self.mock_send.side_effect = EmailDeliveryError("Brevo a renvoyé 500")
+        user = self.user_admin.create_user(
+            username="admin_email_ko",
+            email="admin_email_ko@example.com",
+            phone_number="+237690000024",
+            role=Role.ADMIN,
+        )
+        self.assertTrue(User.objects.filter(id=user.id).exists())
+        self.assertFalse(user.is_active)
 
     def test_get_user(self) -> None:
         created = self.user_admin.create_user(username="agent4", phone_number="+237690000021", role=Role.AGENT)
