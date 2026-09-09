@@ -277,6 +277,22 @@ jobs:
     steps:
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
+      # Bug latent depuis PR #235 (07/09) — jamais détecté avant le 09/09 car
+      # aucun push touchant un service n'avait eu lieu entre-temps : quand la
+      # signature a été extraite de `publish` vers ce job isolé, cette étape
+      # de connexion à GHCR (nécessaire pour que `cosign` puisse POUSSER la
+      # signature comme artefact OCI dans le registre — le keyless OIDC
+      # n'authentifie que Fulcio/Rekor, jamais le registre lui-même) est
+      # restée dans `publish` et n'a jamais été dupliquée ici. Confirmé en
+      # conditions réelles : "UNAUTHORIZED: unauthenticated" sur
+      # `POST .../blobs/uploads/` — la signature de sécurité échouait pour
+      # les 9 services depuis 2 jours, silencieusement.
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Signer l'image et ses variantes (keyless, OIDC GitHub)
         # `--recursive` n'est pas décoratif.
         #
