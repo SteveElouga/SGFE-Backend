@@ -92,7 +92,7 @@ Backend          Django 5.x + Django REST Framework
 gRPC             grpcio + grpcio-tools + grpc-stubs
 GraphQL          Strawberry (gateway) + Apollo Client (frontend)
 Base de données  PostgreSQL 16 (1 instance par service)
-PDF              WeasyPrint 69
+PDF              WeasyPrint 70
 WhatsApp         whatsapp-web.js (service Node.js auto-hébergé, compte dédié, zéro coût)
 E-mail           Brevo API (activation de compte, réinitialisation de mot de passe — 300/jour gratuits)
 Orchestration    Docker Compose (21 services)
