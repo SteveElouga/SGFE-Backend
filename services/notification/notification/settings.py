@@ -75,6 +75,18 @@ else:
         }
     }
 
+# Isolation Postgres du trafic applicatif derrière un rôle `_runtime` non
+# superutilisateur (voir `notifications/db_hardening.py` — copie synchronisée
+# depuis `libs/sgfe_common/`, AUDIT_SGFE.md §8·J). Sans effet sur SQLite
+# (le receiver vérifie `connection.vendor` lui-même) : sûr à connecter
+# inconditionnellement ici plutôt que sous le `else` ci-dessus. Ne protège
+# que la table `audit_log` (voir notifications/models.py::AuditLog) — seule
+# table immuable de ce service, contrairement aux 6 autres où `AuditLog` est
+# la table de piste d'audit généralisée du service.
+from notifications.db_hardening import connecter_isolement_runtime  # noqa: E402
+
+connecter_isolement_runtime()
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},

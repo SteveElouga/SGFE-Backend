@@ -17,8 +17,10 @@
 # gRPC = un besoin d'auth interne), la liste ci-dessous ne contient QUE les
 # services qui ont effectivement une table à rendre immuable niveau base
 # (paiement, facturation — puis campagne, abonné, auth, config, étendus à
-# leur tour — voir AUDIT_SGFE.md §8·J). Un futur service ajoute sa propre
-# ligne à DESTINATIONS quand il adopte ce mécanisme pour sa propre
+# leur tour, puis notification — voir AUDIT_SGFE.md §8·J et §10.7 : les 3 RPC
+# mutantes CreerDiffusion/RevoquerToken/RevoquerTousTokens, seule exception
+# assumée du périmètre notification d'origine). Un futur service ajoute sa
+# propre ligne à DESTINATIONS quand il adopte ce mécanisme pour sa propre
 # AuditLog — voir le "Comment un futur service adopte ce mécanisme" dans
 # db_hardening.py.
 #
@@ -37,6 +39,7 @@ DESTINATIONS=(
   "services/abonne/abonnes/db_hardening.py"
   "services/auth/comptes/db_hardening.py"
   "services/config/parametres/db_hardening.py"
+  "services/notification/notifications/db_hardening.py"
 )
 
 BANNER=$'# ─────────────────────────────────────────────────────────────────────────\n# Fichier synchronisé — NE PAS ÉDITER DIRECTEMENT.\n#\n# Source canonique : libs/sgfe_common/sgfe_common/db_hardening.py\n# Après modification de la source, relancer : ./scripts/sync-db-hardening-lib.sh\n# Vérifier l\x27absence de dérive       : ./scripts/sync-db-hardening-lib.sh --check\n# ─────────────────────────────────────────────────────────────────────────\n'
