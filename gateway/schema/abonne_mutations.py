@@ -1,3 +1,6 @@
+import logging
+
+import grpc
 import strawberry
 
 from schema.abonne_types import (
@@ -14,8 +17,10 @@ from schema.abonne_types import (
     import_coordonnees_result_from_grpc,
 )
 from schema.context import require_role
-from schema.grpc_clients import abonne_client
+from schema.grpc_clients import abonne_client, notification_client
 from schema.validators import valider_date_iso, valider_index, valider_telephone_whatsapp
+
+logger = logging.getLogger(__name__)
 
 
 @strawberry.type
@@ -75,9 +80,31 @@ class AbonneMutations:
     @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def anonymiser_abonne(self, info: strawberry.types.Info, abonne_id: strawberry.ID) -> Abonne:
         """RGPD — droit à l'effacement. Abonné Service refuse si l'abonné
-        n'est pas déjà RESILIE (erreur GraphQL relayée telle quelle)."""
+        n'est pas déjà RESILIE (erreur GraphQL relayée telle quelle).
+
+        Cascade best-effort vers Notification Service ensuite : anonymise le
+        téléphone/dernier message de tous les envois WhatsApp déjà
+        enregistrés pour cet abonné (voir
+        `NotificationServiceClient.anonymiser_envois_abonne`,
+        docs/RGPD_PERIMETRE_EFFACEMENT.md) — la seule autre PII propre d'un
+        abonné en dehors d'Abonné Service lui-même. Un échec de cette
+        cascade (Notification Service injoignable) ne fait PAS échouer la
+        mutation : l'abonné est déjà anonymisé côté Abonné Service à cet
+        instant, et un admin peut relancer l'anonymisation (idempotente) une
+        fois Notification Service de nouveau joignable — même esprit de
+        dégradation gracieuse que le reste de cette gateway (voir
+        `envoyer_recu`, schema/notification_mutations.py).
+        """
         require_role(info, "ADMIN")
-        return abonne_from_grpc(abonne_client.anonymiser_abonne(str(abonne_id)))
+        anonymise = abonne_from_grpc(abonne_client.anonymiser_abonne(str(abonne_id)))
+        try:
+            notification_client.anonymiser_envois_abonne(str(abonne_id))
+        except grpc.RpcError as exc:
+            logger.warning(
+                "Anonymisation RGPD — Notification Service injoignable, envois WhatsApp non anonymisés",
+                extra={"abonne_id": str(abonne_id), "erreur": str(exc)},
+            )
+        return anonymise
 
     @strawberry.mutation()  # type: ignore[untyped-decorator]  # voir mypy.ini
     def exporter_donnees_abonne(self, info: strawberry.types.Info, abonne_id: strawberry.ID) -> str:

@@ -764,6 +764,13 @@ class NotificationServiceClient:
     def list_diffusions(self) -> notification_pb.ListDiffusionsResponse:
         return self._stub.ListDiffusions(notification_pb.EmptyRequest())
 
+    def anonymiser_envois_abonne(self, abonne_id: str) -> notification_pb.AnonymiserEnvoisAbonneResponse:
+        """RGPD — droit à l'effacement, propagé depuis Abonné Service.
+        Voir `AbonneMutations.anonymiser_abonne` (schema/abonne_mutations.py),
+        seul appelant : cascade best-effort après l'anonymisation de
+        l'abonné lui-même, jamais appelé isolément côté gateway."""
+        return self._stub.AnonymiserEnvoisAbonne(notification_pb.AbonneIdRequest(abonne_id=abonne_id))
+
 
 class ReportingServiceClient:
     """Client gRPC vers reporting-service:50057 (voir proto/reporting_service.proto)."""
