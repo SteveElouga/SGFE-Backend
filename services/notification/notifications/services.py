@@ -11,9 +11,11 @@ from datetime import date, timedelta
 import grpc
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
+from notifications.audit import enregistrer_audit
 from notifications.brevo_client import envoyer_email_admin
 from notifications.grpc_clients import (
     abonne_client,
@@ -841,24 +843,56 @@ class TokenService:
     def revoquer_token(self, token_id: str) -> None:
         """Révoque un token d'accès (is_active = False).
 
+        Mutation sensible (retire l'accès à l'espace abonné) — tracée dans
+        `AuditLog` (action ``TOKEN_REVOQUE``, voir AUDIT_SGFE.md §10.7 : une
+        des 3 exceptions assumées au périmètre notification d'origine).
+        L'écriture d'audit participe à la même transaction que la révocation
+        (voir `notifications.audit.enregistrer_audit`) : l'une ne peut pas
+        commiter sans l'autre.
+
         Args:
             token_id: L'UUID primaire du TokenAcces.
 
         Raises:
             ObjectDoesNotExist: Si le token est introuvable.
         """
-        token = self._tokens.get_by_id(token_id)
-        token.is_active = False
-        self._tokens.save(token)
+        with transaction.atomic():
+            token = self._tokens.get_by_id(token_id)
+            token.is_active = False
+            self._tokens.save(token)
+            enregistrer_audit(
+                action="TOKEN_REVOQUE",
+                objet_type="TokenAcces",
+                objet_id=token_id,
+                # Identifiant technique du token, jamais le numéro de
+                # téléphone de l'abonné concerné (PII) — cohérent avec le
+                # reste du projet qui journalise des faits, pas des données
+                # personnelles.
+                detail=f"token_id={token_id}",
+            )
         logger.info("Token révoqué", extra={"token_id": token_id})
 
     def revoquer_tous_tokens(self) -> int:
         """Révoque en masse tous les tokens d'accès abonné actifs.
 
+        Mutation sensible (retire l'accès à l'espace abonné pour TOUS les
+        abonnés d'un coup) — tracée dans `AuditLog` (action
+        ``TOUS_TOKENS_REVOQUES``, voir AUDIT_SGFE.md §10.7). `objet_id` vaut
+        ``"*"`` : il n'y a pas d'objet unique concerné par une révocation de
+        masse. Le détail ne porte que le nombre de tokens révoqués — jamais
+        les abonnés ni les numéros de téléphone concernés (PII).
+
         Returns:
             Le nombre de tokens qui étaient actifs et ont été révoqués.
         """
-        count = self._tokens.revoquer_tous_actifs()
+        with transaction.atomic():
+            count = self._tokens.revoquer_tous_actifs()
+            enregistrer_audit(
+                action="TOUS_TOKENS_REVOQUES",
+                objet_type="TokenAcces",
+                objet_id="*",
+                detail=f"nb_tokens_revoques={count}",
+            )
         logger.info("Révocation de masse des tokens d'accès", extra={"count": count})
         return count
 
@@ -885,6 +919,17 @@ class DiffusionService:
         par diffusion entière — même esprit que `_echec_amont` pour un envoi
         individuel, mais ici on omet la ligne plutôt que de créer un envoi
         qu'on sait déjà voué à l'échec.
+
+        Mutation sensible (lance une campagne de message vers potentiellement
+        des centaines d'abonnés) — tracée dans `AuditLog` (action
+        ``DIFFUSION_CREEE``, voir AUDIT_SGFE.md §10.7). Le détail ne porte que
+        le nombre de destinataires réellement résolus — jamais les numéros de
+        téléphone individuels ni le contenu du message (PII), cohérent avec
+        le reste du projet qui journalise des faits, pas des données
+        personnelles. La résolution réseau (gRPC vers Abonné Service) reste
+        hors de la transaction ci-dessous, comme pour toute traversée
+        réseau ; seule l'écriture en base (diffusion + lignes + audit)
+        commite ou échoue comme un tout.
         """
         resolus: list[tuple[str, str]] = []
         for abonne_id in abonne_ids:
@@ -898,7 +943,15 @@ class DiffusionService:
                 continue
             resolus.append((abonne_id, abonne.telephone_whatsapp))
 
-        return self._diffusions.create(message=message, created_by=created_by, abonnes=resolus)
+        with transaction.atomic():
+            diffusion = self._diffusions.create(message=message, created_by=created_by, abonnes=resolus)
+            enregistrer_audit(
+                action="DIFFUSION_CREEE",
+                objet_type="Diffusion",
+                objet_id=str(diffusion.id),
+                detail=f"nb_destinataires={len(resolus)}",
+            )
+        return diffusion
 
     def get_diffusion(self, diffusion_id: str) -> Diffusion:
         """Récupère une diffusion par son UUID. Lève ObjectDoesNotExist si absente."""

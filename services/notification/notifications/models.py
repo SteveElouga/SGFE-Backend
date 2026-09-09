@@ -193,3 +193,77 @@ class TokenAcces(models.Model):
     def __str__(self) -> str:
         statut = "actif" if self.is_active else "révoqué"
         return f"Token {self.token} — abonné {self.abonne_id} — {statut}"
+
+
+class AuditLog(models.Model):
+    """Journal d'audit append-only du Notification Service.
+
+    Voir AUDIT_SGFE.md §10.7 et §8·J. Contrairement aux 6 autres services
+    couverts par la conception §10.7 (auth, abonné, campagne, facturation,
+    paiement, config), le Notification Service n'a délibérément PAS reçu
+    d'`AuditLog` généralisé — la quasi-totalité de ses mutations sont des
+    envois de messages déclenchés par un événement amont déjà tracé côté
+    service d'origine (`Envoi` porte déjà son propre statut/historique).
+
+    Exception assumée, cette classe ne couvre QUE les 3 RPC identifiées
+    comme des mutations sensibles d'état à part entière — pas de simples
+    envois — et jamais tracées jusqu'ici :
+    - `CreerDiffusion` (action ``DIFFUSION_CREEE``) : lance une campagne de
+      message libre vers potentiellement des centaines d'abonnés ;
+    - `RevoquerToken` (action ``TOKEN_REVOQUE``) et `RevoquerTousTokens`
+      (action ``TOUS_TOKENS_REVOQUES``) : révoquent l'accès à l'espace
+      abonné, un par un ou en masse.
+
+    Une ligne par mutation, écrite par `notifications.audit.enregistrer_audit`
+    DANS LA MÊME transaction Django que le changement qu'elle documente —
+    jamais un appel réseau séparé après coup. `detail` ne contient jamais de
+    PII (numéro de téléphone, contenu du message) — uniquement des métadonnées
+    (nombre de destinataires, identifiant de token, nombre de révocations),
+    cohérent avec le reste du projet qui journalise des faits, pas des
+    données personnelles.
+
+    Immuabilité :
+    - applicative : aucun code de ce dépôt ne fait d'UPDATE ni de DELETE sur
+      ce modèle (`enregistrer_audit` ne fait qu'un `create`) ;
+    - défense en profondeur, niveau base : la migration
+      `0010_audit_log_immutable` révoque UPDATE/DELETE sur cette table pour
+      le rôle applicatif Postgres — révocation rendue réellement effective
+      par `0011_audit_log_role_runtime` (rôle `_runtime` non superutilisateur,
+      voir `notifications/db_hardening.py` et AUDIT_SGFE.md §8·J).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Verbe métier de la mutation (ex. "DIFFUSION_CREEE", "TOKEN_REVOQUE").
+    action = models.CharField(max_length=100)
+    # Type de l'objet métier concerné (ex. "Diffusion", "TokenAcces").
+    objet_type = models.CharField(max_length=100)
+    # Identifiant de l'objet métier concerné (UUID le plus souvent, en texte) ;
+    # "*" pour une mutation de masse sans objet unique (RevoquerTousTokens).
+    objet_id = models.CharField(max_length=100)
+    # Identité de l'appelant (voir `get_caller()`, grpc_interceptors.py) — vide
+    # si aucune identité n'a été propagée par la gateway (ne doit plus arriver
+    # une fois l'étape 1 déployée partout, mais l'audit ne doit jamais faire
+    # échouer la mutation qu'il documente : champs vides plutôt qu'exception).
+    acteur_id = models.CharField(max_length=100, blank=True, default="")
+    acteur_nom = models.CharField(max_length=150, blank=True, default="")
+    acteur_role = models.CharField(max_length=50, blank=True, default="")
+    horodatage = models.DateTimeField(auto_now_add=True)
+    # Détail libre, lisible par un humain (nombre de destinataires, identifiant
+    # de token, nombre de tokens révoqués...) — jamais de PII (téléphone,
+    # contenu du message). Pas de structure imposée : ce journal sert la
+    # preuve « qui a fait quoi quand », pas une reconstruction programmatique
+    # de l'état.
+    detail = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "audit_log"
+        indexes = [
+            models.Index(fields=["objet_type", "objet_id"]),
+            models.Index(fields=["horodatage"]),
+        ]
+        ordering = ["-horodatage"]
+
+    def __str__(self) -> str:
+        return (
+            f"[{self.horodatage}] {self.action} {self.objet_type}={self.objet_id} par {self.acteur_nom or '(inconnu)'}"
+        )
