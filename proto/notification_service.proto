@@ -23,6 +23,15 @@ service NotificationService {
   rpc CreerDiffusion (CreerDiffusionRequest) returns (DiffusionResponse);
   rpc GetDiffusion (DiffusionIdRequest) returns (DiffusionResponse);
   rpc ListDiffusions (EmptyRequest) returns (ListDiffusionsResponse);
+
+  // RGPD — droit à l'effacement, propagé depuis Abonné Service (voir
+  // abonne_service.proto::AnonymiserAbonne). Anonymise le téléphone et le
+  // dernier message WhatsApp (peut embarquer le prénom/nom, voir
+  // message_builder.py) de tous les `Envoi`/`DiffusionEnvoi` déjà enregistrés
+  // pour cet abonné. Refuse si l'abonné n'est pas RESILIE côté Abonné
+  // Service (vérifié à distance : ce service ne possède pas lui-même le
+  // statut de l'abonné). Idempotent.
+  rpc AnonymiserEnvoisAbonne (AbonneIdRequest) returns (AnonymiserEnvoisAbonneResponse);
 }
 
 message EnvoyerFactureRequest {
@@ -164,3 +173,12 @@ message DiffusionResponse {
 }
 
 message ListDiffusionsResponse { repeated DiffusionResponse diffusions = 1; }
+
+message AbonneIdRequest { string abonne_id = 1; }
+
+message AnonymiserEnvoisAbonneResponse {
+  // Nombre d'`Envoi` dont le téléphone/dernier message viennent d'être anonymisés.
+  int32 nb_envois_anonymises = 1;
+  // Nombre de lignes `DiffusionEnvoi` dont le téléphone vient d'être anonymisé.
+  int32 nb_diffusions_anonymisees = 2;
+}
