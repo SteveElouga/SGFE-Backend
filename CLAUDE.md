@@ -49,7 +49,7 @@ facturation-eau/
 ├── whatsapp-service/           # Node.js + Chromium (whatsapp-web.js)
 ├── scripts/                    # gen-jwt-keys.sh, backup-databases.sh
 │
-├── docker-compose.yml          # 21 services — le mode de démarrage réel
+├── docker-compose.yml          # 26 services — le mode de démarrage réel
 ├── docker-compose.prod.yml     # Surcouche de durcissement
 │
 ├── docs/                       # Documentation
@@ -62,9 +62,9 @@ facturation-eau/
 │   └── CHAINE_DE_LIVRAISON.md  # Déploiement automatisé : qui fait quoi
 │
 ├── CLAUDE.md                   # Ce fichier
-├── .cursorrules
-├── .cursorignore
-└── .env.example
+├── cursorrules
+├── cursorignore
+└── env.example
 ```
 
 ---
@@ -89,16 +89,16 @@ facturation-eau/
 
 ```
 Backend          Django 5.x + Django REST Framework
-gRPC             grpcio + grpcio-tools + grpc-stubs
+gRPC             grpcio + grpcio-tools + types-grpcio
 GraphQL          Strawberry (gateway) + Apollo Client (frontend)
 Base de données  PostgreSQL 16 (1 instance par service)
 PDF              WeasyPrint 70
 WhatsApp         whatsapp-web.js (service Node.js auto-hébergé, compte dédié, zéro coût)
 E-mail           Brevo API (activation de compte, réinitialisation de mot de passe — 300/jour gratuits)
-Orchestration    Docker Compose (21 services)
-Conteneurs       Docker — 12 Dockerfiles, images de base épinglées au SHA
+Orchestration    Docker Compose (26 services)
+Conteneurs       Docker — 11 Dockerfiles, images de base épinglées au SHA
 Frontend         Angular 22 + PrimeNG 21 + PWA
-Observabilité    ✅ 9/9 composants instrumentés OTel (traces/métriques/logs) — reste métriques métier + frontend
+Observabilité    ✅ 9/9 composants instrumentés OTel (traces/métriques/logs) + métriques métier custom (7 services, PR #241) — reste frontend (Faro/GlitchTip, phase 3)
 Déploiement      Compose ; cible AWS — voir docs/INFRASTRUCTURE_AWS.md
 Serveur          local ; cible EC2 t4g.medium en eu-west-3
 Auth             JWT (SimpleJWT) — access 15 min par défaut (cookie HttpOnly pour le refresh, 7j)
@@ -279,12 +279,12 @@ Vérification du statut abonné (Campagne → Abonné)
 ## Cron Jobs
 
 ```python
-# services/campagne/domaine/schedulers.py
+# services/campagne/campagnes/schedulers.py
 # S'exécute à 7h00 chaque matin
 def campagne_planifiee_job():
     """Vérifie les campagnes planifiées pour J-1 et J."""
 
-# services/paiement/domaine/schedulers.py
+# services/paiement/paiements/schedulers.py
 # S'exécute à 8h00 chaque matin
 def impaye_checker_job():
     """Vérifie et déclenche les relances impayées."""
@@ -332,8 +332,8 @@ python manage.py runserver 800X
 # Démarrer le serveur gRPC d'un service
 python manage.py grpc_server
 
-# Générer les stubs depuis les .proto
-make proto-gen SERVICE=campagne
+# Générer les stubs depuis les .proto (pas de cible make dédiée — voir plus haut)
+python -m grpc_tools.protoc -I ../../proto/ --python_out=proto/ --grpc_python_out=proto/ ../../proto/campagne_service.proto
 
 # Lancer les migrations
 python manage.py migrate
@@ -348,8 +348,8 @@ python manage.py test
 # Build d'un service
 docker build -t facturation-eau/campagne:latest services/campagne/
 
-# Build de tous les services
-make build-all
+# Build de tous les services (pas de cible make dédiée — répéter par service)
+docker compose build
 
 # Démarrer en local avec Docker Compose (alternative à Kubernetes)
 docker-compose up
@@ -399,8 +399,7 @@ new HttpLink({ uri: '/graphql', withCredentials: true })
 ```
 
 > ⚠️ **Corrigé le 3 septembre 2026.** Cette section ciblait encore
-> `http://localhost:8080` après le durcissement TLS de nginx (voir
-> `docs/RUNBOOK.md` §2.1.d) : `location / { return 301
+> `http://localhost:8080` après le durcissement TLS de nginx : `location / { return 301
 > https://$host$request_uri; }` redirige tout `:80` vers `:443` **sans
 > port explicite** dans `$host` — donc ni un navigateur ni le proxy du
 > serveur de dev Angular n'atteignaient plus la Gateway via `8080`. Cible
@@ -503,15 +502,17 @@ et relayé via le paramètre `created_by` de `ListCampagnesRequest` côté
 
 Ce qui reste à faire, chaque point nécessitant une discussion avec le porteur
 du projet plutôt qu'une simple exécution mécanique :
-1. Métriques métier custom (compteurs `sgfe.<domaine>.<événement>` — PR
-   backend #241, code écrit sur 7 services mais **pas encore fusionné**)
-2. Instrumentation du frontend (Faro/GlitchTip, phase 3 — pas commencée)
+1. Instrumentation du frontend (Faro/GlitchTip, phase 3) — **✅ fait et vérifié
+   en conditions réelles le 09/09/2026** (Faro + GlitchTip, DSN local confirmé
+   par une erreur réellement reçue). Reste : DSN de production (aucun domaine
+   GlitchTip réel n'existe encore).
 
 Variables d'environnement posées par service (`OTEL_SERVICE_NAME`,
 `OTEL_RESOURCE_ATTRIBUTES=service.namespace=sgfe,...`, `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`)
 et démarrage via `opentelemetry-instrument python manage.py grpc_server` :
 voir le plan d'intégration complet (artefact publié, phases 3 à 5 — métriques
-métier, frontend Faro/GlitchTip, durcissement avant exposition réelle).
+métier et frontend Faro/GlitchTip toutes deux faites, durcissement avant
+exposition réelle en production reste ouvert).
 
 ---
 
@@ -521,7 +522,7 @@ métier, frontend Faro/GlitchTip, durcissement avant exposition réelle).
 |---|---|---|
 | SRS | `docs/SRS.md` | Exigences fonctionnelles, User Stories, Règles métier |
 | Architecture | `docs/ARCHITECTURE.md` | C4 Model, flux, modèles de données, .proto, GraphQL |
-| ADR | `docs/ADR.md` | 26 décisions architecturales documentées |
+| ADR | `docs/ADR.md` | 28 décisions architecturales documentées |
 | Conformité CI/CD | `docs/CONFORMITE_CICD.md` | OWASP CI/CD Top 10, SLSA, NIST SSDF, CIS, durcissement GitHub Actions — preuve `fichier:ligne` par critère |
 | Conformité OWASP/SOC 2 | `docs/CONFORMITE_SOC2_OWASP.md` | Diagnostic de préparation (pas une certification) — OWASP Top 10/API/ASVS, SOC 2 CC1-CC9 |
 
@@ -566,7 +567,7 @@ python manage.py compilemessages       # compile les .po en .mo
 
 - **Langue des commentaires :** Français
 - **Langue du code :** Anglais (noms de variables, fonctions, classes)
-- **Type hints :** Obligatoires partout — jamais de `Any`
+- **Type hints :** Obligatoires partout ; `Any` toléré uniquement aux frontières avec du code non typé (stubs gRPC générés, `**kwargs` de proxys gRPC, retours Strawberry)
 - **Docstrings :** Obligatoires sur toutes les fonctions publiques
 - **Tests :** Chaque service doit avoir une couverture > 85% (`--fail-under=85` en CI, voir `.github/workflows/ci.yml`) — mesuré le 9 septembre 2026 entre 91,96% (reporting) et 96,95% (auth) sur les 9 composants, unitaire+intégration Postgres combinés
 - **Migrations :** Une migration par modification de modèle — jamais de squash en dev

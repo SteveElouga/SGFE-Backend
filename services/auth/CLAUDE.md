@@ -4,7 +4,7 @@ Contexte spécifique à ce service. Voir le `CLAUDE.md` racine pour les règles 
 
 ## Rôle
 
-Authentification (JWT) et gestion des utilisateurs/rôles (ADMIN, AGENT, COMPTABLE). Premier service du système : tous les autres en dépendent indirectement via la validation de token côté Gateway.
+Authentification (JWT) et gestion des utilisateurs/rôles (ADMIN, AGENT, COMPTABLE, SUPERVISEUR). Premier service du système : tous les autres en dépendent indirectement via la validation de token côté Gateway.
 
 ## Structure
 
@@ -26,8 +26,9 @@ services/auth/
 - **RGPD** (`comptes/export.py`, `comptes/services.py::UserAdminService`) : `ExporterDonneesUtilisateur`
   (export JSON structuré, dégradation gracieuse par section) et `AnonymiserUtilisateur` (anonymise
   username/e-mail/téléphone, refuse si le compte est encore actif) — même esprit que le mécanisme RGPD
-  de l'Abonné Service (PR #179). Ne touche jamais à l'`AuditLog` (chantier séparé,
-  `feat/piste-audit-auth`).
+  de l'Abonné Service (PR #179). Ne touche jamais à l'`AuditLog` (journal de sécurité immuable,
+  `comptes/audit.py` — hors périmètre RGPD de la portabilité/effacement par nature, pas par état
+  d'avancement).
 
 ## Cron (4h00)
 
