@@ -1,4 +1,8 @@
-"""Configuration Django du Reporting Service (agrégateur read-only, ADR-019)."""
+"""Configuration Django du Reporting Service (agrégateur read-only, ADR-019).
+
+(Commentaire ajouté pour déclencher un vrai run publish-reporting — vérifie
+que le job sign s'authentifie désormais correctement auprès de GHCR, PR #246.)
+"""
 
 import logging
 import sys
