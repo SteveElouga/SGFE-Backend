@@ -31,8 +31,9 @@ from __future__ import annotations
 
 import threading
 from decimal import Decimal
+from unittest import skipUnless
 
-from django.db import connections
+from django.db import connection, connections
 from django.test import TestCase, TransactionTestCase
 
 from stats.event_consumer import apply_event
@@ -40,6 +41,9 @@ from stats.models import ProcessedEvent, StatsCampagne, StatsFacturation, StatsP
 from stats.services import AgregateurDashboard
 
 CAMP = "22222222-2222-2222-2222-222222222222"
+
+_SUR_POSTGRESQL = connection.vendor == "postgresql"
+_RAISON_SKIP = "nécessite un vrai Postgres (FORCE_POSTGRES_TESTS=True) — no-op sur SQLite"
 
 
 class TestIdempotenceCampagneStats(TestCase):
@@ -126,12 +130,19 @@ class TestIdempotenceFacturationStats(TestCase):
         self.assertEqual(stats.nb_factures_impayees, 3)
 
 
+@skipUnless(_SUR_POSTGRESQL, _RAISON_SKIP)
 class TestConcurrenceDoubleLivraison(TransactionTestCase):
     """Double livraison RÉELLEMENT concurrente : deux threads, deux
     connexions Postgres distinctes, le même `event_id` — `TransactionTestCase`
     est nécessaire (pas `TestCase`) : chaque thread doit committer pour que
     l'autre voie ses écritures et pour que la contrainte UNIQUE de Postgres
-    tranche réellement la course entre les deux `INSERT` concurrents."""
+    tranche réellement la course entre les deux `INSERT` concurrents. Sans le
+    garde `@skipUnless` (oubli de la PR #250, contrairement à
+    `test_grpc_wire_auth_postgres.py` qui l'a) : deux threads ouvrant chacun
+    leur propre connexion SQLite en mémoire (`:memory:`) ne partagent PAS
+    la même base — le second thread ne verrait jamais la ligne insérée par
+    le premier, donc pas de collision, et le test échouerait ou passerait
+    pour une raison qui n'a rien à voir avec ce qu'il prétend vérifier."""
 
     def tearDown(self) -> None:
         # Chaque thread ouvre sa propre connexion Postgres (thread-local,
