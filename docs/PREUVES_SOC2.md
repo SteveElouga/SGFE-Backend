@@ -60,7 +60,7 @@ Deux états radicalement différents coexistent aujourd'hui — à ne jamais con
 
 ### 2.3 Rétention des logs et horodatage fiable — 9 composants
 
-Depuis le **04/09/2026** (PR #193) : bloc `LOGGING` sur les `settings.py` des 9 composants (gateway + 8 services) — horodatage explicite en UTC (`logging.Formatter.converter = time.gmtime`, cohérent avec `TIME_ZONE = "UTC"`), rétention configurable via `LOG_RETENTION_DAYS` (défaut 30 jours, `TimedRotatingFileHandler`, un fichier par jour). Désactivé en mode `TESTING`.
+Depuis le **04/09/2026** (PR #193) : bloc `LOGGING` sur les `settings.py` des 9 composants (gateway + 8 services) — horodatage explicite en UTC (`logging.Formatter.converter = time.gmtime`, cohérent avec `TIME_ZONE = "UTC"`), rétention configurable via `LOG_RETENTION_DAYS` (défaut **90 jours** depuis le 09/09/2026, benchmark PCI DSS en l'absence de chiffre NIST imposé — voir AUDIT_SGFE.md, `TimedRotatingFileHandler`, un fichier par jour). Désactivé en mode `TESTING`.
 
 ### 2.4 Événements de sécurité de la gateway centralisés dans l'`AuditLog` Auth — nouveau, depuis aujourd'hui
 

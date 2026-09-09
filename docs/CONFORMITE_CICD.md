@@ -471,8 +471,12 @@ PW, RV) ; PO (Prepare the Organization) est hors périmètre CI par nature.
   - **Backend** — 🟡 **Partiel.** Les images sont conservées sur GHCR,
     taguées par SHA de commit ET par nom de branche
     (`_publish-image.yml:67-69`), ce qui permet de retrouver n'importe
-    quelle release passée. Pas de politique de rétention/expiration des
-    tags documentée dans le workflow lui-même.
+    quelle release passée. PS.3 n'impose lui-même aucune durée chiffrée
+    (« archiver et protéger », sans nombre) ; politique **décidée le
+    09/09/2026** (voir `AUDIT_SGFE.md`, item rétention logs/images) :
+    conserver une image tant qu'une version est déployée en prod, plus une
+    marge de 90 jours après remplacement — mais **pas encore automatisée**,
+    aucun job de purge GHCR n'existe. Reste 🟡 tant que ce n'est pas codé.
   - **Frontend** — 🟡 **Partiel**, tags `sha-<sha>` et `staging-<sha>`
     similaires (`cd-canary.yml:46-48`, `cd-staging.yml:44-46`), même
     remarque.
