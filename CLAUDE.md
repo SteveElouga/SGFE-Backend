@@ -568,6 +568,6 @@ python manage.py compilemessages       # compile les .po en .mo
 - **Langue du code :** Anglais (noms de variables, fonctions, classes)
 - **Type hints :** Obligatoires partout — jamais de `Any`
 - **Docstrings :** Obligatoires sur toutes les fonctions publiques
-- **Tests :** Chaque service doit avoir une couverture > 80%
+- **Tests :** Chaque service doit avoir une couverture > 85% (`--fail-under=85` en CI, voir `.github/workflows/ci.yml`) — mesuré le 9 septembre 2026 entre 91,96% (reporting) et 96,95% (auth) sur les 9 composants, unitaire+intégration Postgres combinés
 - **Migrations :** Une migration par modification de modèle — jamais de squash en dev
 - **Secrets :** Jamais dans le code — toujours dans les variables d'environnement
