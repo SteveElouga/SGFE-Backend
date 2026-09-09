@@ -1,6 +1,7 @@
 """Couverture d'intégration (vrai Postgres, `TestCase`) des 3 RPC mutants
-exclus du pattern `AuditLog` du projet — voir AUDIT_SGFE.md §10.7 et
-Notification Service : `CreerDiffusion`, `RevoquerToken`, `RevoquerTousTokens`.
+identifiées comme exception assumée au périmètre `AuditLog` du projet — voir
+AUDIT_SGFE.md §10.7 et Notification Service : `CreerDiffusion`,
+`RevoquerToken`, `RevoquerTousTokens`.
 
 Ces RPC ont un comportement de mutation réel qui n'était pas exercé au niveau
 BD par `test_grpc.py`/`test_diffusion.py` (qui couvrent le cas nominal isolé
@@ -14,6 +15,16 @@ de chaque RPC) :
   (un token révoqué doit être relu comme invalide depuis la BD, pas depuis un
   objet Python en mémoire) et isolation (revoke d'un token n'affecte jamais
   un autre token actif, y compris pour le même abonné).
+
+Ces 3 RPC sont désormais AUSSI les 3 seules mutations du service tracées dans
+`AuditLog` (voir `notifications/audit.py`, `notifications/models.py::AuditLog`
+et `notifications/services.py`) — les classes `*AuditLogIntegrationTests` en
+bas de fichier vérifient, au niveau RPC (donc avec la vraie transaction
+Django bout en bout, pas seulement au niveau service comme `test_audit.py`),
+qu'une entrée `AuditLog` correcte est bien créée par chacune, et que la table
+reste inviolable même pour le rôle applicatif propriétaire une fois basculé
+sur le rôle `_runtime` (voir `test_db_hardening_postgres.py` pour la preuve
+complète de ce dernier point — ici, un test plus ciblé au niveau ORM).
 """
 
 import sys
@@ -23,6 +34,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from django.test import TestCase
 
 _proto_path = str(Path(settings.BASE_DIR) / "proto")
@@ -32,7 +44,7 @@ if _proto_path not in sys.path:
 import notification_service_pb2 as pb  # noqa: E402
 
 from notifications.grpc_server import NotificationServiceServicer  # noqa: E402
-from notifications.models import DiffusionEnvoi, TokenAcces  # noqa: E402
+from notifications.models import AuditLog, DiffusionEnvoi, TokenAcces  # noqa: E402
 
 
 def _abonne_mock(abonne_id: str, telephone: str) -> MagicMock:
@@ -253,3 +265,151 @@ class TestRevoquerTousTokensCascadeIntegration(TestCase):
         self.assertEqual(response.count, 1)
         actif.refresh_from_db()
         self.assertFalse(actif.is_active)
+
+
+class TestCreerDiffusionAuditLogIntegration(TestCase):
+    """`CreerDiffusion`, appelé au niveau RPC, doit écrire une entrée
+    `AuditLog` (action ``DIFFUSION_CREEE``) dans la MÊME transaction que la
+    diffusion et ses lignes — jamais les numéros de téléphone individuels ni
+    le contenu du message, seulement le nombre de destinataires."""
+
+    @patch("notifications.services.abonne_client")
+    def test_cree_une_entree_d_audit_avec_le_bon_nombre_de_destinataires(self, mock_abonne: MagicMock) -> None:
+        aid1, aid2, aid3 = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+        mock_abonne.get_abonne.side_effect = lambda aid: _abonne_mock(aid, "+237699000000")
+
+        servicer = NotificationServiceServicer()
+        request = pb.CreerDiffusionRequest(
+            message="Coupure d'eau prévue quartier Bastos", abonne_ids=[aid1, aid2, aid3], created_by="admin-audit"
+        )
+        response = servicer.CreerDiffusion(request, MagicMock())
+
+        entree = AuditLog.objects.get(action="DIFFUSION_CREEE", objet_id=response.diffusion_id)
+        self.assertEqual(entree.objet_type, "Diffusion")
+        self.assertIn("3", entree.detail)
+        # Jamais de PII dans le détail : ni le contenu du message, ni un
+        # numéro de téléphone.
+        self.assertNotIn("Bastos", entree.detail)
+        self.assertNotIn("+237699000000", entree.detail)
+
+    @patch("notifications.services.abonne_client")
+    def test_degradation_partielle_journalise_seulement_les_destinataires_resolus(self, mock_abonne: MagicMock) -> None:
+        import grpc
+
+        aid_ok, aid_ko = str(uuid.uuid4()), str(uuid.uuid4())
+
+        def _get_abonne(aid: str) -> MagicMock:
+            if aid == aid_ko:
+                raise grpc.RpcError("Abonné Service injoignable")
+            return _abonne_mock(aid, "+237699000000")
+
+        mock_abonne.get_abonne.side_effect = _get_abonne
+
+        servicer = NotificationServiceServicer()
+        request = pb.CreerDiffusionRequest(message="Annonce", abonne_ids=[aid_ok, aid_ko], created_by="admin-audit")
+        response = servicer.CreerDiffusion(request, MagicMock())
+
+        entree = AuditLog.objects.get(action="DIFFUSION_CREEE", objet_id=response.diffusion_id)
+        self.assertIn("nb_destinataires=1", entree.detail)
+
+
+class TestRevoquerTokenAuditLogIntegration(TestCase):
+    """`RevoquerToken`, appelé au niveau RPC, doit écrire une entrée
+    `AuditLog` (action ``TOKEN_REVOQUE``) portant l'identifiant du token —
+    jamais l'abonné ni un numéro de téléphone."""
+
+    def test_cree_une_entree_d_audit_avec_l_identifiant_du_token(self) -> None:
+        token = TokenAcces.objects.create(
+            abonne_id=str(uuid.uuid4()),
+            facture_id=str(uuid.uuid4()),
+            date_expiration=date.today() + timedelta(days=20),
+        )
+        servicer = NotificationServiceServicer()
+
+        response = servicer.RevoquerToken(pb.TokenIdRequest(token_id=str(token.id)), MagicMock())
+
+        self.assertTrue(response.success)
+        entree = AuditLog.objects.get(action="TOKEN_REVOQUE", objet_id=str(token.id))
+        self.assertEqual(entree.objet_type, "TokenAcces")
+        self.assertIn(str(token.id), entree.detail)
+        self.assertNotIn(token.abonne_id, entree.detail)
+
+    def test_token_introuvable_n_ecrit_pas_d_audit(self) -> None:
+        servicer = NotificationServiceServicer()
+        context = MagicMock()
+
+        # ErrorHandlingInterceptor n'est pas monté ici (appel direct du
+        # servicer, pas via un vrai canal gRPC) : ObjectDoesNotExist remonte
+        # telle quelle — ce test vérifie seulement l'absence d'écriture
+        # d'audit, pas la conversion en code gRPC NOT_FOUND (déjà couverte
+        # par test_grpc.py).
+        with self.assertRaises(ObjectDoesNotExist):
+            servicer.RevoquerToken(pb.TokenIdRequest(token_id=str(uuid.uuid4())), context)
+
+        self.assertEqual(AuditLog.objects.filter(action="TOKEN_REVOQUE").count(), 0)
+
+
+class TestRevoquerTousTokensAuditLogIntegration(TestCase):
+    """`RevoquerTousTokens`, appelé au niveau RPC, doit écrire une entrée
+    `AuditLog` (action ``TOUS_TOKENS_REVOQUES``) portant le nombre de tokens
+    révoqués — jamais la liste des abonnés concernés."""
+
+    def _creer_token_actif(self) -> TokenAcces:
+        return TokenAcces.objects.create(
+            abonne_id=str(uuid.uuid4()),
+            facture_id=str(uuid.uuid4()),
+            date_expiration=date.today() + timedelta(days=20),
+        )
+
+    def test_cree_une_entree_d_audit_avec_le_nombre_de_tokens_revoques(self) -> None:
+        for _ in range(4):
+            self._creer_token_actif()
+        servicer = NotificationServiceServicer()
+
+        response = servicer.RevoquerTousTokens(pb.EmptyRequest(), MagicMock())
+
+        self.assertEqual(response.count, 4)
+        entree = AuditLog.objects.get(action="TOUS_TOKENS_REVOQUES")
+        self.assertEqual(entree.objet_type, "TokenAcces")
+        self.assertIn("4", entree.detail)
+
+    def test_appel_repete_ecrit_une_nouvelle_entree_a_chaque_fois(self) -> None:
+        """Chaque appel RPC réel — même sans effet net — reste un événement
+        d'audit à part entière (double clic admin, retry) : le journal doit
+        pouvoir en témoigner, pas seulement du dernier effectif."""
+        self._creer_token_actif()
+        servicer = NotificationServiceServicer()
+
+        servicer.RevoquerTousTokens(pb.EmptyRequest(), MagicMock())
+        servicer.RevoquerTousTokens(pb.EmptyRequest(), MagicMock())
+
+        self.assertEqual(AuditLog.objects.filter(action="TOUS_TOKENS_REVOQUES").count(), 2)
+
+
+class TestAuditLogImmuabiliteIntegration(TestCase):
+    """Défense en profondeur applicative : même en dehors du rôle `_runtime`
+    Postgres (couvert par `test_db_hardening_postgres.py`), aucun code de ce
+    service ne doit jamais faire d'UPDATE/DELETE sur `AuditLog` — vérifié ici
+    en constatant qu'une entrée écrite par une des 3 RPC reste intacte après
+    l'exécution complète du scénario qui l'a produite."""
+
+    def test_entree_d_audit_ecrite_par_revoquer_token_reste_intacte(self) -> None:
+        token = TokenAcces.objects.create(
+            abonne_id=str(uuid.uuid4()),
+            facture_id=str(uuid.uuid4()),
+            date_expiration=date.today() + timedelta(days=20),
+        )
+        servicer = NotificationServiceServicer()
+        servicer.RevoquerToken(pb.TokenIdRequest(token_id=str(token.id)), MagicMock())
+        entree = AuditLog.objects.get(action="TOKEN_REVOQUE", objet_id=str(token.id))
+        detail_original = entree.detail
+        horodatage_original = entree.horodatage
+
+        # Un second appel (idempotent côté métier) ne doit ni modifier ni
+        # dupliquer la première entrée — il en crée une seconde, distincte.
+        servicer.RevoquerToken(pb.TokenIdRequest(token_id=str(token.id)), MagicMock())
+
+        entree.refresh_from_db()
+        self.assertEqual(entree.detail, detail_original)
+        self.assertEqual(entree.horodatage, horodatage_original)
+        self.assertEqual(AuditLog.objects.filter(action="TOKEN_REVOQUE", objet_id=str(token.id)).count(), 2)
