@@ -281,6 +281,20 @@ class UserAdminService:
         - ADMIN dont l'e-mail change : nouveau lien d'activation sur le nouvel e-mail.
 
         Un compte déjà activé n'est jamais impacté par un changement de contact.
+
+        Comme pour `create_user` ci-dessus, la mise à jour du contact est déjà
+        commitée en base au moment de cet envoi : un échec de notification
+        (WhatsAppDeliveryError/EmailDeliveryError) est intercepté ici plutôt
+        que laissé remonter tel quel. Sans ce `try/except`, l'exception
+        traversait `UpdateUser` (grpc_server.py) jusqu'à l'appelant, qui
+        voyait un ÉCHEC de MODIFICATION alors que le nouveau contact était
+        déjà appliqué en base — sans savoir qu'il fallait renvoyer les
+        identifiants via « Renvoyer les identifiants ». La modification reste
+        donc un succès du point de vue de l'appelant même si l'envoi échoue ;
+        seul un avertissement est journalisé, sur le même modèle que
+        `create_user` (échec d'un envoi non bloquant, jamais une
+        `logger.exception` qui suggérerait un bug plutôt qu'un service
+        externe indisponible).
         """
         user = self.users.get_by_id(user_id)
         old_phone = user.phone_number
@@ -310,10 +324,18 @@ class UserAdminService:
         email_changed = email and saved_user.email != old_email
         pending_activation = not saved_user.is_active and not saved_user.has_usable_password()
         if pending_activation:
-            if saved_user.role != "ADMIN" and phone_changed:
-                self.phone_otp.send_otp(saved_user)
-            elif saved_user.role == "ADMIN" and email_changed:
-                self.password_setup.send_activation_email(saved_user)
+            try:
+                if saved_user.role != "ADMIN" and phone_changed:
+                    self.phone_otp.send_otp(saved_user)
+                elif saved_user.role == "ADMIN" and email_changed:
+                    self.password_setup.send_activation_email(saved_user)
+            except (WhatsAppDeliveryError, EmailDeliveryError) as exc:
+                logger.warning(
+                    "Compte %s modifié mais l'envoi des identifiants d'activation a échoué (%s) — "
+                    "à renvoyer manuellement via « Renvoyer les identifiants ».",
+                    saved_user.id,
+                    exc,
+                )
 
         return saved_user
 
