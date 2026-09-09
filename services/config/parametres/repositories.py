@@ -44,7 +44,20 @@ class ConfigParamRepository:
         return param
 
     def list_all(self) -> list[ConfigParam]:
-        """Retourne tous les paramètres, en initialisant les valeurs par défaut manquantes."""
+        """Retourne tous les paramètres, en initialisant les valeurs par défaut manquantes.
+
+        `ignore_conflicts=True` : au tout premier accès (table encore vide),
+        deux requêtes concurrentes (ex. deux workers gRPC démarrant en même
+        temps) peuvent toutes les deux calculer le même lot de clés
+        manquantes à partir de la même lecture `existing` — sans ce
+        paramètre, la seconde à écrire lève `IntegrityError` sur la
+        contrainte UNIQUE de `cle` au lieu de simplement perdre la course.
+        Même garantie que `get_or_default` (qui repose sur `get_or_create`,
+        dont Django documente qu'il rattrape cette même course), portée ici
+        au cas `bulk_create` — `ConfigParam.objects.all()` relu après coup
+        renvoie de toute façon l'état réel, peu importe lequel des deux
+        threads a gagné l'écriture de chaque ligne.
+        """
         existing = {p.cle for p in ConfigParam.objects.all()}
         to_create = [
             ConfigParam(cle=cle, valeur=val, description=desc)
@@ -52,5 +65,5 @@ class ConfigParamRepository:
             if cle not in existing
         ]
         if to_create:
-            ConfigParam.objects.bulk_create(to_create)
+            ConfigParam.objects.bulk_create(to_create, ignore_conflicts=True)
         return list(ConfigParam.objects.all())
