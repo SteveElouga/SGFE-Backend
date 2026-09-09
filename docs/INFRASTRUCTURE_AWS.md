@@ -79,7 +79,7 @@ Vérification des cinq dépendances à compilation native : **aucune ne bloque a
 | `psycopg2-binary` | 2.9.9 | ✅ vérifié sur PyPI — `manylinux_2_17_aarch64` **et** `musllinux_1_1_aarch64` pour cette version exacte |
 | `grpcio` · `grpcio-tools` | 1.81.1 | ✅ |
 | `cryptography` | 50.0.1 | ✅ |
-| `weasyprint` | 69.0 | ✅ Python pur ; `libcairo2` et `libpango*` existent en arm64 Debian |
+| `weasyprint` | 70.0 | ✅ Python pur ; `libcairo2` et `libpango*` existent en arm64 Debian |
 | `chromium` (whatsapp-service) | paquet Debian | ✅ disponible en arm64 |
 
 Conséquence utile : **comme toutes les roues existent, `pip install` ne compile presque rien**. C'est ce qui rend l'émulation QEMU supportable, là où elle serait rédhibitoire sur un projet qui compile ses dépendances.
