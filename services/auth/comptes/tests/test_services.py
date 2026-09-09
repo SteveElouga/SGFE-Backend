@@ -336,6 +336,43 @@ class UserAdminServiceTests(TestCase):
 
         self.assertEqual(self.mock_send.call_count, before)
 
+    def test_update_agent_survives_whatsapp_delivery_failure(self) -> None:
+        """Régression symétrique de test_create_agent_survives_whatsapp_delivery_failure :
+        un OTP WhatsApp qui échoue lors d'un changement de téléphone ne doit pas
+        remonter jusqu'à l'appelant — le nouveau contact est déjà commité en
+        base, la modification doit rester un succès du point de vue de l'appelant."""
+        created = self.user_admin.create_user(
+            username="agent_upd_otp_ko", phone_number="+237690000070", role=Role.AGENT
+        )
+        self.mock_whatsapp.side_effect = WhatsAppDeliveryError("WhatsApp n'est pas connecté")
+
+        updated = self.user_admin.update_user(str(created.id), email="", role="", phone_number="+237690000071")
+
+        # `phone_number` est chiffré au repos (non déterministe, voir
+        # comptes/fields.py) : un lookup exact en base est impossible, d'où
+        # une re-lecture par id puis une comparaison en clair en mémoire.
+        self.assertTrue(User.objects.filter(id=created.id).exists())
+        self.assertEqual(User.objects.get(id=created.id).phone_number, "+237690000071")
+        self.assertEqual(updated.phone_number, "+237690000071")
+
+    def test_update_admin_survives_email_delivery_failure(self) -> None:
+        """Même régression côté ADMIN (e-mail Brevo indisponible) lors d'un
+        changement d'e-mail sur un compte encore en attente d'activation."""
+        created = self.user_admin.create_user(
+            username="admin_upd_email_ko",
+            email="admin_upd_wrong@example.com",
+            phone_number="+237690000072",
+            role=Role.ADMIN,
+        )
+        self.mock_send.side_effect = EmailDeliveryError("Brevo a renvoyé 500")
+
+        updated = self.user_admin.update_user(str(created.id), email="admin_upd_right@example.com", role="")
+
+        # Même remarque que ci-dessus pour `email`, chiffré au repos lui aussi.
+        self.assertTrue(User.objects.filter(id=created.id).exists())
+        self.assertEqual(User.objects.get(id=created.id).email, "admin_upd_right@example.com")
+        self.assertEqual(updated.email, "admin_upd_right@example.com")
+
     def test_deactivate_user(self) -> None:
         created = self.user_admin.create_user(username="agent7", phone_number="+237690000024", role=Role.AGENT)
         deactivated = self.user_admin.deactivate_user(str(created.id))
