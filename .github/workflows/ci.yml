@@ -367,7 +367,7 @@ jobs:
       - name: Tests + couverture
         run: |
           coverage run --source=${{ matrix.app }} manage.py test ${{ matrix.app }}
-          coverage report -m --fail-under=80
+          coverage report -m --fail-under=85
 
   test-gateway:
     needs: changes
@@ -396,7 +396,7 @@ jobs:
       - name: Tests + couverture
         run: |
           coverage run --source=schema manage.py test schema
-          coverage report -m --fail-under=80
+          coverage report -m --fail-under=85
 
   # Scan seul, sans publication — porte de PR (et de tout push qui ne va PAS
   # publier). Sur le chemin de publication (push develop/main), ce job est
