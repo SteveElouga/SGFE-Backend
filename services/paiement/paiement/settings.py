@@ -146,14 +146,16 @@ DEFAULT_SUSPENSION_RELANCES = 5  # Jours de suspension des relances après paiem
 # `time.gmtime` pour tout le processus (cohérent avec `TIME_ZONE = "UTC"`
 # déjà en vigueur) — des journaux de plusieurs conteneurs qui ne s'accordent
 # pas sur l'heure ne sont pas exploitables comme preuve. Rétention
-# configurable via `LOG_RETENTION_DAYS` (défaut 30 jours) :
+# configurable via `LOG_RETENTION_DAYS` (défaut 90 jours — politique NIST
+# SP 800-92/SSDF PS.3, benchmark PCI DSS : 1 an dont 3 mois en ligne,
+# voir AUDIT_SGFE.md) :
 # `TimedRotatingFileHandler` tourne un fichier par jour et purge au-delà.
 #
 # Hors périmètre ici (item observabilité séparé, non entamé — voir
 # AUDIT_SGFE.md §I) : un vrai `trace_id` de corrélation cross-service.
 logging.Formatter.converter = time.gmtime
 
-LOG_RETENTION_DAYS = env.int("LOG_RETENTION_DAYS", default=30)
+LOG_RETENTION_DAYS = env.int("LOG_RETENTION_DAYS", default=90)
 LOG_DIR = Path(env("LOG_DIR", default=str(BASE_DIR / "logs")))
 
 _LOGGING_HANDLERS: list[str] = ["console"]
