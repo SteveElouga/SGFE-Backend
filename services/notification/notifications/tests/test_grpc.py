@@ -30,6 +30,7 @@ from notifications.models import (  # noqa: E402
     TokenAcces,
     TypeEnvoi,
 )
+from notifications.services import EnvoiService  # noqa: E402
 from notifications.whatsapp_client import WhatsAppDeliveryError  # noqa: E402
 
 
@@ -482,3 +483,59 @@ class TestListDiffusionsRPC(TestCase):
 
         self.assertIsInstance(response, pb.ListDiffusionsResponse)
         self.assertEqual(len(response.diffusions), 2)
+
+
+class TestAnonymiserEnvoisAbonneRPC(TestCase):
+    """Tests du RPC AnonymiserEnvoisAbonne (RGPD — droit à l'effacement,
+    voir docs/RGPD_PERIMETRE_EFFACEMENT.md)."""
+
+    @patch("notifications.services.abonne_client")
+    def test_anonymise_envois_et_diffusions_de_l_abonne(self, mock_abonne: MagicMock) -> None:
+        mock_abonne.get_abonne.return_value = _make_abonne_mock()
+        mock_abonne.get_abonne.return_value.statut = "RESILIE"
+        abonne_id = str(uuid.uuid4())
+        Envoi.objects.create(
+            facture_id=str(uuid.uuid4()),
+            abonne_id=abonne_id,
+            type_envoi=TypeEnvoi.FACTURE,
+            telephone="+237699000001",
+            dernier_message="Bonjour Jean DUPONT",
+        )
+        diffusion = Diffusion.objects.create(message="Annonce")
+        DiffusionEnvoi.objects.create(diffusion=diffusion, abonne_id=abonne_id, telephone="+237699000001")
+
+        servicer = NotificationServiceServicer()
+        request = pb.AbonneIdRequest(abonne_id=abonne_id)
+        context = MagicMock()
+
+        response = servicer.AnonymiserEnvoisAbonne(request, context)
+
+        self.assertIsInstance(response, pb.AnonymiserEnvoisAbonneResponse)
+        self.assertEqual(response.nb_envois_anonymises, 1)
+        self.assertEqual(response.nb_diffusions_anonymisees, 1)
+        context.abort.assert_not_called()
+
+        envoi = Envoi.objects.get(abonne_id=abonne_id)
+        self.assertEqual(envoi.telephone, EnvoiService.TELEPHONE_ANONYMISE)
+        self.assertEqual(envoi.dernier_message, EnvoiService.DERNIER_MESSAGE_ANONYMISE)
+        diffusion_envoi = DiffusionEnvoi.objects.get(abonne_id=abonne_id)
+        self.assertEqual(diffusion_envoi.telephone, EnvoiService.TELEPHONE_ANONYMISE)
+
+    @patch("notifications.services.abonne_client")
+    def test_abonne_actif_est_refuse_en_invalid_argument(self, mock_abonne: MagicMock) -> None:
+        mock_abonne.get_abonne.return_value = _make_abonne_mock()
+        mock_abonne.get_abonne.return_value.statut = "ACTIF"
+        abonne_id = str(uuid.uuid4())
+        Envoi.objects.create(
+            facture_id=str(uuid.uuid4()),
+            abonne_id=abonne_id,
+            type_envoi=TypeEnvoi.FACTURE,
+            telephone="+237699000001",
+        )
+
+        servicer = NotificationServiceServicer()
+        request = pb.AbonneIdRequest(abonne_id=abonne_id)
+        context = MagicMock()
+
+        with self.assertRaises(ValueError):
+            servicer.AnonymiserEnvoisAbonne(request, context)

@@ -59,6 +59,13 @@ class EnvoiRepository:
         envoi.save()
         return envoi
 
+    def list_by_abonne(self, abonne_id: str) -> list[Envoi]:
+        """Tous les envois d'un abonné, tous statuts confondus — RGPD
+        (`EnvoiService.anonymiser_envois_abonne`) : contrairement à
+        `list_by_facture_and_abonne`, pensée pour l'écran de suivi, cette
+        méthode ne doit rien filtrer d'autre que l'abonné lui-même."""
+        return list(Envoi.objects.filter(abonne_id=abonne_id))
+
     def list_echecs_a_retenter(self, limite: int) -> list[Envoi]:
         """Lot d'envois en ECHEC sous le plafond de tentatives automatiques
         (`MAX_TENTATIVES_AUTO`), les plus anciens d'abord — pour qu'un échec
@@ -112,6 +119,11 @@ class DiffusionRepository:
             echecs=Count("id", filter=Q(statut=StatutDiffusionEnvoi.ECHEC)),
         )
         return agg["total"], agg["envoyes"], agg["echecs"]
+
+    def list_envois_by_abonne(self, abonne_id: str) -> list[DiffusionEnvoi]:
+        """Toutes les lignes `DiffusionEnvoi` d'un abonné, tous statuts
+        confondus — RGPD (`DiffusionService.anonymiser_envois_abonne`)."""
+        return list(DiffusionEnvoi.objects.filter(abonne_id=abonne_id))
 
     def prochains_en_attente(self, limite: int) -> list[DiffusionEnvoi]:
         """Un lot de lignes EN_ATTENTE à traiter, les diffusions les plus

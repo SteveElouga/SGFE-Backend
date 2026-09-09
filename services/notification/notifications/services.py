@@ -75,6 +75,15 @@ _ETAPE_TO_TYPE: dict[int, str] = {
 }
 
 
+# RGPD — statut Abonné Service qui autorise `anonymiser_envois_abonne`
+# (EnvoiService / DiffusionService). Recopié en dur plutôt qu'importé depuis
+# `abonnes.models.StatutAbonne` : Notification Service n'a et ne doit avoir
+# aucune dépendance Python vers Abonné Service, seulement gRPC (comme le
+# reste de ce fichier, qui ne connaît les abonnés qu'à travers les réponses
+# protobuf d'`abonne_client`).
+_STATUT_ABONNE_RESILIE = "RESILIE"
+
+
 def _format_date_fr(date_str: str) -> str:
     """Convertit 'YYYY-MM-DD' en 'JJ/MM/AAAA'."""
     if not date_str:
@@ -131,6 +140,15 @@ def _periode_from_date(date_str: str) -> str:
 
 class EnvoiService:
     """Logique métier d'envoi de messages WhatsApp."""
+
+    # RGPD — droit à l'effacement (anonymiser_envois_abonne). Valeurs
+    # EXPLICITES, jamais vidées : même patron qu'AbonneService.TELEPHONE_ANONYMISE
+    # (services/abonne/abonnes/services.py) — quiconque consulte le dossier
+    # plus tard doit comprendre que c'est un effacement RGPD délibéré, pas une
+    # donnée manquante par erreur. Valeur du téléphone identique à celle de
+    # l'Abonné Service : c'est le même type de donnée (numéro WhatsApp E.164).
+    TELEPHONE_ANONYMISE = "+00000000000"
+    DERNIER_MESSAGE_ANONYMISE = "Message supprimé (RGPD)"
 
     def __init__(self) -> None:
         self._envois = EnvoiRepository()
@@ -522,6 +540,65 @@ class EnvoiService:
         """Liste les envois filtrés par facture_id et/ou abonne_id."""
         return self._envois.list_by_facture_and_abonne(facture_id, abonne_id)
 
+    def anonymiser_envois_abonne(self, abonne_id: str) -> int:
+        """RGPD — droit à l'effacement, propagé depuis Abonné Service.
+
+        Anonymise les deux seules PII que ce service stocke EN PROPRE pour un
+        abonné (voir docs/RGPD_PERIMETRE_EFFACEMENT.md) :
+
+        - `telephone` : chiffré par la clé Fernet PROPRE à Notification
+          Service (`notifications/fields.py`), donc toujours déchiffrable même
+          après l'anonymisation du même numéro côté Abonné Service — c'est
+          précisément l'écart que corrige cette méthode ;
+        - `dernier_message` : texte en clair qui peut embarquer le prénom/nom
+          de l'abonné au moment de l'envoi (voir `message_builder.py`,
+          `prenom_nom` interpolé dans le corps du message).
+
+        `facture_id`/`paiement_id`/`type_envoi`/`statut`/`tentatives`/
+        `created_at` et le reste de l'historique d'envoi sont préservés
+        intacts : ce ne sont pas des pièces comptables, mais rien ne justifie
+        non plus de les effacer, et les garder conserve un historique de
+        support exploitable (nombre de tentatives, date, type de message).
+
+        Refuse si l'abonné n'est pas RESILIE côté Abonné Service — même
+        garde-fou qu'`AbonneService.anonymiser_abonne`
+        (services/abonne/abonnes/services.py), vérifié à distance ici
+        puisque ce service ne possède pas lui-même le statut de l'abonné.
+
+        Idempotent : ré-appeler sur un abonné déjà anonymisé réapplique les
+        mêmes valeurs sans erreur.
+
+        Returns:
+            Le nombre d'`Envoi` mis à jour.
+
+        Raises:
+            ValueError: Si l'abonné n'est pas RESILIE, ou si Abonné Service
+                est injoignable (son statut ne peut alors pas être vérifié).
+        """
+        try:
+            abonne = abonne_client.get_abonne(abonne_id)
+        except grpc.RpcError as exc:
+            raise ValueError(
+                _(
+                    "Impossible de vérifier le statut RGPD de l'abonné {abonne_id} "
+                    "— Abonné Service injoignable ({erreur})"
+                ).format(abonne_id=abonne_id, erreur=exc)
+            ) from exc
+        if abonne.statut != _STATUT_ABONNE_RESILIE:
+            raise ValueError(
+                _(
+                    "Seul un abonné RESILIE peut voir ses envois WhatsApp anonymisés (RGPD) — statut actuel : {statut}"
+                ).format(statut=abonne.statut)
+            )
+
+        envois = self._envois.list_by_abonne(abonne_id)
+        for envoi in envois:
+            envoi.telephone = self.TELEPHONE_ANONYMISE
+            if envoi.dernier_message:
+                envoi.dernier_message = self.DERNIER_MESSAGE_ANONYMISE
+            self._envois.save(envoi)
+        return len(envois)
+
     def _tenter_envoi(
         self,
         envoi: Envoi,
@@ -834,6 +911,49 @@ class DiffusionService:
     def compter(self, diffusion: Diffusion) -> tuple[int, int, int]:
         """(nb_total, nb_envoyes, nb_echecs) d'une diffusion."""
         return self._diffusions.compter(diffusion)
+
+    def anonymiser_envois_abonne(self, abonne_id: str) -> int:
+        """RGPD — droit à l'effacement, propagé depuis Abonné Service.
+
+        Anonymise `telephone` (seule PII propre à ce modèle — voir
+        docs/RGPD_PERIMETRE_EFFACEMENT.md) sur chaque `DiffusionEnvoi` de cet
+        abonné. Le `message` d'une diffusion ne peut pas embarquer le
+        prénom/nom d'UN abonné précis (`Diffusion.message` est un texte libre
+        composé une seule fois pour tous les destinataires visés, voir
+        `creer_diffusion` ci-dessus) — rien d'autre à anonymiser ici,
+        contrairement à `EnvoiService.anonymiser_envois_abonne`.
+
+        Même garde-fou qu'`EnvoiService.anonymiser_envois_abonne` (abonné
+        RESILIE, vérifié à distance) et même idempotence.
+
+        Returns:
+            Le nombre de `DiffusionEnvoi` mis à jour.
+
+        Raises:
+            ValueError: Si l'abonné n'est pas RESILIE, ou si Abonné Service
+                est injoignable (son statut ne peut alors pas être vérifié).
+        """
+        try:
+            abonne = abonne_client.get_abonne(abonne_id)
+        except grpc.RpcError as exc:
+            raise ValueError(
+                _(
+                    "Impossible de vérifier le statut RGPD de l'abonné {abonne_id} "
+                    "— Abonné Service injoignable ({erreur})"
+                ).format(abonne_id=abonne_id, erreur=exc)
+            ) from exc
+        if abonne.statut != _STATUT_ABONNE_RESILIE:
+            raise ValueError(
+                _(
+                    "Seul un abonné RESILIE peut voir ses envois WhatsApp anonymisés (RGPD) — statut actuel : {statut}"
+                ).format(statut=abonne.statut)
+            )
+
+        envois = self._diffusions.list_envois_by_abonne(abonne_id)
+        for envoi in envois:
+            envoi.telephone = EnvoiService.TELEPHONE_ANONYMISE
+            self._diffusions.save_envoi(envoi)
+        return len(envois)
 
     def traiter_lot_en_attente(self, taille_lot: int) -> list[str]:
         """Envoie un lot de lignes ``EN_ATTENTE`` et referme les diffusions
