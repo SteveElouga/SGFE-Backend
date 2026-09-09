@@ -24,9 +24,9 @@ gateway/
 
 ## Spécificités
 
-- Tous les domaines sont branchés sauf `reporting` (service pas encore implémenté) : auth, abonne, campagne, facturation, paiement, notification, config ont chacun leurs `grpc_client` + resolvers (`*_queries.py`/`*_mutations.py`).
+- Tous les domaines sont branchés : auth, abonne, campagne, facturation, paiement, notification, config, reporting ont chacun leurs `grpc_client` + resolvers (`*_queries.py`/`*_mutations.py` — `reporting` n'a que des queries, son rôle étant read-only).
 - `require_auth`/`require_role` (dans `context.py`) valident le JWT en appelant `AuthService.ValidateToken` en gRPC à chaque requête protégée (pas de décodage JWT local — la source de vérité reste `auth_service`, qui peut révoquer un token).
-- GraphiQL activé sur `/graphql` (`graphiql=True`), CSRF désactivé sur cette route (API stateless, pas de session Django).
+- GraphiQL activé sur `/graphql` uniquement en dev (`graphql_ide="graphiql" if settings.DEBUG else None` — désactivé en prod), CSRF désactivé sur cette route (API stateless, pas de session Django).
 
 ## Démarrage local
 

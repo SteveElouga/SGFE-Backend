@@ -4,7 +4,7 @@ Contexte spécifique à ce service. Voir le `CLAUDE.md` racine pour les règles 
 
 ## Rôle
 
-Paramètres système partagés (EF-CONF-001, EF-CONF-002). Consommé par Facturation, Paiement et Notification pour lire les délais, les clés API, et les infos société (PDF).
+Paramètres système partagés (EF-CONF-001, EF-CONF-002). Consommé par Facturation, Paiement et Notification pour lire les délais (paiement, tokens, relances impayés), les indicateurs de notifications admin, et les infos société (PDF).
 
 ## Structure
 

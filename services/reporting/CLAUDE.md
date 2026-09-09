@@ -25,24 +25,25 @@ services/reporting/
 ## Spécificités
 
 - **Lectures** : `GetDashboard` (campagne la plus récemment mise à jour = « en cours »),
-  `GetStatsCampagne`, `GetStatsGlobales`.
+  `GetStatsCampagne`, `GetStatsCompletes` (stats des 3 domaines pour une campagne précise,
+  sous-blocs `None` si inconnue — utilisé par la synthèse PDF facturation), `GetStatsGlobales`.
 - **Mises à jour** (déclenchées par les événements amont) : `UpdateStatsCampagne`,
-  `UpdateStatsFacturation` (type_update = GENEREE/ENVOYEE/PAYEE), `UpdateStatsPaiements`
-  (type_update = PAIEMENT/IMPAYE_RESOLU). Upsert par `campagne_id`, idempotent autant que possible.
-- Ce service **n'appelle aucun autre service gRPC** (pas de `grpc_clients.py`) — il ne fait que
-  recevoir des poussées de stats et les relire.
+  `UpdateStatsFacturation` (type_update = GENEREE/ENVOYEE/PAYEE/ANNULEE), `UpdateStatsPaiements`
+  (type_update = PAIEMENT/PAIEMENT_ANNULE/IMPAYE_RESOLU). Upsert par `campagne_id`, idempotent
+  autant que possible.
+- Ce service reçoit des poussées de stats en continu (événements Redis, voie passive) mais appelle
+  aussi Facturation Service et Paiement Service en gRPC pour une réconciliation nocturne
+  (`stats/grpc_clients.py`, `stats/schedulers.py`, cron 3h00, voir `ReconciliateurStats`) qui
+  corrige la dérive d'un événement jamais publié.
 
-## ⚠️ Câblage événementiel — À FAIRE
+## Câblage événementiel (fait)
 
-Le service expose bien les RPC `UpdateStats*`, mais **personne ne les appelle encore**. Pour
-alimenter le tableau de bord, il reste à câbler les émetteurs (PR séparées, service par service) :
-- **campagne-service** : à la clôture / progression → `UpdateStatsCampagne`
-- **facturation-service** : à `GenererFactures` (GENEREE), envoi WhatsApp (ENVOYEE), passage PAYEE
-  → `UpdateStatsFacturation`
-- **paiement-service** : à `EnregistrerPaiement` (PAIEMENT) et résolution d'impayé (IMPAYE_RESOLU)
-  → `UpdateStatsPaiements`
-
-Tant que ce câblage n'est pas fait, `dashboard` renvoie des sous-blocs nuls (dégradation propre).
+campagne-service, facturation-service et paiement-service publient sur le flux Redis Streams
+`reporting:stream` via `publish_reporting_event` ; `stats/event_consumer.py` les consomme de façon
+idempotente (consumer group Redis, idempotence via le modèle `ProcessedEvent`, dead-letter après
+5 tentatives) et est démarré automatiquement dans `stats/grpc_server.py::serve()`. Une
+réconciliation nocturne (`stats/schedulers.py`, 3h00, verrou PostgreSQL) corrige la dérive
+résiduelle si un événement n'a jamais été publié.
 
 ## Démarrage local
 

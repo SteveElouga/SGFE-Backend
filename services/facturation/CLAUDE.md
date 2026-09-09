@@ -19,7 +19,7 @@ services/facturation/
 │   ├── schedulers.py       # APScheduler — relais outbox toutes les 10s (IntervalTrigger)
 │   ├── pdf_generator.py    # Construit le contexte de rendu, WeasyPrint (import paresseux)
 │   ├── templates/facture_pdf.html  # Gabarit HTML/CSS "AquaBill" (rendu via render_to_string)
-│   └── grpc_clients.py     # → Abonné, Campagne (ListReleves, GetCampagne), Config Service
+│   └── grpc_clients.py     # → Abonné, Campagne (ListReleves, GetCampagne), Config, Paiement (InitialiserSolde, GetSolde), Notification (GetEspaceUrl, EnvoyerFacture), Reporting (GetStatsCompletes)
 ├── proto/           # Stubs générés depuis proto/facturation_service.proto — NE PAS MODIFIER
 ```
 
@@ -30,8 +30,10 @@ services/facturation/
 - **Numérotation** : `FACT-AAAA-MM-XXXX` (ex. FACT-2025-07-0001). Séquence réinitialisée chaque mois,
   verrouillée par `select_for_update()` pour éviter les collisions en génération concurrente.
 - **PDF** : rendu du gabarit `templates/facture_pdf.html` (Django, autoescape) via WeasyPrint,
-  généré à la création de la facture, stocké dans `PDF_STORAGE_DIR`. Régénéré à la volée si absent
-  (`get_pdf_bytes`). Le contexte inclut l'historique de consommation des 6 derniers mois de
+  généré à la création de la facture, stocké dans `PDF_STORAGE_DIR`. Régénéré à la volée si le
+  fichier est absent, si le gabarit qui l'a produit est obsolète (`pdf_template_version`), ou si
+  l'abonné a un solde antérieur non nul (`get_pdf_bytes`, factures/services.py). Le contexte inclut
+  l'historique de consommation des 6 derniers mois de
   l'abonné (`FactureRepository.list_historique_consommation`). Le bloc "espace abonné" du PDF est
   masqué tant qu'aucun token d'accès n'existe encore (créé par Notification Service, pas par ce
   service) — l'agent ayant effectué le relevé et l'heure exacte ne sont pas encore tracés par
