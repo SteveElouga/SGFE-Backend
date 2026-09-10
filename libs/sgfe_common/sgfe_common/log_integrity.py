@@ -59,15 +59,17 @@ immédiatement à quelle ligne la chaîne a été rompue.
   composant qui écrit ailleurs (`print`, un autre logger non câblé) n'est pas
   concerné.
 
-## Portée de cette PR : câblé sur 2 composants, pas 9
+## Câblé sur les 9 composants
 
-Câblé uniquement sur les deux points d'entrée les plus sensibles pour la
-sécurité — Auth (`services/auth/comptes/log_integrity.py`) et Gateway
-(`gateway/schema/log_integrity.py`). Étendre aux 7 autres composants est une
-répétition à l'identique du câblage ci-dessous (voir "Comment un futur
-service adopte ce mécanisme") — délibérément non fait ici, hors de
-proportion pour cette tâche : 2 composants suffisent comme preuve du
-mécanisme.
+D'abord câblé (PR #219) sur les deux points d'entrée les plus sensibles pour
+la sécurité — Auth (`services/auth/comptes/log_integrity.py`) et Gateway
+(`gateway/schema/log_integrity.py`) — puis étendu (PR #225, 06/09) aux 7
+services gRPC restants (abonne, campagne, config, facturation, notification,
+paiement, reporting), répétition à l'identique du câblage ci-dessous (voir
+"Comment un futur service adopte ce mécanisme"). Les 9 fichiers existent
+(`find . -name log_integrity.py` en dehors de `libs/`), synchronisés depuis
+cette source canonique comme le reste de `sgfe_common` (voir
+`scripts/sync-db-hardening-lib.sh` et son équivalent pour ce fichier).
 
 ## Pourquoi un `Formatter`, pas un `Filter`, et pourquoi seulement le handler "file"
 
