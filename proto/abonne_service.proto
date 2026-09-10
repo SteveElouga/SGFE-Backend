@@ -49,6 +49,12 @@ message ListAbonnesRequest {
   // strictement préservé pour tout appelant qui ne les connaît pas encore.
   optional int32 limit = 2;
   optional int32 offset = 3;
+  // Filtre optionnel par liste d'identifiants — vide (comportement historique
+  // d'un `repeated` proto3 : jamais absent, juste une liste vide), aucun
+  // filtre par id n'est appliqué. Sert la Gateway quand elle connaît déjà les
+  // `abonne_id` à résoudre (ex. enrichissement d'une page de factures) et n'a
+  // besoin ni de tout le parc ni d'une pagination arbitraire.
+  repeated string ids = 4;
 }
 
 message CreateAbonneRequest {

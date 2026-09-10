@@ -8,29 +8,44 @@ class AbonneRepository:
     def get_by_id(self, abonne_id: str) -> Abonne:
         return Abonne.objects.get(id=abonne_id)
 
-    def _filtres(self, statut: str | None = None) -> QuerySet[Abonne]:
+    def _filtres(self, statut: str | None = None, ids: list[str] | None = None) -> QuerySet[Abonne]:
         """Queryset filtré, partagé par `list_all` et `count_all` — le
         comptage et la page rendue portent ainsi toujours sur les mêmes
-        critères, jamais sur la table entière."""
+        critères, jamais sur la table entière.
+
+        `ids` : filtre optionnel par liste d'identifiants (`id__in`) — sert
+        un appelant qui connaît déjà les abonnés à résoudre (ex. la Gateway
+        qui enrichit une page de factures) et n'a besoin ni du parc entier ni
+        d'une pagination arbitraire. Vide ou `None` : aucun filtre par id,
+        comportement historique inchangé.
+        """
         qs = Abonne.objects.all()
         if statut:
             qs = qs.filter(statut=statut)
+        if ids:
+            qs = qs.filter(id__in=ids)
         return qs
 
-    def list_all(self, statut: str | None = None, limit: int | None = None, offset: int | None = None) -> list[Abonne]:
+    def list_all(
+        self,
+        statut: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        ids: list[str] | None = None,
+    ) -> list[Abonne]:
         """Abonnés filtrés, triés par numéro. `limit`/`offset` optionnels :
         omis (`None`), la liste complète est retournée — comportement
         historique préservé à l'identique."""
-        qs = self._filtres(statut).order_by("numero_abonne")
+        qs = self._filtres(statut, ids).order_by("numero_abonne")
         if limit is not None or offset is not None:
             start = offset or 0
             qs = qs[start : start + limit] if limit is not None else qs[start:]
         return list(qs)
 
-    def count_all(self, statut: str | None = None) -> int:
+    def count_all(self, statut: str | None = None, ids: list[str] | None = None) -> int:
         """Nombre total d'abonnés correspondant au filtre, indépendamment de
         toute pagination."""
-        return self._filtres(statut).count()
+        return self._filtres(statut, ids).count()
 
     def list_actifs(self) -> list[Abonne]:
         return list(Abonne.objects.filter(statut=StatutAbonne.ACTIF).order_by("numero_abonne"))

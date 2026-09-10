@@ -59,8 +59,11 @@ class AbonneServiceServicer(pb_grpc.AbonneServiceServicer):  # type: ignore[misc
         limit = request.limit if request.HasField("limit") else None
         offset = request.offset if request.HasField("offset") else None
         statut = request.statut or None
-        abonnes = self.abonne_service.list_abonnes(statut, limit=limit, offset=offset)
-        total = self.abonne_service.count_abonnes(statut)
+        # `ids` (repeated proto3, jamais absent — juste vide par défaut) :
+        # filtre optionnel par liste d'identifiants, voir ListAbonnesRequest.
+        ids = list(request.ids) or None
+        abonnes = self.abonne_service.list_abonnes(statut, limit=limit, offset=offset, ids=ids)
+        total = self.abonne_service.count_abonnes(statut, ids=ids)
         return pb.ListAbonnesResponse(abonnes=[self._response(a) for a in abonnes], total=total)
 
     def ListAbonnesActifs(self, request: pb.EmptyRequest, context: grpc.ServicerContext) -> pb.ListAbonnesResponse:

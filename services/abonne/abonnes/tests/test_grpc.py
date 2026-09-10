@@ -99,6 +99,25 @@ class AbonneServiceServicerTests(TestCase):
         self.assertEqual(len(response.abonnes), 1)
         self.assertEqual(response.total, 2)
 
+    def test_list_abonnes_filtre_par_ids(self) -> None:
+        # Correctif perf (Gateway `_enrichir_factures`, voir
+        # loadtest/RESULTATS_REELS.md) : ne rapatrier que les abonnés
+        # réellement demandés plutôt que tout le parc.
+        a1 = self._create(numero_compteur=1)
+        self._create(numero_compteur=2)
+        a3 = self._create(numero_compteur=3)
+        response = self.servicer.ListAbonnes(pb.ListAbonnesRequest(ids=[a1.abonne_id, a3.abonne_id]), self.context)
+        self.assertEqual({a.abonne_id for a in response.abonnes}, {a1.abonne_id, a3.abonne_id})
+        self.assertEqual(response.total, 2)
+
+    def test_list_abonnes_ids_vide_renvoie_tout(self) -> None:
+        # Rétrocompatibilité stricte : `ids` omis (repeated proto3 vide par
+        # défaut) — comportement historique inchangé, liste complète rendue.
+        self._create(numero_compteur=1)
+        self._create(numero_compteur=2)
+        response = self.servicer.ListAbonnes(pb.ListAbonnesRequest(ids=[]), self.context)
+        self.assertEqual(len(response.abonnes), 2)
+
     def test_list_abonnes_actifs_excludes_suspended(self) -> None:
         created = self._create()
         self.servicer.SuspendreAbonne(pb.AbonneIdRequest(abonne_id=created.abonne_id), self.context)

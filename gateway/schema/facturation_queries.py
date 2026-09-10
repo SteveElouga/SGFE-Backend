@@ -10,18 +10,32 @@ from .facturation_types import Facture, Tarif, facture_from_grpc, tarif_from_grp
 from .grpc_clients import abonne_client, campagne_client, facturation_client
 
 
-def _abonnes_index() -> dict[str, Any]:
-    """Index {abonne_id: AbonneResponse} via un seul ListAbonnes (best-effort)."""
+def _abonnes_index(abonne_ids: list[str]) -> dict[str, Any]:
+    """Index {abonne_id: AbonneResponse} via un seul ListAbonnes restreint aux
+    `abonne_ids` demandés (best-effort).
+
+    Historiquement un `ListAbonnes()` sans filtre — donc TOUT le parc
+    d'abonnés — pour n'en indexer que la poignée référencée par la page de
+    factures à enrichir : mesuré comme le fan-out gRPC le plus coûteux de la
+    Gateway (voir loadtest/RESULTATS_REELS.md, `factures_page`/`facturesCount`
+    p95 ~4s au palier à 20 VUs). `ids` restreint désormais l'appel aux seuls
+    abonnés réellement utilisés par `factures`."""
+    if not abonne_ids:
+        return {}
     try:
-        return {a.abonne_id: a for a in abonne_client.list_abonnes().abonnes}
+        return {a.abonne_id: a for a in abonne_client.list_abonnes(ids=abonne_ids).abonnes}
     except Exception:
         return {}
 
 
-def _campagnes_index() -> dict[str, Any]:
-    """Index {campagne_id: CampagneResponse} via un seul ListCampagnes (best-effort)."""
+def _campagnes_index(campagne_ids: list[str]) -> dict[str, Any]:
+    """Index {campagne_id: CampagneResponse} via un seul ListCampagnes restreint
+    aux `campagne_ids` demandés (best-effort) — même motif que `_abonnes_index`
+    ci-dessus."""
+    if not campagne_ids:
+        return {}
     try:
-        return {c.campagne_id: c for c in campagne_client.list_campagnes(created_by="", agent_id="").campagnes}
+        return {c.campagne_id: c for c in campagne_client.list_campagnes(ids=campagne_ids).campagnes}
     except Exception:
         return {}
 
@@ -33,11 +47,17 @@ def _enrichir_factures(factures: list[Facture]) -> list[Facture]:
     ici les libellés pour que les écrans factures/paiements s'affichent sans
     appeler `abonnes`/`campagnes`, réservées à d'autres rôles (le COMPTABLE n'a
     accès ni à Abonné ni à Campagne). Best-effort : si un service amont est
-    indisponible, les libellés restent vides (jamais d'échec de la requête)."""
+    indisponible, les libellés restent vides (jamais d'échec de la requête).
+
+    N'interroge Abonné/Campagne que pour les identifiants réellement portés
+    par `factures` (typiquement une seule page paginée) — jamais le parc/les
+    campagnes en entier, voir `_abonnes_index`/`_campagnes_index`."""
     if not factures:
         return factures
-    abonnes = _abonnes_index()
-    campagnes = _campagnes_index()
+    abonne_ids = sorted({f.abonne_id for f in factures if f.abonne_id})
+    campagne_ids = sorted({f.campagne_id for f in factures if f.campagne_id})
+    abonnes = _abonnes_index(abonne_ids)
+    campagnes = _campagnes_index(campagne_ids)
     for f in factures:
         abonne = abonnes.get(f.abonne_id)
         if abonne is not None:
