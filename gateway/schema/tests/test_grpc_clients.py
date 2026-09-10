@@ -2,7 +2,13 @@ from unittest.mock import Mock
 
 from django.test import SimpleTestCase
 
-from schema.grpc_clients import AbonneServiceClient, AuthServiceClient, FacturationServiceClient, PaiementServiceClient
+from schema.grpc_clients import (
+    AbonneServiceClient,
+    AuthServiceClient,
+    CampagneServiceClient,
+    FacturationServiceClient,
+    PaiementServiceClient,
+)
 
 
 class AuthServiceClientTests(SimpleTestCase):
@@ -105,6 +111,18 @@ class AbonneServiceClientTests(SimpleTestCase):
         self.grpc_client.list_abonnes_actifs()
         self.grpc_client._stub.ListAbonnesActifs.assert_called_once()
 
+    def test_list_abonnes_sans_ids_ne_transmet_rien(self) -> None:
+        """Rétrocompatibilité stricte : `ids` omis (comportement historique),
+        le `repeated` proto3 reste vide — aucun filtre par id côté serveur."""
+        self.grpc_client.list_abonnes("ACTIF")
+        request = self.grpc_client._stub.ListAbonnes.call_args[0][0]
+        self.assertEqual(list(request.ids), [])
+
+    def test_list_abonnes_avec_filtre_ids(self) -> None:
+        self.grpc_client.list_abonnes(ids=["abonne-1", "abonne-2"])
+        request = self.grpc_client._stub.ListAbonnes.call_args[0][0]
+        self.assertEqual(list(request.ids), ["abonne-1", "abonne-2"])
+
     def test_create_abonne(self) -> None:
         self.grpc_client.create_abonne(
             nom="Doe",
@@ -146,6 +164,24 @@ class AbonneServiceClientTests(SimpleTestCase):
         )
         request = self.grpc_client._stub.RemplacerCompteur.call_args[0][0]
         self.assertEqual((request.abonne_id, request.nouveau_numero_compteur), ("abonne-1", 2))
+
+
+class CampagneServiceClientTests(SimpleTestCase):
+    def setUp(self) -> None:
+        self.grpc_client = CampagneServiceClient()
+        self.grpc_client._stub = Mock()
+
+    def test_list_campagnes_sans_ids_ne_transmet_rien(self) -> None:
+        """Rétrocompatibilité stricte : `ids` omis (comportement historique),
+        le `repeated` proto3 reste vide — aucun filtre par id côté serveur."""
+        self.grpc_client.list_campagnes(created_by="user-1")
+        request = self.grpc_client._stub.ListCampagnes.call_args[0][0]
+        self.assertEqual((request.created_by, list(request.ids)), ("user-1", []))
+
+    def test_list_campagnes_avec_filtre_ids(self) -> None:
+        self.grpc_client.list_campagnes(ids=["camp-1", "camp-2"])
+        request = self.grpc_client._stub.ListCampagnes.call_args[0][0]
+        self.assertEqual(list(request.ids), ["camp-1", "camp-2"])
 
 
 class FacturationServiceClientTests(SimpleTestCase):

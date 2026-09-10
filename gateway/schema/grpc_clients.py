@@ -208,16 +208,27 @@ class AbonneServiceClient:
         return self._stub.GetAbonne(abonne_pb.AbonneIdRequest(abonne_id=abonne_id))
 
     def list_abonnes(
-        self, statut: str = "", limit: int | None = None, offset: int | None = None
+        self,
+        statut: str = "",
+        limit: int | None = None,
+        offset: int | None = None,
+        ids: list[str] | None = None,
     ) -> abonne_pb.ListAbonnesResponse:
         """Abonnés filtrés. `limit`/`offset` optionnels — omis, le champ
         proto3 `optional` correspondant reste non défini côté serveur, qui
-        renvoie alors la liste complète (rétrocompatibilité stricte)."""
+        renvoie alors la liste complète (rétrocompatibilité stricte).
+
+        `ids` : filtre optionnel par liste d'identifiants — pour un appelant
+        qui connaît déjà les abonnés à résoudre (voir
+        `facturation_queries._abonnes_index`) et n'a besoin ni du parc entier
+        ni d'une pagination arbitraire. Omis ou vide, comportement inchangé."""
         kwargs: dict[str, object] = {"statut": statut}
         if limit is not None:
             kwargs["limit"] = limit
         if offset is not None:
             kwargs["offset"] = offset
+        if ids:
+            kwargs["ids"] = list(ids)
         return self._stub.ListAbonnes(abonne_pb.ListAbonnesRequest(**kwargs))
 
     def count_abonnes(self, statut: str = "") -> int:
@@ -316,8 +327,17 @@ class CampagneServiceClient:
     def get_campagne(self, campagne_id: str) -> campagne_pb.CampagneResponse:
         return self._stub.GetCampagne(campagne_pb.CampagneIdRequest(campagne_id=campagne_id))
 
-    def list_campagnes(self, created_by: str = "", agent_id: str = "") -> campagne_pb.ListCampagnesResponse:
-        return self._stub.ListCampagnes(campagne_pb.ListCampagnesRequest(created_by=created_by, agent_id=agent_id))
+    def list_campagnes(
+        self, created_by: str = "", agent_id: str = "", ids: list[str] | None = None
+    ) -> campagne_pb.ListCampagnesResponse:
+        """`ids` : filtre optionnel par liste d'identifiants — pour un
+        appelant qui connaît déjà les campagnes à résoudre (voir
+        `facturation_queries._campagnes_index`) et n'a besoin ni de toutes
+        les campagnes ni d'un filtre créateur/agent. Omis ou vide,
+        comportement inchangé."""
+        return self._stub.ListCampagnes(
+            campagne_pb.ListCampagnesRequest(created_by=created_by, agent_id=agent_id, ids=list(ids) if ids else [])
+        )
 
     def assigner_agent(self, campagne_id: str, agent_id: str) -> campagne_pb.CampagneResponse:
         return self._stub.AssignerAgent(campagne_pb.AssignerAgentRequest(campagne_id=campagne_id, agent_id=agent_id))

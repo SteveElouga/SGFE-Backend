@@ -50,12 +50,16 @@ class AbonneService:
         return self.abonnes.get_by_id(abonne_id)
 
     def list_abonnes(
-        self, statut: str | None = None, limit: int | None = None, offset: int | None = None
+        self,
+        statut: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        ids: list[str] | None = None,
     ) -> list[Abonne]:
-        return self.abonnes.list_all(statut, limit=limit, offset=offset)
+        return self.abonnes.list_all(statut, limit=limit, offset=offset, ids=ids)
 
-    def count_abonnes(self, statut: str | None = None) -> int:
-        return self.abonnes.count_all(statut)
+    def count_abonnes(self, statut: str | None = None, ids: list[str] | None = None) -> int:
+        return self.abonnes.count_all(statut, ids=ids)
 
     def list_abonnes_actifs(self) -> list[Abonne]:
         return self.abonnes.list_actifs()

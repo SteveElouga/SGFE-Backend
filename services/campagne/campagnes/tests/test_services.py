@@ -151,6 +151,14 @@ class TestCampagneService(TestCase):
         resultat = self.svc.list_campagnes()
         self.assertEqual(len(resultat), 2)
 
+    def test_list_campagnes_filtre_par_ids(self) -> None:
+        c1 = self.svc.creer_campagne("C1", 1, 2026, created_by="user-A")
+        self.svc.creer_campagne("C2", 2, 2026, created_by="user-B")
+
+        resultat = self.svc.list_campagnes(ids=[str(c1.id)])
+        self.assertEqual(len(resultat), 1)
+        self.assertEqual(resultat[0].id, c1.id)
+
     # --- progression ---
 
     def test_get_progression_vide(self) -> None:
@@ -427,6 +435,18 @@ class TestCampagneAgentRepository(TestCase):
         campagnes = CampagneRepository().list_all(agent_id="agent-001")
         self.assertEqual(len(campagnes), 1)
         self.assertEqual(campagnes[0].id, self.campagne.id)
+
+    def test_filtre_list_campagnes_par_ids(self) -> None:
+        c2 = CampagneService().creer_campagne(
+            nom="Autre campagne",
+            periode_mois=7,
+            periode_annee=2026,
+            created_by="user-B",
+        )
+        campagnes = CampagneRepository().list_all(ids=[str(self.campagne.id)])
+        self.assertEqual(len(campagnes), 1)
+        self.assertEqual(campagnes[0].id, self.campagne.id)
+        self.assertNotEqual(campagnes[0].id, c2.id)
 
 
 class TestScheduler(TestCase):

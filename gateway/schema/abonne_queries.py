@@ -30,12 +30,20 @@ class AbonneQueries:
         liste — utile à un futur pager côté UI.
         """
         require_role(info, "ADMIN")
-        pagination: dict[str, int] = {}
-        if limit is not None:
-            pagination["limit"] = limit
-        if offset is not None:
-            pagination["offset"] = offset
-        response = abonne_client.list_abonnes(statut.value if statut else "", **pagination)
+        statut_str = statut.value if statut else ""
+        # Deux branches à mots-clés explicites plutôt qu'un dict + `**` :
+        # `list_abonnes` a désormais un paramètre `ids: list[str] | None` en
+        # plus de `limit`/`offset: int | None`, et mypy --strict refuse un
+        # dict[str, int] déballé en **kwargs dès qu'un des mots-clés
+        # possibles n'est pas de ce type (trouvé en CI, PR fan-out gRPC
+        # factures_page) — même si ce dict ne contient jamais `ids`. Ceci
+        # préserve aussi le contrat exact verrouillé par
+        # test_abonnes_sans_limit_offset_renvoie_tout_comme_avant : aucun mot-clé
+        # transmis quand les deux sont absents, pas `limit=None, offset=None`.
+        if limit is not None or offset is not None:
+            response = abonne_client.list_abonnes(statut_str, limit=limit, offset=offset)
+        else:
+            response = abonne_client.list_abonnes(statut_str)
         return [abonne_from_grpc(a) for a in response.abonnes]
 
     @strawberry.field()  # type: ignore[untyped-decorator]  # voir mypy.ini

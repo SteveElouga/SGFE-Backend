@@ -52,12 +52,19 @@ class CampagneRepository:
         except Campagne.DoesNotExist:
             raise ObjectDoesNotExist(_("Campagne introuvable : {campagne_id}").format(campagne_id=campagne_id))
 
-    def list_all(self, created_by: str = "", agent_id: str = "") -> list[Campagne]:
+    def list_all(self, created_by: str = "", agent_id: str = "", ids: list[str] | None = None) -> list[Campagne]:
+        """`ids` : filtre optionnel par liste d'identifiants (`id__in`) — sert
+        un appelant qui connaît déjà les campagnes à résoudre (ex. la Gateway
+        qui enrichit une page de factures) et n'a besoin ni de toutes les
+        campagnes ni d'un filtre créateur/agent. Vide ou `None` : aucun filtre
+        par id, comportement historique inchangé."""
         qs = Campagne.objects.all()
         if created_by:
             qs = qs.filter(created_by=created_by)
         if agent_id:
             qs = qs.filter(agents_affectes__agent_id=agent_id)
+        if ids:
+            qs = qs.filter(id__in=ids)
         return list(qs)
 
     def list_en_cours(self) -> list[Campagne]:

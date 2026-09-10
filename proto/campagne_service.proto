@@ -185,6 +185,12 @@ message DernierIndexResponse {
 message ListCampagnesRequest {
   string created_by = 1;  // vide = pas de filtre propriétaire ; non-vide = filtre SUPERVISEUR
   string agent_id = 2;    // vide = pas de filtre agent ; non-vide = campagnes où l'agent est affecté
+  // Filtre optionnel par liste d'identifiants — vide (comportement historique
+  // d'un `repeated` proto3 : jamais absent, juste une liste vide), aucun
+  // filtre par id n'est appliqué. Sert la Gateway quand elle connaît déjà les
+  // `campagne_id` à résoudre (ex. enrichissement d'une page de factures) et
+  // n'a besoin ni de toutes les campagnes ni d'un filtre créateur/agent.
+  repeated string ids = 3;
 }
 
 message AssignerAgentRequest {

@@ -135,6 +135,22 @@ class TestListCampagnesRPC(TestCase):
         response = self.servicer.ListCampagnes(request, _mock_context())
         self.assertEqual(len(response.campagnes), 0)
 
+    def test_list_filtre_ids(self) -> None:
+        # Correctif perf (Gateway `_enrichir_factures`, voir
+        # loadtest/RESULTATS_REELS.md) : ne rapatrier que les campagnes
+        # réellement demandées plutôt que toutes les campagnes.
+        request = pb.ListCampagnesRequest(ids=[str(self.c1.id)])
+        response = self.servicer.ListCampagnes(request, _mock_context())
+        self.assertEqual(len(response.campagnes), 1)
+        self.assertEqual(response.campagnes[0].nom, "C1")
+
+    def test_list_ids_vide_renvoie_tout(self) -> None:
+        # Rétrocompatibilité stricte : `ids` omis (repeated proto3 vide par
+        # défaut) — comportement historique inchangé, toutes les campagnes.
+        request = pb.ListCampagnesRequest(ids=[])
+        response = self.servicer.ListCampagnes(request, _mock_context())
+        self.assertEqual(len(response.campagnes), 2)
+
 
 class TestAssignerAgentRPC(TestCase):
     def setUp(self) -> None:

@@ -216,6 +216,18 @@ class AbonneServiceTests(TestCase):
         self.assertEqual([a.id for a in page], [a1.id])
         self.assertEqual(self.service.count_abonnes(StatutAbonne.SUSPENDU), 1)
 
+    def test_list_abonnes_filtre_par_ids(self) -> None:
+        a1 = _create_abonne(self.service)
+        a2 = _create_abonne(self.service, numero_compteur=2)
+        _create_abonne(self.service, numero_compteur=3)
+        resultat = self.service.list_abonnes(ids=[str(a1.id), str(a2.id)])
+        self.assertEqual({a.id for a in resultat}, {a1.id, a2.id})
+
+    def test_count_abonnes_filtre_par_ids(self) -> None:
+        a1 = _create_abonne(self.service)
+        _create_abonne(self.service, numero_compteur=2)
+        self.assertEqual(self.service.count_abonnes(ids=[str(a1.id)]), 1)
+
     def test_count_abonnes_ignore_la_pagination(self) -> None:
         for i in range(1, 4):
             _create_abonne(self.service, numero_compteur=i)

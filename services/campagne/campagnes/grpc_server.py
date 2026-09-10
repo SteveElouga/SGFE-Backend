@@ -90,10 +90,13 @@ class CampagneServicer(pb_grpc.CampagneServiceServicer):  # type: ignore[misc]
         request: pb.ListCampagnesRequest,
         context: grpc.ServicerContext,
     ) -> pb.ListCampagnesResponse:
-        """Liste les campagnes — filtre optionnel par créateur (SUPERVISEUR) ou agent affecté (AGENT)."""
+        """Liste les campagnes — filtre optionnel par créateur (SUPERVISEUR), agent
+        affecté (AGENT), ou liste d'identifiants (`ids`, ex. Gateway résolvant
+        les campagnes déjà référencées par une page de factures)."""
         campagnes = self._campagne_svc.list_campagnes(
             created_by=request.created_by,
             agent_id=request.agent_id,
+            ids=list(request.ids) or None,
         )
         return pb.ListCampagnesResponse(campagnes=[campagne_to_proto(c) for c in campagnes])
 

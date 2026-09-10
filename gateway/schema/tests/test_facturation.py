@@ -179,6 +179,63 @@ class TestFacturationQueries(SimpleTestCase):
         self.assertEqual(result[0].abonne_nom, "")
         self.assertEqual(result[0].campagne_nom, "")
 
+    @patch("schema.facturation_queries.campagne_client")
+    @patch("schema.facturation_queries.abonne_client")
+    @patch("schema.facturation_queries.facturation_client")
+    @patch("schema.facturation_queries.require_auth")
+    @patch("schema.facturation_queries.require_role")
+    def test_enrichissement_restreint_aux_ids_de_la_page(
+        self,
+        mock_role: MagicMock,
+        mock_auth: MagicMock,
+        mock_fact: MagicMock,
+        mock_abonne: MagicMock,
+        mock_campagne: MagicMock,
+    ) -> None:
+        """Correctif perf (loadtest/RESULTATS_REELS.md) : l'enrichissement
+        n'interroge plus TOUT le parc d'abonnés/campagnes (`ListAbonnes`/
+        `ListCampagnes` sans filtre) mais uniquement les identifiants
+        réellement portés par la page de factures renvoyée."""
+        mock_auth.return_value = MagicMock(role="COMPTABLE")
+        mock_fact.list_factures.return_value = MagicMock(
+            factures=[
+                _facture_response(facture_id="f1", abonne_id="abonne-001", campagne_id="camp-001"),
+                _facture_response(facture_id="f2", abonne_id="abonne-002", campagne_id="camp-001"),
+            ]
+        )
+        mock_abonne.list_abonnes.return_value = MagicMock(abonnes=[])
+        mock_campagne.list_campagnes.return_value = MagicMock(campagnes=[])
+        FacturationQueries().factures(MagicMock())
+        # Un seul appel par index, restreint aux ids réellement référencés
+        # (dédoublonnés — camp-001 apparaît deux fois mais n'est demandé qu'une fois).
+        mock_abonne.list_abonnes.assert_called_once_with(ids=["abonne-001", "abonne-002"])
+        mock_campagne.list_campagnes.assert_called_once_with(ids=["camp-001"])
+
+    @patch("schema.facturation_queries.campagne_client")
+    @patch("schema.facturation_queries.abonne_client")
+    @patch("schema.facturation_queries.facturation_client")
+    @patch("schema.facturation_queries.require_auth")
+    @patch("schema.facturation_queries.require_role")
+    def test_enrichissement_sans_campagne_evite_lappel_grpc(
+        self,
+        mock_role: MagicMock,
+        mock_auth: MagicMock,
+        mock_fact: MagicMock,
+        mock_abonne: MagicMock,
+        mock_campagne: MagicMock,
+    ) -> None:
+        """Une régularisation n'a pas de campagne (`campagne_id=""`, voir
+        facturation_types.Facture) : `ListCampagnes` n'est même pas appelé
+        s'il n'y a aucun id à résoudre."""
+        mock_auth.return_value = MagicMock(role="COMPTABLE")
+        mock_fact.list_factures.return_value = MagicMock(
+            factures=[_facture_response(abonne_id="abonne-001", campagne_id="")]
+        )
+        mock_abonne.list_abonnes.return_value = MagicMock(abonnes=[])
+        FacturationQueries().factures(MagicMock())
+        mock_abonne.list_abonnes.assert_called_once_with(ids=["abonne-001"])
+        mock_campagne.list_campagnes.assert_not_called()
+
 
 class TestFacturationMutations(SimpleTestCase):
     @patch("schema.facturation_mutations.facturation_client")
